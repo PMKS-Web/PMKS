@@ -20,8 +20,8 @@ namespace PMKS.VelocityAndAcceleration
                               int inputLinkIndex, double inputSpeed, Dictionary<int, GearData> gearsData, double averageLength)
             : base(joints, links, firstInputJointIndex, inputJointIndex, inputLinkIndex, inputSpeed, gearsData)
         {
-            maximumJointValue = Constants.JointAccelerationLimitFactor * averageLength * inputSpeed * inputSpeed;
-            maximumLinkValue = Constants.LinkAccelerationLimitFactor * inputSpeed * inputSpeed;
+            maximumJointValue = double.PositiveInfinity;
+            maximumLinkValue = double.PositiveInfinity;
         }
 
         protected override void SetInitialInputAndGroundStates()
@@ -184,7 +184,7 @@ namespace PMKS.VelocityAndAcceleration
                 if (o is Link)
                 {
                     var v = x[index++];
-                    if (Math.Abs(v) > maximumJointValue) return false;
+                    if (Math.Abs(v) > maximumLinkValue) return false;
                     ((Link)o).Velocity = v;
                 }
                 else if (o is Joint)
