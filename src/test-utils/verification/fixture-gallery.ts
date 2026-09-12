@@ -90,6 +90,7 @@ import { STUDENT_MISTAKE_GALLERY } from './student-mistake-fixtures';
 import { ActiveObjService } from '../../app/services/active-obj.service';
 import { MODEL_SCALE } from '../../app/model/render-scale';
 import type { LengthUnit } from '../../app/model/unit-enums';
+import { PATH_SYNTHESIS_GALLERY } from './path-fixtures';
 
 /**
  * Every mechanism the verification suite asserts on, as something a reviewer
@@ -169,6 +170,7 @@ const LIBRARY_RPM = 10;
 export const FIXTURE_GALLERY: GalleryEntry[] = [
   ...PART2_LIBRARY_GALLERY,
   ...LIBRARY_CARD_GALLERY,
+  ...PATH_SYNTHESIS_GALLERY,
   {
     name: 'Punch press',
     purpose:
