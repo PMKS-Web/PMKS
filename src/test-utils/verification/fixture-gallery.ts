@@ -91,6 +91,7 @@ import { ActiveObjService } from '../../app/services/active-obj.service';
 import { MODEL_SCALE } from '../../app/model/render-scale';
 import type { LengthUnit } from '../../app/model/unit-enums';
 import { PATH_SYNTHESIS_GALLERY } from './path-fixtures';
+import { PATH_BENCHMARK_GALLERY } from './path-benchmark-fixtures';
 
 /**
  * Every mechanism the verification suite asserts on, as something a reviewer
@@ -171,6 +172,7 @@ export const FIXTURE_GALLERY: GalleryEntry[] = [
   ...PART2_LIBRARY_GALLERY,
   ...LIBRARY_CARD_GALLERY,
   ...PATH_SYNTHESIS_GALLERY,
+  ...PATH_BENCHMARK_GALLERY,
   {
     name: 'Punch press',
     purpose:

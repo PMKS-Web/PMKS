@@ -39,7 +39,7 @@ In this order, the first time:
 ## Design records
 
 - [joint-type-and-cylinder-plan.md](joint-type-and-cylinder-plan.md) — plan of record: joint type as one four-way choice, a slider as one joint, a cylinder as a sealed slide; retires the bodies-and-joints migration. Stages R, 0, 1 and 2 and Split Joint (D7) are built. *Built*
-- [path-synthesis.md](path-synthesis.md) — recovered target-path editor, numerical four-bar fitting, insertion and persistence. *S0–S2 built*
+- [path-synthesis.md](path-synthesis.md) — recovered target-path editor, numerical four-bar fitting, insertion and persistence. *S0–S3 built*
 - [path-synthesis-backend.md](path-synthesis-backend.md) — backend audit, four-bar mathematics, variable projection, optimization, production verification and limitations. *Technical reference*
 
 - [joint-types-plan.md](joint-types-plan.md) — plan of record for floating slots, slides, driven prismatic joints and cylinders, Phases 0–7a. *Partly built*
@@ -60,3 +60,4 @@ In this order, the first time:
 - [ui-copy-audit.md](ui-copy-audit.md) — survey of the app's wording, with proposals that were mostly applied; its rules now live in `ui-vocabulary.md`. *Built*
 
 - [Object sizing](object-sizing.md) — current display presets, line view, and cylinder geometry invariants.
+- [Path timing benchmark](benchmarks/path-timing.md) and [JSON results](benchmarks/path-timing.json) — 24 production-generated four-bar targets, equal-angle versus monotone free timing. *S3 measured snapshot*

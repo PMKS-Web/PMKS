@@ -560,3 +560,10 @@ Not suites — import them from one.
   filmstrip in `artifacts/analysis-tabs/`.
 
 - `mechanism-audit.mjs` — retained audit controls for immobile welded geometry, clockwise six-second cycle with filmstrip, tiny degree-acceleration graph and disconnected Jansen negative control.
+
+
+- `path-synthesis-free-timing.mjs` — timing-mode switching, free-search cancellation latency,
+  production-verified fitting, dense trajectory preview, stale-result invalidation and phone
+  controls. Uses a disposable browser and writes reports/filmstrips under `artifacts/path-free-timing/`.
+- `npm run benchmark:path` — explicit numerical 24-case Equal Input Angle / Free Timing comparison,
+  separate from the normal browser suites. Source fixtures are checked in ordinary unit tests.
