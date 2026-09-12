@@ -39,7 +39,7 @@ In this order, the first time:
 ## Design records
 
 - [joint-type-and-cylinder-plan.md](joint-type-and-cylinder-plan.md) — plan of record: joint type as one four-way choice, a slider as one joint, a cylinder as a sealed slide; retires the bodies-and-joints migration. Stages R, 0, 1 and 2 and Split Joint (D7) are built. *Built*
-- [structural-analysis.md](structural-analysis.md) — S0 metadata, S1 static equilibrium, S2 inverse dynamics, and S3 internal member loads: geometry audits, SI snapshots, cut conventions, mass distributions, diagnostics, and validation. *Built*
+- [structural-analysis.md](structural-analysis.md) — S0 metadata, S1 static equilibrium, S2 inverse dynamics, S3 internal loads, and S4 analytical stress: audits, SI conventions, mass models, stress extrema, diagnostics, and validation. *Built*
 
 - [joint-types-plan.md](joint-types-plan.md) — plan of record for floating slots, slides, driven prismatic joints and cylinders, Phases 0–7a. *Partly built*
 - [floating-slot-kinematics-design.md](floating-slot-kinematics-design.md) — velocity and acceleration through a floating slot (Phase 2, task 2.9). *Built*
