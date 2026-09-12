@@ -14,6 +14,11 @@ import {
 } from './transcoder-data';
 import { GenericTranscoder } from './transcoder-interface';
 import { JOINT_FAMILIES } from '../../model/joint-colors';
+import {
+  decodeStructuralDocument,
+  encodeStructuralDocument,
+  validateStructuralDocument,
+} from './structural-codec';
 
 /*
  StringEncoder class is responsible for encoding various types of data,
@@ -496,6 +501,7 @@ export class StringTranscoder extends GenericTranscoder {
       ...this.partColors,
       ...this.holds,
       ...preciseValues(this.numericRecords()),
+      ...encodeStructuralDocument(this.structuralDocument),
     ];
     if (trailing.length > 0) {
       fullString += '.' + trailing.join(',');
@@ -622,6 +628,7 @@ export class StringTranscoder extends GenericTranscoder {
     // locks existed — and "absent" simply means the disassembler is empty.
     // 'C' entries are center-of-mass anchors and go to their own list, so the
     // lock validator below never has to know they exist.
+    const structuralEntries: string[] = [];
     while (!sd.isEmpty()) {
       let entry = sd.nextToken(',');
       if (entry === '') continue;
@@ -630,8 +637,10 @@ export class StringTranscoder extends GenericTranscoder {
       else if (entry.charAt(0) === 'S') this.synthesisMarks.push(entry);
       else if (entry.charAt(0) === 'K') this.partColors.push(entry);
       else if (entry.charAt(0) === 'H') this.holds.push(entry);
+      else if (entry.charAt(0) === 'T') structuralEntries.push(entry);
       else this.lockedIds.push(entry);
     }
+    this.structuralDocument = decodeStructuralDocument(structuralEntries);
 
     let typeEnum;
     if (activeType === 'J') typeEnum = ACTIVE_TYPE.JOINT;
@@ -656,6 +665,7 @@ export class StringTranscoder extends GenericTranscoder {
   private validateDecodedData(): void {
     const jointIDs = new Set(this.joints.map((joint) => joint.id));
     const linkIDs = new Set(this.links.map((link) => link.id));
+    validateStructuralDocument(this.structuralDocument, linkIDs);
     if (jointIDs.size !== this.joints.length || linkIDs.size !== this.links.length) {
       throw new Error('URL contains duplicate object IDs');
     }

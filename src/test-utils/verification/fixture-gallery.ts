@@ -1,6 +1,7 @@
 import { auditGalleryRows } from './audit-gallery';
-import { MechanismFixture } from './fixture';
 import { PASSIVE_CYLINDER_GALLERY } from './passive-cylinder-fixtures';
+import { MechanismFixture, BuiltMechanism, buildMechanism } from './fixture';
+import { STRUCTURAL_GALLERY } from './structural-fixtures';
 import {
   fourBarDrivenAtFixture,
   sliderCrankTracerFixture,
@@ -169,6 +170,7 @@ const LIBRARY_RPM = 10;
 export const FIXTURE_GALLERY: GalleryEntry[] = [
   ...PART2_LIBRARY_GALLERY,
   ...LIBRARY_CARD_GALLERY,
+  ...STRUCTURAL_GALLERY,
   {
     name: 'Punch press',
     purpose:
