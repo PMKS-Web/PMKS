@@ -2905,3 +2905,22 @@ with 422 while the PR belongs to a stack. Snapshot the membership, POST to
 entries in place. This is a metadata operation separate from rebasing the branches; recreating
 the groups does not replace the code checks. The [Stacks API](https://docs.github.com/en/rest/pulls/stacks)
 describes the endpoints.
+
+
+**PMKSConversion's path prototype is in history, not its current default UI.** Commits
+`62abecf`, `5aa1e55` and `19596bd` hold the point table, curve preview and shape picker.
+They describe a target path; they do not fit a mechanism to it. The transfer and its remaining
+scope are documented in [path-synthesis.md](path-synthesis.md).
+
+**Copy a `Coord` through its getters.** `{ ...coord }` copies `_x` and `_y`, not `x` and `y`.
+A path point made that way looked present in the array but serialized to the origin. Use
+`{ x: coord.x, y: coord.y }` when copying into a plain point; the path-editor unit test keeps
+this canvas-placement failure covered.
+
+**Windows worktrees need LF source files for the current verification readers.** Prefer
+`git -c core.autocrlf=false worktree add ...` when creating one. CRLF makes the fixture-gallery
+comparison fail, hides the last CSV axis behind `y\r` in the MotionGen reference, breaks the
+template-row regex, and makes Prettier report hundreds of untouched files. Normalize checkout
+line endings without regenerating fixture data. The stylesheet fence now normalizes path
+separators too, so its token-file exclusion works on Windows. Use `npm.cmd` in PowerShell when
+the machine's script policy refuses `npm.ps1`; no policy change is needed.

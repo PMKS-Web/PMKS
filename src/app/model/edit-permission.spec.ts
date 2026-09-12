@@ -25,6 +25,10 @@ const allowed = (state: EditState): EditAction[] =>
   EDIT_ACTIONS.filter((action) => refusalFor(action, state) === null);
 
 describe('what is allowed when', () => {
+  it('allows synthesis history while keeping mechanism edits refused', () => {
+    expect(allowed(at({ mode: 'synthesis' }))).toEqual(['inspect', 'history']);
+    expect(refusalFor('history', at({ mode: 'synthesis', playing: true }))).not.toBeNull();
+  });
   it('allows everything at the start pose in Edit', () => {
     expect(allowed(READY)).toEqual([...EDIT_ACTIONS]);
   });

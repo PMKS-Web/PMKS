@@ -36,6 +36,7 @@ import {
 } from 'src/app/services/synthesis/synthesis-candidates';
 import { MODEL_SCALE } from 'src/app/model/render-scale';
 import { SvgGridService } from '../../services/svg-grid.service';
+import { PathSynthesisPanelComponent } from '../path-synthesis-panel/path-synthesis-panel.component';
 
 /** One requirement row: what it costs, and what switching it off buys. */
 interface Requirement {
@@ -122,6 +123,7 @@ export function niceRound(value: number): number {
     ChipComponent,
     ButtonComponent,
     ToggleComponent,
+    PathSynthesisPanelComponent,
   ],
 })
 export class SynthesisPanelComponent implements OnInit, DoCheck, OnDestroy {
@@ -513,6 +515,13 @@ export class SynthesisPanelComponent implements OnInit, DoCheck, OnDestroy {
   startMotionSynthesis(): void {
     this.design.stage = 'working';
     this.design.setArmed(false);
+  }
+
+  startPathSynthesis(): void {
+    this.design.stage = 'path';
+    this.design.regionDraw = false;
+    this.design.setArmed(false);
+    this.solution.playing = false;
   }
 
   backToChooser(): void {
@@ -1224,6 +1233,7 @@ export class SynthesisPanelComponent implements OnInit, DoCheck, OnDestroy {
   private keySub = this.shortcuts.pressed.subscribe((id) => {
     if (id !== 'playback.toggle') return;
     if (this.tabs.getCurrentTab() !== TabID.SYNTHESIZE) return;
+    if (this.design.stage === 'path') return;
     if (!this.solution.generated) return;
     this.togglePlay();
   });

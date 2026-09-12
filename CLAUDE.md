@@ -229,6 +229,10 @@ The **modes are tabs in the top strip, not a left rail**, and there are four of 
 - **A part named in a panel's text is a `part-link`** (BLOCKS), usually through `prose-block` and a `prose` sentence (`model/prose.ts`): pointing lights the part on the grid, whatever is selected (`MechanismService.linkedPart`), and pressing selects it in the current analysis mode, or switches to Edit elsewhere. The Masses table explicitly opens Edit at the selected body’s mass fields. A fix names the control it uses, in the Edit panel's and the menu's words (`Set joint C to Revolute`, `Turn off Grounded for joint E`, `Add Input to joint A`). The block hands both gestures to `PART_LINK_TARGET`, which `main.ts` provides as `PartNavigationService`; a story or a spec provides its own. The gallery's Reuse backlog lists the places that still name a part their own way.
 - Messages to the user go through `NotificationService`, which replaced the old `NewGridComponent.sendNotification()` static. Some components still talk through statics (e.g. `RightPanelComponent.openTab` / `insistOn`) — grep for the static before assuming a service is the only channel.
 - Four-bar synthesis (generating a linkage from three desired coupler poses) lives in `services/synthesis/`.
+- Path synthesis defines an editable target curve alongside motion synthesis; automatic mechanism
+  fitting is not implemented. `model/path-synthesis.ts` owns its geometry, `path-editor.service.ts`
+  records edits, and `component/path-synthesis-panel/` and `component/path-synthesis-canvas/` render
+  it. Both designs ride in the URL and support Undo in Synthesis. See `docs/path-synthesis.md`.
 - **Phone layout.** `ViewportService` owns the one breakpoint (600px; the stylesheets write it as
   `nav.$phone-max-width` from `left-tabs.vars.scss`, and `stylesheet-fences.spec.ts` keeps the two
   equal). Below it the mode panel is a
