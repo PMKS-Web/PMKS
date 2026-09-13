@@ -90,6 +90,7 @@ import { STUDENT_MISTAKE_GALLERY } from './student-mistake-fixtures';
 import { ActiveObjService } from '../../app/services/active-obj.service';
 import { MODEL_SCALE } from '../../app/model/render-scale';
 import type { LengthUnit } from '../../app/model/unit-enums';
+import { centripetalBarDrawingFixture, appliedMomentDrawingFixture } from './inertia-fixtures';
 
 /**
  * Every mechanism the verification suite asserts on, as something a reviewer
@@ -169,6 +170,21 @@ const LIBRARY_RPM = 10;
 export const FIXTURE_GALLERY: GalleryEntry[] = [
   ...PART2_LIBRARY_GALLERY,
   ...LIBRARY_CARD_GALLERY,
+  {
+    name: 'Centripetal force scaling',
+    purpose: '1 kg at a 2 cm center-of-mass radius and 1 rad/s: 0.02 N without gravity',
+    spec: 'force-scaling.spec.ts',
+    floatingSlot: false,
+    speed: { rpm: 30 / Math.PI },
+    fixture: centripetalBarDrawingFixture(),
+  },
+  {
+    name: 'Physical applied-force moment',
+    purpose: '10 N at a 20 cm perpendicular arm: 2 N*m (200 N*cm)',
+    spec: 'force-scaling.spec.ts',
+    floatingSlot: false,
+    fixture: appliedMomentDrawingFixture(),
+  },
   {
     name: 'Punch press',
     purpose:

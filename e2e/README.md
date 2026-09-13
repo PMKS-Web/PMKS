@@ -554,3 +554,5 @@ Not suites — import them from one.
   filmstrip in `artifacts/analysis-tabs/`.
 
 - `mechanism-audit.mjs` — retained audit controls for immobile welded geometry, clockwise six-second cycle with filmstrip, tiny degree-acceleration graph and disconnected Jansen negative control.
+
+- `force-inertia-scaling.mjs` — physical centripetal-force and applied-moment readouts, mode tabs, graph values and a mode-change filmstrip. Outputs: `artifacts/force-inertia-scaling/`.

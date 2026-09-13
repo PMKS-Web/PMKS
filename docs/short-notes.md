@@ -2905,3 +2905,11 @@ with 422 while the PR belongs to a stack. Snapshot the membership, POST to
 entries in place. This is a metadata operation separate from rebasing the branches; recreating
 the groups does not replace the code checks. The [Stacks API](https://docs.github.com/en/rest/pulls/stacks)
 describes the endpoints.
+
+## Force/inertia port to current staging (November 2026)
+
+The source scaling branch predates staging's own SI correction and single-joint sliders.
+Do not apply its extra /MODEL_SCALE on top of the current force solver's unitFactors.
+The explicit coordinateScale defaults to MODEL_SCALE to preserve staging callers; physical
+reference tests explicitly use 1. A slider's mass and acceleration belong to the PrisJoint,
+not a removed SliderBlock. Keep friction and structural analysis on separate feature branches.

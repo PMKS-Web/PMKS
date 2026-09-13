@@ -77,12 +77,16 @@ export interface ForceAnalysisSeries {
 }
 
 interface FrameKinematics {
+  /** Linear accelerations use the geometry's coordinate units per second squared. */
   linkAccelerations: Map<string, ForceVector>;
+  /** Radians per second squared; independent of drawing scale. */
   linkAngularAccelerations: Map<string, number>;
   pistonAccelerations: Map<string, ForceVector>;
 }
 
 interface MechanismFrames {
+  /** Coordinate units per user length unit; defaults to the application model scale. */
+  coordinateScale?: number;
   joints: Joint[][];
   links: Link[][];
   timeNum: number[];
@@ -233,12 +237,23 @@ export class ForceSolver {
     links: Link[],
     analysisType: string,
     gravity: boolean,
-    unit: string
+    unit: string,
+    coordinateScale = MODEL_SCALE
   ): ForceAnalysisFrame {
     const mode = this.normalizeMode(analysisType);
     const kinematics =
       mode === 'dynamic' ? this.captureCurrentKinematics(joints, links) : undefined;
-    const result = this.analyzeFrame(joints, links, mode, gravity, unit, 0, kinematics, false);
+    const result = this.analyzeFrame(
+      joints,
+      links,
+      mode,
+      gravity,
+      unit,
+      0,
+      kinematics,
+      false,
+      coordinateScale
+    );
 
     this.lastResult = result;
     this.unknownVariableForcesMap = new Map(
@@ -340,10 +355,18 @@ export class ForceSolver {
       mechanism.unit,
       mechanism.timeNum[index] ?? index,
       kinematics,
-      evenest
+      evenest,
+      mechanism.coordinateScale ?? MODEL_SCALE
     );
   }
 
+  /**
+   * Geometry and linear acceleration share coordinateScale units per user length.
+   * Convert both at this boundary with metersPerCoordinate. Mass and inertia are
+   * already stored in physical user units, so neither receives a drawing factor.
+   * Equilibrium and every returned force/couple use SI: N and N*m.
+   * Application callers default to MODEL_SCALE; physical fixtures explicitly supply 1.
+   */
   static analyzeFrame(
     joints: Joint[],
     links: Link[],
@@ -352,14 +375,16 @@ export class ForceSolver {
     unit: string,
     timeSeconds = 0,
     kinematics?: FrameKinematics,
-    evenest = false
+    evenest = false,
+    coordinateScale = MODEL_SCALE
   ): ForceAnalysisFrame {
     const every = links.filter((link): link is RealLink => link instanceof RealLink);
     // A body pinned to the world at two points is fixed: it is frame, not a
     // link, and gets no equilibrium of its own -- see `frameBodies`.
     const frame = this.frameBodies(every);
     const bodies = [...every.filter((body) => !frame.has(body.id)), ...this.pointBodies(joints)];
-    const units = this.unitFactors(unit);
+    const units = this.unitFactors(unit, coordinateScale);
+    const metersPerCoordinate = units.distanceToM;
     const empty = (
       status: ForceAnalysisStatus,
       message = this.statusMessage(status),
@@ -377,6 +402,11 @@ export class ForceSolver {
       message,
     });
 
+    if (!Number.isFinite(coordinateScale) || coordinateScale <= 0)
+      return empty(
+        'invalid-properties',
+        'The geometry coordinate scale must be positive and finite.'
+      );
     if (bodies.length === 0) return empty('unsupported-topology');
     const badProperty = this.invalidProperty(bodies, units, cylindersIn(joints));
     if (badProperty) return empty('invalid-properties', badProperty);
@@ -512,8 +542,8 @@ export class ForceSolver {
       A[rows.start][column] += sign * direction[0];
       A[rows.start + 1][column] += sign * direction[1];
       if (body instanceof RealLink) {
-        const rx = (joint.x - body.CoM.x) * units.distanceToM;
-        const ry = (joint.y - body.CoM.y) * units.distanceToM;
+        const rx = (joint.x - body.CoM.x) * metersPerCoordinate;
+        const ry = (joint.y - body.CoM.y) * metersPerCoordinate;
         A[rows.start + 2][column] += sign * (rx * direction[1] - ry * direction[0]);
       }
     };
@@ -580,8 +610,8 @@ export class ForceSolver {
             ? kinematics!.linkAccelerations.get(body.id)!
             : kinematics!.pistonAccelerations.get(body.id)!
           : ([0, 0] as ForceVector);
-      b[rows.start] = massKg * acceleration[0] * units.distanceToM;
-      b[rows.start + 1] = massKg * acceleration[1] * units.distanceToM;
+      b[rows.start] = massKg * acceleration[0] * metersPerCoordinate;
+      b[rows.start + 1] = massKg * acceleration[1] * metersPerCoordinate;
 
       if (gravity) b[rows.start + 1] += massKg * GRAVITY;
 
@@ -593,8 +623,8 @@ export class ForceSolver {
         for (const force of body.forces) {
           const fx = force.mag * Math.cos(force.angleRad) * units.forceToN;
           const fy = force.mag * Math.sin(force.angleRad) * units.forceToN;
-          const rx = (force.startCoord.x - body.CoM.x) * units.distanceToM;
-          const ry = (force.startCoord.y - body.CoM.y) * units.distanceToM;
+          const rx = (force.startCoord.x - body.CoM.x) * metersPerCoordinate;
+          const ry = (force.startCoord.y - body.CoM.y) * metersPerCoordinate;
           b[rows.start] -= fx;
           b[rows.start + 1] -= fy;
           b[rows.start + 2] -= rx * fy - ry * fx;
@@ -1230,9 +1260,9 @@ export class ForceSolver {
    * hundred times too long -- statics never showed it, because there every
    * term of a moment row scales together and only the torque came out large.
    */
-  private static unitFactors(unit: string): UnitFactors {
+  private static unitFactors(unit: string, coordinateScale = MODEL_SCALE): UnitFactors {
     const units = siUnitFactors(unit);
-    return { ...units, distanceToM: units.distanceToM / MODEL_SCALE };
+    return { ...units, distanceToM: units.distanceToM / coordinateScale };
   }
 
   /**
