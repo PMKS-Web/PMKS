@@ -11,6 +11,10 @@ exactly from the curve's neighboring points.
 Starting from the drawn pose is what fixes the assembly branch: the authored
 pose is the reader's input, not anything PMKS+ computed.
 
+A slider with `limits` is a block in a channel with ends. The walk stops where
+its travel reaches one, refined by bisection along the curve, as a limit of kind
+`slot-end`: the mechanism runs to the end and comes back the way it went.
+
 Every sample is stored once, for the driver moving toward increasing d. A
 sample walked the other way has the same pose, the opposite velocities, and the
 same accelerations and forces, because the driver's speed is constant.
@@ -24,7 +28,8 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from . import analysis
-from .exudyn_model import ExudynModel
+from .exudyn_model import ExudynModel, block_id
+from .problem import GROUND
 
 MAX_REVOLUTIONS = 3
 # A singular value this far below the largest is zero, for rank and for singularity alike.
@@ -47,7 +52,7 @@ SINGULAR_POSE_RATIO = 1e-5
 
 @dataclass
 class Limit:
-    kind: str  # 'toggle', 'singular', 'solver-failure', 'budget'
+    kind: str  # 'toggle', 'slot-end', 'singular', 'solver-failure', 'budget'
     travel: float  # driver travel from the start where the walk stopped, rad or m
 
 
@@ -99,6 +104,54 @@ def corrector(model: ExudynModel, predicted, t, max_iterations=30):
     raise analysis.SolveFailed("corrector did not converge")
 
 
+
+def _point(model: ExudynModel, q, body_id: str, at) -> np.ndarray:
+    if body_id == GROUND:
+        return np.array(at, dtype=float)
+    body = model.bodies[body_id]
+    cx, cy, ct = body.columns
+    c, s = math.cos(q[ct]), math.sin(q[ct])
+    r = np.array(at, dtype=float) - np.array(body.com)
+    return np.array(body.com) + q[[cx, cy]] + np.array([c * r[0] - s * r[1], s * r[0] + c * r[1]])
+
+
+def slot_travel(model: ExudynModel, q, slider) -> float:
+    """How far a slider's block sits along its slot from the slot's line point, at pose q."""
+    block = _point(model, q, block_id(slider), slider.at)
+    origin = _point(model, q, slider.guide, slider.line_point)
+    turn = 0.0 if slider.guide == GROUND else q[model.bodies[slider.guide].columns[2]]
+    axis = np.array(slider.axis) / np.linalg.norm(slider.axis)
+    c, s = math.cos(turn), math.sin(turn)
+    u = np.array([c * axis[0] - s * axis[1], s * axis[0] + c * axis[1]])
+    return float((block - origin) @ u)
+
+
+def past_slot_end(model: ExudynModel, q) -> float:
+    """How far the furthest-out block is past an end of its slot; negative while all are inside."""
+    worst = -math.inf
+    for slider in model.problem.sliders:
+        if slider.limits is None:
+            continue
+        travel = slot_travel(model, q, slider)
+        lo, hi = slider.limits
+        worst = max(worst, lo - travel, travel - hi)
+    return worst
+
+
+def _slot_end_crossing(model, q, t, h):
+    """The pose along the curve between q and q + h*t where a block reaches its slot's end."""
+    lo, hi = 0.0, h
+    for _ in range(100):
+        mid = (lo + hi) / 2
+        if past_slot_end(model, corrector(model, q + mid * t, t)) > 0:
+            hi = mid
+        else:
+            lo = mid
+        if hi - lo < 1e-15 * max(1.0, model.length_scale):
+            break
+    return corrector(model, q + lo * t, t)
+
+
 def _same_pose(model: ExudynModel, a, b) -> bool:
     """Whether two configurations are one drawing: positions equal, rotations equal modulo a turn."""
     tol = 1e-7 * model.length_scale
@@ -138,6 +191,54 @@ def _refine_turning_point(model, q_a, t_a, h, direction_sign):
     return direction_sign * _golden_section(model, q_b, t_b, 2 * small, direction_sign)
 
 
+# A slot end and a toggle at the same point: the rate of d along the curve at
+# the crossing is zero there, and its sign is rounding. Below this fraction of
+# the driver's gradient the two coincide, and the toggle is reported, as it is
+# what the travel turns at.
+COINCIDENT_LIMITS = 1e-9
+
+
+def _still_advancing(model, q, t, direction_sign) -> bool:
+    """Whether d still moves in direction_sign along the curve at q, clear of rounding.
+
+    The rate and the gradient are both taken in coordinates of the machine's
+    size, as in `_dimensionless`: a translation is divided by it and a turn is
+    left alone. Measured in raw coordinates, which mix lengths and radians,
+    the same machine drawn larger or smaller could cross the threshold.
+    """
+    size = np.where(_turns(model), 1.0, model.length_scale)
+    gradient = driver_gradient(model, q) * size
+    along = tangent(model, q, t) / size
+    rate = direction_sign * (gradient @ along) / np.linalg.norm(along)
+    return bool(rate > COINCIDENT_LIMITS * np.linalg.norm(gradient))
+
+
+def _slot_end_before_turning(model, q_a, t_a, h, direction_sign):
+    """The pose where a block reaches its slot's end, if it does before d turns within arclength h of q_a.
+
+    A turning point and a slot end can fall in one step. The bracket is walked
+    again in REFINE_STEPS short steps; a slot end crossed while d is still
+    rising is the limit, and one crossed after d has turned is never reached.
+    Which it is, is read off the crossing itself: the rate of d along the curve
+    there. Comparing d with the last short step's cannot tell, since a crossing
+    just past the turn is still above it.
+    """
+    small = h / REFINE_STEPS
+    q, t = q_a, t_a
+    best = direction_sign * driver_coordinate(model, q)
+    for _ in range(REFINE_STEPS):
+        q_next = corrector(model, q + small * t, t)
+        d_next = direction_sign * driver_coordinate(model, q_next)
+        if past_slot_end(model, q_next) > 0:
+            q_end = _slot_end_crossing(model, q, t, small)
+            return q_end if _still_advancing(model, q_end, t, direction_sign) else None
+        if d_next < best:
+            return None
+        best = d_next
+        q, t = q_next, tangent(model, q_next, t)
+    return None
+
+
 def _golden_section(model, q_a, t_a, h, direction_sign):
     """Golden-section search for the largest direction_sign * d between arclength 0 and h from q_a."""
     def at(s):
@@ -171,6 +272,14 @@ def regular_rank(model: ExudynModel, q) -> int:
     return int(np.sum(s > SINGULAR_RATIO * s[0])) if s.size and s[0] > 0 else 0
 
 
+def _turns(model: ExudynModel) -> np.ndarray:
+    """Which coordinates are a body's turn, in radians, rather than a translation."""
+    turns = np.zeros(model.n, dtype=bool)
+    for body in model.bodies.values():
+        turns[body.columns[2]] = True
+    return turns
+
+
 def _dimensionless(model: ExudynModel, j: np.ndarray) -> np.ndarray:
     """The Jacobian in coordinates of the machine's size, so its singular values do not depend on the unit.
 
@@ -180,9 +289,7 @@ def _dimensionless(model: ExudynModel, j: np.ndarray) -> np.ndarray:
     machine leaves the matrix as it was.
     """
     j = np.array(j, dtype=float)
-    turns = np.zeros(model.n, dtype=bool)
-    for body in model.bodies.values():
-        turns[body.columns[2]] = True
+    turns = _turns(model)
     j[:, turns] /= model.length_scale
     angles = ~np.any(j[:, ~turns], axis=1)
     j[angles] *= model.length_scale
@@ -196,6 +303,34 @@ def is_singular_pose(model: ExudynModel, q, rank: int) -> bool:
     if rank == 0 or not s.size or s[0] <= 0:
         return False
     return bool(s[rank - 1] < SINGULAR_POSE_RATIO * s[0])
+
+
+def _stop_at_slot_end(model, walk: Walk, q_from, q_end, d0, step, k_next, direction) -> Limit:
+    """Store the grid samples short of the slot end at q_end, and stop there."""
+    d_end = driver_coordinate(model, q_end)
+    try:
+        while (d0 + k_next * step - d_end) * direction < -TOGGLE_CLEARANCE * step:
+            walk.samples[k_next] = analysis.newton(model, q_from, d0 + k_next * step)
+            k_next += direction
+    except analysis.SolveFailed:
+        return Limit("solver-failure", driver_coordinate(model, q_from) - d0)
+    return Limit("slot-end", d_end - d0)
+
+
+def _stop_at_toggle(model, walk: Walk, q_back, t_back, h, d0, step, k_next, direction, d_last) -> Limit:
+    """Refine the turning point within arclength h of q_back, store the grid samples short of it, and stop."""
+    try:
+        extremum = _refine_turning_point(model, q_back, t_back, h, direction)
+        # A grid point on the toggle itself is the dead point, where no
+        # rate is defined, and whether rounding puts the refined toggle
+        # a hair before or after it differs between platforms.
+        while (d0 + k_next * step - extremum) * direction < -TOGGLE_CLEARANCE * step:
+            walk.samples[k_next] = analysis.newton(model, q_back, d0 + k_next * step)
+            k_next += direction
+    except analysis.SolveFailed:
+        # A turn the corrector cannot follow is not a toggle anyone has measured.
+        return Limit("solver-failure", d_last - d0)
+    return Limit("toggle", extremum - d0)
 
 
 def _walk_one_way(model, q0, d0, step, direction, walk: Walk, revolute: bool, budget: int, rank: int):
@@ -229,20 +364,28 @@ def _walk_one_way(model, q0, d0, step, direction, walk: Walk, revolute: bool, bu
             continue
         d_new = driver_coordinate(model, q_new)
         if (d_new - d) * direction <= 0:
-            # d turned round within the last two steps: a limit of travel.
+            # d turned round within the last two steps: a limit of travel,
+            # unless a block reached the end of its slot first.
             q_back, t_back, h_back = previous
             try:
-                extremum = _refine_turning_point(model, q_back, t_back, h_back + 2 * h, direction)
-                # A grid point on the toggle itself is the dead point, where no
-                # rate is defined, and whether rounding puts the refined toggle
-                # a hair before or after it differs between platforms.
-                while (d0 + k_next * step - extremum) * direction < -TOGGLE_CLEARANCE * step:
-                    walk.samples[k_next] = analysis.newton(model, q_back, d0 + k_next * step)
-                    k_next += direction
+                q_end = _slot_end_before_turning(model, q_back, t_back, h_back + 2 * h, direction)
             except analysis.SolveFailed:
-                # A turn the corrector cannot follow is not a toggle anyone has measured.
                 return Limit("solver-failure", d - d0)
-            return Limit("toggle", extremum - d0)
+            if q_end is not None:
+                return _stop_at_slot_end(model, walk, q_back, q_end, d0, step, k_next, direction)
+            return _stop_at_toggle(model, walk, q_back, t_back, h_back + 2 * h, d0, step, k_next, direction, d)
+        if past_slot_end(model, q_new) > 0:
+            # A block reached the end of its slot within this step, unless d
+            # turned round first: a step can cross the turn and still end
+            # ahead of where it began, and the crossing is then never reached.
+            try:
+                q_end = _slot_end_crossing(model, q, t, h)
+                advancing = _still_advancing(model, q_end, t, direction)
+            except analysis.SolveFailed:
+                return Limit("solver-failure", d - d0)
+            if advancing:
+                return _stop_at_slot_end(model, walk, q, q_end, d0, step, k_next, direction)
+            return _stop_at_toggle(model, walk, q, t, h, d0, step, k_next, direction, d)
         _, jc = _undriven(model, q_new)
         s = np.linalg.svd(jc, compute_uv=False)
         if s[rank - 1] < SINGULAR_RATIO * s[0]:
@@ -287,6 +430,10 @@ def walk(model: ExudynModel) -> Walk:
     revolute = problem.driver.kind == "rotation"
     budget = problem.sweep.max_samples
     rank = regular_rank(model, q0)
+    if past_slot_end(model, q0) > 0:
+        # Drawn with a block outside its slot: there is no travel to walk.
+        result.high = result.low = Limit("slot-end", 0.0)
+        return result
     high = _walk_one_way(model, q0, d0, step, +1, result, revolute, budget, rank)
     if high is None:
         return result

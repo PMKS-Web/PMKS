@@ -85,6 +85,15 @@ def test_two_singular_poses_agree_however_singular(case):
     agree.check(problem, a, b)
 
 
+def test_a_newer_generator_reproduces_when_only_its_numbers_are_asked(case):
+    problem, reference = case
+    other = copy.deepcopy(reference)
+    other["generator"]["exudyn"] = "1.13.99"
+    with pytest.raises(agree.Disagreement, match="generator"):
+        agree.check(problem, reference, other)
+    agree.check(problem, reference, other, same_generator=False)
+
+
 @pytest.mark.parametrize("which", ["first", "second"])
 def test_a_column_or_force_mode_left_out_is_a_change(case, which):
     # Either argument may be the incomplete one: a regeneration that drops a

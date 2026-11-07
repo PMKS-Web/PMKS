@@ -113,12 +113,155 @@ def test_benchmark(case, check):
     assert abs(actual - target) <= tolerance, f"{case}: {check} gave {actual!r}, off by {actual - target:.3e} (allowed {tolerance:.1e})"
 
 
-def test_a_bounded_slot_is_refused_until_its_limits_are_walked():
+
+def _bounded(limits: dict[str, list[float]], step: float | None = None, reversed_drive: bool = False) -> dict:
     raw = json.loads((CASES / "metu-double-slider.problem.json").read_text())
-    slider = next(joint for joint in raw["joints"] if joint["kind"] == "slider")
-    slider["limits"] = [0.1, 0.3]
-    with pytest.raises(NotImplementedError, match="slot limits"):
-        solve(load_problem(raw), {"oracle": "test"})
+    if step is not None:
+        raw["sweep"]["step"] = step
+    for joint in raw["joints"]:
+        if reversed_drive and joint["id"] == "A":
+            joint["axis"] = [-joint["axis"][0], -joint["axis"][1]]
+        if joint["id"] in limits:
+            joint["limits"] = limits[joint["id"]]
+    return solve(load_problem(raw), {"oracle": "test"})["sweep"]
+
+
+def test_a_driven_block_stops_at_the_ends_of_its_slot():
+    # A starts at x = 0.2 m and runs along x; ends at 0.0995 and 0.3005 m are
+    # off the 1 mm grid, so the last stored samples are k = +-100.
+    sweep = _bounded({"A": [0.0995, 0.3005]})
+    assert sweep["high"]["kind"] == sweep["low"]["kind"] == "slot-end"
+    assert sweep["high"]["travel"] == pytest.approx(0.1005, abs=1e-9)
+    assert sweep["low"]["travel"] == pytest.approx(-0.1005, abs=1e-9)
+    assert (sweep["kMin"], sweep["kMax"]) == (-100, 100)
+
+
+def test_a_passive_block_stops_the_driver_where_it_reaches_its_end():
+    # The 0.5 m bar keeps B at y = sqrt(0.25 - x^2): B reaches y = 0.3 m at
+    # x = 0.4 m, and y = 0.49 m at x = sqrt(0.0099) m, short of the toggles
+    # at x = 0 and x = 0.5 m that would end the travel without the slot.
+    sweep = _bounded({"B": [0.3, 0.49]})
+    assert sweep["high"]["kind"] == sweep["low"]["kind"] == "slot-end"
+    assert sweep["high"]["travel"] == pytest.approx(0.4 - 0.2, abs=1e-9)
+    assert sweep["low"]["travel"] == pytest.approx(math.sqrt(0.0099) - 0.2, abs=1e-9)
+    assert sweep["kMax"] == 199
+    assert sweep["kMin"] == math.ceil((math.sqrt(0.0099) - 0.2) / 0.001)
+
+
+def test_a_slot_end_in_the_same_step_as_a_toggle_is_the_limit():
+    # On a 50 mm grid, B reaches y = 0.01 m at x = sqrt(0.25 - 0.0001) m in
+    # the same step as the toggle at x = 0.5 m. The slot ends first, so the
+    # travel stops there and not at the toggle.
+    sweep = _bounded({"B": [0.01, 0.49]}, step=0.05)
+    assert sweep["high"]["kind"] == "slot-end"
+    assert sweep["high"]["travel"] == pytest.approx(math.sqrt(0.25 - 0.01**2) - 0.2, abs=1e-9)
+
+
+@pytest.mark.parametrize("step", [0.05, 0.01])
+def test_a_slot_end_just_past_a_toggle_in_the_same_step_is_never_reached(step):
+    # The opposite order: B's end at y = -0.001 m lies just past the toggle at
+    # x = 0.5 m, where y = 0. The driver turns before B gets there, so the
+    # toggle is the limit. On the 50 mm grid the step that crosses the turn
+    # ends behind where it began; on the 10 mm grid it ends ahead, and the
+    # crossing is met on the ordinary slot-end path.
+    sweep = _bounded({"B": [-0.001, 0.49]}, step=step)
+    assert sweep["high"]["kind"] == "toggle"
+    assert sweep["high"]["travel"] == pytest.approx(0.3, abs=1e-9)
+
+
+@pytest.mark.parametrize("step", [0.05, 0.06])
+def test_a_slot_end_on_the_toggle_is_reported_as_the_toggle(step):
+    # B's end at y = 0 is the toggle itself; which side of it rounding puts the
+    # crossing must not decide what the limit is called.
+    sweep = _bounded({"B": [0, 0.49]}, step=step)
+    assert sweep["high"]["kind"] == "toggle"
+    assert sweep["high"]["travel"] == pytest.approx(0.3, abs=1e-9)
+
+
+@pytest.mark.parametrize(
+    "end, step, kind, travel",
+    [
+        (-0.001, 0.01, "toggle", -0.3),
+        (-0.001, 0.05, "toggle", -0.3),
+        (0.0, 0.06, "toggle", -0.3),
+        (0.01, 0.05, "slot-end", -(math.sqrt(0.25 - 0.01**2) - 0.2)),
+    ],
+)
+def test_the_order_of_a_slot_end_and_a_toggle_holds_driving_the_other_way(end, step, kind, travel):
+    # A's axis reversed: the same limits, met at the low end of the travel.
+    sweep = _bounded({"B": [end, 0.49]}, step=step, reversed_drive=True)
+    assert sweep["low"]["kind"] == kind
+    assert sweep["low"]["travel"] == pytest.approx(travel, abs=1e-9)
+
+
+@pytest.mark.parametrize("factor", [1e-3, 1.0, 1e3])
+@pytest.mark.parametrize("reversed_drive", [False, True])
+def test_a_slot_end_just_short_of_a_toggle_is_the_limit_at_any_size(factor, reversed_drive):
+    # B's end at y = 1e-6 m is met a hair before the toggle at y = 0. Whether
+    # the travel is still advancing there is read in the machine's own size,
+    # so drawing it larger or smaller cannot turn the slot end into a toggle.
+    raw = json.loads((CASES / "metu-double-slider.problem.json").read_text())
+    raw["sweep"]["step"] = 0.01 * factor
+    for joint in raw["joints"]:
+        if reversed_drive and joint["id"] == "A":
+            joint["axis"] = [-joint["axis"][0], -joint["axis"][1]]
+        if joint["id"] == "B":
+            joint["limits"] = [1e-6 * factor, 0.49 * factor]
+    sweep = solve(load_problem(_scaled(raw, factor)), {"oracle": "test"})["sweep"]
+    limit = sweep["low" if reversed_drive else "high"]
+    assert limit["kind"] == "slot-end"
+    travel = (math.sqrt(0.25 - 1e-12) - 0.2) * factor
+    assert limit["travel"] == pytest.approx(-travel if reversed_drive else travel, abs=1e-9 * factor)
+
+
+def _short_rod_slider_crank() -> dict:
+    """A 0.5 m crank and a 0.3 m rod on a horizontal slot, drawn at 0.3 rad and extended.
+
+    The rod is shorter than the crank, so the crank rocks between the toggles
+    at +-asin(0.6), where the rod stands upright over B at x = 0.4 m. A slot
+    that ends at x = 0.4000001 m stops B a hair before either.
+    """
+    a = [0.5 * math.cos(0.3), 0.5 * math.sin(0.3)]
+    b = [a[0] + math.sqrt(0.09 - a[1] ** 2), 0.0]
+    return {
+        "schema": "pmks-oracle-problem/1",
+        "id": "short-rod-slider-crank",
+        "gravity": 0,
+        "bodies": [
+            {"id": "2", "mass": 1, "inertia": 0.02, "com": [a[0] / 2, a[1] / 2]},
+            {"id": "3", "mass": 1, "inertia": 0.0075, "com": [(a[0] + b[0]) / 2, a[1] / 2]},
+        ],
+        "joints": [
+            {"id": "O2", "kind": "pin", "at": [0, 0], "bodies": ["2"], "grounded": True},
+            {"id": "A", "kind": "pin", "at": a, "bodies": ["2", "3"]},
+            {
+                "id": "B",
+                "kind": "slider",
+                "at": b,
+                "guide": "ground",
+                "linePoint": [0, 0],
+                "axis": [1, 0],
+                "riders": ["3"],
+                "limits": [0.4000001, 1.0],
+            },
+        ],
+        "driver": {"joint": "O2", "kind": "rotation", "bodies": ["ground", "2"], "speed": 1, "acceleration": 0},
+        "points": [{"id": "B", "body": "3", "at": b}],
+        "sweep": {"step": 0.01},
+    }
+
+
+@pytest.mark.parametrize("factor", [1e-3, 1.0, 1e3])
+def test_a_slot_end_just_short_of_a_toggle_is_the_limit_for_a_turning_input_at_any_size(factor):
+    # Turning either way from 0.3 rad the crank meets B's slot end before its
+    # toggle. The turn is in radians whatever the size; the slot is in metres.
+    raw = _short_rod_slider_crank()
+    raw["joints"][2]["limits"] = [0.4000001 * factor, 1.0 * factor]
+    sweep = solve(load_problem(_scaled(raw, factor)), {"oracle": "test"})["sweep"]
+    toggle = math.asin(0.6)
+    assert sweep["high"]["kind"] == sweep["low"]["kind"] == "slot-end"
+    assert sweep["high"]["travel"] == pytest.approx(toggle - 0.3, abs=1e-6)
+    assert sweep["low"]["travel"] == pytest.approx(-toggle - 0.3, abs=1e-6)
 
 
 def test_a_singular_pose_on_the_grid_stores_no_state():
