@@ -3169,3 +3169,5 @@ Storybook 10's manager has no favicon option: it links `/favicon.svg`, and a `st
 mapped to that path replaces Storybook's own pink one. `.storybook/main.ts` maps
 `src/assets/brand/favicon.svg` there. The sidebar logo is separate: `brandImage` in
 `.storybook/manager.ts`.
+
+- **Compound attachments and tracer drags (#256, 2026-11-07).** The panel’s Add Tracer Point / Add Force buttons now ask `EditPermissionService.linkAttachmentRefusal`, sharing the menu’s compound-pick and pose guards. A compound with a remembered primitive hit is eligible; clear `lastSelectedSublink` when testing the fillet refusal. Force drift came from `GridUtilsService.dragJoint` translating all loads by a fraction of a hull joint’s displacement. Reshaping a multi-joint body now leaves anchors fixed, with the existing rebuild clamp handling anchors outside the new body; whole-body drags still carry loads rigidly.
