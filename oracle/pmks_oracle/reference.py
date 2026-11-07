@@ -136,7 +136,20 @@ def solve(problem: Problem, generator: dict, problem_sha256: str | None = None) 
     # A drawn pose at the driver's dead point (driven_freedoms 1) is not walked:
     # both ways along the curve move the driver the same way, and which branch
     # the reader meant is not the oracle's to choose.
-    if problem.driver is None or mob.freedoms != 1 or mob.driven_freedoms != 0:
+    # The oracle walks only a machine both orders agree has one freedom, which
+    # the driver takes away at first order. A first-order freedom that dies at
+    # second order is no motion, so a machine with one is not walked: a pose
+    # is held along it only to the square root of its residual over its
+    # curvature, which is not reproducible across platforms to the digits a
+    # reference keeps. And counting dimensions does not say which freedom the
+    # driver removes; with a single freedom at both orders, driven_freedoms 0
+    # says it removes that one.
+    if (
+        problem.driver is None
+        or mob.freedoms != 1
+        or mob.second_order_freedoms != 1
+        or mob.driven_freedoms != 0
+    ):
         out["sweep"] = None
         return out
     w = walk(model)

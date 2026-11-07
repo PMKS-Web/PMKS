@@ -1,5 +1,6 @@
 import type { Quantity } from '../../test-utils/oracle/compare-oracle';
 import type { ForceQuantity } from '../../test-utils/oracle/compare-oracle-forces';
+import type { MobilityQuantity } from '../../test-utils/oracle/compare-mobility';
 
 /**
  * Every published machine, or part of one, that the oracle comparison leaves
@@ -32,11 +33,13 @@ export interface Exclusion {
    * and only at the grid samples `samples` when given. A part is a joint or a
    * body; a force at `joint/body` is left out by naming either, and a name that
    * is both a joint and a body in the problem is refused by oracle.spec.ts.
+   * `'mobility'` leaves out the mobility cross-check (oracle-mobility.spec.ts)
+   * and nothing else.
    */
   what:
     | 'runs'
     | {
-        quantities: (Quantity | ForceQuantity)[];
+        quantities: (Quantity | ForceQuantity | MobilityQuantity)[];
         parts?: string[];
         modes?: ('static' | 'dynamic')[];
         samples?: number[];
@@ -127,8 +130,8 @@ export const ORACLE_EXCLUSIONS: Exclusion[] = [
     kind: 'oracle-limitation',
     what: 'runs',
     reason:
-      "Each jaw rides two parallel slots at one height, so it can turn at first order and not at second. The oracle's rank test is first order and counts two freedoms; PMKS+'s mobility.ts drops the one that dies at second order and runs it.",
-    review: 'Phase 4, when the oracle gains a second-order mobility test.',
+      "Each jaw rides two parallel slots at one height, so the carriage and jaws can turn together at first order and not at second; both solvers agree it has one freedom (oracle-mobility.spec.ts). The oracle does not walk a machine with a freedom that dies at second order: its poses are held along that turn only to the square root of their residual over its curvature, about 1e-5 of the machine's size, and do not reproduce across platforms to the digits a reference keeps. Its rates are past the conditioning limit throughout in any case.",
+    review: 'If the oracle learns to solve a pose along a weakly held second-order direction.',
   },
   {
     problem: 'gallery.crank-rocker-driven-from-the-rocker-at-its-limit.m1',
