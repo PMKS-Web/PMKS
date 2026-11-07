@@ -179,6 +179,10 @@ Not suites — import them from one.
 
 ### Editing, undo and paused poses
 
+- `dangling-joints.mjs` — #248: deleting joints leaves an editable orphan; deleting a neighboring
+  link preserves it; drag and deletion each round-trip undo/redo, including an empty drawing.
+  Filmstrip and report in `artifacts/dangling-joints/`.
+
 - `edit-playback.mjs` — Gate 1 of `docs/edit-mode-playback-plan.md`: the transport is chrome
   (present and inert over an empty grid), the Edit panel stays while the mechanism moves, every
   gate gives one answer, and the mode-switch table edge by edge.

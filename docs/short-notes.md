@@ -2905,3 +2905,7 @@ with 422 while the PR belongs to a stack. Snapshot the membership, POST to
 entries in place. This is a metadata operation separate from rebasing the branches; recreating
 the groups does not replace the code checks. The [Stacks API](https://docs.github.com/en/rest/pulls/stacks)
 describes the endpoints.
+
+### Dangling-joint regression (#248)
+
+`e2e/dangling-joints.mjs` keeps the deletion/undo sequence on a four-bar: deleting B leaves A orphaned, deleting CD must preserve A, and dragging and deleting A must each round-trip history, including the empty drawing. Current staging already passes: joint-deletion history was repaired in `20ff0c602`, and unrelated-orphan preservation in PR #32. Restoring the old `finishStructuralEdit(false)` at the tail of `deleteJoint` makes the suite fail at its first history-entry assertion. Wait for the dev server to finish rebuilding before running this mutation check; an immediately launched browser can still load the prior bundle.
