@@ -1,3 +1,5 @@
+import { RealLink } from '../model/link';
+import { compoundAttachmentRefusal } from '../model/link-attachment';
 import { Injectable, inject } from '@angular/core';
 import {
   EditAction,
@@ -100,6 +102,24 @@ export class EditPermissionService {
   /** Menu actions use the original design pose; view switches never change it. */
   menuRefusal(policy: MenuPosePolicy = 'start'): EditRefusal | null {
     return menuRefusal(this.state(), policy);
+  }
+
+  /** The panel and menu quote the same body and pose requirements. */
+  linkAttachmentRefusal(link: RealLink): { short: string; long: string } | undefined {
+    return (
+      compoundAttachmentRefusal(link) ??
+      this.menuRefusal('attachment') ??
+      (!this.mechanism.isAtStartPose() ? this.attachmentPoseRefusal(link) : undefined)
+    );
+  }
+
+  attachmentPoseRefusal(link: RealLink): { short: string; long: string } | undefined {
+    return this.mechanism.canAttachAtPose(link)
+      ? undefined
+      : {
+          short: 'return to the start',
+          long: 'This body has no reliable mapping to its start pose. Return to the start to attach a point or force.',
+        };
   }
 
   /** The same question where only yes or no is wanted. */

@@ -1,3 +1,4 @@
+import { compoundAttachmentRefusal } from '../model/link-attachment';
 import { LinkTraceService } from './link-trace.service';
 import { Injectable, inject } from '@angular/core';
 import { NumberUnitParserService } from './number-unit-parser.service';
@@ -1017,13 +1018,7 @@ export class ContextMenuBuilderService {
   private linkAttachRows(link: RealLink, handlers: MenuHandlers): MenuRow[] {
     // A welded compound is several links; clicking its fillet rather than one
     // of them says which body the new member should join.
-    const fillet: MenuRefusal | undefined =
-      link.isWelded && link.lastSelectedSublink == null
-        ? {
-            short: 'pick a sub-link',
-            long: 'This is a welded compound. Click one of the links it is made of, so the new member knows which body it joins.',
-          }
-        : undefined;
+    const fillet = compoundAttachmentRefusal(link);
     // A lock holds the link where it is, and attaching a new part to it moves
     // nothing that is held -- the new link, block, tracer or force is built
     // onto the link as it stands. So the lock refuses none of these.
@@ -1048,7 +1043,7 @@ export class ContextMenuBuilderService {
         poseGuard: () => this.attachmentRefusal(link),
         icon: 'add_tracer',
         action: () => handlers.attachTracerPoint(),
-        refusal: fillet,
+        refusal: this.permission.linkAttachmentRefusal(link),
       }),
       new MenuRow({
         label: 'Force',
@@ -1056,7 +1051,7 @@ export class ContextMenuBuilderService {
         posePolicy: 'attachment',
         poseGuard: () => this.attachmentRefusal(link),
         action: () => handlers.attachForce(link),
-        refusal: fillet,
+        refusal: this.permission.linkAttachmentRefusal(link),
       }),
     ];
     rows.push(
@@ -1504,12 +1499,7 @@ export class ContextMenuBuilderService {
 
   /** Attaching needs a known rigid-body transform between this pose and t=0. */
   private attachmentRefusal(link: RealLink): MenuRefusal | undefined {
-    return this.mechanism.canAttachAtPose(link)
-      ? undefined
-      : {
-          short: 'return to the start',
-          long: 'This body has no reliable mapping to its start pose. Return to the start to attach a point or force.',
-        };
+    return this.permission.attachmentPoseRefusal(link);
   }
 
   private rowPoseRefusal(row: MenuRow): MenuRefusal | null {

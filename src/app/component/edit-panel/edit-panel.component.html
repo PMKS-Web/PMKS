@@ -471,8 +471,12 @@
               but1Icon="add_tracer"
               but2Text="Add Force"
               but2Icon="add_force"
-              [but1Action]="mechanismService.addJointAtCOM.bind(mechanismService)"
-              [but2Action]="mechanismService.createForceAtCOM.bind(mechanismService)"
+              [btn1Disabled]="!!permission.linkAttachmentRefusal(activeSrv.selectedLink)"
+              [btn2Disabled]="!!permission.linkAttachmentRefusal(activeSrv.selectedLink)"
+              [btn1Tooltip]="permission.linkAttachmentRefusal(activeSrv.selectedLink)?.long"
+              [btn2Tooltip]="permission.linkAttachmentRefusal(activeSrv.selectedLink)?.long"
+              [but1Action]="addTracerAtCOM"
+              [but2Action]="addForceAtCOM"
             >
             </dual-button>
           }

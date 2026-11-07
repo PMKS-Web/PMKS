@@ -159,6 +159,19 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
   /** The one place that says whether an edit may happen, and in what words. */
   /** Read from the template too: the CoM frame selector is not a form control. */
   readonly permission = inject(EditPermissionService);
+
+  protected readonly addTracerAtCOM = () => {
+    if (!this.permission.linkAttachmentRefusal(this.activeSrv.selectedLink)) {
+      this.mechanismService.addJointAtCOM();
+    }
+  };
+
+  protected readonly addForceAtCOM = () => {
+    if (!this.permission.linkAttachmentRefusal(this.activeSrv.selectedLink)) {
+      this.mechanismService.createForceAtCOM();
+    }
+  };
+
   gridUtils = inject(GridUtilsService);
   bgImage = inject(BackgroundImageService);
   private notify = inject(NotificationService);

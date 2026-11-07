@@ -2905,3 +2905,5 @@ with 422 while the PR belongs to a stack. Snapshot the membership, POST to
 entries in place. This is a metadata operation separate from rebasing the branches; recreating
 the groups does not replace the code checks. The [Stacks API](https://docs.github.com/en/rest/pulls/stacks)
 describes the endpoints.
+
+- **Compound attachments and tracer drags (#256, 2026-11-07).** The panel’s Add Tracer Point / Add Force buttons now ask `EditPermissionService.linkAttachmentRefusal`, sharing the menu’s compound-pick and pose guards. A compound with a remembered primitive hit is eligible; clear `lastSelectedSublink` when testing the fillet refusal. Force drift came from `GridUtilsService.dragJoint` translating all loads by a fraction of a hull joint’s displacement. Reshaping a multi-joint body now leaves anchors fixed, with the existing rebuild clamp handling anchors outside the new body; whole-body drags still carry loads rigidly.

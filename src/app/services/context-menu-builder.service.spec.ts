@@ -97,6 +97,7 @@ function createBuilderHarness() {
     // For the checks that assert the gates agree with each other rather than
     // asserting one of them twice.
     grid: injector.get(GridUtilsService),
+    permission: injector.get(EditPermissionService),
   };
 }
 
@@ -718,6 +719,26 @@ describe('the right-click menu', () => {
     const before = force.angleRad;
     row(model, 'Flip Force')!.action();
     expect(force.angleRad).toBe(before);
+  });
+
+  it('gives the panel the attachment rows’ exact refusal at every pose', () => {
+    const parts = fourBar(harness.mechanism);
+    for (const compound of [false, true]) {
+      parts.coupler.subset = compound ? [parts.crank, parts.rocker] : [];
+      parts.coupler.lastSelectedSublink = null;
+      for (const step of [0, 12]) {
+        harness.mechanism.mechanismTimeStep = step;
+        for (const playing of [false, true]) {
+          harness.mechanism.isPlaying = playing;
+          const panel = harness.permission.linkAttachmentRefusal(parts.coupler);
+          const menu = harness.builder.build(parts.coupler, noHandlers);
+          for (const label of ['Tracer Point', 'Force']) {
+            expect(row(menu, label)!.refusal?.long).toBe(panel?.long);
+            expect(row(menu, label)!.disabled).toBe(!!panel);
+          }
+        }
+      }
+    }
   });
 
   describe('away from the start pose', () => {
