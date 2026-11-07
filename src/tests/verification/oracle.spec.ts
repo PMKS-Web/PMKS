@@ -11,7 +11,14 @@ import {
 } from '../../test-utils/oracle/export-problem';
 import { siFactors } from '../../test-utils/oracle/si-units';
 import { pmksSamples } from '../../test-utils/oracle/pmks-samples';
-import { compareMachine, judge, ORDER, Verdict } from '../../test-utils/oracle/compare-oracle';
+import {
+  compareMachine,
+  CONDITIONING_LIMIT,
+  judge,
+  ORDER,
+  Verdict,
+} from '../../test-utils/oracle/compare-oracle';
+import { compareForces, FORCE_BUDGETS } from '../../test-utils/oracle/compare-oracle-forces';
 import {
   oracleSourceSha256,
   readReference,
@@ -60,7 +67,14 @@ const exclusionsFor = (id: string): Exclusion[] =>
 
 /** What became of each machine, for the coverage report. */
 const outcome = new Map<string, string>();
+/** What failed, per machine, for the artifact: a spec's own message truncates a long list. */
+const failed = new Map<string, string[]>();
 const tally: Record<Verdict, number> = { pass: 0, fail: 0, 'ill-conditioned': 0, undefined: 0 };
+const forceTally = { pass: 0, fail: 0, 'ill-conditioned': 0 };
+/** Machine-modes compared on their forces, split by whether the oracle finds any force at all. */
+// Machine-modes whose forces were compared, by whether they carry any, and
+// those the manifest leaves out entirely, which are not counted as compared.
+const forceCoverage = { loaded: 0, unloaded: 0, excluded: 0 };
 let excludedSamples = 0;
 /** The largest error that passed, per method and order: the measurement the budgets rest on. */
 const worstPassing = new Map<string, { error: number; problem: string; part: string; k: number }>();
@@ -192,7 +206,60 @@ describe('numerical oracle', () => {
             );
           }
         }
+        if (failures.length) failed.set(problem.id, failures);
         expect(failures, 'outside budget').toEqual([]);
+
+        // Forces, in both modes: static (loads and gravity) and dynamic.
+        const forceFailures: string[] = [];
+        for (const mode of ['static', 'dynamic'] as const) {
+          const forces = compareForces(problem, reference, mechanism, samples, mode);
+          const leftOut = (quantity: string, part?: string): boolean =>
+            exclusions.some(
+              (e) =>
+                e.what !== 'runs' &&
+                e.what.quantities.includes(quantity as never) &&
+                (!e.what.modes || e.what.modes.includes(mode)) &&
+                (!e.what.parts || part === undefined || e.what.parts.includes(part))
+            );
+          if (leftOut('reaction') && leftOut('bodyTotal') && leftOut('effort')) {
+            excludedSamples += forces.deviations.length;
+            forceCoverage.excluded++;
+            continue;
+          }
+          forceCoverage[forces.forceScale === 0 ? 'unloaded' : 'loaded']++;
+          // A singular pose is PMKS+'s to refuse; a well-conditioned one is not.
+          for (const frame of forces.unsolved) {
+            if (frame.condition > CONDITIONING_LIMIT) continue;
+            forceFailures.push(`${mode}: PMKS+ did not solve k=${frame.k}: ${frame.status}`);
+          }
+          for (const what of forces.missing) {
+            if (!leftOut(what.quantity, what.part))
+              forceFailures.push(`${mode}: PMKS+ reports no ${what.quantity} ${what.part}`);
+          }
+          for (const d of forces.deviations) {
+            if (leftOut(d.quantity, d.part)) {
+              excludedSamples++;
+              continue;
+            }
+            if (d.condition > CONDITIONING_LIMIT) {
+              forceTally['ill-conditioned']++;
+              continue;
+            }
+            const pass = d.error <= FORCE_BUDGETS[mode];
+            forceTally[pass ? 'pass' : 'fail']++;
+            const key = `${mode}/${d.quantity}`;
+            if (pass && (worstPassing.get(key)?.error ?? -1) < d.error) {
+              worstPassing.set(key, { error: d.error, problem: problem.id, part: d.part, k: d.k });
+            }
+            if (!pass && forceFailures.length < 10) {
+              forceFailures.push(
+                `${mode} ${d.quantity} ${d.part} at k=${d.k}: ${d.error.toExponential(2)} of scale`
+              );
+            }
+          }
+        }
+        if (forceFailures.length) failed.set(problem.id, forceFailures);
+        expect(forceFailures, 'forces').toEqual([]);
         outcome.set(problem.id, exclusions.length ? 'verified, in part' : 'verified');
       });
     }
@@ -209,8 +276,11 @@ describe('numerical oracle', () => {
         {
           machines: counts,
           samples: { ...tally, excluded: excludedSamples },
+          forceSamples: forceTally,
+          forceCoverage,
           worstPassing: Object.fromEntries(worstPassing),
           outcome: Object.fromEntries(outcome),
+          failed: Object.fromEntries(failed),
         },
         null,
         1
