@@ -148,7 +148,7 @@ export class HelpPanelComponent {
   };
 
   readonly gotoGithub = (): void => {
-    window.open('https://github.com/PMKS-Web/PMKSWeb', '_blank');
+    window.open('https://github.com/PMKS-Web/PMKS', '_blank');
     this.analytics.logEvent('goto_github');
   };
 

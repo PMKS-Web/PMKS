@@ -123,7 +123,10 @@ export type PastedLink =
 
 /**
  * Where a PMKS+ link can come from: production, the branch and preview deploys
- * of either Netlify site, a local server, and wherever this copy is running.
+ * of `pmksprod`, a local server, and wherever this copy is running. The
+ * `pmksnew` site is gone, but a link copied from one of its previews still
+ * carries a whole drawing in its query, which is read here and never fetched,
+ * so it is still accepted.
  */
 export function isPmksHost(hostname: string, here: string): boolean {
   return (
