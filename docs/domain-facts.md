@@ -485,6 +485,13 @@ solver is asked**, so a typed coordinate, a distance-to-joint field and a link d
 answer as a canvas drag. `settled` is how the solver writes its answer back through the same door
 without being asked again; forget it and you get a recursion.
 
+A whole-link drag preserves the carried body's shape while solving its neighboring holds.
+Temporary pairwise distances join the solve without adding a Fixed Length to the document;
+the result is committed together, carrying the body's loads and custom center of mass.
+Cursor goals come from the grab snapshot, so a constrained endpoint falling short does not
+advance the other endpoint again on every pointer event. `e2e/constrained-link-drag.mjs`
+checks both length and angle neighbors, a stationary pointer, and undo/redo.
+
 A hold is only meaningful on a plain two-joint bar, and `holdOf()` in `model/link-holds.ts` reads
 one as absent on anything else -- which is why nothing has to clear the flag when a bar is welded or
 given a third joint. It rides the URL as an `H` entry in the trailing section (`HlAB`, `HaAB`),

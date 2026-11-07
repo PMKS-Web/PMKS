@@ -2905,3 +2905,7 @@ with 422 while the PR belongs to a stack. Snapshot the membership, POST to
 entries in place. This is a metadata operation separate from rebasing the branches; recreating
 the groups does not replace the code checks. The [Stacks API](https://docs.github.com/en/rest/pulls/stacks)
 describes the endpoints.
+
+### A neighboring hold used to stretch a whole-link drag (#259)
+
+`moveLinkRigidly` gave each endpoint an independent goal. With AB holding its length or angle, B followed that constraint and C followed its own translated goal, changing BC's length. Because the canvas calculated each new translation from B's already constrained position, C accumulated the shortfall on every pointer event. A four-bar drag of 120px right and 80px down shortened BC by 17.4% beside a fixed length, or lengthened it by 139.2% beside a fixed angle. Solve temporary body distances with the real holds, use targets from `beforeDrag.joints`, and commit the whole placement through the existing edit plan. That also preserves the carried body's load direction and custom center. The new `constrained-link-drag` suite captures both failures and repeated pointer events at the same location.

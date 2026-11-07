@@ -1,5 +1,6 @@
 import '../model/joint';
 import { Coord } from '../model/coord';
+import { Force } from '../model/force';
 import { RevJoint } from '../model/joint';
 import { RealLink } from '../model/link';
 import { MODEL_SCALE } from '../model/render-scale';
@@ -109,9 +110,78 @@ describe('dragging against a held bar', () => {
     const parts = fourBar(service);
     parts.ab.hold = 'length';
     // Dragging the coupler carries B and C; B may only ride the arc about A.
+    const length = dist(parts.b, parts.c);
     grid.dragLink(parts.bc, 2 * S, 0);
     expect(dist(parts.a, parts.b)).toBeCloseTo(2 * S, 3);
-    expect(parts.c.x).toBeCloseTo(5 * S, 2);
+    expect(dist(parts.b, parts.c)).toBeCloseTo(length, 3);
+    expect(parts.c.x).toBeGreaterThan(3 * S);
+  });
+
+  for (const hold of ['length', 'angle'] as const) {
+    it(`keeps the body rigid and the absolute ask stable beside a held ${hold}`, () => {
+      const parts = fourBar(service);
+      parts.ab.hold = hold;
+      const start = service.joints.map(({ id, x, y }) => ({ id, x, y }));
+      const length = dist(parts.b, parts.c);
+      const target = new Coord(parts.b.x + S, parts.b.y - S / 2);
+      grid.dragLinkTo(parts.bc, target, start);
+      const first = { bx: parts.b.x, by: parts.b.y, cx: parts.c.x, cy: parts.c.y };
+      expect(dist(parts.b, parts.c)).toBeCloseTo(length, 3);
+      for (let i = 0; i < 20; i++) grid.dragLinkTo(parts.bc, target, start);
+      expect(parts.b.x).toBeCloseTo(first.bx, 3);
+      expect(parts.b.y).toBeCloseTo(first.by, 3);
+      expect(parts.c.x).toBeCloseTo(first.cx, 3);
+      expect(parts.c.y).toBeCloseTo(first.cy, 3);
+      expect(dist(parts.b, parts.c)).toBeCloseTo(length, 3);
+      if (hold === 'length') expect(dist(parts.a, parts.b)).toBeCloseTo(2 * S, 3);
+      else expect(parts.b.x).toBeCloseTo(0, 3);
+      expect(parts.bc.hold).toBeUndefined();
+    });
+  }
+
+  it('carries a load direction and custom center with the solved body motion', () => {
+    const parts = fourBar(service);
+    parts.ab.hold = 'length';
+    parts.bc.CoM = new Coord(S, (7 / 3) * S);
+    parts.bc.comIsCustom = true;
+    const force = new Force(
+      'F1',
+      parts.bc,
+      new Coord(S, (7 / 3) * S),
+      new Coord(S, (10 / 3) * S),
+      false,
+      true,
+      10
+    );
+    parts.bc.forces.push(force);
+    service.forces.push(force);
+    const oldAngle = Math.atan2(parts.c.y - parts.b.y, parts.c.x - parts.b.x);
+    const radius = dist(parts.b, parts.bc.CoM);
+    grid.dragLink(parts.bc, S, -S / 2);
+    const turn = Math.atan2(parts.c.y - parts.b.y, parts.c.x - parts.b.x) - oldAngle;
+    expect(dist(parts.b, parts.bc.CoM)).toBeCloseTo(radius, 3);
+    expect(force.startCoord.x).toBeCloseTo(parts.bc.CoM.x, 3);
+    expect(force.startCoord.y).toBeCloseTo(parts.bc.CoM.y, 3);
+    const direction = Math.atan2(
+      force.endCoord.y - force.startCoord.y,
+      force.endCoord.x - force.startCoord.x
+    );
+    expect(Math.sin(direction - Math.PI / 2 - turn)).toBeCloseTo(0, 6);
+    expect(Math.cos(direction - Math.PI / 2 - turn)).toBeCloseTo(1, 6);
+  });
+
+  it('preserves the shape across welded leaves when a neighbor holds an endpoint', () => {
+    const parts = fourBar(service);
+    service.weldJoint(parts.c);
+    parts.ab.hold = 'length';
+    const body = service.links.find((link) => link !== parts.ab)!;
+    const start = service.joints.map(({ id, x, y }) => ({ id, x, y }));
+    const lengths = [dist(parts.b, parts.c), dist(parts.c, parts.d), dist(parts.b, parts.d)];
+    grid.dragLinkTo(body, new Coord(parts.b.x + S, parts.b.y + S / 2), start);
+    [dist(parts.b, parts.c), dist(parts.c, parts.d), dist(parts.b, parts.d)].forEach((now, i) =>
+      expect(now).toBeCloseTo(lengths[i], 3)
+    );
+    expect(dist(parts.a, parts.b)).toBeCloseTo(2 * S, 3);
   });
 
   it('forgets a refusal once the bars that refused are unlocked', () => {

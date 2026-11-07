@@ -1,3 +1,4 @@
+import { linkDragGoals, rigidBodyHolds, rigidDragMap } from '../model/rigid-link-drag';
 import { linkArtwork, schematicLink } from '../model/link-artwork';
 import { cylinderJoints } from '../model/cylinder';
 import { pickLink } from '../model/link-pick';
@@ -358,7 +359,7 @@ export class GridUtilsService {
    * of those joints are returned so the caller can move the rest itself, and
    * `lastHoldRefusal` says what, if anything, could not be granted.
    */
-  settleHolds(goals: readonly HoldGoal[]): Set<string> | undefined {
+  settleHolds(goals: readonly HoldGoal[], body?: Link): Set<string> | undefined {
     // Every ask starts clean. A refusal that stood from an earlier move used
     // to survive the bars being unlocked, because a drawing with no holds
     // returns here before anything below could clear it -- and the canvas
@@ -366,14 +367,15 @@ export class GridUtilsService {
     this.lastHoldRefusal = undefined;
     const links = this.mechanismSrv.links;
     const cylinders = this.mechanismSrv.sealedStructures();
-    const bars = heldBars(links, cylinders);
-    if (bars.length === 0) return undefined;
+    const held = heldBars(links, cylinders);
+    if (held.length === 0) return undefined;
+    const bars = body ? [...held, ...rigidBodyHolds(goals)] : held;
     const asked = goals.map((goal) => this.mechanismSrv.joints.find((j) => j.id === goal.id));
     const reached = reachedByHolds(
       goals.map((goal) => goal.id),
       bars
     ).joints;
-    if (!reached.size || !bars.some((bar) => reached.has(bar.a))) return undefined;
+    if (!reached.size || !held.some((bar) => reached.has(bar.a))) return undefined;
     const frozen = this.frozenJointIds();
     // A grounded joint anchors the others, not itself: in Edit a ground pin
     // is dragged like any other, and the bar it is on follows.
@@ -385,7 +387,9 @@ export class GridUtilsService {
     // An ask no configuration satisfies is refused whole: the half-settled
     // positions the sweep stopped in have a hold or two false in them, and
     // writing those is how a locked length came to change under a drag.
-    if (solved.satisfied) {
+    if (solved.satisfied && body) {
+      solved.satisfied = this.commitHeldBody(body, solved.positions);
+    } else if (solved.satisfied) {
       solved.positions.forEach((at, id) => {
         const joint = this.mechanismSrv.joints.find((j) => j.id === id);
         if (joint instanceof RealJoint) this.dragJoint(joint, new Coord(at.x, at.y), false, true);
@@ -407,6 +411,17 @@ export class GridUtilsService {
         }
       : undefined;
     return reached;
+  }
+
+  private commitHeldBody(body: Link, positions: Map<string, Point>): boolean {
+    const points = body.joints.map(({ id, x, y }) => ({ id, x, y }));
+    const mapPoint = rigidDragMap(points, positions);
+    if (!mapPoint) return false;
+    const carried = body instanceof RealLink ? [body, ...body.subset] : [body];
+    if (!this.runEdit({ moves: positions }, false, new Set(carried.map((link) => link.id))))
+      return false;
+    carried.forEach((link) => this.transformLinkBody(link, mapPoint));
+    return true;
   }
 
   /**
@@ -862,6 +877,19 @@ export class GridUtilsService {
     return this.moveLinkRigidly(selectedLink, (x, y) => ({ x: x + dx, y: y + dy }));
   }
 
+  /** Follow the pointer from the grab snapshot even when holds kept an end behind. */
+  dragLinkTo(link: Link, target: Point, start: readonly HoldGoal[]): Link {
+    link = this.mechanismSrv.rootLinkOwning(link) ?? link;
+    const points = link.joints.map((joint) => start.find((point) => point.id === joint.id)!);
+    const dx = target.x - link.joints[0].x;
+    const dy = target.y - link.joints[0].y;
+    return this.moveLinkRigidly(
+      link,
+      (x, y) => ({ x: x + dx, y: y + dy }),
+      linkDragGoals(points, target)
+    );
+  }
+
   /**
    * Turn a whole link about a point, carrying everything rigidly attached.
    *
@@ -884,12 +912,12 @@ export class GridUtilsService {
 
   private moveLinkRigidly(
     selectedLink: Link,
-    mapPoint: (x: number, y: number) => { x: number; y: number }
+    mapPoint: (x: number, y: number) => { x: number; y: number },
+    targets?: readonly HoldGoal[]
   ) {
-    // A held bar somewhere on this body, or on a neighbor sharing one of its
-    // joints, has a say in where the joints go. Then this is not a rigid move
-    // at all: every joint is asked for as a goal, the holds answer for the
-    // ones they reach, and the rest go where the body would have put them.
+    // A neighboring hold and the dragged body's shape are solved together.
+    // Independent endpoint goals let the held end follow its arc while the
+    // other end translated, stretching the very body the reader was carrying.
     // The link's own joints, and only those. A slider riding one of them used
     // to bring its coincident partner along through the block that joined the
     // two; a slider is one joint now, so one that is a *member* of this body is
@@ -898,18 +926,13 @@ export class GridUtilsService {
     // carries it there.
     selectedLink = this.mechanismSrv.rootLinkOwning(selectedLink) ?? selectedLink;
     const carried: Joint[] = [...selectedLink.joints];
-    const goals: HoldGoal[] = carried
-      .filter((joint, index) => carried.indexOf(joint) === index)
-      .map((joint) => ({ id: joint.id, ...mapPoint(joint.x, joint.y) }));
-    const settled = this.settleHolds(goals);
+    const goals: readonly HoldGoal[] =
+      targets ??
+      carried
+        .filter((joint, index) => carried.indexOf(joint) === index)
+        .map((joint) => ({ id: joint.id, ...mapPoint(joint.x, joint.y) }));
+    const settled = this.settleHolds(goals, selectedLink);
     if (settled) {
-      goals.forEach((goal) => {
-        if (settled.has(goal.id)) return;
-        const joint = carried.find((candidate) => candidate.id === goal.id);
-        if (joint instanceof RealJoint) {
-          this.dragJoint(joint, new Coord(goal.x, goal.y), false, true);
-        }
-      });
       this.mechanismSrv.reseatFloatingSliders();
       this.mechanismSrv.updateMechanism(false);
       return selectedLink;
