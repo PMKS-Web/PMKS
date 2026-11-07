@@ -466,15 +466,16 @@
             (angleEntry)="setShowLinkAngleOverlay($event)"
           ></hold-field-block>
           @if (!selectedCylinder) {
+            @let attachmentRefusal = permission.linkAttachmentRefusal(activeSrv.selectedLink);
             <dual-button
               but1Text="Add Tracer Point"
               but1Icon="add_tracer"
               but2Text="Add Force"
               but2Icon="add_force"
-              [btn1Disabled]="!!permission.linkAttachmentRefusal(activeSrv.selectedLink)"
-              [btn2Disabled]="!!permission.linkAttachmentRefusal(activeSrv.selectedLink)"
-              [btn1Tooltip]="permission.linkAttachmentRefusal(activeSrv.selectedLink)?.long"
-              [btn2Tooltip]="permission.linkAttachmentRefusal(activeSrv.selectedLink)?.long"
+              [btn1Disabled]="!!attachmentRefusal"
+              [btn2Disabled]="!!attachmentRefusal"
+              [btn1Tooltip]="attachmentRefusal?.long"
+              [btn2Tooltip]="attachmentRefusal?.long"
               [but1Action]="addTracerAtCOM"
               [but2Action]="addForceAtCOM"
             >
