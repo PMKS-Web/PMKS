@@ -29,6 +29,8 @@ from .exudyn_model import ExudynModel
 MAX_REVOLUTIONS = 3
 # A singular value this far below the largest is zero, for rank and for singularity alike.
 SINGULAR_RATIO = 1e-10
+# How far inside a toggle, in steps, a grid point must lie to be stored.
+TOGGLE_CLEARANCE = 1e-9
 # Where a grid sample sits on a singular pose, Newton stops at a residual near
 # rounding, but along the direction the singularity frees it is held only to
 # the square root of that residual over the constraints' curvature: about 1e-7
@@ -109,8 +111,35 @@ def _same_pose(model: ExudynModel, a, b) -> bool:
     return True
 
 
+# Short steps the bracket around a turning point is walked again in, before the
+# golden-section search: each is corrected from its own tangent, so no chord is
+# long enough for Newton to wander off the curve where it bends.
+REFINE_STEPS = 16
+
+
 def _refine_turning_point(model, q_a, t_a, h, direction_sign):
-    """Golden-section search for the extremum of d along the curve between arclength 0 and h from q_a."""
+    """The extremum of d along the curve within arclength h of q_a.
+
+    The bracket is walked again in REFINE_STEPS short steps, and the search
+    then runs over the two short steps around the largest d found. A chord
+    from q_a across the whole bracket, along q_a's own tangent, can leave the
+    corrector wandering for its whole iteration budget where the curve bends
+    sharply, and whether it converges in time then differs between platforms.
+    """
+    small = h / REFINE_STEPS
+    walked = [(direction_sign * driver_coordinate(model, q_a), q_a, t_a)]
+    q, t = q_a, t_a
+    for _ in range(REFINE_STEPS):
+        q = corrector(model, q + small * t, t)
+        t = tangent(model, q, t)
+        walked.append((direction_sign * driver_coordinate(model, q), q, t))
+    i = max(range(len(walked)), key=lambda n: walked[n][0])
+    _, q_b, t_b = walked[max(i - 1, 0)]
+    return direction_sign * _golden_section(model, q_b, t_b, 2 * small, direction_sign)
+
+
+def _golden_section(model, q_a, t_a, h, direction_sign):
+    """Golden-section search for the largest direction_sign * d between arclength 0 and h from q_a."""
     def at(s):
         q = corrector(model, q_a + s * t_a, t_a)
         return direction_sign * driver_coordinate(model, q), q
@@ -132,7 +161,7 @@ def _refine_turning_point(model, q_a, t_a, h, direction_sign):
         if hi - lo < 1e-14 * max(1.0, model.length_scale):
             break
     best, _ = at((lo + hi) / 2)
-    return direction_sign * best
+    return best
 
 
 def regular_rank(model: ExudynModel, q) -> int:
@@ -202,10 +231,17 @@ def _walk_one_way(model, q0, d0, step, direction, walk: Walk, revolute: bool, bu
         if (d_new - d) * direction <= 0:
             # d turned round within the last two steps: a limit of travel.
             q_back, t_back, h_back = previous
-            extremum = _refine_turning_point(model, q_back, t_back, h_back + 2 * h, direction)
-            while (d0 + k_next * step - extremum) * direction <= 0:
-                walk.samples[k_next] = analysis.newton(model, q_back, d0 + k_next * step)
-                k_next += direction
+            try:
+                extremum = _refine_turning_point(model, q_back, t_back, h_back + 2 * h, direction)
+                # A grid point on the toggle itself is the dead point, where no
+                # rate is defined, and whether rounding puts the refined toggle
+                # a hair before or after it differs between platforms.
+                while (d0 + k_next * step - extremum) * direction < -TOGGLE_CLEARANCE * step:
+                    walk.samples[k_next] = analysis.newton(model, q_back, d0 + k_next * step)
+                    k_next += direction
+            except analysis.SolveFailed:
+                # A turn the corrector cannot follow is not a toggle anyone has measured.
+                return Limit("solver-failure", d - d0)
             return Limit("toggle", extremum - d0)
         _, jc = _undriven(model, q_new)
         s = np.linalg.svd(jc, compute_uv=False)
@@ -214,7 +250,10 @@ def _walk_one_way(model, q0, d0, step, direction, walk: Walk, revolute: bool, bu
         while (d0 + k_next * step - d_new) * direction <= 0:
             target = d0 + k_next * step
             frac = (target - d) / (d_new - d)
-            walk.samples[k_next] = analysis.newton(model, q + frac * (q_new - q), target)
+            try:
+                walk.samples[k_next] = analysis.newton(model, q + frac * (q_new - q), target)
+            except analysis.SolveFailed:
+                return Limit("solver-failure", d - d0)
             per_turn = steps_per_turn(step) if revolute else None
             if per_turn and k_next % per_turn == 0:
                 turns = abs(k_next) // per_turn
