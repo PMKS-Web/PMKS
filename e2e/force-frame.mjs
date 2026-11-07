@@ -177,6 +177,45 @@ try {
       )
     );
   }
+  await load(TEMPLATE_LINKAGES['Offset_Load_Rocker']);
+  const held = await grid((g) => {
+    const plate = g.mechanismSrv.links.find((l) => l.joints.length === 3);
+    const neighbor = g.mechanismSrv.links.find((l) => l.id === 'BC');
+    neighbor.hold = 'angle';
+    const force = g.mechanismSrv.forces[0];
+    force.moveAnchor(plate.CoM);
+    g.mechanismSrv.updateMechanism(true);
+    return {
+      id: plate.id,
+      dx: (neighbor.joints[1].x - neighbor.joints[0].x) / 20,
+      dy: (neighbor.joints[1].y - neighbor.joints[0].y) / 20,
+      before: [force.startCoord.x, force.startCoord.y, force.endCoord.x, force.endCoord.y],
+    };
+  });
+  await film.during(80, 10, 'held-body', async () => {
+    for (let step = 0; step < 8; step++) {
+      await grid((g, held) => {
+        g.gridUtils.dragLink(
+          g.mechanismSrv.links.find((l) => l.id === held.id),
+          held.dx / 8,
+          held.dy / 8
+        );
+      }, held);
+      await page.waitForTimeout(60);
+    }
+  });
+  const carriedForce = await grid((g) => {
+    const f = g.mechanismSrv.forces[0];
+    return [f.startCoord.x, f.startCoord.y, f.endCoord.x, f.endCoord.y];
+  });
+  check(
+    'a neighboring hold carries both endpoints with a rigidly dragged plate',
+    carriedForce.every(
+      (value, index) =>
+        Math.abs(value - held.before[index] - (index % 2 ? held.dy : held.dx)) < 1e-4
+    ),
+    { held, after: carriedForce }
+  );
   await load(TEMPLATE_LINKAGES['4-Bar']);
   await grid((g) => {
     g.activeObjService.updateSelectedObj(g.mechanismSrv.links.find((l) => l.id === 'BC'));
@@ -283,6 +322,7 @@ try {
   );
   await page.screenshot({ path: `${OUT}/locked.png` });
   check('no runtime errors', errors.length === 0, errors);
+  await contactSheet(`${OUT}/*-held-body.png`, `${OUT}/held-body-film.png`, 4, 0.4);
   await contactSheet(`${OUT}/*-tracer.png`, `${OUT}/tracer-film.png`, 4, 0.4);
   await contactSheet(`${OUT}/*-flip.png`, `${OUT}/flip-film.png`, 4, 0.4);
   await contactSheet(`${OUT}/*-playback.png`, `${OUT}/playback-film.png`, 4, 0.4);

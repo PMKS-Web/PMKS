@@ -1,3 +1,4 @@
+import { heldBodyLoads } from '../model/held-body-loads';
 import { linkArtwork, schematicLink } from '../model/link-artwork';
 import { cylinderJoints } from '../model/cylinder';
 import { pickLink } from '../model/link-pick';
@@ -885,6 +886,7 @@ export class GridUtilsService {
     const goals: HoldGoal[] = carried
       .filter((joint, index) => carried.indexOf(joint) === index)
       .map((joint) => ({ id: joint.id, ...mapPoint(joint.x, joint.y) }));
+    const carryLoads = heldBodyLoads(selectedLink);
     const settled = this.settleHolds(goals);
     if (settled) {
       goals.forEach((goal) => {
@@ -894,6 +896,7 @@ export class GridUtilsService {
           this.dragJoint(joint, new Coord(goal.x, goal.y), false, true);
         }
       });
+      carryLoads();
       this.mechanismSrv.reseatFloatingSliders();
       this.mechanismSrv.updateMechanism(false);
       return selectedLink;
