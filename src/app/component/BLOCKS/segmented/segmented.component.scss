@@ -133,6 +133,12 @@
       }
     }
 
+    // Still the row's full width, but each option starts from its label's
+    // width and only the room left over is shared.
+    &.weighted .cell {
+      flex: 1 1 auto;
+    }
+
     // Two columns of taller cells, the glyph and label reading from the left.
     // The pill now moves down a row as well as across, so it is placed and
     // slid on both axes.

@@ -75,7 +75,7 @@ await page.getByRole('button', { name: 'Edit', exact: true }).click();
 await settings();
 const unitFilm = filmstrip(page, `${OUT}/meter-film`);
 await unitFilm.during(70, 8, 'switch', () =>
-  page.getByRole('button', { name: 'SI (m)', exact: true }).click()
+  page.getByRole('button', { name: 'Meter (m)', exact: true }).click()
 );
 await page.getByRole('button', { name: 'Close', exact: true }).click();
 await page.locator('#settingsWrapper').waitFor({ state: 'detached' });

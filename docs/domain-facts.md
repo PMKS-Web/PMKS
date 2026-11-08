@@ -158,7 +158,26 @@ system's own force unit — lbf under inches, newtons under centimeters and mete
 `NumberUnitParserService.storedForceUnit` names the one, the settings subject names the other, and
 `formatStoredForce` / `parseStoredForce` are the only crossing. Multiply a magnitude by 9.8 on its
 way anywhere else and the solver is handed a load nine times the one that was typed. This is the
-same split `displayInertiaUnit` / `storedInertiaUnit` already keeps for `g·cm²`.
+same split `displayInertiaUnit` / `storedInertiaUnit` keeps for inertia, and mass keeps too.
+
+**A mass is the same: stored in the length's unit, read in the reader's.** `Link.mass` and
+`PrisJoint.mass` are grams under centimeters, kilograms under meters and pounds-mass under inches
+(`storedMassUnit`), because `siUnitFactors`, the length-unit rescale in `updateLinkageUnits` and
+every URL assume that pairing. Settings' Mass Units row (issue #142) picks grams or kilograms under
+either metric length, and `formatStoredMass` / `parseStoredMass` are the only crossing. Inertia is
+never picked: it reads in the reader's mass times the length squared (`inertiaUnitFor`: g·cm²,
+kg·cm², g·m², kg·m², lbm·in²), while centimeters keep *storing* kg·cm² beside a mass in grams, an
+old pairing every URL carries. The pick rides the URL as one appended flag, `OTHER_METRIC_MASS`,
+which is false for a drawing read in its stored mass, so every older URL decodes, and re-encodes,
+byte for byte. The DXF export's data tables print the *stored* numbers and say so in their units
+line; they do not follow the pick.
+
+**Settings picks units, not systems.** Length (in, cm, m), mass (g or kg under the metric
+lengths) and force (N or kgf under the metric lengths) are separate rows; torque and inertia are
+products of them, said in a note under the rows rather than offered as rows of their own. Under
+inches the mass and force rows hide, each having one option, and the note names lbm and lbf. The
+URL still writes `GLOBAL_UNIT`, normalized from the length, for compatibility; the form control
+behind Length Units is still called `globalunit`.
 
 **A torque is a force times a length, and both halves are the reader's.** `torqueLabel(force,
 length)` is `lbf·in`, `N·cm`, `N·m`, `kgf·cm` or `kgf·m` — one rule, no cases. Centimeters used to

@@ -1,6 +1,6 @@
 # Drawing styles and object sizing
 
-Settings has one **Drawing Style** choice, using the same radio block as Global Units:
+Settings has one **Drawing Style** choice, using the same radio block as Length Units:
 
 - **Standard:** filled colored bodies and prominent joint symbols.
 - **Fine:** slimmer filled bodies and smaller coordinated symbols.

@@ -22,6 +22,7 @@ const meta: Meta = {
     reasons: [],
     compact: false,
     fill: true,
+    weighted: false,
     wrap: false,
     icons: [],
     invalid: false,
@@ -41,6 +42,7 @@ const meta: Meta = {
         [reasons]="reasons"
         [compact]="compact"
         [fill]="fill"
+        [weighted]="weighted"
         [wrap]="wrap"
         [icons]="icons"
         [invalid]="invalid"
@@ -59,6 +61,14 @@ export const Default: Story = {};
 
 /** Each option as wide as its label, for a control at the end of a settings row. */
 export const Fit: Story = { args: { options: ['X', 'Y', 'Magnitude'], fill: false } };
+
+/**
+ * Full width, but split by label length: an equal third cut "Centimeter (cm)"
+ * short while "Inch (in)" had room to spare.
+ */
+export const Weighted: Story = {
+  args: { options: ['Inch (in)', 'Centimeter (cm)', 'Meter (m)'], selected: 1, weighted: true },
+};
 
 export const Compact: Story = { args: { compact: true } };
 

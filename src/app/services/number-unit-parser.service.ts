@@ -16,6 +16,12 @@ import {
   TIME_TO_SECONDS,
 } from '../model/unit-conversions';
 import { MODEL_SCALE } from '../model/render-scale';
+import {
+  displayMassUnit,
+  inertiaUnitFor,
+  storedInertiaUnit,
+  storedMassUnit,
+} from '../model/mass-units';
 
 type AnyUnit =
   LengthUnit | AngleUnit | AngularVelocityUnit | ForceUnit | MassUnit | InertiaUnit | TimeUnit;
@@ -57,6 +63,8 @@ export class NumberUnitParserService {
         return 'g·cm²';
       case InertiaUnit.KG_M2:
         return 'kg·m²';
+      case InertiaUnit.G_M2:
+        return 'g·m²';
       case InertiaUnit.LBM_IN2:
         return 'lbm·in²';
       case AngularVelocityUnit.RPM:
@@ -310,6 +318,8 @@ export class NumberUnitParserService {
         return InertiaUnit.KG_CM2;
       case 'kgm2':
         return InertiaUnit.KG_M2;
+      case 'gm2':
+        return InertiaUnit.G_M2;
       case 'lbmin2':
       case 'lbin2':
         return InertiaUnit.LBM_IN2;
@@ -318,56 +328,75 @@ export class NumberUnitParserService {
     }
   }
 
-  /** The mass unit that pairs with a length system: g / kg / lbm. */
-  public massUnitFor(length: LengthUnit): MassUnit {
-    switch (length) {
-      case LengthUnit.INCH:
-        return MassUnit.LBM;
-      case LengthUnit.METER:
-        return MassUnit.KG;
-      default:
-        return MassUnit.GRAM;
-    }
+  /**
+   * The mass unit stored under a length system: g / kg / lbm.
+   *
+   * Not necessarily the one a reader sees -- under centimeters and meters that
+   * is their pick (`displayMassUnit`); see model/mass-units.ts for why the two
+   * are kept apart.
+   */
+  public storedMassUnit(length: LengthUnit): MassUnit {
+    return storedMassUnit(length);
+  }
+
+  /** The mass unit a reader sees: their pick under cm and m, lbm under inches. */
+  public displayMassUnit(length: LengthUnit, chosen: MassUnit): MassUnit {
+    return displayMassUnit(length, chosen);
+  }
+
+  /** A stored mass, formatted in the unit the reader chose. */
+  public formatStoredMass(stored: number, length: LengthUnit, chosen: MassUnit): string {
+    const display = displayMassUnit(length, chosen);
+    return this.formatValueAndUnit(
+      this.convertMass(stored, storedMassUnit(length), display),
+      display
+    );
+  }
+
+  /** Typed in the reader's mass unit (or any unit typed with it), returned as stored. */
+  public parseStoredMass(input: string, length: LengthUnit, chosen: MassUnit): [boolean, number] {
+    const [success, value] = this.parseMassString(input, displayMassUnit(length, chosen));
+    return [
+      success,
+      success
+        ? this.convertMass(value, displayMassUnit(length, chosen), storedMassUnit(length))
+        : value,
+    ];
   }
 
   /**
-   * The unit an inertia field shows beside its number, per length system:
-   * g·cm² / kg·m² / lbm·in², each coherent with the mass unit beside it.
+   * The unit an inertia field shows beside its number: the reader's mass unit
+   * times the length squared -- g·cm², kg·cm², g·m², kg·m² or lbm·in².
    */
-  public displayInertiaUnit(length: LengthUnit): InertiaUnit {
-    switch (length) {
-      case LengthUnit.INCH:
-        return InertiaUnit.LBM_IN2;
-      case LengthUnit.METER:
-        return InertiaUnit.KG_M2;
-      default:
-        return InertiaUnit.G_CM2;
-    }
+  public displayInertiaUnit(length: LengthUnit, mass: MassUnit): InertiaUnit {
+    return inertiaUnitFor(mass, length);
   }
 
   /**
    * The unit link.massMoI is *stored* in, per length system — the one the
    * solver's siUnitFactors and every circulating URL are written against.
-   * Metric is the one system where it differs from the display unit.
    */
   public storedInertiaUnit(length: LengthUnit): InertiaUnit {
-    switch (length) {
-      case LengthUnit.INCH:
-        return InertiaUnit.LBM_IN2;
-      case LengthUnit.METER:
-        return InertiaUnit.KG_M2;
-      default:
-        return InertiaUnit.KG_CM2;
-    }
+    return storedInertiaUnit(length);
   }
 
-  /** A stored inertia, formatted in the display unit for its length system. */
-  public formatStoredInertia(stored: number, length: LengthUnit): string {
-    const display = this.displayInertiaUnit(length);
+  /** A stored inertia, formatted in the display unit for this length and mass. */
+  public formatStoredInertia(stored: number, length: LengthUnit, mass: MassUnit): string {
+    const display = inertiaUnitFor(mass, length);
     return this.formatValueAndUnit(
-      this.convertInertia(stored, this.storedInertiaUnit(length), display),
+      this.convertInertia(stored, storedInertiaUnit(length), display),
       display
     );
+  }
+
+  /** Typed in the display inertia unit (or any unit typed with it), returned as stored. */
+  public parseStoredInertia(input: string, length: LengthUnit, mass: MassUnit): [boolean, number] {
+    const display = inertiaUnitFor(mass, length);
+    const [success, value] = this.parseInertiaString(input, display);
+    return [
+      success,
+      success ? this.convertInertia(value, display, storedInertiaUnit(length)) : value,
+    ];
   }
 
   /**

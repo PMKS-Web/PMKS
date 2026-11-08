@@ -1,3 +1,4 @@
+import { readsOtherMetricMass } from '../model/mass-units';
 import { Injectable, inject } from '@angular/core';
 import { MechanismService } from './mechanism.service';
 import { Link, RealLink } from '../model/link';
@@ -297,6 +298,12 @@ export class UrlGenerationService {
       // Inverted on purpose: false is what every pre-flag URL unpacks, and
       // false has to keep meaning gravity on (see stored-settings.ts).
       encoder.addBoolSetting(BoolSetting.GRAVITY_OFF, !this.settings.isGravity.getValue());
+      // The reader's mass, as "the other metric one" rather than as a unit, so
+      // a drawing read in the stored mass writes the bit every older URL holds.
+      encoder.addBoolSetting(
+        BoolSetting.OTHER_METRIC_MASS,
+        readsOtherMetricMass(this.settings.lengthUnit.getValue(), this.settings.massUnit.getValue())
+      );
       encoder.addIntSetting(IntSetting.INPUT_SPEED, this.settings.inputSpeed.getValue());
       encoder.addDecimalSetting(
         DecimalSetting.LINEAR_INPUT_SPEED,

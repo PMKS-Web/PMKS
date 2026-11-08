@@ -400,21 +400,21 @@ export class AnalysisSetupComponent {
   massText(row: MassRow): string {
     // The unit is typed into the box, exactly as Basic Settings does it — and
     // typing it back (or not) parses the same either way.
-    return this.nup.formatValueAndUnit(
+    return this.nup.formatStoredMass(
       row.body.mass,
-      this.nup.massUnitFor(this.settings.lengthUnit.value)
+      this.settings.lengthUnit.value,
+      this.settings.massUnit.value
     );
   }
 
   moiText(row: MassRow): string {
-    const length = this.settings.lengthUnit.value;
-    const display = this.nup.displayInertiaUnit(length);
     // A point mass has no inertia, and its cell says so by being empty rather
     // than by a grayed zero that reads like a value someone forgot to set.
     if (row.isBlock || !(row.body instanceof RealLink)) return '';
-    return this.nup.formatValueAndUnit(
-      this.nup.convertInertia(row.body.massMoI, this.nup.storedInertiaUnit(length), display),
-      display
+    return this.nup.formatStoredInertia(
+      row.body.massMoI,
+      this.settings.lengthUnit.value,
+      this.settings.massUnit.value
     );
   }
 
@@ -452,11 +452,15 @@ export class AnalysisSetupComponent {
   }
 
   massUnitLabel(): string {
-    return this.nup.unitLabel(this.nup.massUnitFor(this.settings.lengthUnit.value));
+    return this.nup.unitLabel(
+      this.nup.displayMassUnit(this.settings.lengthUnit.value, this.settings.massUnit.value)
+    );
   }
 
   inertiaUnitLabel(): string {
-    return this.nup.unitLabel(this.nup.displayInertiaUnit(this.settings.lengthUnit.value));
+    return this.nup.unitLabel(
+      this.nup.displayInertiaUnit(this.settings.lengthUnit.value, this.settings.massUnit.value)
+    );
   }
 
   anyInertiaIsCustom(): boolean {
@@ -487,9 +491,10 @@ export class AnalysisSetupComponent {
 
   private applyMass(row: MassRow, raw: string): void {
     if (!this.massEditable()) return;
-    const [success, value] = this.nup.parseMassString(
+    const [success, value] = this.nup.parseStoredMass(
       raw,
-      this.nup.massUnitFor(this.settings.lengthUnit.value)
+      this.settings.lengthUnit.value,
+      this.settings.massUnit.value
     );
     if (!success || value < 0) {
       this.notify.refusal('value.mass', success ? NOT_A.nonNegativeMass : NOT_A.mass);
@@ -505,14 +510,16 @@ export class AnalysisSetupComponent {
 
   private applyInertia(row: MassRow, raw: string): void {
     if (!this.massEditable() || !this.moiEditable(row) || !(row.body instanceof RealLink)) return;
-    const length = this.settings.lengthUnit.value;
-    const display = this.nup.displayInertiaUnit(length);
-    const [success, value] = this.nup.parseInertiaString(raw, display);
+    const [success, value] = this.nup.parseStoredInertia(
+      raw,
+      this.settings.lengthUnit.value,
+      this.settings.massUnit.value
+    );
     if (!success || value < 0) {
       this.notify.refusal('value.inertia', NOT_A.momentOfInertia);
       return;
     }
-    row.body.massMoI = this.nup.convertInertia(value, display, this.nup.storedInertiaUnit(length));
+    row.body.massMoI = value;
     row.body.moiIsCustom = true;
     this.mechanism.updateMechanism(true);
     this.mechanism.onMechUpdateState.next(2);

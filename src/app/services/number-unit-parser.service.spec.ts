@@ -61,6 +61,41 @@ describe('NumberUnitParserService mass and inertia', () => {
     expect(nup.formatValueAndUnit(20, rpm)).toBe('20.00 RPM');
   });
 
+  it('shows a stored mass in the mass unit the reader picked', () => {
+    // Stored in grams under centimeters; a reader who weighs in kilograms
+    // sees kilograms, and the number underneath does not change.
+    expect(nup.formatStoredMass(500, LengthUnit.CM, MassUnit.GRAM)).toBe('500.00 g');
+    expect(nup.formatStoredMass(500, LengthUnit.CM, MassUnit.KG)).toBe('0.50 kg');
+    expect(nup.formatStoredMass(2, LengthUnit.METER, MassUnit.GRAM)).toBe('2000.00 g');
+    expect(nup.formatStoredMass(3, LengthUnit.INCH, MassUnit.KG)).toBe('3.00 lbm');
+  });
+
+  it('stores a typed mass in the length system’s own unit', () => {
+    const [ok, grams] = nup.parseStoredMass('2', LengthUnit.CM, MassUnit.KG);
+    expect(ok).toBe(true);
+    expect(grams).toBeCloseTo(2000, 9);
+    // A unit typed with the number still wins over the pick.
+    expect(nup.parseStoredMass('250 g', LengthUnit.CM, MassUnit.KG)).toEqual([true, 250]);
+    const [okM, kg] = nup.parseStoredMass('750', LengthUnit.METER, MassUnit.GRAM);
+    expect(okM).toBe(true);
+    expect(kg).toBeCloseTo(0.75, 12);
+    expect(nup.parseStoredMass('banana', LengthUnit.CM, MassUnit.KG)[0]).toBe(false);
+  });
+
+  it('shows and takes inertia in the reader’s mass times length squared', () => {
+    // Stored kg·cm² under centimeters, whichever mass the reader picked.
+    expect(nup.formatStoredInertia(2, LengthUnit.CM, MassUnit.KG)).toBe('2.00 kg·cm²');
+    expect(nup.formatStoredInertia(2, LengthUnit.CM, MassUnit.GRAM)).toBe('2000.00 g·cm²');
+    expect(nup.formatStoredInertia(0.5, LengthUnit.METER, MassUnit.GRAM)).toBe('500.00 g·m²');
+
+    const [ok, stored] = nup.parseStoredInertia('300', LengthUnit.METER, MassUnit.GRAM);
+    expect(ok).toBe(true);
+    expect(stored).toBeCloseTo(0.3, 12);
+    const [okTyped, fromTyped] = nup.parseStoredInertia('1 g·m²', LengthUnit.CM, MassUnit.KG);
+    expect(okTyped).toBe(true);
+    expect(fromTyped).toBeCloseTo(10, 9);
+  });
+
   it('round-trips the formatted value back through the parser', () => {
     const formatted = nup.formatValueAndUnit(453.59237, MassUnit.GRAM);
     expect(formatted).toBe('453.59 g');

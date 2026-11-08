@@ -150,10 +150,21 @@ directly, and a joint's type is four of them wrapped into two columns (`wrap`, w
 pill under the chosen option is positioned by measuring that option (`--thumb-left`,
 `--thumb-top`, `--thumb-width`, `--thumb-height`), so options may be as wide as their labels
 (`[fill]="false"` at the end of a settings row), share the width equally (the default in a panel),
-or sit on a second row. A `selected` of -1 chooses nothing, for a group whose parts disagree. Its
+fill the row split by label length (`weighted`, for labels as uneven as Settings' "Inch (in)" and
+"Centimeter (cm)"), or sit on a second row. A `selected` of -1 chooses nothing, for a group whose parts disagree. Its
 buttons carry the plain button role and `aria-pressed`, which is what the suites find them by, and
 a grayed option's `reasons` hang on its `.cell` wrapper: a disabled button takes no pointer events,
 so a tooltip on the button itself would never open.
+
+### `settings.massUnit` is usually `MassUnit.NULL`, and is read through `displayMassUnit`
+
+The mass pick in Settings is "no pick" (`MassUnit.NULL`, the length's own mass) until the reader
+chooses grams or kilograms, and a change of length puts it back to NULL. That is deliberate: a
+fixture, a template or a spec that sets `lengthUnit` to meters and never thinks about mass must
+encode exactly the URL it always did, and with a concrete default of grams it wrote the new
+`OTHER_METRIC_MASS` flag and changed every meter fixture's URL. So never compare
+`settings.massUnit.value` with a unit; ask `displayMassUnit(length, chosen)` what the reader sees,
+and `storedMassUnit(length)` what the number is kept in (`model/mass-units.ts`).
 
 ### `finishStructuralEdit` puts the selection back on what the reader selected
 

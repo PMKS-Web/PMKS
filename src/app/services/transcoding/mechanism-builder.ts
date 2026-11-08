@@ -1,3 +1,4 @@
+import { massUnitFromFlag } from '../../model/mass-units';
 import { Joint, PrisJoint, RealJoint, RevJoint } from 'src/app/model/joint';
 import { MechanismService } from '../mechanism.service';
 import { Link, RealLink } from 'src/app/model/link';
@@ -671,6 +672,14 @@ export class MechanismBuilder {
           : decodedForce === ForceUnit.KGF
             ? ForceUnit.KGF
             : ForceUnit.NEWTON;
+      // Before the length, so nothing listening to the length is handed a
+      // pairing that never existed -- a meter drawing read in grams, say.
+      this.settings.massUnit.next(
+        massUnitFromFlag(
+          decodedLength,
+          this.transcoder.getBoolSetting(BoolSetting.OTHER_METRIC_MASS)
+        )
+      );
       this.settings.lengthUnit.next(decodedLength);
       this.settings.angleUnit.next(
         // The checksum admits no URL without this enum, so it is always present.

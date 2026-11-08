@@ -367,6 +367,9 @@ Not suites — import them from one.
   mounts are listed, and the legend does not shift as values change sign.
 - `force-units.mjs` — which unit a force is read in: the Force Units row, kilograms-force leaving
   storage alone, conversion at each edge, and a grayed pill not reacting to hover.
+- `mass-units.mjs` — Settings picks length, mass and force separately (#142): the Length Units
+  and Mass Units rows, a note naming the torque and inertia units (and lbm and lbf under inches),
+  a mass pick leaving storage alone, riding the URL, and resetting with a change of length.
 
 ### Analysis modes and machines
 

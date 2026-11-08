@@ -1,4 +1,4 @@
-import { Component, Input, ChangeDetectionStrategy, input } from '@angular/core';
+import { Component, Input, ChangeDetectionStrategy, booleanAttribute, input } from '@angular/core';
 import { FormGroup } from '@angular/forms';
 import { MatIcon } from '@angular/material/icon';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -26,6 +26,8 @@ export class RadioComponent {
   readonly _formControl = input.required<string>();
   readonly formGroup = input.required<FormGroup>();
   readonly disabled = input<boolean>(false);
+  /** Split the width by label length; see `segmented-block`'s `weighted`. */
+  readonly weighted = input<boolean, unknown>(false, { transform: booleanAttribute });
 
   private cachedOptions: string[] = [];
 
