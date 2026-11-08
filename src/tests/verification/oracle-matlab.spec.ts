@@ -6,16 +6,16 @@ import { MATLAB_DIR } from '../../test-utils/oracle/published-problems';
 import { readReference, REPOSITORY_ROOT } from '../../test-utils/oracle/reference';
 import { KinematicsQuantity } from '../../test-data/verification/types';
 
-// The third side of the triangle. The MATLAB v1 tables check PMKS+
-// (verification/*.spec.ts) and the oracle checks PMKS+ (oracle.spec.ts); this
-// checks the oracle against MATLAB, with no PMKS+ code between them: the
+// The third side of the triangle. The MATLAB v1 tables check PMKS
+// (verification/*.spec.ts) and the oracle checks PMKS (oracle.spec.ts); this
+// checks the oracle against MATLAB, with no PMKS code between them: the
 // problems are read straight from the fixtures that transcribe the MATLAB
 // models (fixture-problem.ts). Each table is compared to the tolerance it
 // carries for itself, the precision MATLAB claims for its own numbers.
 
 type Vec = [number, number];
 
-/** What `registerDynamicsSuite` holds PMKS+ to against the same tables. */
+/** What `registerDynamicsSuite` holds PMKS to against the same tables. */
 const MATLAB_DYNAMICS_TOLERANCE = { abs: 1e-3, rel: 5e-3 };
 
 const worst: Record<string, { share: number; at: string }> = {};

@@ -15,7 +15,7 @@ import { angleReference, GROUND_BODY, resolveActuator } from '../../app/model/ac
 
 type Vec = [number, number];
 
-/** How PMKS+ produced a rate: its analytic solver, or a difference of its poses. */
+/** How PMKS produced a rate: its analytic solver, or a difference of its poses. */
 export type RateMethod = 'analytic' | 'differenced';
 
 export interface Rated<T> {
@@ -23,7 +23,7 @@ export interface Rated<T> {
   method: RateMethod;
 }
 
-/** One PMKS+ frame, in SI, placed on the oracle's driver grid. */
+/** One PMKS frame, in SI, placed on the oracle's driver grid. */
 export interface PmksSample {
   frame: number;
   /** Grid index: the driver has travelled k steps from the drawn pose. */
@@ -172,8 +172,8 @@ function scaled<T extends Vec | number>(value: T, scale: number): T {
 }
 
 /**
- * Every frame of a solved PMKS+ machine, in SI and keyed by the driver's grid
- * index, with each rate marked by how PMKS+ produced it.
+ * Every frame of a solved PMKS machine, in SI and keyed by the driver's grid
+ * index, with each rate marked by how PMKS produced it.
  */
 export function pmksSamples(
   mechanism: Mechanism,

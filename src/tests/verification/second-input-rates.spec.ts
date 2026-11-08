@@ -6,7 +6,7 @@ import { buildMechanism, MechanismFixture } from '../../test-utils/verification/
 import { teachingLabSliderCrankFixture } from '../../test-utils/verification/fixtures';
 import { twoInputsFixture } from '../../test-utils/verification/student-mistake-fixtures';
 
-// A drawing can flag a second input, which PMKS+ ignores with a warning and
+// A drawing can flag a second input, which PMKS ignores with a warning and
 // runs from the first. Ignored has to mean ignored: every rate must come out
 // exactly as it does with the second flag taken off.
 //

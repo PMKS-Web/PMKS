@@ -16,7 +16,7 @@ const SLOP_PX = 10;
 /**
  * A press held still, which is a touch device's right-click.
  *
- * Every verb in PMKS+ that makes something -- add a link, attach a cylinder,
+ * Every verb in PMKS that makes something -- add a link, attach a cylinder,
  * ground a joint, apply a force -- is behind the right-click menu, so a device
  * with no right button could open the app, pan it and read it, and never build
  * anything. That is what the warning dialog used to be apologising for.

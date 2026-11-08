@@ -34,7 +34,7 @@ import {
   ORACLE_FRAME_EXCLUSIONS,
 } from '../../test-data/oracle/manifest';
 
-// Every published machine, solved by PMKS+ and by the numerical oracle
+// Every published machine, solved by PMKS and by the numerical oracle
 // (oracle/, on Exudyn), compared sample by sample on the driver's grid.
 // docs/numerical-oracle-plan.md is the contract; `npm run oracle` regenerates
 // the references this reads.
@@ -164,7 +164,7 @@ describe('numerical oracle', () => {
         const sweep = reference.sweep;
         const oracleRuns = !!sweep && (sweep.closesAfterTurns !== null || sweep.kMax > sweep.kMin);
         const input = inputOf(solvedDrawing(machine.payload, 'degree').partitions[machine.index]);
-        expect(mechanism.isMechanismValid(), 'PMKS+ runs it').toBe(oracleRuns);
+        expect(mechanism.isMechanismValid(), 'PMKS runs it').toBe(oracleRuns);
         if (!oracleRuns || !input || !sweep) {
           outcome.set(problem.id, 'verified: neither runs');
           return;
@@ -176,29 +176,29 @@ describe('numerical oracle', () => {
           sweep.step,
           siFactors(solverUnit(settings)).meters
         );
-        // Where PMKS+ travels is read off every frame; what its poses are, only
+        // Where PMKS travels is read off every frame; what its poses are, only
         // off the frames it solved (`solvedFrames`).
         const travel = compareMachine(problem, reference, everyFrame);
         const samples = solvedFrames(problem, everyFrame);
         const comparison = compareMachine(problem, reference, samples);
-        expect(travel.offGrid, 'PMKS+ samples off the oracle grid').toEqual([]);
+        expect(travel.offGrid, 'PMKS samples off the oracle grid').toEqual([]);
         if (sweep.closesAfterTurns) {
           const perTurn = Math.round((2 * Math.PI) / sweep.step);
-          expect(mechanism.joints.length - 1, 'PMKS+ closes after the same turns').toBe(
+          expect(mechanism.joints.length - 1, 'PMKS closes after the same turns').toBe(
             perTurn * sweep.closesAfterTurns
           );
         } else {
-          // PMKS+ reverses at the last sample it can solve; the oracle's refined
+          // PMKS reverses at the last sample it can solve; the oracle's refined
           // toggle lies within the next step.
-          expect(travel.outOfRange, 'PMKS+ ran past the toggle').toEqual([]);
-          expect(travel.range.pmks, 'PMKS+ reverses where the oracle finds the toggle').toEqual(
+          expect(travel.outOfRange, 'PMKS ran past the toggle').toEqual([]);
+          expect(travel.range.pmks, 'PMKS reverses where the oracle finds the toggle').toEqual(
             travel.range.oracle
           );
         }
         // Nothing passes by not being compared: every stored sample is reached,
         // every part the oracle reports is reported back, and every quantity
-        // the oracle has at a sample PMKS+ has too, unless the manifest leaves
-        // it out. Reaching is read off every frame: a decoded drawing PMKS+ did
+        // the oracle has at a sample PMKS has too, unless the manifest leaves
+        // it out. Reaching is read off every frame: a decoded drawing PMKS did
         // not solve (`solvedFrames`) still stands at its k.
         const leftOut = (quantity: string, part: string, k: number): boolean =>
           exclusions.some(
@@ -208,13 +208,13 @@ describe('numerical oracle', () => {
               (!e.what.parts || e.what.parts.includes(part)) &&
               (!e.what.samples || e.what.samples.includes(k))
           );
-        expect(travel.unvisited, 'oracle samples PMKS+ never reached').toEqual([]);
+        expect(travel.unvisited, 'oracle samples PMKS never reached').toEqual([]);
         expect(comparison.compared, 'samples compared').toBeGreaterThan(0);
-        expect(comparison.unreported, 'parts PMKS+ never reports').toEqual([]);
+        expect(comparison.unreported, 'parts PMKS never reports').toEqual([]);
         const missing = comparison.missing
           .filter((m) => !leftOut(m.quantity, m.part, m.k))
           .map((m) => `${m.quantity} of ${m.part} at k=${m.k}`);
-        expect(missing.slice(0, 10), 'quantities PMKS+ left blank').toEqual([]);
+        expect(missing.slice(0, 10), 'quantities PMKS left blank').toEqual([]);
         const ends = sweep.closesAfterTurns ? undefined : [sweep.kMin, sweep.kMax];
         const lastFrame = mechanism.joints.length - 1;
         const failures: string[] = [];
@@ -265,14 +265,14 @@ describe('numerical oracle', () => {
             continue;
           }
           forceCoverage[forces.forceScale === 0 ? 'unloaded' : 'loaded']++;
-          // A singular pose is PMKS+'s to refuse; a well-conditioned one is not.
+          // A singular pose is PMKS's to refuse; a well-conditioned one is not.
           for (const frame of forces.unsolved) {
             if (frame.condition > CONDITIONING_LIMIT) continue;
-            forceFailures.push(`${mode}: PMKS+ did not solve k=${frame.k}: ${frame.status}`);
+            forceFailures.push(`${mode}: PMKS did not solve k=${frame.k}: ${frame.status}`);
           }
           for (const what of forces.missing) {
             if (!leftOut(what.quantity, what.part))
-              forceFailures.push(`${mode}: PMKS+ reports no ${what.quantity} ${what.part}`);
+              forceFailures.push(`${mode}: PMKS reports no ${what.quantity} ${what.part}`);
           }
           for (const d of forces.deviations) {
             if (leftOut(d.quantity, d.part, d.k)) {

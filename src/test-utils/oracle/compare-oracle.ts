@@ -30,7 +30,7 @@ export interface Deviation {
   part: string;
   k: number;
   frame: number;
-  /** |PMKS+ − oracle| over the machine's scale for this quantity. */
+  /** |PMKS − oracle| over the machine's scale for this quantity. */
   error: number;
   /** The driven Jacobian's condition number at this pose, from the reference. */
   condition: number;
@@ -41,17 +41,17 @@ export interface MachineComparison {
   worst: Map<string, Deviation>;
   /** Every deviation, for the report. */
   deviations: Deviation[];
-  /** PMKS+ frames whose driver coordinate is not on the oracle's grid. */
+  /** PMKS frames whose driver coordinate is not on the oracle's grid. */
   offGrid: { frame: number; offGrid: number }[];
-  /** PMKS+ frames past the oracle's travel: a toggle disagreement. */
+  /** PMKS frames past the oracle's travel: a toggle disagreement. */
   outOfRange: { frame: number; k: number }[];
-  /** PMKS+'s extent of travel in grid steps, and the oracle's. */
+  /** PMKS's extent of travel in grid steps, and the oracle's. */
   range: { pmks: [number, number]; oracle: [number, number] };
-  /** Quantities PMKS+ left blank where the oracle has one, frame by frame. */
+  /** Quantities PMKS left blank where the oracle has one, frame by frame. */
   missing: { quantity: Quantity; part: string; k: number }[];
-  /** Joints and bodies the oracle reports and PMKS+ reported in no frame. */
+  /** Joints and bodies the oracle reports and PMKS reported in no frame. */
   unreported: string[];
-  /** Stored oracle samples no PMKS+ frame landed on, so nothing was compared there. */
+  /** Stored oracle samples no PMKS frame landed on, so nothing was compared there. */
   unvisited: number[];
   compared: number;
 }
@@ -202,7 +202,7 @@ export function compareMachine(
     ...Object.keys(sweep.samples.points),
     ...Object.keys(sweep.samples.bodies),
   ].filter((id) => !reported.has(id));
-  // A part PMKS+ reports somewhere but not at one sample has every quantity
+  // A part PMKS reports somewhere but not at one sample has every quantity
   // missing there; one it never reports is `unreported`, said once.
   for (const { id, quantities, k } of absent) {
     if (!reported.has(id)) continue;
@@ -269,7 +269,7 @@ export type Verdict = 'pass' | 'fail' | 'ill-conditioned' | 'undefined';
  * Whether a deviation is within budget, or why it is not compared. A
  * differenced rate at the last sample before a reversal is undefined: the
  * difference reaches across the turn, onto the return sweep at the same pose.
- * So is one at PMKS+'s first or last frame (`lastFrame`), which it differences
+ * So is one at PMKS's first or last frame (`lastFrame`), which it differences
  * one-sided, to first order, though the last frame repeats the first (#84).
  */
 export function judge(
@@ -288,7 +288,7 @@ export function judge(
 }
 
 /**
- * Whether PMKS+ differences this frame one-sided, its first or its last, and
+ * Whether PMKS differences this frame one-sided, its first or its last, and
  * the manifest leaves those frames out (`ORACLE_FRAME_EXCLUSIONS`, #84).
  */
 export function oneSided(frame: number, lastFrame: number): boolean {
@@ -297,9 +297,9 @@ export function oneSided(frame: number, lastFrame: number): boolean {
 }
 
 /**
- * The PMKS+ frames that are poses of the mechanism the problem describes.
+ * The PMKS frames that are poses of the mechanism the problem describes.
  *
- * PMKS+ shows the drawing as decoded at frame 0, solves the frames after it,
+ * PMKS shows the drawing as decoded at frame 0, solves the frames after it,
  * and closes a cycle on a copy of frame 0. A drawing that satisfies its
  * constraints exactly (any linkage of pins, whose lengths are read off the
  * drawing) is the same pose either way. A cylinder's four points, stored to

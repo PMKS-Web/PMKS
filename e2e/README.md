@@ -1,4 +1,4 @@
-# PMKS+ tests
+# PMKS tests
 
 Two layers, organized by what they exercise:
 

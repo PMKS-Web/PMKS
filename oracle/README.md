@@ -1,6 +1,6 @@
 # The numerical oracle
 
-An independent solver for PMKS+'s verification mechanisms, built on [Exudyn](https://exudyn.readthedocs.io/).
+An independent solver for PMKS's verification mechanisms, built on [Exudyn](https://exudyn.readthedocs.io/).
 [`docs/numerical-oracle-plan.md`](../docs/numerical-oracle-plan.md) is the plan and records why
 Exudyn was chosen.
 

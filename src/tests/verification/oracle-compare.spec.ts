@@ -5,13 +5,13 @@ import { compareMachine } from '../../test-utils/oracle/compare-oracle';
 import { publishedMachine } from '../../test-utils/oracle/published-machine';
 
 // The comparison reports what it could not compare, so that a machine cannot
-// pass oracle.spec.ts by PMKS+ reporting less. Each case removes something
-// from PMKS+'s samples of a machine that is verified in full.
+// pass oracle.spec.ts by PMKS reporting less. Each case removes something
+// from PMKS's samples of a machine that is verified in full.
 
 describe('the oracle comparison', () => {
   const { problem, reference, samples } = publishedMachine('template.slider-crank.m1');
 
-  it('finds nothing missing in a machine PMKS+ reports in full', () => {
+  it('finds nothing missing in a machine PMKS reports in full', () => {
     const comparison = compareMachine(problem, reference, samples);
     expect(comparison.compared).toBeGreaterThan(0);
     expect(comparison.missing).toEqual([]);
@@ -19,7 +19,7 @@ describe('the oracle comparison', () => {
     expect(comparison.unvisited).toEqual([]);
   });
 
-  it('reports every rate PMKS+ leaves blank', () => {
+  it('reports every rate PMKS leaves blank', () => {
     const blank: PmksSample[] = samples.map((sample) => ({
       ...sample,
       points: new Map([...sample.points].map(([id, p]) => [id, { pos: p.pos }])),
@@ -32,7 +32,7 @@ describe('the oracle comparison', () => {
     );
   });
 
-  it('reports every part PMKS+ never reports', () => {
+  it('reports every part PMKS never reports', () => {
     const empty = samples.map((sample) => ({ ...sample, points: new Map(), bodies: new Map() }));
     const comparison = compareMachine(problem, reference, empty);
     expect(comparison.compared).toBe(0);
@@ -44,7 +44,7 @@ describe('the oracle comparison', () => {
     );
   });
 
-  it('reports a part PMKS+ leaves out of some samples, at each of them', () => {
+  it('reports a part PMKS leaves out of some samples, at each of them', () => {
     const gappy = samples.map((sample) =>
       sample.k === 0
         ? sample

@@ -296,8 +296,8 @@ const hint = () => page.locator('#suggest-link-hint').innerText();
 await page.fill('#suggest-link', 'https://www.youtube.com/watch?v=hoeken');
 await page.waitForTimeout(500);
 check(
-  'somebody else’s link is not a PMKS+ link',
-  (await hint()).startsWith('That is not a PMKS+ link.')
+  'somebody else’s link is not a PMKS link',
+  (await hint()).startsWith('That is not a PMKS link.')
 );
 await page.fill('#suggest-link', `https://app.pmksplus.com/?${payloads.Four_Bar.slice(0, 40)}`);
 await page.waitForTimeout(500);

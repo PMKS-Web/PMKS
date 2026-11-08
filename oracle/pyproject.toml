@@ -1,7 +1,7 @@
 [project]
 name = "pmks-oracle"
 version = "0.1.0"
-description = "Independent multibody oracle for PMKS+ verification mechanisms"
+description = "Independent multibody oracle for PMKS verification mechanisms"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "exudyn==1.13.6",

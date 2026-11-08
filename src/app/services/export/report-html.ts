@@ -297,7 +297,7 @@ export function reportHtml(context: ReportContext): string {
   });
 
   const pages = bodies.map((entry, at) => page(entry.body, entry.footer, at + 1, bodies.length));
-  const title = context.documentTitle || context.sections[0]?.title || 'PMKS+ report';
+  const title = context.documentTitle || context.sections[0]?.title || 'PMKS report';
   return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(
     title
   )}</title><style>${styles()}</style></head><body>${pages.join('')}</body></html>`;
@@ -378,7 +378,7 @@ function sectionHead(context: ReportContext, title: string, subtitle: string): s
     title
   )}</div><div class="subtitle">${escapeHtml(
     subtitle
-  )}</div></div><img class="logo" src="${escapeHtml(context.logoUrl)}" alt="PMKS+"></div>`;
+  )}</div></div><img class="logo" src="${escapeHtml(context.logoUrl)}" alt="PMKS"></div>`;
 }
 
 function graphBlock(plot: ReportPlot): string {
@@ -453,7 +453,7 @@ function dataPageBody(
 }
 
 function page(body: string, footer: string, number: number, total: number): string {
-  return `<section class="page"><div class="pageBody">${body}</div><div class="pageFoot"><span>PMKS+ · app.pmksplus.com</span><span class="spacer"></span><span>${escapeHtml(
+  return `<section class="page"><div class="pageBody">${body}</div><div class="pageFoot"><span>PMKS · app.pmksplus.com</span><span class="spacer"></span><span>${escapeHtml(
     footer
   )}</span><span class="pageNumber">Page ${number} of ${total}</span></div></section>`;
 }

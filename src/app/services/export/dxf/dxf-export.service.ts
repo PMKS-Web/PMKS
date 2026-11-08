@@ -485,7 +485,7 @@ export class DxfExportService {
     const names = this.readerNames();
     return JSON.stringify(
       {
-        source: 'PMKS+',
+        source: 'PMKS',
         units: unitWord(unit),
         ...this.tableUnits(),
         pose: 'start',
@@ -629,7 +629,7 @@ function handoffNotes(
   const holes = choices.jointCircles === 'holes';
   const tables = choices.dataFile !== 'none';
   return [
-    'PMKS+ CAD export',
+    'PMKS CAD export',
     '=================',
     '',
     ...(choices.fileFormat === 'svg'
@@ -758,7 +758,7 @@ function handoffNotes(
     'What a drawing cannot carry',
     '---------------------------',
     'Joints, mates, motion and mass. Those are in the companion tables beside this',
-    'file, and in PMKS+ itself. What the drawing does carry is exact hole positions',
+    'file, and in PMKS itself. What the drawing does carry is exact hole positions',
     'shared between mating parts, which is the part that is tedious to redo by hand.',
     'The pairing is the one thing left to say -- the geometry is already lined up',
     'for it.',

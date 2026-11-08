@@ -122,7 +122,7 @@ export type PastedLink =
     };
 
 /**
- * Where a PMKS+ link can come from: production, the branch and preview deploys
+ * Where a PMKS link can come from: production, the branch and preview deploys
  * of either Netlify site, a local server, and wherever this copy is running.
  */
 export function isPmksHost(hostname: string, here: string): boolean {
@@ -164,7 +164,7 @@ export function readPastedLink(text: string, here: string): PastedLink {
   } catch {
     return { kind: 'broken' };
   }
-  // A PMKS+ address with nothing after it, or only somebody's tracking, is the
+  // A PMKS address with nothing after it, or only somebody's tracking, is the
   // app's front door rather than a mechanism.
   if (payload === null || looksLikeQueryParameters(payload)) return { kind: 'foreign' };
 

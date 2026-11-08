@@ -9,7 +9,7 @@ import { create } from 'storybook/theming';
 addons.setConfig({
   theme: create({
     base: 'light',
-    brandTitle: 'PMKS+ UI',
+    brandTitle: 'PMKS UI',
     brandUrl: 'https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator',
     brandTarget: '_blank',
   }),

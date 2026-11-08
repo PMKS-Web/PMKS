@@ -24,7 +24,7 @@ says so.
 
 ### `Mechanism`'s frame 0 is the drawing as decoded, not as solved
 
-PMKS+ stores the drawing it was handed as frame 0, and the cycle's closing frame copies it; only
+PMKS stores the drawing it was handed as frame 0, and the cycle's closing frame copies it; only
 frames 1 onward are solved. A cylinder saved a hair off its line is therefore straightened from
 frame 1, and frame 0 keeps the misalignment. `solvedDrawing` in
 `src/test-utils/machine-facts/drawing.ts` decodes a URL and solves it at once, without the
