@@ -30,6 +30,9 @@ const BOTH = ['gate', 'nightly'];
 const NIGHTLY = ['nightly'];
 
 export const SUITES = [
+  { name: 'path-synthesis', seconds: 35, lanes: NIGHTLY },
+  { name: 'path-synthesis-backend', seconds: 90, lanes: NIGHTLY },
+  { name: 'path-synthesis-free-timing', seconds: 180, lanes: NIGHTLY },
   { name: 'drawing-styles', seconds: 70, lanes: BOTH },
   { name: 'bug-fixes-2', seconds: 90, lanes: NIGHTLY },
   { name: 'analysis-audit', seconds: 224, lanes: NIGHTLY },
@@ -216,6 +219,10 @@ export const SUITES = [
 
 /** Files in `e2e/` that are not suites, and suites no runner can drive. */
 export const NOT_RUN = [
+  {
+    name: 'path-synthesis-gallery',
+    why: 'Requires a completed Storybook build; run explicitly after npm run build-storybook.',
+  },
   {
     name: 'cylinder-object-size',
     why: 'Object Size was retired by Drawing Style. The drawing-styles gate covers cylinder geometry through style, zoom, and Fit changes.',

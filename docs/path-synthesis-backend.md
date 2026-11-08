@@ -1,6 +1,26 @@
 # Four-bar path synthesis backend
 
-> Status: S0–S3 implemented locally on `feature/path-synthesis-free-timing`: monotone free timing, a 24-case benchmark, and ranked verified candidates.
+> Status: S0–S3 transferred to PMKS's independent `feature/path-synthesis` branch: monotone free timing, a 24-case benchmark, and ranked verified candidates.
+
+## Transfer to PMKS
+
+On November 7, 2026, the frontend (`4c943fac`), S0–S2 (`2455c85c`) and S3 (`716346cc`)
+commits were replayed onto PMKS staging at `b9b699e590b247d1676f8f9a86ddf6e2e66e6e01`.
+Path Synthesis remains separate from structural analysis. Integration retains staging's shared
+chip control, unit-enum imports, history permissions and reorganized documentation and stories.
+The numerical engine is unchanged. Browser fixture setup explicitly refreshes Angular after
+directly assigning target points, as required by staging's zoneless rendering.
+
+The audit and measurements below record the original September implementation. The tracked
+24-case benchmark JSON and Markdown are intentional reproducible reference results, not a new
+benchmark run against November staging. Their source fixtures are verified separately.
+
+Transfer verification: `npm run check`, production and Storybook builds, and the focused numerical,
+service and fixture tests passed (112 tests; 24 opt-in benchmark cases skipped). Browser suites
+`path-synthesis.mjs` (13 checks), `path-synthesis-backend.mjs` (12),
+`path-synthesis-free-timing.mjs` (12) and `path-synthesis-gallery.mjs` (9 states, no accessibility
+violations) passed. Drag and playback frames were inspected. The full benchmark was not rerun
+because the numerical engine and benchmark inputs are byte-for-byte unchanged from S3.
 
 ## Audit and starting point
 

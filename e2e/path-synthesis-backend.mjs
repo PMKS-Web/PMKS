@@ -66,9 +66,12 @@ try {
     design.path.closed = true;
     design.path.smooth = true;
     grid.mechanismSrv.save();
+    // Test setup mutates plain fields outside an Angular event. Refresh the zoneless view.
+    ng.applyChanges(ng.getComponent(document.querySelector('app-path-synthesis-panel')));
   });
   await page.waitForTimeout(100);
   const before = await drawing();
+  assert.ok(before.points >= 3, 'Production fixture supplies enough target points');
   await button('Synthesize Four-Bar').click();
   assert.equal(
     await timing.getByRole('button', { name: 'Equal Input Angle', exact: true }).isDisabled(),
