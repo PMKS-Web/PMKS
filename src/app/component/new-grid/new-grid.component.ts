@@ -5452,11 +5452,15 @@ export class NewGridComponent implements OnDestroy {
   /**
    * How big a name on the canvas is drawn, for joints, links and forces alike.
    *
-   * A fraction of Object Size with an 11px readability floor. Compact drawings
-   * keep legible labels rather than shrinking names into specks.
+   * A fraction of Object Size, kept between 11px and 18px on screen. The floor
+   * keeps compact drawings legible rather than shrinking names into specks. The
+   * ceiling is for text only: the marks themselves zoom with the drawing up to
+   * a 90px pin (issue #273), and a name grown to match would stop being a
+   * label and start covering the parts it names.
    */
   get tagFontSize(): number {
-    return Math.max(this.settings.drawingScale * 0.2, this.svgGrid.scaleWithZoom(11));
+    const size = Math.max(this.settings.drawingScale * 0.2, this.svgGrid.scaleWithZoom(11));
+    return Math.min(size, this.svgGrid.scaleWithZoom(18));
   }
 
   /**

@@ -281,8 +281,9 @@ record(
   { labels: type.labels.map((l) => l.size), want: type.tagFontSize }
 );
 
-// This fixture already reaches Standard's upper screen-size limit. Increasing
-// the legacy base scale must not make its labels grow beyond that limit.
+// This fixture already reaches the labels' 18px upper screen-size limit.
+// Increasing the legacy base scale grows the marks (they zoom with the drawing,
+// issue #273) but must not make its labels grow beyond that limit.
 await inAngular(page, () => {
   const settings = ng.getComponent(document.querySelector('app-new-grid')).settings;
   settings.constructor._objectScale.next(settings.objectScale * 2);
