@@ -22,6 +22,11 @@ service and fixture tests passed (112 tests; 24 opt-in benchmark cases skipped).
 violations) passed. Drag and playback frames were inspected. The full benchmark was not rerun
 because the numerical engine and benchmark inputs are byte-for-byte unchanged from S3.
 
+Staging also requires independent numerical-oracle coverage for every published gallery mechanism.
+The transfer adds 26 generated problem/reference pairs under `src/test-data/oracle/`, using the
+locked Exudyn toolchain. These verify the two path reference mechanisms and the 24 benchmark source
+mechanisms; they do not rerun synthesis optimization. Existing oracle files are unchanged.
+
 ## Audit and starting point
 
 Draft PR #12 resolves to `feature/path-synthesis`, commit

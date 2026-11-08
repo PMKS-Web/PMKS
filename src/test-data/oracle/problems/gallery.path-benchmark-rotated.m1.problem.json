@@ -1,0 +1,153 @@
+{
+ "schema": "pmks-oracle-problem/1",
+ "id": "gallery.path-benchmark-rotated.m1",
+ "title": "Path benchmark: rotated, M1",
+ "source": {
+  "kind": "published",
+  "case": "gallery.path-benchmark-rotated",
+  "machine": "M1"
+ },
+ "gravity": 9.80665,
+ "bodies": [
+  {
+   "id": "AB",
+   "mass": 0.001,
+   "inertia": 0.0001,
+   "com": [
+    0.00035368600833851453,
+    0.004987474933020273
+   ]
+  },
+  {
+   "id": "BCE",
+   "mass": 0.001,
+   "inertia": 0.0001,
+   "com": [
+    -0.005380041911710299,
+    0.023222551430853385
+   ]
+  },
+  {
+   "id": "CD",
+   "mass": 0.001,
+   "inertia": 0.0001,
+   "com": [
+    0.005761202065654632,
+    0.037357141236252264
+   ]
+  }
+ ],
+ "joints": [
+  {
+   "id": "A",
+   "kind": "pin",
+   "at": [
+    0,
+    0
+   ],
+   "bodies": [
+    "AB"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "B",
+   "kind": "pin",
+   "at": [
+    0.0007073720166770291,
+    0.009974949866040545
+   ],
+   "bodies": [
+    "AB",
+    "BCE"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "C",
+   "kind": "pin",
+   "at": [
+    -0.006621440725713829,
+    0.03906598807004712
+   ],
+   "bodies": [
+    "BCE",
+    "CD"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "D",
+   "kind": "pin",
+   "at": [
+    0.018143844857023094,
+    0.03564829440245742
+   ],
+   "bodies": [
+    "CD"
+   ],
+   "grounded": true,
+   "welded": false
+  }
+ ],
+ "driver": {
+  "joint": "A",
+  "kind": "rotation",
+  "speed": -1.0471975511965976,
+  "bodies": [
+   "ground",
+   "AB"
+  ]
+ },
+ "loads": [],
+ "points": [
+  {
+   "id": "A",
+   "body": "ground",
+   "at": [
+    0,
+    0
+   ]
+  },
+  {
+   "id": "B",
+   "body": "AB",
+   "at": [
+    0.0007073720166770291,
+    0.009974949866040545
+   ]
+  },
+  {
+   "id": "C",
+   "body": "BCE",
+   "at": [
+    -0.006621440725713829,
+    0.03906598807004712
+   ]
+  },
+  {
+   "id": "E",
+   "body": "BCE",
+   "at": [
+    -0.010226057026094096,
+    0.020626716356472494
+   ]
+  },
+  {
+   "id": "D",
+   "body": "ground",
+   "at": [
+    0.018143844857023094,
+    0.03564829440245742
+   ]
+  }
+ ],
+ "sweep": {
+  "step": 0.017453292519943295,
+  "maxSamples": 2000
+ },
+ "unsupported": []
+}
