@@ -156,6 +156,37 @@ try {
     !(await page.getByText('Compound Link Settings', { exact: true }).count()) &&
       !(await page.getByRole('button', { name: /Un.?weld All/i }).count())
   );
+
+  // Zoomed out until the marks stop shrinking, a part is thinner than its 12px
+  // grab band (#linkGrabHolder, issue #273). A press on the band, outside every
+  // part's fill, must still pick the part on the second click.
+  await grid((g) => {
+    g.activeObjService.clearPartSelection();
+    for (let i = 0; i < 40 && g.settings.drawingScale * g.svgGrid.getZoom() > 15.01; i++) {
+      g.svgGrid.zoomOut();
+    }
+  });
+  await page.waitForTimeout(400);
+  const band = await grid((g) => {
+    const leaf = g.mechanismSrv.links.find((l) => l.id === 'CDE').subset.find((l) => l.id === 'CD');
+    const [a, b] = leaf.joints.map((j) => g.svgGrid.modelToScreen(j));
+    const length = Math.hypot(b.x - a.x, b.y - a.y);
+    const off = 5.5;
+    const x = (a.x + b.x) / 2 - ((b.y - a.y) / length) * off;
+    const y = (a.y + b.y) / 2 + ((b.x - a.x) / length) * off;
+    return { x, y, under: document.elementFromPoint(x, y)?.id };
+  });
+  await page.mouse.click(band.x, band.y);
+  const bandFirst = await grid((g) => g.activeObjService.selectedLink?.id);
+  await page.mouse.click(band.x, band.y);
+  const bandSecond = await grid((g) => g.activeObjService.selectedLink?.id);
+  check(
+    "zoomed far out, a press on a thin part's grab band picks the body, then the part",
+    band.under === 'CDE__wideHit' && bandFirst === 'CDE' && bandSecond === 'CD',
+    { band, bandFirst, bandSecond }
+  );
+  await grid((g) => g.svgGrid.scaleToFitLinkage(false));
+  await page.waitForTimeout(400);
   await page.getByRole('button', { name: /Kinematic Analysis/ }).click();
   check(
     'the first link graph starts expanded',

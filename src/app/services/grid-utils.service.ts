@@ -1732,7 +1732,19 @@ export class GridUtilsService {
       const picked = pick((leaf) =>
         drawn(leaf) ? hit.isPointInStroke(at()) : hit.isPointInFill(at())
       );
-      if (!this.settings.isSchematic || !picked.isCompound) return picked;
+      if (!picked.isCompound) return picked;
+      if (!this.settings.isSchematic) {
+        // Nothing's fill was hit, but zoomed far out a press can land on the
+        // 12px grab band beside a thin part (#linkGrabHolder, issue #273). That
+        // band is the part's line, so its stroke picks the part. Asked second,
+        // so a part's own fill still wins where a band overlaps it.
+        return pick((leaf) => {
+          const line = schematicLink(leaf, cylinders);
+          if (!line) return false;
+          hit.setAttribute('d', line);
+          return hit.isPointInStroke(at());
+        });
+      }
       // Nothing's line was hit, so the shaded inside of a part -- a plate, or a
       // disc -- picks it: Schematic shades it because it takes a click. Asked
       // second, so a bar lying across a plate is still picked by its line.
