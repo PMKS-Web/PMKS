@@ -60,6 +60,18 @@ describe('top bar modes', () => {
     expect(RightPanelComponent.attentionCount).toBe(attention + 1);
   });
 
+  it('opens structural setup without claiming force readiness and treats it as analysis mode', () => {
+    ready(false);
+    bar.select(TabID.STRUCTURAL);
+    expect(tabs.getCurrentTab()).toBe(TabID.STRUCTURAL);
+    expect(tabs.isAnalysisMode()).toBe(true);
+    expect(tabs.isWidePanel()).toBe(true);
+    expect(RightPanelComponent.isOpen).toBe(false);
+    const pause = vi.spyOn(mechanism, 'pauseInPlace');
+    bar.select(TabID.EDIT);
+    expect(pause).toHaveBeenCalledOnce();
+  });
+
   it('just switches when the mode is ready and not the current one', () => {
     ready(true);
     bar.select(TabID.ANALYZE);
@@ -172,7 +184,7 @@ describe('top bar modes', () => {
 
     // Every mode is still one tab stop, and none of them is taken out of it.
     const buttons = [...fixture.nativeElement.querySelectorAll('.tabButton')];
-    expect(buttons.length).toBe(4);
+    expect(buttons.length).toBe(5);
     expect(buttons.every((one: HTMLElement) => one.getAttribute('tabindex') === null)).toBe(true);
   });
 

@@ -56,6 +56,8 @@ export class BottombarComponent {
         return 'Edit';
       case TabID.FORCE:
         return 'Force';
+      case TabID.STRUCTURAL:
+        return 'Structural';
       default:
         return 'Kinematic';
     }

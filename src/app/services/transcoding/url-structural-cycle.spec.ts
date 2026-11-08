@@ -11,7 +11,7 @@ import { analyzePmksCycle } from '../../model/structural/pmks-cycle-analysis';
 import { StringTranscoder } from './string-transcoder';
 import { MechanismBuilder } from './mechanism-builder';
 
-it('surfaces legacy custom-inertia URL rounding as S3 cycle failures and leaves URL bytes unchanged', () => {
+it('preserves precise custom inertia through URLs and still refuses inconsistent legacy inertia', () => {
   const fixture = structuralCrankFixture();
   fixture.load = undefined;
   fixture.joints[1].x = 2 * MODEL_SCALE;
@@ -35,15 +35,20 @@ it('surfaces legacy custom-inertia URL rounding as S3 cycle failures and leaves 
   new MechanismBuilder(target.service, decoder, target.settings, target.active).build(true);
   target.service.updateMechanism();
   const restored = target.service.mechanisms[0];
-  expect((restored.links[0][0] as RealLink).massMoI).toBe(0.667);
+  expect((restored.links[0][0] as RealLink).massMoI).toBe(2 / 3);
   const result = analyzePmksCycle({ ...base, mechanism: restored });
-  expect(result.status).toBe('failed');
-  expect(result.coverage.successful).toBe(0);
-  for (const sample of result.samples)
+  expect(result.status).toBe('complete');
+  expect(result.coverage.successful).toBe(3);
+  expect(urlGeneratorFor(target.service, target.settings).generateUrlQuery()).toBe(url);
+  // A genuinely rounded inertia from an older document still fails the same strict mass check.
+  for (const frame of restored.links) (frame[0] as RealLink).massMoI = 0.667;
+  const rounded = analyzePmksCycle({ ...base, mechanism: restored });
+  expect(rounded.status).toBe('failed');
+  expect(rounded.coverage.successful).toBe(0);
+  for (const sample of rounded.samples)
     expect(sample).toMatchObject({
       status: 'failed',
       stage: 'member-loads',
       code: 'mass-distribution-mismatch',
     });
-  expect(urlGeneratorFor(target.service, target.settings).generateUrlQuery()).toBe(url);
 });

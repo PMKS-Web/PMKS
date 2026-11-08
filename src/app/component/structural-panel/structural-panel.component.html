@@ -1,0 +1,278 @@
+<panel-section aria-label="Structural Analysis">
+  <title-block><h2>Structural Analysis</h2></title-block>
+  <section class="structural-content">
+    <p>Nominal beam stress over the solved motion of a straight, two-pin member.</p>
+    <div class="fields">
+      <label
+        >Mechanism
+        <select
+          aria-label="Mechanism"
+          [ngModel]="view.mechanismIndex"
+          (ngModelChange)="view.selectMechanism($event)"
+        >
+          <option [ngValue]="-1">Choose a Mechanism</option>
+          @for (mechanism of view.mechanisms.mechanisms; track $index) {
+            <option [ngValue]="$index">Mechanism {{ $index + 1 }}</option>
+          }
+        </select>
+      </label>
+      <label
+        >Member
+        <select
+          aria-label="Member"
+          [ngModel]="view.input.memberId"
+          (ngModelChange)="view.selectMember($event)"
+        >
+          <option value="">Choose a Member</option>
+          @for (member of view.members; track member.id) {
+            <option [value]="member.id">{{ member.name || member.id }}</option>
+          }
+        </select>
+      </label>
+    </div>
+    <collapsible-subsection titleLabel="Section and Loading" [expanded]="!view.result">
+      <p class="supporting">
+        These inputs stay in this session. Section dimensions and yield strength do not change mass
+        or inertia.
+      </p>
+      <p class="field-label">Cross Section</p>
+      <segmented-block
+        aria-label="Cross Section"
+        [options]="['Rectangle', 'Solid Circle']"
+        [selected]="view.input.shape === 'rectangle' ? 0 : 1"
+        (selectedChange)="view.input.shape = $event === 0 ? 'rectangle' : 'circle'; view.changed()"
+      />
+      @if (view.input.shape === 'rectangle') {
+        <div class="fields">
+          <label
+            >Width (mm)<input
+              appStandardField
+              type="number"
+              min="0"
+              step="any"
+              [(ngModel)]="view.input.widthMm"
+              (ngModelChange)="view.changed()"
+          /></label>
+          <label
+            >Height (mm)<input
+              appStandardField
+              type="number"
+              min="0"
+              step="any"
+              [(ngModel)]="view.input.heightMm"
+              (ngModelChange)="view.changed()"
+          /></label>
+        </div>
+        <p class="supporting">
+          Height is the bending depth in the mechanism plane; width is perpendicular to it.
+        </p>
+      } @else {
+        <label
+          >Diameter (mm)<input
+            appStandardField
+            type="number"
+            min="0"
+            step="any"
+            [(ngModel)]="view.input.diameterMm"
+            (ngModelChange)="view.changed()"
+        /></label>
+      }
+      <label
+        >Yield Strength (MPa, Optional)<input
+          appStandardField
+          type="number"
+          min="0"
+          step="any"
+          [(ngModel)]="view.input.yieldMPa"
+          (ngModelChange)="view.changed()"
+          placeholder="Blank: stress only"
+      /></label>
+      <p class="field-label">Analysis Mode</p>
+      <segmented-block
+        aria-label="Analysis Mode"
+        [options]="['Quasi-static', 'Dynamic']"
+        [selected]="view.input.mode === 'static' ? 0 : 1"
+        (selectedChange)="view.input.mode = $event === 0 ? 'static' : 'dynamic'; view.changed()"
+      />
+      <p class="field-label">Structural Gravity</p>
+      <segmented-block
+        aria-label="Structural Gravity"
+        [options]="['Off', 'Lumped at CoM', 'Uniform Line']"
+        [selected]="gravityModels.indexOf(view.input.gravity)"
+        (selectedChange)="view.input.gravity = gravityModels[$event]; view.changed()"
+      />
+      <p class="supporting">
+        Uses the drawing's applied forces. Gravity is chosen here for this analysis (9.81 m/s²
+        downward when enabled).
+      </p>
+      @if (view.input.mode === 'dynamic') {
+        <label class="check"
+          ><input
+            type="checkbox"
+            [(ngModel)]="view.input.uniformMass"
+            (ngModelChange)="view.changed()"
+          />
+          Use the uniform rod mass assumption</label
+        >
+        <p class="supporting">
+          The existing mass, inertia and center of mass must agree with this assumption. Edit them
+          in Edit mode if needed.
+        </p>
+      }
+      <collapsible-subsection titleLabel="Fixed Material Point">
+        <p class="supporting">
+          Normal and shear histories follow this point. Span runs from the member's first pin to its
+          second. Depth −1 and +1 are opposite surfaces; 0 is the centerline.
+        </p>
+        <div class="fields">
+          <label
+            >Span Fraction<input
+              appStandardField
+              type="number"
+              min="0"
+              max="1"
+              step="0.1"
+              [(ngModel)]="view.input.xi"
+              (ngModelChange)="view.changed()"
+          /></label>
+          <label
+            >Depth Fraction<input
+              appStandardField
+              type="number"
+              min="-1"
+              max="1"
+              step="0.1"
+              [(ngModel)]="view.input.eta"
+              (ngModelChange)="view.changed()"
+          /></label>
+        </div>
+        <p class="field-label">Side of a Point Load</p>
+        <segmented-block
+          aria-label="Side of a Point Load"
+          [options]="['Before the Station', 'After the Station']"
+          [selected]="view.input.side === 'left' ? 0 : 1"
+          (selectedChange)="view.input.side = $event === 0 ? 'left' : 'right'; view.changed()"
+        />
+      </collapsible-subsection>
+    </collapsible-subsection>
+    @if (view.mechanisms.solvingIsDeferred) {
+      <button-block [click]="runMotion">Solve Motion</button-block>
+    }
+    @if (view.readiness.reason) {
+      <p class="notice" role="status">{{ view.readiness.reason }}</p>
+    }
+    <button-block
+      [disabled]="busy || !view.readiness.request"
+      [click]="runAnalysis"
+      [tooltip]="view.readiness.reason"
+    >
+      Analyze Over Time
+    </button-block>
+    @if (view.error) {
+      <p class="notice" role="alert">{{ view.error }}</p>
+    }
+  </section>
+
+  @if (view.result; as result) {
+    <section class="structural-content results" aria-label="Structural Results">
+      <h3>Results Over Time</h3>
+      <p class="coverage" role="status">
+        {{ result.coverage.successful }} / {{ result.coverage.requested }} samples analyzed ·
+        {{ result.status }}
+      </p>
+      <p class="supporting">
+        {{ result.requestedAnalysis.mode === 'static' ? 'Quasi-static' : 'Dynamic' }} ·
+        {{ result.sequence.closure }} motion · sampled results
+      </p>
+      @if (result.status !== 'complete') {
+        <p class="notice">
+          Coverage is incomplete. These extrema describe successful samples only; they do not
+          establish safety over the full motion.
+        </p>
+      }
+      @for (failure of failures; track failure) {
+        <p class="notice">{{ failure }}</p>
+      }
+      <p class="field-label">History</p>
+      <segmented-block
+        aria-label="History"
+        [options]="['Von Mises', 'Normal', 'Shear', 'FoS']"
+        [selected]="metrics.indexOf(view.metric)"
+        (selectedChange)="view.metric = metrics[$event]"
+      />
+      @if (view.metric === 'normal' || view.metric === 'shear') {
+        <p class="supporting">
+          Fixed point: span {{ view.input.xi }}, depth {{ view.input.eta }},
+          {{ view.input.side }} side. Signed stress in MPa.
+        </p>
+      }
+      @if (view.metric === 'factor-of-safety') {
+        <p class="supporting">
+          Unavailable or unbounded factors of safety have no plotted value. The current sample's
+          state is shown below.
+        </p>
+      }
+      <app-analysis-apex-chart
+        [series]="series"
+        [chart]="chart"
+        [colors]="colors"
+        [xaxis]="xaxis"
+        [yaxis]="yaxis"
+        [annotations]="annotations"
+        [stroke]="{ curve: 'straight', width: [2, 2], dashArray: [0, 5] }"
+        [dataLabels]="{ enabled: false }"
+        [legend]="{ show: view.metric === 'von-mises', position: 'bottom' }"
+        [markers]="{ size: 0 }"
+      />
+      <label
+        >Sample
+        <input
+          #sampleSlider
+          type="range"
+          min="0"
+          [max]="result.coverage.requested - 1"
+          step="1"
+          [value]="currentSample"
+          (input)="seek(sampleSlider.value)"
+        />
+      </label>
+      @if (sample; as current) {
+        <p class="reading">
+          Sample {{ current.sampleIndex }} ·
+          {{ current.timeSeconds === null ? 'Time unavailable' : format(current.timeSeconds) + ' s'
+          }}<br /><strong>{{ reading }} {{ unit }}</strong>
+        </p>
+        @if (current.status === 'failed') {
+          <p class="notice">{{ current.message }}</p>
+        }
+      }
+      <p class="supporting">
+        Use Play or the sample slider to follow the drawing. Failed samples remain gaps in the
+        graph.
+      </p>
+      @if (result.envelope; as envelope) {
+        <collapsible-subsection titleLabel="Stress Envelope and Yield">
+          <dl>
+            <dt>Maximum Attained von Mises</dt>
+            <dd>{{ format(envelope.maximumVonMises.extremum.valuePa / 1e6) }} MPa</dd>
+            <dt>Conservative Stress Bound</dt>
+            <dd>{{ format(envelope.maximumConservativeVonMises.upperBoundPa / 1e6) }} MPa</dd>
+            <dt>Minimum Conservative FoS</dt>
+            <dd>
+              {{
+                envelope.yield.status === 'available'
+                  ? describeYield(envelope.yield.governing.criterion)
+                  : envelope.yield.reason
+              }}
+            </dd>
+          </dl>
+          <p class="supporting">
+            Member-wide extrema across solved samples, not a continuous-time guarantee. FoS covers
+            ductile von Mises yield only.
+          </p>
+          <button-block [click]="jumpToCritical">Show Critical Stress Sample</button-block>
+        </collapsible-subsection>
+      }
+    </section>
+  }
+</panel-section>

@@ -2905,3 +2905,87 @@ with 422 while the PR belongs to a stack. Snapshot the membership, POST to
 entries in place. This is a metadata operation separate from rebasing the branches; recreating
 the groups does not replace the code checks. The [Stacks API](https://docs.github.com/en/rest/pulls/stacks)
 describes the endpoints.
+
+## Structural analysis: S0–S5 integration notes
+
+**Cycle stress belongs to solved samples and fixed material points.** S5 reads
+the chosen partition's actual `timeNum` and geometric actuator coordinate. Unwrap
+angles through all solved frames before subsetting; neither index/360 nor the
+transport's normalized fraction describes reversing or two-turn machines. Reverse
+playback shares those poses and times. Convert native PMKS Forces at every matching
+sample; converting frame zero once freezes a follower load in world space. Preserve
+S3/S4 refusals as gaps and keep a fixed `(xi, eta, side)` history separate from the
+moving stress maximum. A spatial S4 bound is not a temporal bound between samples.
+See [S5](structural-analysis.md#s5-sampled-cycle-stress-envelopes).
+
+**Stress maxima can occur inside both a member interval and its section.** S4's
+normal stress is N/A-My/I; shear traction on S3's A-side face integrates to -V.
+Checking only the two outer fibers misses shear-dominated von Mises demand.
+Use `findSectionStressExtrema` / `findMemberStressExtrema`, not a plotting grid.
+The latter reports an attained witness and a Bernstein-based numerical upper
+bound; use its conservative yield criterion when an engineering check needs a
+lower FoS bound. `stress-extrema.spec.ts` includes a maximum at u=0.37 and y/c=0.25.
+Circular shear is the elementary width-averaged depth distribution, not a full
+curved-boundary traction field. S3 now carries optional motion-source metadata
+so S4 can retain analytical versus prescribed provenance without guessing it.
+
+**A sampled straight rod is not automatically an exact uniform mass line.**
+S3's `snapshotPmksMemberMotion` reads signed analytical angular velocity in rad/s
+alongside S2 accelerations. Its section recovery additionally validates that the
+explicit uniform line reproduces the root mass, CoM, and inertia. Before S4.5,
+four-decimal solved pins disagreed with rigidly transported CoM and unchanged
+inertia. S4.5 retains full Number precision in solver state; the 2 m rod now
+passes all 361 samples. Keep authoring/snapping, display rounding, and URL
+thousandths at their existing boundaries. In particular, an `atan2` step fed
+rounded endpoints accumulates phase error even when the angle itself is unrounded.
+Do not rescale inertia, shift CoM, loosen the structural check to fit a plot,
+or replace distributed inertia with a hidden CoM lump. A legacy URL may still
+round custom mass properties into an inconsistent model; samples are regenerated
+from that authored state and cannot restore digits the URL never stored.
+See `solved-precision.spec.ts` for full-cycle tests, `member-adapter.spec.ts` for
+the repaired sample, and
+[structural-analysis.md](structural-analysis.md#s3-internal-loads) for tolerances.
+
+**A singular continuation is not a unique structural solution.** At coincident
+circle centers, the position solver uses motion history to choose a branch.
+For a grounded circle, continue angular motion: extrapolating a chord then
+projecting onto the circle introduces a cubic phase error. Full-precision
+storage exposed this in the square parallelogram. Keep the existing contact
+thresholds separate from storage precision and retain structural singularity
+diagnostics. A continuous animation does not prove an invertible equilibrium.
+
+**Dynamic snapshots must not borrow the UI's kinematic maps.** Use
+`Mechanism.snapshotAccelerations(index)` or the structural
+`snapshotPmksDynamicState` adapter. They evaluate the existing analytical equations
+in fresh contexts using that mechanism's captured drive state. Missing rates are
+refused; they are not silently filled by position differences. PMKS linear
+accelerations use the input geometry's coordinate units per second squared;
+angular acceleration is already rad/s², although angular position is in degrees.
+Current staging's force path removes `MODEL_SCALE` too; comparisons with it must build
+fixtures with `inModelUnits`, while the structural adapter can also consume project coordinates.
+
+**An imported superclass can pass targeted tests and fail the full Angular bundle.**
+Angular's test build lazily initializes split modules. Vite's SSR transform
+hoists a binding for an imported `class X extends ImportedClass`, even when the
+class declaration lives inside a function; it can capture an undefined constructor
+before the lazy initializer runs. In `kinematic-snapshot.ts`, resolve the live
+import into a local variable **inside the function**, then extend that local.
+`ng test --dump-virtual-files` exposes the generated chunks; `--filter` keeps the
+full entry-point graph while narrowing which tests run. Do not treat a targeted
+pass as proof that the full graph has the same module initialization order.
+
+**Structural analysis uses explicit SI snapshots.** `model/structural/pmks-configuration.ts`
+requires both the project length unit and `coordinateSpace`: real app samples are
+`model` (divide coordinates by `MODEL_SCALE`), while numerical verification fixtures
+are `project`. Forgetting the factor makes holding torque 200 times too large.
+`ForceSolver.jointReactionsByLink` is keyed by **joint id first, body id second**,
+despite the field name; the structural API uses explicit joint/body records instead.
+Structural metadata is included in `solveFingerprint`, because a material-only edit
+otherwise leaves cached samples carrying stale properties. See [structural-analysis.md](structural-analysis.md).
+
+**Windows line endings affect verification.** A CRLF checkout makes the generated
+fixture Markdown differ from its LF generator and breaks the template-payload parser's
+line matching. Normalize an isolated checkout to the LF content already stored in Git
+before treating these as solver regressions. PowerShell 5 can also report a failed
+wrapper status when a successful native tool writes warnings to redirected stderr;
+inspect the tool's completion and use its `$LASTEXITCODE` when recording an exit code.

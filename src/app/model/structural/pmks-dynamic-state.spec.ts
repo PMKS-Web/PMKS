@@ -1,4 +1,8 @@
-import { buildMechanism, MechanismFixture } from '../../../test-utils/verification/fixture';
+import {
+  buildMechanism,
+  inModelUnits,
+  MechanismFixture,
+} from '../../../test-utils/verification/fixture';
 import {
   structuralCrankFixture,
   structuralDynamicCrankFixture,
@@ -248,7 +252,11 @@ describe('PMKS dynamic sample adapter', () => {
           ', gravity=' +
           gravity,
         () => {
-          const selected = sample(fixture());
+          // The force solver consumes model coordinates; use the same geometry in both paths.
+          const selected = {
+            ...sample(inModelUnits(fixture())),
+            coordinateSpace: 'model' as const,
+          };
           for (const sampleIndex of [0, 30, 90]) {
             const current = { ...selected, sampleIndex };
             const { mechanism } = current;
@@ -299,7 +307,7 @@ describe('PMKS dynamic sample adapter', () => {
     }
   }
 
-  it('documents the legacy model-coordinate scaling discrepancy without copying it', () => {
+  it('agrees with the force solver after its model-coordinate scaling correction', () => {
     const selected = {
       ...sample(scaledFixture(structuralDynamicCrankFixture(), LengthUnit.METER, 'model')),
       coordinateSpace: 'model' as const,
@@ -323,7 +331,7 @@ describe('PMKS dynamic sample adapter', () => {
     const actual = analyzePmksDynamicFrame(selected, noLoad);
     if (actual.status !== 'ok') throw new Error(actual.status);
     close(actual.jointReactions[0].forceN.x, -8);
-    close(legacy.jointReactionsByLink.get('A')!.get('AB')![0], -1600);
+    close(legacy.jointReactionsByLink.get('A')!.get('AB')![0], -8);
   });
 
   for (const sampleIndex of [-1, 0.5, Infinity, NaN, 999999]) {

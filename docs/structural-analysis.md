@@ -1,6 +1,89 @@
 # Structural analysis: S0 through S5
 
-> **Status:** Built — S0/S1 (`79a8ef0c`), S2 (`f97d275a`), S3 (`04d06680`), S4 (`f15696bc`), S4.5 solved-geometry precision (`f0bbb013`), and S5 sampled-cycle orchestration on `feature/structural-analysis`, based on staging. Each milestone is a separate commit. Stress UI and advanced engineering checks remain future work.
+> **Status:** Built — S0/S1 (`79a8ef0c`), S2 (`f97d275a`), S3 (`04d06680`), S4 (`f15696bc`), S4.5 solved-geometry precision (`f0bbb013`), and S5 sampled-cycle orchestration (`7fbcbc38`) on `feature/structural-analysis`, based on staging. The branch now also has a Structural Analysis tab for sampled time histories. Advanced engineering checks remain future work.
+
+## Integration onto current staging
+
+`feature/structural-analysis-integration` starts at staging `b9b699e5`. The six original
+milestones above were replayed with their source commit IDs recorded, followed by the previously
+uncommitted Structural Analysis tab. The original branch and its worktree remain intact.
+
+Current staging's full-precision geometry, angular continuation, slider/cylinder support,
+center-of-mass handling, and exact numeric URL extension are retained. Structural snapshots use
+the current analytical solver in isolated contexts. Force comparisons now use model-coordinate
+fixtures because staging already corrected that solver's length scaling. Exact custom inertia
+survives a URL round trip; genuinely inconsistent inertia still receives the existing refusal.
+The old milestone audits below describe the code at those milestones, not regressions to restore.
+Their durable notes now live in [short-notes.md](short-notes.md).
+
+The small cm-scale gallery crank remains a quasi-static demonstration. Its mass and inertia
+are not a consistent uniform rod in that display unit system, so selecting Dynamic with the
+uniform-rod assumption correctly refuses it. The SI dynamic fixtures test consistent mass models.
+
+Integration verification: 5,580 tests across 356 files pass through Angular's test runner
+(two Vitest workers on this Windows machine), as do `npm run check`, the production build,
+and the Storybook build. Browser suites `structural-analysis.mjs`, `solved-precision.mjs`,
+and `left-nav-modes.mjs` pass all 61 checks; playback and drag filmstrips were inspected.
+The five added gallery mechanisms have generated independent oracle problems and references.
+Verification harnesses normalize stylesheet paths across platforms and run injected mass edits
+inside Angular's zone. Logs, screenshots, local tool environments, and timing output stay ignored.
+
+## Structural Analysis tab
+
+Choose **Structural Analysis** in the top strip. Select a mechanism and its member; a sole
+mechanism/member is selected automatically. Enter a rectangular or solid circular cross section
+in **mm**, with optional yield strength in **MPa**, then press **Analyze Over Time**.
+
+- **Von Mises** plots the attained member-wide maximum and its conservative spatial bound at each
+  solved time. **Normal** and **Shear** follow the fixed material point specified in setup.
+- **FoS** uses the conservative von Mises criterion. Blank yield strength still permits stress
+  results. Missing, zero-demand/unbounded, and out-of-range FoS values are stated explicitly and
+  are not plotted as finite numbers.
+- **Sample** seeks only the selected mechanism. Playback moves its readout and graph marker.
+  **Stress Envelope and Yield** contains sampled extrema and **Show Critical Stress Sample**.
+- Failed samples remain gaps, with coverage counts and the backend's reasons. An incomplete result
+  describes successful samples only and does not establish safety over the full motion.
+
+This first view uses native applied forces. **Structural Gravity** is an explicit analysis-only
+choice: off, lumped at CoM, or uniform line, with 9.81 m/s² downward when enabled. It does not change
+the document's gravity setting. Quasi-static means static equilibrium independently at each pose;
+dynamic includes analytical inertia. Dynamic and uniform-line gravity require the existing mass,
+inertia and CoM to agree with the backend's uniform-rod model. The UI reports that refusal rather
+than changing mass properties. Unsupported joints/member geometries retain the backend's refusals.
+
+Section/material inputs initialize from existing structural metadata when present. Changes in this
+panel are **session-only**: they survive tab switches, but are not saved to the URL, undo history,
+or document. Changing the member resets its setup from metadata. Changing frames, units, setup or
+tuning geometry clears old results; press Analyze again after editing. The existing Export Data
+drawer exports its existing kinematic/force quantities, not these stress histories.
+
+The view is implemented by `StructuralViewService`, the pure request/plot adapter
+`model/structural/structural-view.ts`, and `StructuralPanelComponent`. It reuses the chart bridge,
+panel, heading, button, segmented-choice, collapse, and standard-field components. S0–S5 numerical
+implementations and the document's mass authority are unchanged.
+
+### Five-minute demonstration
+
+1. Open **Structural held crank** from [the published fixture gallery](fixture-urls.md), using the
+   same query string on your local preview host. The shared fixture opens with **cm** display units:
+   its span is 2 cm. The numerical SI fixture used by backend tests has a 2 m span; these are
+   different physical scales.
+2. Choose **Structural Analysis**, member **AB**, rectangular width **10 mm**, height **20 mm**,
+   and yield strength **250 MPa**. Keep **Quasi-static** and gravity **Off**.
+3. Press **Analyze Over Time**. Expect **361 / 361** successful samples. The starting maximum
+   stress is **3.00 MPa**; the sampled peak is about **3.04128 MPa**, and minimum conservative FoS
+   is about **82.202**. The envelope combines bending and axial stress as the global tip force
+   changes direction relative to the rotating member.
+4. Press Play, pause, and move the Sample slider. Switch to **Normal** to follow the default
+   midpoint surface (span 0.5, depth +1), or **FoS** for its member-wide history.
+5. Open **Section and Loading** and double the height to **40 mm**. Results clear until Analyze is
+   pressed again. Bending stress decreases by a factor of four, while axial stress halves.
+
+Verification: `e2e/structural-analysis.mjs` uses this published geometry and asserts the analytical
+peak, coverage, mass/inertia preservation, playback, mode switching, stale-result clearing,
+dynamic refusal, an injected failed sample, and phone layout. Model/service tests cover unit
+conversion, missing yield, unbounded FoS, gaps, invalid timestamps, partition selection and
+invalidation. Run with `PMKS_BASE_URL` pointed at the branch preview; artifacts stay ignored.
 
 ## S5: sampled-cycle stress envelopes
 
@@ -39,7 +122,8 @@ An open sequence can still have complete coverage of its requested samples.
 sample list with a lazy `readSample` provider and delegates each stage. `cycle-envelope.ts`
 aggregates compact results and histories. `pmks-cycle-metadata.ts` reads drive/time/closure
 metadata; `pmks-cycle-analysis.ts` adapts explicit PMKS samples. The Angular
-`StructuralAnalysisService.analyzeCycle` is a thin delegation seam. No production UI is added.
+`StructuralAnalysisService.analyzeCycle` is a thin delegation seam. S5 itself was backend-only;
+the Structural Analysis tab described above was added afterward.
 
 The pure provider supplies a configuration, load case, and (for dynamics) one motion state per
 root body. This supports independently prescribed analytical verification without Angular or
@@ -94,8 +178,9 @@ Every sample's witnesses remain available for inspecting repeated physical maxim
 Mass, CoM and inertia remain authoritative PMKS root properties. Dynamic line inertia and
 uniform-line gravity still require the existing S3 distribution consistency check. S5 does
 not infer material density as new mass, repair quantized custom inertia, change tolerances,
-or decompose compound links. A real URL round trip of custom `I = 2/3` yields legacy `0.667`;
-the cycle then reports S3 `mass-distribution-mismatch` gaps. The codec is unchanged.
+or decompose compound links. Current staging's precise-value URL extension preserves custom
+`I = 2/3` exactly. An older document with rounded `0.667` still reports S3
+`mass-distribution-mismatch` gaps; structural analysis does not repair that value.
 
 Every result includes requested analysis options. Successful samples retain S4 provenance
 (mode, gravity, mass/inertia model, motion source, section and properties, stress model),

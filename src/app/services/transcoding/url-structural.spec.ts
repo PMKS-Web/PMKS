@@ -159,7 +159,7 @@ describe('structural data in PMKS URLs', () => {
     expect(urlGeneratorFor(drawing, settings).generateUrlQuery()).toBe(before);
     expect(new Checksum().strip(withMetadata)).toBe(
       new Checksum().strip(before) +
-        '.' +
+        ',' +
         encodeStructuralDocument({ links: document.links, loadCases: [] })[0]
     );
     const decoder = new StringTranscoder();

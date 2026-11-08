@@ -1,0 +1,91 @@
+:host {
+  display: block;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+panel-section {
+  display: block;
+  margin-bottom: var(--card-gap);
+}
+.structural-content {
+  padding: 0 12px 12px;
+}
+.results {
+  padding-top: 12px;
+  border-top: 1px solid var(--border-rule);
+}
+
+h2,
+h3 {
+  margin: 0;
+  font-size: 17px;
+}
+p {
+  line-height: 1.5;
+  margin: 8px 0 12px;
+}
+.supporting {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--card-gap);
+}
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 10px 0;
+}
+input,
+select {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-divider);
+  border-radius: var(--border-radius);
+  background: var(--surface);
+  color: var(--text-primary);
+  font: inherit;
+}
+.field-label {
+  margin: 8px 0 4px;
+}
+.check {
+  flex-direction: row;
+  align-items: center;
+}
+.check input {
+  min-height: auto;
+}
+.notice {
+  padding: 8px;
+  border-left: 3px solid var(--selection-border);
+  background: var(--surface-hover);
+}
+dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--card-gap);
+}
+dt {
+  color: var(--text-secondary);
+}
+dd {
+  margin: 0;
+  text-align: right;
+  max-width: 160px;
+}
+.coverage,
+.reading {
+  font-variant-numeric: tabular-nums;
+}
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--selection-border);
+  outline-offset: 2px;
+}

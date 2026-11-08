@@ -24,10 +24,13 @@
       <app-edit-panel></app-edit-panel>
     </div>
   }
-  @if (this.tabs.isAnalysisMode()) {
+  @if (tabs.getCurrentTab() === TabID.ANALYZE || tabs.getCurrentTab() === TabID.FORCE) {
     <div class="page3">
       <app-analysis-panel></app-analysis-panel>
     </div>
+  }
+  @if (tabs.getCurrentTab() === TabID.STRUCTURAL) {
+    <div class="page3"><app-structural-panel></app-structural-panel></div>
   }
 </div>
 

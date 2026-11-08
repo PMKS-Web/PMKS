@@ -1,4 +1,8 @@
-import { buildMechanism, MechanismFixture } from '../../../test-utils/verification/fixture';
+import {
+  buildMechanism,
+  buildMechanismAtScale,
+  MechanismFixture,
+} from '../../../test-utils/verification/fixture';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import {
   structuralCrankFixture,
@@ -178,7 +182,7 @@ const motionFixtures = {
 };
 function motionReport() {
   return Object.entries(motionFixtures).map(([name, fixture]) => {
-    const mechanism = buildMechanism(fixture()).mechanism;
+    const mechanism = buildMechanismAtScale(fixture(), MODEL_SCALE).mechanism;
     const positions = mechanism.joints.map((frame) => frame.map((j) => [j.x, j.y]));
     return {
       name,
@@ -243,10 +247,14 @@ describe('solved geometry precision', () => {
         }
     const motion = motionReport();
     if (!before) {
-      expect(motion.map((row) => row.samples)).toEqual([361, 361, 199, 361, 361, 361, 1, 361]);
+      // Current staging solves the formerly unsupported moving-slot gripper.
+      expect(motion.map((row) => row.samples)).toEqual([361, 361, 199, 361, 361, 361, 55, 361]);
       for (const row of motion) {
-        expect(row.lengthDrift, row.name).toBeLessThan(1e-10);
-        expect(row.comTransportDrift, row.name).toBeLessThan(1e-10);
+        // The moving-slot gripper uses staging's iterative constraints and its existing
+        // motiongen-gripper.spec.ts tolerance. Structural analysis refuses its sliders.
+        const geometryTolerance = row.name === 'motionGen' ? 1e-5 : 1e-10;
+        expect(row.lengthDrift, row.name).toBeLessThan(geometryTolerance);
+        expect(row.comTransportDrift, row.name).toBeLessThan(geometryTolerance);
         expect(row.coincidence, row.name).toBe(0);
         expect(
           row.times.every((time, i) => i === 0 || time > row.times[i - 1]),

@@ -16,6 +16,7 @@ import { SelectedTabService, TabID } from 'src/app/selected-tab.service';
 import { SynthesisPanelComponent } from '../synthesis-panel/synthesis-panel.component';
 import { EditPanelComponent } from '../edit-panel/edit-panel.component';
 import { AnalysisPanelComponent } from '../analysis-panel/analysis-panel.component';
+import { StructuralPanelComponent } from '../structural-panel/structural-panel.component';
 import { TutorialService } from '../../services/tutorial.service';
 import { ViewportService } from '../../services/viewport.service';
 import { CHROME_MOVED } from '../../model/chrome-motion';
@@ -70,7 +71,12 @@ const SLIDE_EASING = 'cubic-bezier(0.2, 0, 0, 1)';
     ]),
   ],
   changeDetection: ChangeDetectionStrategy.Eager,
-  imports: [SynthesisPanelComponent, EditPanelComponent, AnalysisPanelComponent],
+  imports: [
+    SynthesisPanelComponent,
+    EditPanelComponent,
+    AnalysisPanelComponent,
+    StructuralPanelComponent,
+  ],
 })
 /**
  * The panel down the left: whatever the current mode has to say about the

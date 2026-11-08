@@ -112,6 +112,17 @@
           }}</chip-block>
         }
       </button>
+      <button
+        class="tabButton"
+        [class.active]="isActive(TabID.STRUCTURAL)"
+        (click)="select(TabID.STRUCTURAL)"
+        aria-label="Structural Analysis"
+        appShortcutTip="Structural Analysis: member stress over time"
+      >
+        <mat-icon>analytics</mat-icon>
+        <span class="tabLabel long">Structural Analysis</span>
+        <span class="tabLabel short">Structural</span>
+      </button>
     </div>
   </div>
 

@@ -13,6 +13,8 @@ export enum TabID {
   ANALYZE,
   /** Force analysis, which asks for more of a mechanism than kinematics does. */
   FORCE,
+  /** Nominal member stresses over the solved motion. */
+  STRUCTURAL,
 }
 
 @Injectable({
@@ -90,19 +92,19 @@ export class SelectedTabService {
   }
 
   /**
-   * Either of the two analysis modes.
+   * Any analysis mode.
    *
-   * The geometry is locked in both, and both are read-only, so almost
-   * everything that used to ask "is this the Analyze tab" means this instead.
+   * These modes share playback and analysis editing permissions, so callers
+   * should ask this instead of checking individual tab IDs.
    */
   public isAnalysisMode(tab: TabID = this.getCurrentTab()) {
-    return tab === TabID.ANALYZE || tab === TabID.FORCE;
+    return tab === TabID.ANALYZE || tab === TabID.FORCE || tab === TabID.STRUCTURAL;
   }
 
   /**
    * Whether the current mode's panel needs the wide drawer.
    *
-   * The two analyses need it for their tables and graphs; Synthesis needs it
+   * The analyses need it for their tables and graphs; Synthesis needs it
    * for a row of three numbers per position and a gallery of candidate
    * linkages read side by side. Edit is the only mode that still fits in the
    * narrow one.

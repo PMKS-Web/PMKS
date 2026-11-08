@@ -414,7 +414,10 @@ Not suites — import them from one.
 
 ### App chrome, layout and words
 
-- `left-nav-modes.mjs` — the four mode tabs, the panel following the mode, the sliding highlight,
+- `structural-analysis.mjs` — the Structural tab's published crank demonstration, analytical stress,
+  section inputs, playback and sample seeking, mode retention, incomplete coverage, and phone layout.
+  Captures transition and playback filmstrips in `artifacts/structural-ui/`.
+- `left-nav-modes.mjs` — the original mode tabs, the panel following the mode, the sliding highlight,
   readiness chips, a refused analysis mode, the transport present in Edit and absent in Synthesis,
   and the rewind on leaving an analysis mode. Needs installed Chrome (`PMKS_CHROME`).
 - `top-strip-states.mjs` — the top strip at every width, chip load and mode, laid out or resized:

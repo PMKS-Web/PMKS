@@ -107,7 +107,7 @@ try {
   }));
   record('the file toolbar is gone', removed.toolbar === 0, removed);
   record('the mode rail is gone', removed.rail === 0, removed);
-  record('and one strip carries the four modes', (await page.locator('.tabButton').count()) === 4);
+  record('and one strip carries the five modes', (await page.locator('.tabButton').count()) === 5);
 
   // --- Edit mode -------------------------------------------------------------
   await shot('01-edit.png');
@@ -315,8 +315,10 @@ try {
   const setMasses = (value) =>
     page.evaluate((mass) => {
       const grid = window.ng.getComponent(document.querySelector('app-new-grid'));
-      grid.mechanismSrv.links.forEach((link) => (link.mass = mass));
-      grid.mechanismSrv.updateMechanism(false);
+      grid.zone.run(() => {
+        grid.mechanismSrv.links.forEach((link) => (link.mass = mass));
+        grid.mechanismSrv.updateMechanism(false);
+      });
     }, value);
   const comBefore = await comMarks();
   await setMasses(0);

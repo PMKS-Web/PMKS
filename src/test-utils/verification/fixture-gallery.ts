@@ -1,6 +1,6 @@
 import { auditGalleryRows } from './audit-gallery';
 import { PASSIVE_CYLINDER_GALLERY } from './passive-cylinder-fixtures';
-import { MechanismFixture, BuiltMechanism, buildMechanism } from './fixture';
+import { MechanismFixture } from './fixture';
 import { STRUCTURAL_GALLERY } from './structural-fixtures';
 import {
   fourBarDrivenAtFixture,

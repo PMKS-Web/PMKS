@@ -1816,7 +1816,7 @@ export class MechanismService {
       }
       // A trace describes the solved drawing, whichever working mode is open.
       // Its numerical readiness is checked by vectorShapeOf below.
-      const shownIn: TabID[] = [TabID.EDIT, TabID.ANALYZE, TabID.FORCE];
+      const shownIn: TabID[] = [TabID.EDIT, TabID.ANALYZE, TabID.FORCE, TabID.STRUCTURAL];
       if (!shownIn.includes(tab)) continue;
       const shape = this.vectorShapeOf(part, quantity, mode);
       if (!shape) continue;
