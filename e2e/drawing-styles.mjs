@@ -368,12 +368,12 @@ try {
     });
     check(
       `Zoom ${direction} ${count} keeps actual rendered symbols within readable limits`,
-      dims.pixels >= 23.99 &&
-        dims.pixels <= 38.01 &&
-        dims.diameter >= 7.19 &&
-        dims.diameter <= 11.41 &&
+      dims.pixels >= 11.99 &&
+        dims.pixels <= 140.01 &&
+        dims.diameter >= 3.59 &&
+        dims.diameter <= 42.01 &&
         dims.welds.length > 0 &&
-        dims.welds.every((width) => width >= 4.4 && width <= 18),
+        dims.welds.every((width) => width >= 2 && width <= 70),
       dims
     );
     check(

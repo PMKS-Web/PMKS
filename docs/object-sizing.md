@@ -67,11 +67,15 @@ adds no undo entry and runs no analysis.
 
 ## Zoom behavior
 
-Marks scale with geometry through the ordinary zoom range, then stop becoming smaller or larger
-at readable screen limits. This is deliberately not a fixed-pixel drawing at every zoom. The style
-never switches itself. The normal pin diameter ranges are 12–27px for Standard, 7.5–15px for Fine,
-and 7.2–11.4px for Schematic. Bodies, welds, ground marks and sliders use the same bounded scale;
-labels retain readable minimum sizes and invisible pointer targets remain generous.
+**Marks are part of the drawing and zoom with it**, as the links' lengths, the grid and a background
+image do, so zooming changes how big the mechanism looks and never its proportions. Only at the
+extremes do they stop: a pin's diameter stays within 4.5–90px for Standard, 3.9–54px for Fine and
+3.6–42px for Schematic, so it neither vanishes into a speck nor swallows the screen. From a quarter
+of the start zoom to four times it, nothing is clamped. (Before issue #273 the band was 12–27px, so
+a little zoom either way pinned the marks to the screen while the links kept growing, and joints and
+ground marks read as out of step with everything else.) The style never switches itself. Bodies,
+welds, ground marks and sliders use the same scale; labels keep an 11px floor and invisible pointer
+targets remain generous (a joint takes a grab within 9px however small it is drawn).
 
 **Forces are drawn at Standard's size in every style** (`SettingsService.forceScale`): a force is a
 load laid on the drawing, not a piece of it, so a thinner style has no reason to shrink it. Only its
