@@ -586,6 +586,32 @@
       }
     </g>
   }
+  <!-- A filled body is its own pointer target, and zoomed far out it can be
+       only a few pixels wide (issue #273). A band along each body's line keeps
+       a 12px grab, as Schematic's own does. It is a layer of its own, under
+       every body, so it adds a margin only where a body is thinner than that
+       and never takes a press from another link. -->
+  @if (!settings.isSchematic) {
+    <g id="linkGrabHolder" modelFrame>
+      @for (link of mechanismSrv.getLinks(); track link) {
+        @if (gridUtils.typeOfLink(link) == 'R' && !bodyDrawnByACylinder(link)) {
+          <path
+            (pointerover)="link.showHighlight = true"
+            (pointerout)="link.showHighlight = false"
+            (pointerdown)="setLastLeftClick(link, $event)"
+            (contextmenu)="setLastRightClick(link, $event)"
+            [attr.cursor]="mechanismSrv.isLinkLockedVisual(link) ? 'not-allowed' : null"
+            [attr.d]="objectDisplay.skeleton(link)"
+            stroke="transparent"
+            [attr.stroke-width]="svgGrid.scaleWithZoom(12)"
+            [attr.id]="link.id + '__wideHit'"
+            fill="none"
+            pointer-events="stroke"
+          ></path>
+        }
+      }
+    </g>
+  }
   <g id="linkHolder" modelFrame>
     @for (link of mechanismSrv.getLinks(); track link) {
       <ng-container>

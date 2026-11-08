@@ -2,7 +2,7 @@ import { DRAWING_STYLES, drawingScale, readDrawingStyle, storeDrawingStyle } fro
 
 describe('drawing styles', () => {
   it('scales with the drawing across ordinary zoom, as the links and grid do', () => {
-    // From a quarter of the start size to four times it, nothing is clamped.
+    // A Standard drawing at base 60: from a quarter of this zoom to four times it, nothing is clamped.
     for (const zoom of [0.25, 0.5, 1, 2, 4]) {
       expect(drawingScale(60, zoom, 'standard')).toBe(60);
     }

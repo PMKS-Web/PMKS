@@ -70,12 +70,17 @@ adds no undo entry and runs no analysis.
 **Marks are part of the drawing and zoom with it**, as the links' lengths, the grid and a background
 image do, so zooming changes how big the mechanism looks and never its proportions. Only at the
 extremes do they stop: a pin's diameter stays within 4.5–90px for Standard, 3.9–54px for Fine and
-3.6–42px for Schematic, so it neither vanishes into a speck nor swallows the screen. From a quarter
-of the start zoom to four times it, nothing is clamped. (Before issue #273 the band was 12–27px, so
+3.6–42px for Schematic, so it neither vanishes into a speck nor swallows the screen. How much zoom
+that leaves depends on where the drawing starts: a Standard pin drawn at 13.5px at the start zoom
+follows the drawing from a third of that zoom to more than six times it, while Fine and Schematic,
+drawn smaller, reach their floors sooner. (Before issue #273 the band was 12–27px, so
 a little zoom either way pinned the marks to the screen while the links kept growing, and joints and
 ground marks read as out of step with everything else.) The style never switches itself. Bodies,
-welds, ground marks and sliders use the same scale; labels keep an 11px floor and invisible pointer
-targets remain generous (a joint takes a grab within 9px however small it is drawn).
+welds, ground marks and sliders use the same scale. Names stay between 11px and 18px on screen
+(`tagFontSize`), because a name grown to a 90px pin's scale would cover the parts it names. Pointer
+targets do not shrink with the marks: a joint takes a grab within 9px however small it is drawn,
+and every link in Standard and Fine has a 12px band along its line (`#linkGrabHolder`, under every
+body), the target Schematic's lines already had.
 
 **Forces are drawn at Standard's size in every style** (`SettingsService.forceScale`): a force is a
 load laid on the drawing, not a piece of it, so a thinner style has no reason to shrink it. Only its
