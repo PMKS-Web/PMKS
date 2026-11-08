@@ -138,9 +138,9 @@ because a weld is precisely the statement that two bodies do *not* move relative
 | **Lock** | A mark that holds a joint (or a whole link) still against dragging, so a shared linkage can only be adjusted where its author intended |
 | **Background image** | A photograph or drawing pinned behind the grid, scaled and rotated, to build a linkage on top of a real machine. Never uploaded anywhere |
 
-![The Edit panel open on a joint of a welded loader bucket](docs/images/readme/edit-panel.png)
+![The Edit panel open on a joint of a welded excavator bucket](docs/images/readme/edit-panel.png)
 
-![A backhoe bucket driven by a hydraulic cylinder, with the boom's angular kinematics graphed](docs/images/readme/cylinders.png)
+![An excavator bucket driven by a hydraulic cylinder, with the bucket's angular kinematics graphed](docs/images/readme/cylinders.png)
 
 A driven cylinder is a *linear* input, and the app knows it. The transport row reads
 **`Opening · Reverses`** and a distance rather than an angle; the scrub handle runs across the

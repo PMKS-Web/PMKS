@@ -2905,3 +2905,13 @@ with 422 while the PR belongs to a stack. Snapshot the membership, POST to
 entries in place. This is a metadata operation separate from rebasing the branches; recreating
 the groups does not replace the code checks. The [Stacks API](https://docs.github.com/en/rest/pulls/stacks)
 describes the endpoints.
+
+### `readme-shots` photographs whatever opens, so look at every picture it writes
+
+`e2e/readme-shots.mjs` always writes a picture, even when a step fails. A template renamed in the
+library (`Backhoe_Bucket` to `Excavator_Bucket`) was opened as if its old name were a URL, and the
+README showed a "could not be opened" toast over an empty grid for a release. A link id that no
+longer existed (`DGH`) selected nothing, and `expandGraphs` closed the Position row, which an
+analysis panel now opens on its own. The script now stops on an unknown template, throws on a
+missing joint or link, and opens only rows that are closed. A run still prints a path for every
+picture, so look at the pictures.
