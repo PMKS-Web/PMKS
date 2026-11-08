@@ -60,9 +60,9 @@ bars, ground two joints, turn one of them, and the coupler curve appears.
 It is a single-page web app. Nothing to install, no account, and no server holding your work. The
 whole mechanism packs into a link, so "share this with my TA" is a copy-and-paste.
 
-PMKS is the successor to **PMKS**, written by Prof. Matthew I. Campbell at Oregon State
-University, and is developed at **Worcester Polytechnic Institute** by undergraduate and graduate
-project teams.
+This version of PMKS succeeds the **original PMKS**, written by Prof. Matthew I. Campbell at
+Oregon State University, and is developed at **Worcester Polytechnic Institute** by undergraduate
+and graduate project teams.
 
 | | |
 | --- | --- |
@@ -649,7 +649,7 @@ inside the app (Help / Feedback in the project menu).
 
 ## Acknowledgements
 
-PMKS is based on **PMKS**, developed by **Prof. Matthew I. Campbell**, Professor of Mechanical
+PMKS is based on the **original PMKS**, developed by **Prof. Matthew I. Campbell**, Professor of Mechanical
 Engineering, Oregon State University.
 
 ### Faculty

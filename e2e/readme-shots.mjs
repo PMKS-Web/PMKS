@@ -387,7 +387,11 @@ for (const shot of SHOTS) {
       await page.waitForTimeout(400);
     }
   } catch (error) {
-    failures.push(`${shot.name}: ${String(error).split('\n')[0]}`);
+    // A shot whose steps did not all run would replace a good picture with a
+    // wrong one, so the old picture stays.
+    failures.push(`${shot.name}: ${String(error).split('\n')[0]}; picture not retaken`);
+    await context.close();
+    continue;
   }
 
   await page.screenshot({ path: `${OUT}/${shot.name}.png` });
@@ -399,4 +403,5 @@ await browser.close();
 if (failures.length) {
   console.log('\nsteps that did not run:');
   for (const failure of failures) console.log('  ' + failure);
+  process.exitCode = 1;
 }
