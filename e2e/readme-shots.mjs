@@ -116,7 +116,7 @@ const SHOTS = [
       ['wait', 1200],
       ['clickText', 'Start Here'],
       ['park'],
-      ['wait', 900],
+      ['imagesLoaded'],
     ],
   },
   {
@@ -316,6 +316,35 @@ for (const shot of SHOTS) {
           grid.mechanismSrv.joints.forEach((joint) => (joint.showCurve = true));
         });
       else if (verb === 'park') await page.mouse.move(10, 700);
+      // A card whose thumbnail failed to load draws a broken-image icon, and a
+      // picture of that is worse than the old one: wait, and fail if any did.
+      // Only images the picture can show count: a card's hover GIF sits at
+      // opacity 0, and Chrome may never fetch it.
+      else if (verb === 'imagesLoaded')
+        await page
+          .waitForFunction(
+            () =>
+              [...document.images]
+                .filter(
+                  (image) =>
+                    image.getClientRects().length && getComputedStyle(image).opacity !== '0'
+                )
+                .every((image) => image.complete && image.naturalWidth > 0),
+            null,
+            { timeout: 15000 }
+          )
+          .catch(async () => {
+            const broken = await page.evaluate(() =>
+              [...document.images]
+                .filter(
+                  (image) =>
+                    image.getClientRects().length && getComputedStyle(image).opacity !== '0'
+                )
+                .filter((image) => !(image.complete && image.naturalWidth > 0))
+                .map((image) => image.getAttribute('src'))
+            );
+            throw new Error(`images did not load: ${broken.join(', ')}`);
+          });
       else if (verb === 'annotate') await annotate(page);
       else if (verb === 'generate') {
         await page.locator('#synthesisPanel .cta').click({ force: true });

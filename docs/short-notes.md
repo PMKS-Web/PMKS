@@ -2914,4 +2914,7 @@ README showed a "could not be opened" toast over an empty grid for a release. A 
 longer existed (`DGH`) selected nothing, and `expandGraphs` closed the Position row, which an
 analysis panel now opens on its own. The script now stops on an unknown template and on a
 missing joint or link, keeps the old picture when any step fails, exits non-zero, and opens only
-rows that are closed. A picture can still be wrong with every step passing, so look at each one.
+rows that are closed. The library picture also waits for every thumbnail it shows: served by
+`python3 -m http.server`, a few cards drew a broken-image icon now and then. The hover GIFs are left
+out of that wait, because they sit at opacity 0 and Chrome may never fetch them. A picture can
+still be wrong with every step passing, so look at each one.
