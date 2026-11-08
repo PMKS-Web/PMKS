@@ -5,6 +5,7 @@ import { bodiesUnder, Link, RealLink } from '../../app/model/link';
 import { Force } from '../../app/model/force';
 import { MechanismPartition } from '../../app/model/mechanism/mechanism-partition';
 import { MODEL_SCALE } from '../../app/model/render-scale';
+import { hasFriction } from '../../app/model/joint-friction';
 import {
   PRISMATIC_INPUT_STEP,
   SAMPLES_PER_STROKE,
@@ -155,6 +156,9 @@ export function exportPartition(
   const points: OracleProblem['points'] = [];
   for (const joint of partition.joints) {
     if (!(joint instanceof RealJoint)) continue;
+    if (hasFriction(joint.friction)) {
+      unsupported.push(`joint ${joint.id}: Coulomb friction is not modeled by this oracle`);
+    }
     const [x, y] = interiors.get(joint.id) ?? [joint.x, joint.y];
     const at = point(x, y);
     const onto = rootsAt(joint);

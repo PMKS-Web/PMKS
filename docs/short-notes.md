@@ -2905,3 +2905,16 @@ with 422 while the PR belongs to a stack. Snapshot the membership, POST to
 entries in place. This is a metadata operation separate from rebasing the branches; recreating
 the groups does not replace the code checks. The [Stacks API](https://docs.github.com/en/rest/pulls/stacks)
 describes the endpoints.
+
+## Friction port after the slider migration (November 2026)
+
+A single-joint slider carries both the guide-normal reaction and its pin connections.
+Its net joint reaction is not the guide load. ForceSolver records guideNormalLoads from
+the guide unknown before combining reactions; friction uses that value for Coulomb
+resistance. The point body's ID is the slider ID, and its mass belongs to PrisJoint.
+Keep the coupled friction/inertia safeguard until that integration is independently audited.
+
+Staging's codec already appends slider mass and mechanism name. New optional friction
+fields go after both, with empty placeholders when needed. The fixture URL encoder moved
+from fixture-gallery.ts to fixture-payload.ts; scale effective radii there with coordinates.
+The ViewButton moved to BLOCKS/view-button and already accepts a tooltip override.

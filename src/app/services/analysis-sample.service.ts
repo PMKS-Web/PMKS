@@ -130,12 +130,34 @@ export class AnalysisSampleService {
       return mechProp === 'Joint Forces' ? [Number.NaN, Number.NaN, Number.NaN] : [Number.NaN];
     }
 
-    if (mechProp === 'Input Torque' || mechProp === 'Input Effort') {
-      // Already real N·m: the solver takes MODEL_SCALE out of its moment arms
-      // itself, so nothing here divides it back down.
-      if (!frame.inputEffort) return [Number.NaN];
-      const isForce = frame.inputEffort.kind === 'force';
-      return [frame.inputEffort.valueSI * (isForce ? forceConversion : torqueConversion)];
+    if (mechProp.startsWith('Friction ')) {
+      const contact = frame.friction?.get(mechPart);
+      if (!contact) return [Number.NaN];
+      if (mechProp === 'Friction Normal') return [contact.normalLoad * forceConversion];
+      const conversion = contact.kind === 'torque' ? torqueConversion : forceConversion;
+      return [
+        (mechProp === 'Friction Static Limit' ? contact.staticLimit : contact.effort) * conversion,
+      ];
+    }
+
+    if (
+      [
+        'Input Torque',
+        'Input Effort',
+        'Additional Input Effort',
+        'Frictionless Input Effort',
+      ].includes(mechProp)
+    ) {
+      // The solver returns physical SI forces and torques.
+      const effort =
+        mechProp === 'Additional Input Effort' ? frame.additionalFrictionEffort : frame.inputEffort;
+      if (!effort) return [Number.NaN];
+      const isForce = effort.kind === 'force';
+      const valueSI =
+        mechProp === 'Frictionless Input Effort'
+          ? effort.valueSI - (frame.additionalFrictionEffort?.valueSI ?? 0)
+          : effort.valueSI;
+      return [valueSI * (isForce ? forceConversion : torqueConversion)];
     }
 
     const byLink = frame.jointReactionsByLink.get(mechPart);

@@ -11,6 +11,29 @@ Unit specs stay in `src/` because `tsconfig.spec.json` discovers them via `src/*
 Angular component specs resolve templates relative to their source. Everything browser-driven lives
 here.
 
+`friction.mjs` checks guide and pin friction controls, validation, force-cache invalidation,
+undo/redo, persistence and changing contact readings. Screenshots and a filmstrip go to
+`artifacts/friction/`.
+
+`friction-stories.mjs` checks the 17 friction gallery states at `SB_URL`, including
+native disabled fields, validation, radius units and panel overflow. Screenshots go to
+`artifacts/friction-stories/`.
+
+Each friction story is also checked with the installed axe accessibility engine. Compact and
+expanded input/calculation views use the shared collapsible subsection; keyboard checks cover
+Enter/Space, inert closed content, and diagnostic state retained in the collapsed header.
+
+`friction-visualization.mjs` follows Save/Disable through Force Analysis, checks current slider
+arrows and bearing moments, direction reversals, visibility, combined contacts, input comparison,
+and the In-motion inertia diagnostic. Screenshots and a filmstrip go to
+`artifacts/friction-visualization/`.
+
+The friction visualization checks also cover the compact/expanded calculation, the Static
+no-inertia helper, the restrained bearing arc at two zoom levels, actual forward/backward
+timeline drags, and reciprocating rewind suppression/restoration. The fixture gallery includes
+`Reciprocating slider-crank with friction` for this traversal behavior. Rewind is distinct from
+a newly prescribed reverse drive; no test infers a physical velocity from mouse direction.
+
 ## What CI runs
 
 `.github/workflows/verification.yml` runs `npm ci`, `npm run lint`, `npm run lint:styles`,

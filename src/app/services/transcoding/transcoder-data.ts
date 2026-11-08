@@ -4,6 +4,8 @@
  * easy to encode and decode.
  */
 
+import { frictionless, JointFriction } from '../../model/joint-friction';
+
 export enum JOINT_TYPE {
   PRISMATIC,
   REVOLUTE,
@@ -77,7 +79,8 @@ export class JointData {
      * or empty. Written after the mass and only when there is a name, so
      * every URL without one keeps exactly the tokens it had.
      */
-    public machineName: string = ''
+    public machineName: string = '',
+    public friction: JointFriction = frictionless()
   ) {}
 }
 

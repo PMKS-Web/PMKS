@@ -1,3 +1,4 @@
+import { RealJoint } from '../../app/model/joint';
 import { MechanismFixture, BuiltDrawing, buildDrawing } from './fixture';
 import { MechanismService } from '../../app/services/mechanism.service';
 import { SettingsService } from '../../app/services/settings.service';
@@ -52,6 +53,7 @@ function scaleBuiltToModelUnits(built: BuiltDrawing): void {
   built.joints.forEach((joint) => {
     joint.x *= MODEL_SCALE;
     joint.y *= MODEL_SCALE;
+    if (joint instanceof RealJoint) joint.friction.radius *= MODEL_SCALE;
   });
   const scaleLink = (link: Link): void => {
     if (!(link instanceof RealLink)) return;

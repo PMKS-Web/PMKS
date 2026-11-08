@@ -9,12 +9,25 @@ import { assignBodies } from './bodies';
 import { KinematicsSolver } from './kinematic-solver';
 import { Loop } from './loop-solver';
 import { siUnitFactors, SiUnitFactors } from '../unit-conversions';
+import { hasFriction } from '../joint-friction';
 import { MODEL_SCALE } from '../render-scale';
+import { completeFrictionMotion } from './friction-motion';
+import {
+  analyzeWithFriction,
+  FrictionLoad,
+  FrictionMotion,
+  FrictionResult,
+} from './friction-analysis';
 
 export type ForceAnalysisMode = 'static' | 'dynamic';
 
 export type ForceAnalysisStatus =
-  'ok' | 'singular' | 'unsupported-topology' | 'missing-kinematics' | 'invalid-properties';
+  | 'ok'
+  | 'singular'
+  | 'unsupported-topology'
+  | 'missing-kinematics'
+  | 'invalid-properties'
+  | 'friction-unresolved';
 
 export type ForceVector = [number, number];
 
@@ -26,6 +39,11 @@ export interface ForceAnalysisEffort {
 }
 
 export interface ForceAnalysisFrame {
+  /** Presentation metadata for a refused contact result; no inferred holding force. */
+  frictionUnavailable?: { reason: 'stationary' | 'inertia'; jointId?: string };
+  /** Total input effort minus the frictionless solve at the identical pose and inertia. */
+  additionalFrictionEffort?: ForceAnalysisEffort;
+  friction?: Map<string, FrictionResult>;
   mode: ForceAnalysisMode;
   status: ForceAnalysisStatus;
   timeSeconds: number;
@@ -39,6 +57,8 @@ export interface ForceAnalysisFrame {
    * prismatic pairs carry one; a free-turning block cannot transmit a moment.
    */
   guideCouples: Map<string, number>;
+  /** Magnitude of the guide normal alone, before pin reactions are combined. */
+  guideNormalLoads?: Map<string, number>;
   inputEffort?: ForceAnalysisEffort;
   rank: number;
   residual: number;
@@ -83,6 +103,7 @@ interface FrameKinematics {
 }
 
 interface MechanismFrames {
+  framesRunBackwards?: boolean;
   joints: Joint[][];
   links: Link[][];
   timeNum: number[];
@@ -102,6 +123,7 @@ interface BodyRows {
 }
 
 interface ReactionUnknown {
+  guide?: boolean;
   joint: RealJoint;
   positiveBody: Link;
   negativeBody?: Link;
@@ -309,7 +331,11 @@ export class ForceSolver {
     evenest: boolean
   ): ForceAnalysisFrame {
     let kinematics: FrameKinematics | undefined;
-    if (mode === 'dynamic') {
+    let motion: FrictionMotion | undefined;
+    const friction = mechanism.joints[index].some(
+      (joint) => joint instanceof RealJoint && hasFriction(joint.friction)
+    );
+    if (mode === 'dynamic' || friction) {
       mechanism.prepareSolvers?.();
       // Clear the solver's shared maps each frame so a mid-solve failure at
       // frame k cannot leave frame k-1's finite values in place — which would
@@ -331,6 +357,12 @@ export class ForceSolver {
         mechanism.links[index],
         fallback[index]
       );
+      motion = {
+        coordinateScale: MODEL_SCALE,
+        jointVelocities: new Map(KinematicsSolver.jointVelMap),
+        angularVelocities: new Map(KinematicsSolver.linkAngVelMap),
+      };
+      if (friction) motion = completeFrictionMotion(mechanism, index, motion);
     }
     return this.analyzeFrame(
       mechanism.joints[index],
@@ -340,7 +372,8 @@ export class ForceSolver {
       mechanism.unit,
       mechanism.timeNum[index] ?? index,
       kinematics,
-      evenest
+      evenest,
+      motion
     );
   }
 
@@ -352,8 +385,34 @@ export class ForceSolver {
     unit: string,
     timeSeconds = 0,
     kinematics?: FrameKinematics,
-    evenest = false
+    evenest = false,
+    motion?: FrictionMotion,
+    frictionLoads?: FrictionLoad[]
   ): ForceAnalysisFrame {
+    if (
+      frictionLoads === undefined &&
+      joints.some((joint) => joint instanceof RealJoint && hasFriction(joint.friction))
+    ) {
+      return analyzeWithFriction(
+        joints,
+        [...links, ...this.pointBodies(joints)],
+        this.unitFactors(unit).distanceToM,
+        motion,
+        (loads) =>
+          this.analyzeFrame(
+            joints,
+            links,
+            mode,
+            gravity,
+            unit,
+            timeSeconds,
+            kinematics,
+            evenest,
+            motion,
+            loads
+          )
+      );
+    }
     const every = links.filter((link): link is RealLink => link instanceof RealLink);
     // A body pinned to the world at two points is fixed: it is frame, not a
     // link, and gets no equilibrium of its own -- see `frameBodies`.
@@ -602,6 +661,17 @@ export class ForceSolver {
       }
     }
 
+    for (const load of frictionLoads ?? []) {
+      const rows = bodyRows.get(load.bodyId)!;
+      b[rows.start] -= load.force[0];
+      b[rows.start + 1] -= load.force[1];
+      if (rows.link instanceof RealLink) {
+        const rx = (load.joint.x - rows.link.CoM.x) * units.distanceToM;
+        const ry = (load.joint.y - rows.link.CoM.y) * units.distanceToM;
+        b[rows.start + 2] -= load.torque + rx * load.force[1] - ry * load.force[0];
+      }
+    }
+
     // Statics alone cannot split a load between supports that share a line
     // -- two rails holding one jaw at one height, say -- and the elimination
     // finds no pivot. That is not a dead pose; it is one degree of ambiguity
@@ -662,6 +732,11 @@ export class ForceSolver {
       if (value) jointReactions.set(jointId, value);
     }
 
+    const guideNormalLoads = new Map<string, number>();
+    for (const reaction of reactions) {
+      if (reaction.guide)
+        guideNormalLoads.set(reaction.joint.id, Math.abs(solution.values[reaction.column]));
+    }
     const guideCouples = new Map<string, number>();
     for (const couple of couples) {
       guideCouples.set(couple.slider.id, solution.values[couple.column] * armScale);
@@ -683,6 +758,7 @@ export class ForceSolver {
       jointReactionsByLink,
       jointReactions,
       guideCouples,
+      guideNormalLoads,
       inputEffort,
       rank: solution.rank,
       residual: solution.residual,
@@ -742,6 +818,8 @@ export class ForceSolver {
 
   static statusMessage(status: ForceAnalysisStatus): string {
     switch (status) {
+      case 'friction-unresolved':
+        return 'Friction has no unique solution at this pose.';
       case 'singular':
         return 'The force equations have no single answer at this pose.';
       case 'unsupported-topology':
@@ -856,6 +934,7 @@ export class ForceSolver {
             joint: candidate,
             positiveBody: piston,
             negativeBody: carrier,
+            guide: true,
             // The reaction is normal to the slot, so it rotates with it.
             direction: [-Math.sin(candidate.slotAngle), Math.cos(candidate.slotAngle)],
             column: reactions.length,

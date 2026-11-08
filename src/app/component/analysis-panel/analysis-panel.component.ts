@@ -1,5 +1,6 @@
 import { LinkTraceService } from '../../services/link-trace.service';
 import { SelectedTabService, TabID } from '../../selected-tab.service';
+import { FrictionPanelComponent } from '../friction-panel/friction-panel.component';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -81,6 +82,7 @@ const DRAWING_CHIP_LABEL: Record<DrawingSwitch['key'], string> = {
     ReactiveFormsModule,
     NgTemplateOutlet,
     ViewButtonComponent,
+    FrictionPanelComponent,
   ],
 })
 export class AnalysisPanelComponent implements OnInit, OnDestroy, DoCheck {

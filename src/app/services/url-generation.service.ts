@@ -65,7 +65,8 @@ export class UrlGenerationService {
           false,
           joint.driveSpeed,
           0,
-          joint.machineName
+          joint.machineName,
+          { ...joint.friction, radius: joint.friction.radius / MODEL_SCALE }
         )
       );
     } else if (joint instanceof PrisJoint) {
@@ -91,7 +92,8 @@ export class UrlGenerationService {
           joint.isSealed,
           joint.driveSpeed,
           joint.mass,
-          joint.machineName
+          joint.machineName,
+          { ...joint.friction, radius: joint.friction.radius / MODEL_SCALE }
         )
       );
     }

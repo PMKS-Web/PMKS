@@ -12,6 +12,7 @@ import {
   speedTurning,
   turnsClockwise,
 } from '../../model/drive-direction';
+import { FrictionPanelComponent } from '../friction-panel/friction-panel.component';
 import { Subscription } from 'rxjs';
 import {
   AfterContentInit,
@@ -137,6 +138,7 @@ const INPUT_SPEED_UNITS = [
     RadioComponent,
     MultiEditPanelComponent,
     SegmentedComponent,
+    FrictionPanelComponent,
   ],
 })
 export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, OnDestroy {

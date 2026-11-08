@@ -1,0 +1,139 @@
+{
+ "schema": "pmks-oracle-problem/1",
+ "id": "gallery.slider-crank-with-friction.m1",
+ "title": "Slider-crank with friction, M1",
+ "source": {
+  "kind": "published",
+  "case": "gallery.slider-crank-with-friction",
+  "machine": "M1"
+ },
+ "gravity": 9.80665,
+ "bodies": [
+  {
+   "id": "AB",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.01,
+    0.01
+   ]
+  },
+  {
+   "id": "BC",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.05,
+    0.01
+   ]
+  }
+ ],
+ "joints": [
+  {
+   "id": "A",
+   "kind": "pin",
+   "at": [
+    0,
+    0
+   ],
+   "bodies": [
+    "AB"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "B",
+   "kind": "pin",
+   "at": [
+    0.02,
+    0.02
+   ],
+   "bodies": [
+    "AB",
+    "BC"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "C",
+   "kind": "slider",
+   "at": [
+    0.08,
+    0
+   ],
+   "guide": "ground",
+   "linePoint": [
+    0.08,
+    0
+   ],
+   "axis": [
+    1,
+    0
+   ],
+   "riders": [
+    "BC"
+   ],
+   "rotates": true,
+   "blockMass": 0
+  }
+ ],
+ "driver": {
+  "joint": "A",
+  "kind": "rotation",
+  "speed": 1.0471975511965976,
+  "bodies": [
+   "ground",
+   "AB"
+  ]
+ },
+ "loads": [
+  {
+   "id": "F1",
+   "body": "BC",
+   "at": [
+    0.08,
+    0
+   ],
+   "vector": [
+    6.123233995736766e-15,
+    -100
+   ],
+   "frame": "global"
+  }
+ ],
+ "points": [
+  {
+   "id": "A",
+   "body": "ground",
+   "at": [
+    0,
+    0
+   ]
+  },
+  {
+   "id": "B",
+   "body": "AB",
+   "at": [
+    0.02,
+    0.02
+   ]
+  },
+  {
+   "id": "C",
+   "body": "BC",
+   "at": [
+    0.08,
+    0
+   ]
+  }
+ ],
+ "sweep": {
+  "step": 0.017453292519943295,
+  "maxSamples": 2000
+ },
+ "unsupported": [
+  "joint C: Coulomb friction is not modeled by this oracle"
+ ]
+}

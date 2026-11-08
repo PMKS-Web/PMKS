@@ -718,7 +718,7 @@ export class MechanismService {
       const flags = [real?.ground && 'g', real?.input && 'i', real?.isWelded && 'w']
         .filter(Boolean)
         .join('');
-      return `${joint.id}@${joint.x},${joint.y}:${kind}${flags}${slide}`;
+      return `${joint.id}@${joint.x},${joint.y}:${kind}${flags}${slide}:${JSON.stringify(real?.friction)}`;
     });
     const links = partition.links.map((link) => {
       const body = link instanceof RealLink ? link : undefined;
@@ -1428,6 +1428,7 @@ export class MechanismService {
     this.joints.forEach((joint) => {
       joint.x *= lengthScale;
       joint.y *= lengthScale;
+      if (joint instanceof RealJoint) joint.friction.radius *= lengthScale;
       if (!(joint instanceof PrisJoint)) return;
       // A prismatic drive's speed is a length per second in the *user's* unit,
       // so it rescales with the geometry exactly as a coordinate does. An rpm
@@ -2441,7 +2442,9 @@ export class MechanismService {
     const made = source.map((joint) => {
       const id = this.determineNextLetter(taken);
       taken.push(id);
-      return new RevJoint(id, joint.x + step.x, joint.y + step.y);
+      const copied = new RevJoint(id, joint.x + step.x, joint.y + step.y);
+      copied.friction = { ...joint.friction };
+      return copied;
     });
     const copy = this.gridUtils.createRealLink(
       made
@@ -2466,8 +2469,7 @@ export class MechanismService {
     // be re-read as the copy's or the point rides a bar it is not on.
     const renamed = new Map(source.map((joint, index) => [joint.id, made[index].id]));
     const rename = (id: string): string => renamed.get(id) ?? made[0].id;
-    copy.mass = link.mass;
-    copy.massMoI = link.massMoI;
+    Object.assign(copy, { mass: link.mass, massMoI: link.massMoI });
     copy.moiIsCustom = link.moiIsCustom;
     copy.fill = link.fill;
     copy.isCircle = link.isCircle;

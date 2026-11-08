@@ -1,3 +1,4 @@
+import { FRICTION_GALLERY } from './friction-fixtures';
 import { auditGalleryRows } from './audit-gallery';
 import { MechanismFixture } from './fixture';
 import { PASSIVE_CYLINDER_GALLERY } from './passive-cylinder-fixtures';
@@ -167,6 +168,7 @@ export interface GalleryEntry {
 const LIBRARY_RPM = 10;
 
 export const FIXTURE_GALLERY: GalleryEntry[] = [
+  ...FRICTION_GALLERY,
   ...PART2_LIBRARY_GALLERY,
   ...LIBRARY_CARD_GALLERY,
   {

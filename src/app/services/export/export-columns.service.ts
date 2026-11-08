@@ -1,5 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { PrisJoint, RealJoint } from '../../model/joint';
+import { frictionContactsOf } from '../../model/friction-contacts';
+import { hasFriction } from '../../model/joint-friction';
 import { RealLink } from '../../model/link';
 import { MechanismService } from '../mechanism.service';
 import { SettingsService } from '../settings.service';
@@ -260,6 +262,47 @@ export class ExportColumnsService {
             torque
           )
         );
+        if (
+          solved.joints[0].some(
+            (joint) => joint instanceof RealJoint && hasFriction(joint.friction)
+          )
+        ) {
+          columns.push(
+            this.force(
+              'Additional input effort from friction',
+              `Additional ${effort.toLowerCase()} from all friction at ${part.label}`,
+              part,
+              driven.id,
+              '',
+              'Additional Input Effort',
+              torque
+            )
+          );
+        }
+      }
+
+      if (part.kind === 'joint') {
+        for (const contact of frictionContactsOf(part.part as RealJoint).filter((one) =>
+          hasFriction(one.friction)
+        )) {
+          for (const [label, property] of [
+            ['Normal load', 'Friction Normal'],
+            ['Friction effort', 'Friction Effort'],
+            ['Static friction limit', 'Friction Static Limit'],
+          ]) {
+            columns.push(
+              this.force(
+                `${contact instanceof PrisJoint ? 'Guide' : 'Pin'} ${label}`,
+                `${label} at ${part.label}`,
+                part,
+                contact.id,
+                '',
+                property,
+                !(contact instanceof PrisJoint) && property !== 'Friction Normal'
+              )
+            );
+          }
+        }
       }
 
       columns.forEach((column) =>
@@ -332,7 +375,7 @@ export class ExportColumnsService {
       head,
       unit,
       // A reaction is a vector; an input effort is one number.
-      components: mechProp === 'Input Effort' ? 1 : 3,
+      components: mechProp.endsWith('Input Effort') || mechProp.startsWith('Friction ') ? 1 : 3,
       analysis: 'force',
       mechProp,
       mechPart,

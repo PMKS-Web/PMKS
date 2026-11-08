@@ -1,0 +1,86 @@
+{
+ "schema": "pmks-oracle-problem/1",
+ "id": "gallery.bearing-friction-with-inertia-safeguard.m1",
+ "title": "Bearing friction with inertia safeguard, M1",
+ "source": {
+  "kind": "published",
+  "case": "gallery.bearing-friction-with-inertia-safeguard",
+  "machine": "M1"
+ },
+ "gravity": 9.80665,
+ "bodies": [
+  {
+   "id": "AB",
+   "mass": 1,
+   "inertia": 0,
+   "com": [
+    0.02,
+    0
+   ]
+  }
+ ],
+ "joints": [
+  {
+   "id": "A",
+   "kind": "pin",
+   "at": [
+    0,
+    0
+   ],
+   "bodies": [
+    "AB"
+   ],
+   "grounded": true,
+   "welded": false
+  }
+ ],
+ "driver": {
+  "joint": "A",
+  "kind": "rotation",
+  "speed": 1.0471975511965976,
+  "bodies": [
+   "ground",
+   "AB"
+  ]
+ },
+ "loads": [
+  {
+   "id": "F1",
+   "body": "AB",
+   "at": [
+    0,
+    0
+   ],
+   "vector": [
+    6.123233995736766e-15,
+    -100
+   ],
+   "frame": "global"
+  }
+ ],
+ "points": [
+  {
+   "id": "A",
+   "body": "ground",
+   "at": [
+    0,
+    0
+   ]
+  },
+  {
+   "id": "B",
+   "body": "AB",
+   "at": [
+    0.04,
+    0
+   ]
+  }
+ ],
+ "sweep": {
+  "step": 0.017453292519943295,
+  "maxSamples": 2000
+ },
+ "unsupported": [
+  "joint A: Coulomb friction is not modeled by this oracle"
+ ]
+}
