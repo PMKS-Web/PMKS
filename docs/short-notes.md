@@ -13,6 +13,15 @@ whose title covers it, and leave a heading here only if someone would still sear
 
 ---
 
+### `.gitattributes` keeps every text file LF, because specs compare checked-in bytes
+
+`fixture-gallery.spec.ts` compares `docs/fixture-urls.md` with freshly generated text, and
+`oracle.spec.ts` hashes the bytes of `oracle/pmks_oracle/*.py`. A Windows clone with Git's default
+`core.autocrlf` used to check those files out with CRLF endings, so both failed on a clean
+checkout. `* text=auto eol=lf` in `.gitattributes` now checks out LF everywhere. A clone made
+before that rule keeps its CRLF files until they are checked out again:
+`git rm -r --cached -q . && git reset --hard` (this discards uncommitted changes).
+
 ### `__dirname` in a shared test helper points somewhere else in the full run
 
 A spec file can resolve paths from its own `__dirname`, as `fixture-gallery.spec.ts` does. A
