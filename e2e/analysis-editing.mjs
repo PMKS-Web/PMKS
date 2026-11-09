@@ -71,6 +71,7 @@ const look = () =>
         history: grid.permission.may('history'),
         structure: grid.permission.may('structure'),
         build: grid.permission.may('build'),
+        annotate: grid.permission.may('annotate'),
       },
     };
   });
@@ -146,8 +147,14 @@ await mode('Kinematic');
 const permissions = (await look()).may;
 record('an analysis mode allows a drag', permissions.drag === true, permissions);
 record('and undo, which it used to refuse', permissions.history === true, permissions);
-record('and permits restructuring at the start', permissions.structure === true, permissions);
-record('and building at the start', permissions.build === true, permissions);
+// docs/editing-rules.md: an analysis mode reads the motion, so what it adds
+// is a tracer point or a force, and restructuring is Edit's.
+record('and a tracer point or a force at the start', permissions.annotate === true, permissions);
+record(
+  'but leaves restructuring and building to Edit',
+  permissions.structure === false && permissions.build === false,
+  permissions
+);
 record(
   'the status strip stops calling it read-only',
   /Drag to tune/.test(await page.locator('#bottomBar').innerText())

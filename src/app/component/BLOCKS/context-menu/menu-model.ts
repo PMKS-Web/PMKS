@@ -53,10 +53,8 @@ export class MenuRow {
    * into another mode changes nothing about the drawing.
    */
   alwaysAllowed = false;
-  /** Whether this edit can preserve the original pose while paused elsewhere. */
-  posePolicy: MenuPosePolicy = 'start';
-  /** Per-body mapping requirements, rechecked when the row is activated. */
-  poseGuard?: () => MenuRefusal | undefined;
+  /** Which kind of control this row is, in `docs/editing-rules.md`'s table. */
+  posePolicy: MenuPosePolicy = 'design';
   /** A plain-language description for the row, when the label needs help. */
   tip?: string;
   /**
@@ -114,7 +112,7 @@ export interface MenuChoice {
   chosen: number;
   /** The chosen value cannot stand as drawn -- a block with nowhere to slide. */
   fault?: MenuRefusal;
-  /** What the choice needs of the pose, as a row states it. */
+  /** Which kind of control the choice is, as a row states it. */
   posePolicy: MenuPosePolicy;
 }
 

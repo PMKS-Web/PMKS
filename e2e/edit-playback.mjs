@@ -163,14 +163,14 @@ const pausedState = await page.evaluate(() => ({
 // names the fields rather than the whole panel.
 record(
   'paused mid-cycle names the fields, not the panel',
-  (pausedState.banner ?? '').includes('Drag to edit'),
+  (pausedState.banner ?? '').includes('Drag to move parts'),
   pausedState.banner
 );
 // The way out is a word inside the sentence rather than a button beside it.
 record(
   'and offers the way back, inside the sentence',
   pausedState.backButton === 'return to the start' &&
-    (pausedState.banner ?? '').includes('return to the start to type.'),
+    (pausedState.banner ?? '').includes('return to the start to change anything else.'),
   pausedState
 );
 await page.screenshot({ path: `${SHOTS}/4-paused-displaced.png` });
@@ -265,7 +265,7 @@ record('Analysis -> Edit keeps the pose', inAnalysis !== null && afterEdit === i
 record(
   'and Edit says what may be done at that pose',
   (await banner().count()) === 1 &&
-    (await banner().innerText()).includes('return to the start to type.'),
+    (await banner().innerText()).includes('return to the start to change anything else.'),
   await banner()
     .innerText()
     .catch(() => null)

@@ -194,8 +194,10 @@ Not suites — import them from one.
 - `posed-drag-fuzz.mjs` — seeded random drags at random poses; the ghost, the design's sample 0
   and the transport's "from start" must agree. `SEED=` replays, `ONLY=` picks trial numbers. Slow:
   about ten minutes.
-- `posed-menu.mjs` — paused context-menu attachments and property edits keep the authored start
-  pose. `PMKS_ONLY=<case>` runs one case.
+- `posed-menu.mjs` — the context menu follows `docs/editing-rules.md` at a paused pose: in an
+  analysis mode tracer points and forces wait for the start and everything else is Edit's; in
+  Edit, mid-cycle, the disc, holds and lock stay live and keep the authored start pose.
+  `PMKS_ONLY=<case>` runs one case.
 - `ghost-is-the-start.mjs` — one invariant checked after every gesture: wherever a ghost is drawn,
   it is the pose stop-to-start produces and the design the URL saves. The named scenes are the
   shrunk reproductions of the four causes in

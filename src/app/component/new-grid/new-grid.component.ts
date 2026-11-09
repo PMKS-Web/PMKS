@@ -71,6 +71,7 @@ import { SaveHistoryService } from 'src/app/services/save-history.service';
 import { SynthesisBuilderService } from 'src/app/services/synthesis/synthesis-builder.service';
 import { SelectedTabService, TabID } from 'src/app/selected-tab.service';
 import { EditPermissionService } from 'src/app/services/edit-permission.service';
+import { EditRefusal } from 'src/app/model/edit-permission';
 import { StartPoseGhost } from 'src/app/model/mechanism/anchor';
 import { SynthesisPose } from 'src/app/services/synthesis/synthesis-util';
 import { SynthesisCanvasService } from 'src/app/services/synthesis/synthesis-canvas.service';
@@ -406,8 +407,10 @@ export class NewGridComponent implements OnDestroy {
     // What an arrow means depends on whether there is anything here to move.
     // The service asks; the answer is this canvas's to give, because the rules
     // about when a drawing may be edited already live here.
+    // A nudge is typed geometry, not a gesture (docs/editing-rules.md): an
+    // arrow key steps a coordinate, so it waits for Edit at the start pose.
     this.shortcuts.whenArrowsNudge(
-      () => this.canEditNow() && this.activeObjService.selectedParts.length > 0
+      () => this.permission.may('placement') && this.activeObjService.selectedParts.length > 0
     );
     // Handed back when this canvas goes away. The service holds the predicate
     // for as long as it is given one, so without this a torn-down canvas keeps
@@ -1581,7 +1584,7 @@ export class NewGridComponent implements OnDestroy {
    * and the arrow keys are named for the drawing.
    */
   private nudgeSelection(dx: number, dy: number, coarse: boolean): void {
-    if (!this.canEditNow()) return;
+    if (!this.permission.may('placement')) return;
     const selected = this.activeObjService.selectedParts;
     if (selected.length === 0) return;
     const step = coarse ? this.svgGrid.majorCellSize : this.svgGrid.minorCellSize;
@@ -6173,32 +6176,25 @@ export class NewGridComponent implements OnDestroy {
       case 'edit.deselect':
         this.activeObjService.updateSelectedObj(undefined);
         return;
-      case 'edit.delete':
-        // The permission model, not the mode alone. Naming the mode caught an
-        // analysis mode -- which is a reading of a finished mechanism, and
-        // Delete was going through it, removing a joint from a drawing the
-        // reader was measuring with no way back short of leaving the mode --
-        // but it missed a running mechanism entirely: with the canvas, the
-        // panel, the menu and undo all refusing, Backspace still deleted the
-        // selection. A key is a control like any other and asks the same
-        // question the button beside it asks.
-        // The model allows restructuring at an analysis mode's start pose,
-        // and the menu offers it there. The key does not: a reader measuring
-        // a drawing who presses Backspace is far more often reaching for a
-        // typed number than for a joint, and a joint gone from under a graph
-        // is a loss with no way back short of leaving the mode. Said, with
-        // the way out on the message, rather than swallowed.
-        if (this.tabService.isAnalysisMode()) {
-          this.notify.refusal('delete.analysis', 'Deleting is an Edit change.', {
+      case 'edit.delete': {
+        // A key is a control like any other, and asks the question the menu
+        // row and the panel's Delete ask about the same selection
+        // (docs/editing-rules.md, principle 5). An analysis mode deletes a
+        // tracer point or a force at the start, and nothing else; where the
+        // way out is Edit, it is said with the way out on the message rather
+        // than swallowed.
+        const refused = this.deleteRefusal();
+        if (refused?.actionKind === 'toEdit') {
+          this.notify.refusal('delete.analysis', 'Deleting this is an Edit change.', {
             actions: [{ label: 'Switch to Edit', run: () => this.tabService.setTab(TabID.EDIT) }],
           });
-          return;
         }
-        if (!this.permission.may('structure')) return;
+        if (refused) return;
         this.deleteSelection();
         return;
+      }
       case 'edit.lock':
-        if (this.permission.menuRefusal('preserve')) return;
+        if (this.permission.menuRefusal('safe')) return;
         this.toggleLockOnSelection();
         return;
       case 'history.undo':
@@ -6257,6 +6253,18 @@ export class NewGridComponent implements OnDestroy {
    * of its own: "delete" on it means all of its parts at once, which is its
    * panel's own button rather than a per-part key.
    */
+  /** Why the selection cannot be deleted: the menu's own answer for it. */
+  private deleteRefusal(): EditRefusal | null {
+    switch (this.activeObjService.objType) {
+      case 'Joint':
+        return this.permission.deleteJointRefusal(this.activeObjService.selectedJoint);
+      case 'Force':
+        return this.permission.menuRefusal('annotation');
+      default:
+        return this.permission.menuRefusal('design');
+    }
+  }
+
   private deleteSelection(): void {
     switch (this.activeObjService.objType) {
       case 'MultiSelection':

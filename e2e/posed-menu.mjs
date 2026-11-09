@@ -1,4 +1,9 @@
-/** Paused context-menu attachments and property edits preserve the authored start pose. */
+/**
+ * The context menu follows docs/editing-rules.md at a paused pose: in an
+ * analysis mode, tracer points and forces wait for the start and everything
+ * but them is Edit's; in Edit, mid-cycle, the safe properties (disc, holds,
+ * lock) stay live and preserve the authored start pose.
+ */
 const { chromium } = await import(
   (process.env.PMKS_PLAYWRIGHT_DIR ?? '/tmp/pmks-playwright') + '/node_modules/playwright/index.mjs'
 );
@@ -110,9 +115,9 @@ const openLink = async (a = 'B', b = 'C') => {
   });
   return point;
 };
-const clickEnabled = async (label) => {
+const clickEnabled = async (label, where = 'paused') => {
   const state = await rowState(label);
-  check(`${label}: enabled while paused`, !state.disabled, state);
+  check(`${label}: enabled ${where}`, !state.disabled, state);
   if (state.disabled) {
     await page.keyboard.press('Escape');
     return false;
@@ -121,7 +126,29 @@ const clickEnabled = async (label) => {
   await page.waitForTimeout(120);
   return true;
 };
-const loadPaused = async () => {
+/** The row is grayed with this reason, and pressing it changes nothing. */
+const refused = async (label, reason) => {
+  const state = await rowState(label);
+  check(`${label}: refused (${reason})`, state.disabled && state.reason === reason, state);
+  const before = await snapshot();
+  await row(label).click({ force: true });
+  await page.waitForTimeout(80);
+  preserves(`${label}: refused click`, before, await snapshot());
+};
+const loadAtStart = async (mode = 'Kinematic Analysis') => {
+  await openMechanism(page, `${BASE}/?${TEMPLATE_LINKAGES['4-Bar']}`);
+  await inAngular(page, () => {
+    const g = ng.getComponent(document.querySelector('app-new-grid'));
+    g.mechanismSrv.links.forEach((link) => g.mechanismSrv.assignBodyMass(link, 1));
+    g.settings.isGravity.next(true);
+    g.mechanismSrv.updateMechanism(false);
+  });
+  await page.locator('.tabButton').filter({ hasText: mode }).click();
+  await page.waitForTimeout(400);
+  await page.getByRole('button', { name: 'Fit to view' }).click();
+  await page.waitForTimeout(500);
+};
+const loadPaused = async (mode = 'Kinematic Analysis') => {
   await openMechanism(page, `${BASE}/?${TEMPLATE_LINKAGES['4-Bar']}`);
   // The library four-bar is massless; give Force Analysis something to solve
   // so its tab opens rather than showing a setup drawer in Kinematic mode.
@@ -131,7 +158,7 @@ const loadPaused = async () => {
     g.settings.isGravity.next(true);
     g.mechanismSrv.updateMechanism(false);
   });
-  await page.locator('.tabButton').filter({ hasText: 'Kinematic Analysis' }).click();
+  await page.locator('.tabButton').filter({ hasText: mode }).click();
   await page.waitForTimeout(400);
   await inAngular(page, () => {
     const m = ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv;
@@ -173,7 +200,7 @@ const section = async (name, work) => {
 await section('tracer', async () => {
   await loadPaused();
   const before = await snapshot();
-  const point = await openLink();
+  await openLink();
   const deletion = page
     .locator('.cm-row')
     .filter({ has: page.locator('.cm-row__label', { hasText: /^Delete Link/ }) });
@@ -187,7 +214,15 @@ await section('tracer', async () => {
     (await page.locator('#contextMenu.show').count()) === 1
   );
   preserves('disabled destructive click', before, await snapshot());
-  if (!(await clickEnabled('Tracer Point'))) return;
+  // An annotation waits for the start (docs/editing-rules.md).
+  await refused('Tracer Point', 'return to start');
+  await refused('Force', 'return to start');
+  await page.keyboard.press('Escape');
+
+  await loadAtStart();
+  const start = await snapshot();
+  const point = await openLink();
+  if (!(await clickEnabled('Tracer Point', 'at the start'))) return;
   const after = await snapshot();
   const tracer = Object.keys(after.pose).find((id) => !(id in before.pose));
   check(
@@ -195,30 +230,30 @@ await section('tracer', async () => {
     !!tracer && distance(after.pose[tracer], point.model) < 0.002,
     { tracer, point: point.model, pose: after.pose[tracer] }
   );
-  preserves('tracer attachment', before, after);
+  preserves('tracer attachment', start, after);
   const decoded = await roundtrip('tracer', after);
   check('tracer survives URL roundtrip on its body', Object.keys(decoded.pose).length === 5);
-  await page.screenshot({ path: `${OUT}/tracer-paused.png` });
+  await page.screenshot({ path: `${OUT}/tracer-at-start.png` });
   if (!tracer) return;
   await openAt(await screenPoint(tracer));
   const deleteLabel = await page
     .locator('.cm-row__label')
     .filter({ hasText: /^Delete Joint/ })
     .innerText();
-  if (!(await clickEnabled(deleteLabel))) return;
+  if (!(await clickEnabled(deleteLabel, 'at the start'))) return;
   const removed = await snapshot();
   check(
     'body-only tracer deletion removes just that point',
     !(tracer in removed.pose) && Object.keys(removed.pose).length === 4
   );
-  preserves('tracer deletion', before, removed);
+  preserves('tracer deletion', start, removed);
 });
 
 await section('force', async () => {
-  await loadPaused();
+  await loadAtStart();
   const before = await snapshot();
   const point = await openLink();
-  if (!(await clickEnabled('Force'))) return;
+  if (!(await clickEnabled('Force', 'at the start'))) return;
   const film = filmstrip(page, `${OUT}/force-creation`);
   await film.shot('preview-start');
   await film.during(25, 7, 'placing', async () => {
@@ -278,41 +313,29 @@ await section('force', async () => {
     });
     await openAt(point);
   };
+  // A force's direction and frame are typed geometry: Edit's alone.
   await openForce();
-  if (!(await clickEnabled('Flip Force'))) return;
-  const reversed = await snapshot();
-  check(
-    'force reversal turns the displayed arrow around',
-    Math.cos(reversed.forces[0].angle - added.forces[0].angle) < -0.999999 &&
-      distance(reversed.forces[0].start, added.forces[0].start) < 0.002,
-    { added: added.forces, reversed: reversed.forces }
-  );
-  preserves('force reversal', before, reversed);
+  await refused('Flip Force', 'Edit mode only');
+  await refused('Global Frame', 'Edit mode only');
+  await page.keyboard.press('Escape');
   await openForce();
-  if (!(await clickEnabled('Global Frame'))) return;
-  const local = await snapshot();
-  check(
-    'frame toggle preserves displayed arrow direction and magnitude',
-    local.forces[0].local &&
-      Math.cos(local.forces[0].angle - reversed.forces[0].angle) > 0.999999 &&
-      Math.abs(local.forces[0].mag - reversed.forces[0].mag) < 1e-8,
-    { before: reversed.forces, after: local.forces }
-  );
-  preserves('force frame toggle', before, local);
-  const decoded = await roundtrip('local force', local);
-  check(
-    'force frame survives URL roundtrip',
-    decoded.forces.length === 1 && decoded.forces[0].local
-  );
-  await openForce();
-  if (!(await clickEnabled('Delete Force'))) return;
+  if (!(await clickEnabled('Delete Force', 'at the start'))) return;
   const deleted = await snapshot();
   check('force deletion removes only the force', deleted.forces.length === 0);
   preserves('force deletion', before, deleted);
 });
 
 await section('properties', async () => {
+  // The safe properties are Edit's: an analysis mode refuses them.
   await loadPaused();
+  await openLink('A', 'B');
+  for (const label of ['Drawn as a Disc', 'Fixed Length', 'Fixed Angle', 'Locked']) {
+    await refused(label, 'Edit mode only');
+  }
+  await page.keyboard.press('Escape');
+
+  // And Edit keeps them mid-cycle, without moving the authored start.
+  await loadPaused('Edit');
   const before = await snapshot();
   for (const label of ['Drawn as a Disc', 'Fixed Length', 'Fixed Angle']) {
     await openLink('A', 'B');

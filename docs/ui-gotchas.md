@@ -151,15 +151,14 @@ the preference on.
 
 ## Editing, playback, and who is allowed to say no
 
-**Context menus share pose-preservation rules across Edit and Analysis.** Their rows come from
-one builder; `menuRefusal` distinguishes topology changes (start only), independent metadata
-(locks, holds, shape), invertible body attachments (tracers and forces), and view switches.
-Everything requires paused playback. Traces save without rebuilding; attachments use the
-existing body transform to place the new point at t=0, preserving the old coordinates exactly.
-Do not wrap force creation in the canvas's generic `capturingPose`: that would re-anchor the
-whole mechanism before the exact attachment mapper can run. Force property edits must capture
-the requested displayed values before restoring t=0, because restoration also restores old
-force values. Posed drags still use their separate anchor-preserving edit path.
+**Context menus share one rule with every other surface.** Their rows come from one builder, and
+each row names the kind of control it is (`MenuPosePolicy`: `view`, `annotation`, `safe`,
+`design`, `create`); `menuRefusal` reads the answer off the table in
+[editing-rules.md](editing-rules.md). Do not give a row a guard of its own: a rule that lives in
+one row is how the menu and the Edit panel came to disagree (#256). The attachment mapper that
+places a tracer or a force at t=0 through its body's transform is still there, but the rules now
+offer attachments only at the start, where that transform is the identity. Posed drags still use
+their separate anchor-preserving edit path.
 
 **Bulk dimensions must be solved together.** Submit selected bars to `setBarValues`; precomputing
 endpoints and calling `dragJoint` in a loop uses stale shared anchors and retains old dimension
@@ -178,8 +177,10 @@ holds. A failed simultaneous constraint solve must leave every joint unchanged.
   analyses, including over an empty grid, and hidden only in Synthesis. That is what keeps its
   `riseFromBottom` entry animation off the drawing-changed path: a bar that slid in when the first
   link was drawn was animating on something that is not a mode change.
-- **The Edit panel does not vanish any more.** It stays with its body `inert` and dimmed, and a
-  banner across the top carrying the permission model's own words. `inert` rather than a
+- **The Edit panel does not vanish any more.** While playing it stays with its body `inert` and
+  dimmed, and a banner across the top carrying the permission model's own words. Paused
+  mid-cycle it stays live and grays structure and typed geometry control by control, each asking
+  the same question as the menu row of the same name (`edit-panel-menu-sync.spec.ts`). `inert` rather than a
   `disabled` on each control: it removes the whole subtree from pointer, keyboard and focus reach
   in one attribute. The fields still tick — `ngDoCheck` patches the selected joint's coordinates,
   because `animate()` mutates the joints in place and publishes on nothing you could subscribe to.

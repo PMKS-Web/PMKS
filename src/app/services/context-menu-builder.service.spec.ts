@@ -691,20 +691,57 @@ describe('the right-click menu', () => {
     });
   });
 
-  it('executes an analysis delete at the start and guards a stale menu after seeking', () => {
+  it('deletes only a tracer point in an analysis mode, and guards a stale menu after seeking', () => {
+    // docs/editing-rules.md: a tracer point is an annotation, so an analysis
+    // mode deletes it at the start; any other joint is structure, and Edit's.
     const parts = fourBar(harness.mechanism);
     harness.tabs.setTab(TabID.ANALYZE);
     harness.active.updateSelectedObj(parts.a);
-    const remove = rows(harness.builder.build(parts.a, noHandlers)).find((r) =>
+    const pivot = rows(harness.builder.build(parts.a, noHandlers)).find((r) =>
       r.label.startsWith('Delete Joint')
     )!;
-    expect(remove.disabled).toBe(false);
-    harness.mechanism.mechanismTimeStep = 12;
-    remove.action();
+    expect(pivot.disabled).toBe(true);
+    expect(pivot.refusal!.short).toBe('Edit mode only');
+    pivot.action();
     expect(harness.mechanism.joints).toContain(parts.a);
+
+    harness.active.updateSelectedObj(parts.t);
+    const tracer = rows(harness.builder.build(parts.t, noHandlers)).find((r) =>
+      r.label.startsWith('Delete Joint')
+    )!;
+    expect(tracer.disabled).toBe(false);
+    harness.mechanism.mechanismTimeStep = 12;
+    tracer.action();
+    expect(harness.mechanism.joints).toContain(parts.t);
     harness.mechanism.mechanismTimeStep = 0;
-    remove.action();
-    expect(harness.mechanism.joints).not.toContain(parts.a);
+    tracer.action();
+    expect(harness.mechanism.joints).not.toContain(parts.t);
+  });
+
+  it('offers an analysis mode only drags, tracer points, forces and traces', () => {
+    const parts = fourBar(harness.mechanism);
+    harness.tabs.setTab(TabID.ANALYZE);
+    const force = new Force('F1', parts.crank, new Coord(0, S), new Coord(S, S));
+    harness.mechanism.forces = [force];
+    const joint = harness.builder.build(parts.c, noHandlers);
+    expect(row(joint, 'Trace Path')!.disabled).toBe(false);
+    for (const label of ['Grounded', 'Locked']) {
+      expect(row(joint, label)!.refusal!.short).toBe('Edit mode only');
+    }
+    expect(
+      joint.choice!.options.every((option, i) => i === joint.choice!.chosen || option.refusal)
+    ).toBe(true);
+    const body = harness.builder.build(parts.crank, noHandlers);
+    expect(row(body, 'Tracer Point')!.disabled).toBe(false);
+    expect(row(body, 'Force')!.disabled).toBe(false);
+    for (const label of ['Drawn as a Disc', 'Fixed Length', 'Fixed Angle', 'Locked']) {
+      expect(row(body, label)!.disabled).toBe(true);
+    }
+    expect(rows(body).find((r) => r.label.startsWith('Duplicate Link'))!.disabled).toBe(true);
+    const load = harness.builder.build(force, noHandlers);
+    expect(row(load, 'Delete Force')!.disabled).toBe(false);
+    expect(row(load, 'Flip Force')!.disabled).toBe(true);
+    expect(row(load, 'Global Frame')!.disabled).toBe(true);
   });
 
   it('keeps a locked force direction fixed while allowing its frame switch', () => {
@@ -742,24 +779,21 @@ describe('the right-click menu', () => {
   });
 
   describe('away from the start pose', () => {
-    it('grays structural rows at a paused pose and keeps traces available', () => {
-      // A menu never promotes a paused pose into a new start.
+    it('grays structure and annotations at a paused pose and keeps safe rows and traces', () => {
+      // docs/editing-rules.md, the Edit mid-cycle column.
       const parts = fourBar(harness.mechanism);
       harness.mechanism.mechanismTimeStep = 12;
       const paused = harness.builder.build(parts.t, noHandlers);
       expect(row(paused, 'Grounded')!.refusal!.short).toBe('return to start');
       expect(row(paused, 'Trace Path')!.disabled).toBe(false);
       expect(row(paused, 'Locked')!.disabled).toBe(false);
-      expect(rows(paused).find((r) => r.label.startsWith('Delete Joint'))!.disabled).toBe(false);
+      // Even a tracer point: an annotation waits for the start.
+      expect(rows(paused).find((r) => r.label.startsWith('Delete Joint'))!.disabled).toBe(true);
       const body = harness.builder.build(parts.crank, noHandlers);
-      for (const label of [
-        'Tracer Point',
-        'Force',
-        'Drawn as a Disc',
-        'Fixed Length',
-        'Fixed Angle',
-        'Locked',
-      ]) {
+      for (const label of ['Tracer Point', 'Force']) {
+        expect(row(body, label)!.refusal!.short).toBe('return to start');
+      }
+      for (const label of ['Drawn as a Disc', 'Fixed Length', 'Fixed Angle', 'Locked']) {
         expect(row(body, label)!.disabled).toBe(false);
       }
       expect(row(body, 'Link')!.disabled).toBe(true);

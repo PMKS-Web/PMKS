@@ -700,15 +700,18 @@ describe('NewGridComponent drag gestures', () => {
 
   // What it still refuses is changing what the mechanism is made of, which is
   // where the graphs' own subject would go out from under them.
-  it('allows restructuring in an analysis mode at the start', () => {
+  it('lets an analysis mode drag and annotate, and leaves structure to Edit', () => {
+    // docs/editing-rules.md: the analysis modes read the motion.
     const { component } = setUp();
     TestBed.inject(SelectedTabService).setTab(TabID.ANALYZE);
     const permission = TestBed.inject(EditPermissionService);
     expect(permission.may('drag')).toBe(true);
     expect(permission.may('history')).toBe(true);
-    expect(permission.may('structure')).toBe(true);
-    expect(permission.may('build')).toBe(true);
-    expect(component.structureLocked).toBe(false);
+    expect(permission.may('annotate')).toBe(true);
+    expect(permission.may('structure')).toBe(false);
+    expect(permission.may('build')).toBe(false);
+    expect(permission.may('placement')).toBe(false);
+    expect(component.structureLocked).toBe(true);
   });
 
   // "the refusal a fixed geometry earns" was here -- five tests around the

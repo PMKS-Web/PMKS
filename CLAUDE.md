@@ -161,10 +161,15 @@ Animation ticks on a ~16 ms setTimeout (`FRAME_INTERVAL_MS`) but advances by **e
 answers it — `model/edit-permission.ts`, described through `services/edit-permission.service.ts` —
 and every gate quotes that: the canvas's drag gate, the Edit panel's attached refusal strip, the
 context menu's graying, undo/redo, the analysis lock, and the transport's refusal *row* — a row
-rather than a caption, so the scrub card is the same shape in every state. Editing is allowed at
-any *paused* pose, not only at timestep 0; the design is put back on its per-machine **anchor**
-(`model/mechanism/anchor.ts`) at the commit, so the pose the drawing starts in does not ratchet
-forward with every mid-cycle tweak. `docs/edit-mode-playback-plan.md` is the whole argument, and
+rather than a caption, so the scrub card is the same shape in every state. **The rule itself is
+[`docs/editing-rules.md`](docs/editing-rules.md)**: a reader must never be able to get stranded, so
+every control is one of six kinds (view, annotation, gesture, safe property, typed geometry,
+structure) and one table says where each kind is offered, and **the Edit panel and the context
+menu always agree**: no action is live in one and refused in the other. Read it before adding a
+control that edits. In every mode, a drag at a *paused* mid-cycle pose is still allowed; the design is put back on
+its per-machine **anchor** (`model/mechanism/anchor.ts`) at the commit, so the pose the drawing
+starts in does not ratchet forward. Structure, typed geometry and annotations wait for the start.
+`docs/edit-mode-playback-plan.md` is the history, and
 [ui-gotchas.md](docs/ui-gotchas.md#editing-playback-and-who-is-allowed-to-say-no) has the
 traps.
 
@@ -204,16 +209,14 @@ The **modes are tabs in the top strip, not a left rail**, and there are four of 
 - **The canvas draws y-up and the screen is y-down.** A drawing layer wears the `modelFrame` directive and everything inside it is written in the drawing's own coordinates; anything that must read the right way up wears `upright` (both in `model-frame.directive.ts`). `SvgGridService.screenToModel` / `modelToScreen` are the matching pair of conversions, and both carry the flip. See [domain-facts.md](docs/domain-facts.md#the-drawing-is-y-up-the-screen-is-y-down-and-two-directives-say-so).
 - `AppComponent` is just a shell that registers SVG icons; `component/new-grid/new-grid.component.ts` is the real center — the SVG canvas handling the mouse/touch interaction state machine, with pan/zoom via `SvgGridService` (svg-pan-zoom + hammerjs).
 - The right-click menu is **built in a service, not in the canvas**: `services/context-menu-builder.service.ts` turns whatever was right-clicked, plus the current mode, into a `ContextMenuModel` (`component/BLOCKS/context-menu/menu-model.ts`), and `component/BLOCKS/context-menu/` renders it. Every grayed row quotes the model that enforces it — `describeActuatorRefusal` in `model/actuator.ts`, `refuseJointOperation` in `model/joint-operation-permission.ts`, `refuseJointType` in `model/joint-type.ts`, `locksHolding` in `model/lock-set.ts` — rather than restating the rule, so the menu, the panel and the drag ring cannot disagree. A joint's card opens with the **Joint Type** choice (`MenuChoice`), whose four values are CDK radio menu items so the arrow keys reach them; the Slider and Welded rows it replaced are gone from State. New rows belong in the builder; the canvas only supplies the gesture handlers (`MenuHandlers`).
-- **The analysis modes are editable.** Existing parts can be edited at the start pose; adding links and cylinders is available only in Edit, including from bare-grid menus. Away from it,
-  topology changes stay disabled in both modes. Paused menus allow locks, dimension holds,
-  display shape, force properties, and traces. Tracer points and force application points map
-  directly back through their body's transform to t=0; removing an unconstrained tracer is
-  likewise safe. Lock marks show in every mode while paused. Drags
-  stage and re-anchor exactly as they do in Edit. Grab a joint and
-  every open graph lays the curve from before the gesture under the one following your hand,
-  with the peak said as two numbers. `docs/analysis-mode-editing-plan.md` is the argument;
-  `e2e/analysis-editing.mjs` is the guard. Click selects, drag tunes: a drag does not move what
-  the panel is graphing.
+- **The analysis modes read the motion; they barely edit it.** At any paused pose a reader may drag
+  joints, links and forces; at the start pose they may also add or delete tracer points and
+  forces; traces switch anywhere. Nothing else (no structure, locks, holds, typed fields, nudges,
+  force flips). See
+  [`docs/editing-rules.md`](docs/editing-rules.md). Grab a joint and every open graph lays the
+  curve from before the gesture under the one following your hand, with the peak said as two
+  numbers. `docs/analysis-mode-editing-plan.md` is the history; `e2e/analysis-editing.mjs` is the
+  guard. Click selects, drag tunes: a drag does not move what the panel is graphing.
 - **A cylinder's skin is three things to click, not one body.** The cream bar on the black head is joint S — the mark every Prismatic slider wears in place of a weld's `+`, lying along its slot, and the one thing hover, selection and the lock badge are drawn on; the head under it is furniture that still takes the click (decision S13). Selecting it opens a joint's panel and a joint's card with Prismatic as its one live type, no Grounded row ("ground an end joint instead"), Slider Angle, *Starts at* in percent of the stroke, and Add Input — the cylinder's drive is this joint's. The barrel's path selects the barrel and the rod's the rod, each opening that member's own panel (Length and Angle as hold fields, mass as on a link, no tracer point and no force), and dragging either still drags the whole part. An end joint is an ordinary pin: it merges onto another joint, welds, grounds, and **drops onto a bar to ride the slot it cuts there** (decision S22) — Pin-in-slot if it was not welded, Prismatic if it was, with the cylinder re-posed around wherever the joint lands and re-laid between its two ends whenever something else moves it. **N alone is hidden** — no hitbox, no letter, and left out of every count a reader sees (`MechanismService.visibleJoints`) — while N *and* S are both "inside a cylinder" for the purposes of welding, merging and cutting a slot. The Edit Cylinder panel and the whole-cylinder menu card are gone. **A welded mount is one body**: weld a bar to an end joint and the bracket and that member draw as a single filleted outline in the body's own color, because the compound's union takes the member's skin silhouette (`model/cylinder-fusion.ts`, decision S16). The body is painted in that member's place in the skin's stack — under the head block for a barrel, over it for a rod — and the ordinary links layer leaves it alone, so a change to either has to keep both in step. **That place is worked out once for the whole drawing**, not per part: two cylinders can share one body, and only an order that knows about both can put it under one head and over the other. `model/cylinder-paint-order.ts` is the rule — the constraint, the tiebreak and what gives when they contradict each other (decision S24) — and the canvas walks the list it returns. **A cylinder with one body at both of its ends is a fixed part of that body, not a sliding pair** (`model/cylinder-frozen.ts`, decision S25): it costs no freedom, its seal and buried end are carried by the body's rigid motion, the force between barrel and rod is internal and is not solved for, a drive on its seal is refused in so many words, and the machine around it runs. A frozen ram's internal force is indeterminate, so the force solver does not solve for it.
 - A **Lock** is about position only: it refuses every gesture that would move what it holds and refuses nothing else, so a locked part deletes like any other and still takes a new link, cylinder or force (`model/lock-set.ts`). On a cylinder it is one mark on the seal and holds all four joints; on an end joint it holds the end joint.
 - A bar can **hold** its length or its angle against edits (`RealLink.hold`, the menu's Fixed Length / Fixed Angle rows, the padlocks in the Link panel's `hold-field-block`). It is a constraint, not a lock: every joint move goes through `GridUtilsService.dragJoint`, which asks `model/hold-solver.ts` for the CAD answer, and the hold rides the URL as an `H` entry beside the locks. [`docs/domain-facts.md`](docs/domain-facts.md#a-hold-is-a-constraint-not-a-lock-and-every-move-goes-through-the-solver) has the rules.

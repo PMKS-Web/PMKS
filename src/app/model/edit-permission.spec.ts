@@ -35,17 +35,15 @@ describe('what is allowed when', () => {
     expect(allowed(at({ playing: true, atStart: false }))).toEqual(['inspect', 'transport']);
   });
 
-  it('lets a gesture edit at a paused pose, and still refuses typed numbers', () => {
-    // The whole of Phase 2, as a row of the matrix. A drag at a pose means
-    // "put it here, at this pose" and the app can honor that -- the edit lands
-    // and the machine is put back on its anchor underneath. A typed X is a
-    // pose coordinate, and the transform back to t = 0 for it is not written.
+  it('lets a gesture and the safe properties edit at a paused pose, and nothing else', () => {
+    // docs/editing-rules.md, the Edit mid-cycle column. A drag at a pose means
+    // "put it here, at this pose" and the machine is put back on its anchor
+    // underneath; a mass or a color cannot stop it running. Structure, typed
+    // geometry and annotations wait for the start.
     expect(allowed(at({ playing: false, atStart: false }))).toEqual([
       'inspect',
       'drag',
-      'build',
-      'create',
-      'structure',
+      'safeProperty',
       'transport',
       'history',
     ]);
@@ -53,6 +51,9 @@ describe('what is allowed when', () => {
     const parked = at({ atStart: false, sharedStepZero: false });
     expect(refusalFor('placement', parked)!.short).toBe('shown at pose');
     expect(refusalFor('drive', parked)!.short).toBe('shown at pose');
+    for (const action of ['structure', 'annotate', 'create'] as const) {
+      expect(refusalFor(action, parked)!.actionKind).toBe('backToStart');
+    }
   });
 
   it('names the mechanism that is away when the shared clock does not show it', () => {
@@ -93,30 +94,51 @@ describe('what is allowed when', () => {
     });
   });
 
-  it('allows the same edits in analysis at the start, with posed restructuring refused', () => {
-    expect(allowed(at({ mode: 'analysis' }))).toEqual(
-      EDIT_ACTIONS.filter((action) => action !== 'create')
-    );
-    expect(menuRefusal(at({ mode: 'analysis' }), 'create')?.actionKind).toBe('toEdit');
-    for (const action of ['build', 'structure'] as const) {
-      expect(refusalFor(action, at({ mode: 'analysis', atStart: false }))!.backToStartHelps).toBe(
-        true
-      );
+  it('lets an analysis mode drag, annotate and read, and nothing else', () => {
+    // docs/editing-rules.md: the analysis modes read the motion. At the start a
+    // reader may drag, add or delete a tracer point or a force, and change the
+    // document's settings; everything else is Edit's.
+    expect(allowed(at({ mode: 'analysis' }))).toEqual([
+      'inspect',
+      'drag',
+      'annotate',
+      'settings',
+      'transport',
+      'history',
+    ]);
+    for (const action of ['structure', 'placement', 'properties', 'safeProperty'] as const) {
+      expect(refusalFor(action, at({ mode: 'analysis' }))!.actionKind).toBe('toEdit');
     }
+    expect(menuRefusal(at({ mode: 'analysis' }), 'create')?.actionKind).toBe('toEdit');
+    // Mid-cycle, a drag still lands and is put back on the anchor; a new
+    // tracer point or force waits for the start.
+    const parked = at({ mode: 'analysis', atStart: false });
+    expect(refusalFor('drag', parked)).toBeNull();
+    expect(refusalFor('annotate', parked)!.actionKind).toBe('backToStart');
   });
 
-  it('keeps menu mutations at the original start in every mode', () => {
-    for (const mode of ['edit', 'analysis'] as const) {
-      expect(menuRefusal(at({ mode }))).toBeNull();
-      expect(menuRefusal(at({ mode, atStart: false }), 'preserve')).toBeNull();
-      expect(menuRefusal(at({ mode, atStart: false }), 'attachment')).toBeNull();
-      expect(
-        menuRefusal(at({ mode, atStart: false, solveDeferred: true }), 'attachment')
-      ).not.toBeNull();
-      expect(menuRefusal(at({ mode, atStart: false }))).not.toBeNull();
-      expect(menuRefusal(at({ mode, atStart: false }), 'view')).toBeNull();
-      expect(menuRefusal(at({ mode, playing: true }), 'view')!.short).toBe('animation running');
+  it('answers a menu row by the kind of control it is', () => {
+    const edit = at({});
+    const parked = at({ atStart: false });
+    const analysis = at({ mode: 'analysis' });
+    const analysisParked = at({ mode: 'analysis', atStart: false });
+    // View: anywhere but while playing.
+    for (const state of [edit, parked, analysis, analysisParked]) {
+      expect(menuRefusal(state, 'view')).toBeNull();
+      expect(menuRefusal({ ...state, playing: true }, 'view')!.short).toBe('animation running');
     }
+    // Annotation: at the start, in either mode.
+    expect(menuRefusal(edit, 'annotation')).toBeNull();
+    expect(menuRefusal(analysis, 'annotation')).toBeNull();
+    expect(menuRefusal(parked, 'annotation')).not.toBeNull();
+    expect(menuRefusal(analysisParked, 'annotation')).not.toBeNull();
+    // Safe property: Edit only, at any paused pose.
+    expect(menuRefusal(parked, 'safe')).toBeNull();
+    expect(menuRefusal(analysis, 'safe')!.actionKind).toBe('toEdit');
+    // Design: Edit only, at the start.
+    expect(menuRefusal(edit)).toBeNull();
+    expect(menuRefusal(parked)!.actionKind).toBe('backToStart');
+    expect(menuRefusal(analysis)!.actionKind).toBe('toEdit');
   });
 
   it('never lets an analysis mode allow more than Edit would', () => {
@@ -158,7 +180,8 @@ describe('what is allowed when', () => {
     // which is the exact cost the deferral exists to refuse. At the start these
     // edit exactly as they always did.
     const heavy = at({ atStart: false, solveDeferred: true });
-    expect(allowed(heavy)).toEqual(['inspect', 'transport']);
+    // A mass or a color needs no cycle, so it is the one edit left.
+    expect(allowed(heavy)).toEqual(['inspect', 'safeProperty', 'transport']);
     expect(refusalFor('drag', heavy)!.long).toContain('Press Play');
     expect(allowed(at({ solveDeferred: true }))).toEqual([...EDIT_ACTIONS]);
   });

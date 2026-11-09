@@ -3207,8 +3207,11 @@ export class MechanismService {
     this.slotStashes.clear();
   }
 
-  /** A body-only point can go without removing any constraint of the motion. */
-  canDeleteTracerAtPose(joint: RealJoint): boolean {
+  /**
+   * A tracer point: a pin on one plain body that nothing else uses, so it can
+   * go without removing any constraint of the motion.
+   */
+  isTracerPoint(joint: RealJoint): boolean {
     if (!(joint instanceof RevJoint) || joint.ground || joint.input || joint.isWelded) return false;
     if (joint.links.length !== 1 || this.cylinderAt(joint)) return false;
     const link = joint.links[0];
@@ -3222,7 +3225,12 @@ export class MechanismService {
       )
     )
       return false;
-    return this.canAttachAtPose(link);
+    return true;
+  }
+
+  /** A tracer point whose body has a known motion back to the start. */
+  canDeleteTracerAtPose(joint: RealJoint): boolean {
+    return this.isTracerPoint(joint) && this.canAttachAtPose(joint.links[0] as RealLink);
   }
 
   /**

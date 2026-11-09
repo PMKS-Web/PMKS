@@ -26,6 +26,8 @@ In this order, the first time:
 - [ui-vocabulary.md](ui-vocabulary.md) — the words the app uses, and how labels, messages and tooltips should read. *Reference*
 - [environment.md](environment.md) — running the app, its checks and its deploys, and the toolchain
   traps in doing so. The one to read first. *Reference*
+- [editing-rules.md](editing-rules.md) — what may change in each mode and at each pose, as one
+  table of control kinds. Read it before adding any control that edits. *Reference*
 - [ui-gotchas.md](ui-gotchas.md) — how these stylesheets actually reach the page, and which of the
   several things that can refuse an edit is refusing this one. *Reference*
 - [domain-facts.md](domain-facts.md) — what a mechanism, a unit and a direction really are here,

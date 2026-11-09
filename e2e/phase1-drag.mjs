@@ -165,7 +165,11 @@ async function dragBy(page, from, to, { steps = 12, holdBeforeRelease = 0 } = {}
 async function restructuring(page) {
   return await page.evaluate(() => {
     const { permission } = window.ng.getComponent(document.querySelector('app-new-grid'));
-    return { build: permission.may('build'), structure: permission.may('structure') };
+    return {
+      build: permission.may('build'),
+      structure: permission.may('structure'),
+      annotate: permission.may('annotate'),
+    };
   });
 }
 
@@ -398,7 +402,7 @@ await safe('a plain click selects without moving anything', async () => {
 });
 
 // --- 5. An analysis mode drags, and where restructuring is refused --------
-await safe('an analysis mode drags what exists, and restructures at the start', async () => {
+await safe('an analysis mode drags what exists, and annotates at the start', async () => {
   await loadFourBar(page);
   await page.locator('.tabButton', { hasText: 'Kinematic' }).click();
   await page.waitForTimeout(800);
@@ -418,12 +422,9 @@ await safe('an analysis mode drags what exists, and restructures at the start', 
   const afterB = after.find((j) => j.id === 'B');
   await shot(page, 'analyze-drag-lands.png');
 
-  // The lock used to refuse this outright -- "the graphs describe this exact
-  // cycle, so the geometry is locked here" -- which stopped being true when the
-  // graph stack began redrawing from whatever was last solved. What it refuses
-  // now is restructuring, and only from a pose that is not the design. Here
-  // nothing has been played or scrubbed, so the drawing *is* its own t = 0 and
-  // there is nothing to refuse about -- which is what the next step is for.
+  // An analysis mode drags at any paused pose. Restructuring is Edit's
+  // wherever the drawing stands (docs/editing-rules.md); what it adds at the
+  // start is a tracer point or a force.
   record(
     'the joint moved',
     Math.abs(afterB.modelX - b.modelX) > 0.001 || Math.abs(afterB.modelY - b.modelY) > 0.001,
@@ -432,8 +433,8 @@ await safe('an analysis mode drags what exists, and restructures at the start', 
   record('and the drag never left the start of the cycle', await atStart(page));
   const offered = await restructuring(page);
   record(
-    'so restructuring is offered, as edit-permission promises',
-    offered.build && offered.structure,
+    'so a tracer point or a force is offered, and restructuring is left to Edit',
+    offered.annotate && !offered.build && !offered.structure,
     offered
   );
 });
@@ -448,7 +449,11 @@ await safe('an analysis mode refuses to restructure from a displaced pose', asyn
   // the check this replaced came to be asserting the opposite of the model.
   record('parked mid-cycle, the drawing is away from its start', !(await atStart(page)));
   const parked = await restructuring(page);
-  record('so restructuring is refused', !parked.build && !parked.structure, parked);
+  record(
+    'so restructuring and annotations are refused',
+    !parked.build && !parked.structure && !parked.annotate,
+    parked
+  );
 
   // A posed drag re-anchors -- the start of the *new* geometry is re-derived at
   // the anchored input value -- but it deliberately puts the display back where
@@ -479,8 +484,8 @@ await safe('an analysis mode refuses to restructure from a displaced pose', asyn
   record('which is not the start of the cycle', !(await atStart(page)));
   const stillParked = await restructuring(page);
   record(
-    'so the mode still refuses to restructure',
-    !stillParked.build && !stillParked.structure,
+    'so the mode still refuses to restructure or annotate',
+    !stillParked.build && !stillParked.structure && !stillParked.annotate,
     stillParked
   );
 
@@ -490,7 +495,11 @@ await safe('an analysis mode refuses to restructure from a displaced pose', asyn
   await page.waitForTimeout(900);
   record('back at the start, the drawing is its own design again', await atStart(page));
   const home = await restructuring(page);
-  record('and restructuring is offered again', home.build && home.structure, home);
+  record(
+    'and annotations are offered again, restructuring still Edit’s',
+    home.annotate && !home.build && !home.structure,
+    home
+  );
 });
 
 // --- 6. A bare cursor never pans the canvas -------------------------------

@@ -38,7 +38,7 @@ function jointType(chosen: number, extra: Partial<MenuChoice> = {}): MenuChoice 
   return {
     label: 'Joint Type',
     chosen,
-    posePolicy: 'start',
+    posePolicy: 'design',
     options: TYPES.map((label, index) => ({ label, icon: GLYPHS[index], action: noop })),
     ...extra,
   };
