@@ -1,4 +1,5 @@
 import { RealLink } from '../model/link';
+import { Joint, RealJoint } from '../model/joint';
 import { compoundAttachmentRefusal } from '../model/link-attachment';
 import { Injectable, inject } from '@angular/core';
 import {
@@ -81,9 +82,9 @@ export class EditPermissionService {
     return refusalFor(action, this.state());
   }
 
-  /** Analysis restructuring is available at the original start pose. */
+  /** Whether changing what the mechanism is made of is refused right now. */
   modeLocksStructure(): boolean {
-    return this.mode() === 'analysis' && !this.mechanism.isAtStartPose();
+    return !this.may('structure');
   }
 
   /**
@@ -99,27 +100,25 @@ export class EditPermissionService {
     return refusalFor(action, { ...state, mode: 'edit' });
   }
 
-  /** Menu actions use the original design pose; view switches never change it. */
-  menuRefusal(policy: MenuPosePolicy = 'start'): EditRefusal | null {
+  /** A context-menu row's answer, by the kind of control it is. */
+  menuRefusal(policy: MenuPosePolicy = 'design'): EditRefusal | null {
     return menuRefusal(this.state(), policy);
   }
 
   /** The panel and menu quote the same body and pose requirements. */
   linkAttachmentRefusal(link: RealLink): { short: string; long: string } | undefined {
-    return (
-      compoundAttachmentRefusal(link) ??
-      this.menuRefusal('attachment') ??
-      (!this.mechanism.isAtStartPose() ? this.attachmentPoseRefusal(link) : undefined)
-    );
+    return compoundAttachmentRefusal(link) ?? this.menuRefusal('annotation') ?? undefined;
   }
 
-  attachmentPoseRefusal(link: RealLink): { short: string; long: string } | undefined {
-    return this.mechanism.canAttachAtPose(link)
-      ? undefined
-      : {
-          short: 'return to the start',
-          long: 'This body has no reliable mapping to its start pose. Return to the start to attach a point or force.',
-        };
+  /**
+   * Why this joint cannot be deleted right now.
+   *
+   * A tracer point is an annotation, so it goes wherever a force does; any
+   * other joint holds the mechanism together, and deleting it is structure.
+   */
+  deleteJointRefusal(joint: Joint): EditRefusal | null {
+    const kind = joint instanceof RealJoint && this.mechanism.isTracerPoint(joint);
+    return this.menuRefusal(kind ? 'annotation' : 'design');
   }
 
   /** The same question where only yes or no is wanted. */
