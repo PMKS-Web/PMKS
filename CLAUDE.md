@@ -6,7 +6,7 @@ them, the instruction says so and names the other's counterpart.
 
 ## Project
 
-PMKS (Planar Mechanism Kinematic Simulator Plus) — an educational Angular 22 web app for creating, editing, and analyzing 2D planar linkages (kinematic + force analysis). Single-page app rendered as an interactive SVG grid; no routing.
+PMKS (Planar Mechanism Kinematic Simulator) — an educational Angular 22 web app for creating, editing, and analyzing 2D planar linkages (kinematic + force analysis). Single-page app rendered as an interactive SVG grid; no routing.
 
 Requires Node ≥22.22 (or 24.x). The esbuild `application` builder is used; `outputPath.browser` is pinned to `""` so output stays flat at `dist/pmksweb` for the Netlify publish dir. Runtime `require()` calls are not supported by the bundler — use ES imports.
 
