@@ -104,6 +104,25 @@ describe('a welded body', () => {
     expect(at(body.CoM)[1]).toBeCloseTo(0.25, 9);
   });
 
+  it('weighs a member placed by hand where it was put, during the drag and after', () => {
+    const h = vee();
+    h.bc.placeCustomCoM(new Coord(4.5 * S, 0.5 * S));
+    h.service.updateMechanism(false);
+    h.active.updateSelectedObj(h.b);
+    h.service.weldJoint();
+    const body = compound(h.service.links);
+
+    h.grid.dragJoint(h.c, new Coord(4 * S, 2 * S), false);
+    const during = at(body.CoM);
+    h.service.updateMechanism(false);
+
+    // A member's placed point stays put on a joint drag, so 3 kg at (2, 0)
+    // and 1 kg at (4.5, 0.5) on both sides of the release.
+    expect(during[0]).toBeCloseTo(2.625, 9);
+    expect(during[1], 'mid-drag').toBeCloseTo(0.125, 9);
+    expect(at(body.CoM)[1], 'after release').toBeCloseTo(0.125, 9);
+  });
+
   it('gives each bar back its own center of mass when the weld comes off', () => {
     const h = vee();
     h.bc.placeCustomCoM(new Coord(4.5 * S, 0.5 * S));
@@ -188,5 +207,20 @@ describe('a link drawn as a disc', () => {
     const h = disc();
     h.grid.dragJoint(h.b, new Coord(0, 3 * S), false);
     expect(at(h.crank.CoM)).toEqual([0, 0]);
+  });
+
+  it('holds a point placed by hand against the pin, the frame the panel shows', () => {
+    const h = disc();
+    h.crank.placeCustomCoM(new Coord(1 * S, 0));
+    h.service.updateMechanism(false);
+
+    h.grid.dragJoint(h.b, new Coord(4 * S, 0), false);
+    const during = at(h.crank.CoM);
+    h.service.updateMechanism(false);
+
+    // One along the bar from the pin, as placed. Measured from the bar's
+    // middle instead, the point followed the middle out to (2, 0).
+    expect(during[0], 'mid-drag').toBeCloseTo(1, 9);
+    expect(at(h.crank.CoM)[0], 'after release').toBeCloseTo(1, 9);
   });
 });
