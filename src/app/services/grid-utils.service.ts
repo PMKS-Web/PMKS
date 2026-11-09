@@ -64,6 +64,7 @@ import { SynthesisPose } from './synthesis/synthesis-util';
 import { SynthesisBuilderService } from './synthesis/synthesis-builder.service';
 import { SvgGridService } from './svg-grid.service';
 import { ColorService } from './color.service';
+import { derivedCenterOfMass } from '../model/link-body';
 
 /**
  * Map a point from one two-joint frame to another, letting the frame stretch.
@@ -731,7 +732,7 @@ export class GridUtilsService {
       // there is no rigid motion to carry it, and guessing would move a
       // number somebody chose.
       if (!l.comIsCustom) {
-        l.CoM = RealLink.determineCenterOfMass(l.joints);
+        l.CoM = derivedCenterOfMass(l);
         l.updateCoMDs();
       }
       l.updateLengthAndAngle();
@@ -742,7 +743,7 @@ export class GridUtilsService {
           // Same rule as the root: a member's hand-placed center survives
           // for the unweld that will one day restore it.
           if (!subLink.comIsCustom) {
-            subLink.CoM = RealLink.determineCenterOfMass(subLink.joints);
+            subLink.CoM = derivedCenterOfMass(subLink);
             subLink.updateCoMDs();
           }
           subLink.updateLengthAndAngle();
@@ -1520,7 +1521,7 @@ export class GridUtilsService {
         link.CoM = new Coord(comX, comY);
       }
     } else {
-      link.CoM = RealLink.determineCenterOfMass(link.joints);
+      link.CoM = derivedCenterOfMass(link);
     }
     link.updateCoMDs();
     link.updateLengthAndAngle();
@@ -1533,7 +1534,7 @@ export class GridUtilsService {
           subLink.CoM = new Coord(subX, subY);
         }
       } else {
-        subLink.CoM = RealLink.determineCenterOfMass(subLink.joints);
+        subLink.CoM = derivedCenterOfMass(subLink);
       }
       subLink.updateCoMDs();
       subLink.updateLengthAndAngle();

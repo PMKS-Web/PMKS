@@ -125,7 +125,7 @@ import { memberIsFused, PaintStep } from '../../model/cylinder-paint-order';
 import { SnapGuide, snapToAxes } from '../../model/axis-snap';
 import { drawDepths } from '../../model/draw-order';
 import { MODEL_SCALE } from '../../model/render-scale';
-import { uniformBodyOf } from '../../model/uniform-body';
+import { derivedCenterOfMass } from '../../model/link-body';
 import { buildCompoundPath } from '../../model/compound-link-path';
 
 import { angleReference, GROUND_BODY, resolveActuator } from '../../model/actuator';
@@ -4811,7 +4811,7 @@ export class NewGridComponent implements OnDestroy {
    */
   comCentroidDot(link: Link): { x: number; y: number } | null {
     if (!(link instanceof RealLink) || !link.comIsCustom) return null;
-    const centroid = uniformBodyOf(link.joints).centroid;
+    const centroid = derivedCenterOfMass(link);
     if (Math.hypot(centroid.x - link.CoM.x, centroid.y - link.CoM.y) < 1e-6) return null;
     return centroid;
   }
@@ -4925,7 +4925,7 @@ export class NewGridComponent implements OnDestroy {
     let bestDist = this.svgGrid.scaleWithZoom(12);
     // The centroid outranks the lines: it is the point the whole feature is
     // an offset from, and a pointer near it means it exactly.
-    const centroid = uniformBodyOf(joints).centroid;
+    const centroid = derivedCenterOfMass(link);
     if (Math.hypot(pos.x - centroid.x, pos.y - centroid.y) < bestDist) {
       return centroid;
     }

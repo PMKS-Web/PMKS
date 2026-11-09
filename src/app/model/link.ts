@@ -497,7 +497,9 @@ export class RealLink extends Link {
     } else {
       this.subset = subSet;
     }
-    this._CoM = CoM !== undefined ? CoM : RealLink.determineCenterOfMass(joints);
+    // A seed only: the property pass in `updateMechanism` asks `derivedBodyOf`,
+    // which also knows about discs and welded members, before anything reads it.
+    this._CoM = CoM !== undefined ? CoM : uniformBodyOf(joints).centroid;
     // Before the path is built, because being drawn as a disc is what decides
     // what that path is. `visualSource` is the link this one is a copy of, so
     // every solved timestep inherits the choice without each cloning site
@@ -1128,17 +1130,6 @@ export class RealLink extends Link {
       vectorStartToCenter.x * vectorEndToCenter.y - vectorStartToCenter.y * vectorEndToCenter.x;
 
     return crossProduct > 0;
-  }
-
-  static determineCenterOfMass(joints: Joint[]) {
-    let com_x = 0;
-    let com_y = 0;
-    // TODO: Logic isn't exactly right but can change this once other logic is fully finished
-    joints.forEach((j) => {
-      com_x += j.x;
-      com_y += j.y;
-    });
-    return new Coord(com_x / joints.length, com_y / joints.length);
   }
 
   get d(): string {

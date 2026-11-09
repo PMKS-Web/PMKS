@@ -57,7 +57,7 @@ import { registerEditPanel } from '../../services/edit-panel-handle';
 import { MODEL_SCALE } from '../../model/render-scale';
 import { EditBannerComponent } from '../BLOCKS/banner/edit-banner.component';
 import { StateInputComponent } from '../BLOCKS/state-input/state-input.component';
-import { uniformBodyOf } from '../../model/uniform-body';
+import { derivedCenterOfMass } from '../../model/link-body';
 import { cylinderAtSeal, cylinderLengthsOf, cylinderSizeOf, Cylinder } from '../../model/cylinder';
 import { bodyLabelParts } from '../../model/body-label';
 import { NotificationService } from 'src/app/services/notification.service';
@@ -2075,7 +2075,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
       const joint = link.joints.find((candidate) => candidate.id === id);
       if (joint) return { x: joint.x, y: joint.y };
     }
-    return uniformBodyOf(link.joints).centroid;
+    return derivedCenterOfMass(link);
   }
 
   // ---------------------------------------------------------------------------

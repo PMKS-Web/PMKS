@@ -257,6 +257,9 @@ Not suites — import them from one.
 
 ### Links, holds, locks and labels
 
+- `center-of-mass.mjs` — where a link's automatic CoM is during a gesture and after it (#156): a
+  tracer dragged along a bar leaves it in the middle, the mark shown while a drag is held is the one
+  it settles on, a disc's is on its ground pin, and unwelding says when it drops a placed CoM.
 - `link-mass-fields.mjs` — a link's Mass Settings: `CoM measured from` with its help mark after
   "from", choices that name a point, picking a joint re-describing rather than moving the point,
   and `Inertia` on one line.

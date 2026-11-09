@@ -2905,3 +2905,14 @@ with 422 while the PR belongs to a stack. Snapshot the membership, POST to
 entries in place. This is a metadata operation separate from rebasing the branches; recreating
 the groups does not replace the code checks. The [Stacks API](https://docs.github.com/en/rest/pulls/stacks)
 describes the endpoints.
+
+### The templates' centers of mass are all placed by hand
+
+Every link in the library templates arrives with `comIsCustom` set, its CoM stored at the bar's
+middle. So nothing that derives an automatic CoM reaches a template untouched: adding a tracer,
+welding, or Drawn as a Disc leaves the mark where it was until the reader presses "Back to the
+shape's centroid". `e2e/center-of-mass.mjs` clears the flag before it tests anything. The
+verification fixtures do the same on purpose (`buildFixtureLink` in
+`test-utils/verification/fixture.ts`), and their unstated CoM is the mean of the joints written out
+there, because the `RealLink` constructor's seed is now the shape's centroid and fixture data must
+not move with it (#156).

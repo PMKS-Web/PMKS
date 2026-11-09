@@ -19,6 +19,9 @@ import { Coord } from './coord';
  *   - a degenerate hull (collinear joints, e.g. a tracer on the bar's own
  *     axis) — the rod again, between the two farthest joints.
  *
+ * A link drawn as a disc is not shaped here: `link-body.ts` makes it a solid
+ * disc on its ground pin, and is what callers should ask for a link.
+ *
  * Everything is expressed per unit mass: `gyrationSq` is k², the squared
  * radius of gyration, in squared model units. MoI = mass × k², converted to
  * whatever unit the store keeps inertia in — mass stays the one number a
