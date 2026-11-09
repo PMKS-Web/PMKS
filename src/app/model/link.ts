@@ -1,5 +1,6 @@
 import { Joint, PrisJoint, RealJoint } from './joint';
 import { uniformBodyOf } from './uniform-body';
+import { derivedCenterOfMass } from './link-body';
 import { Coord } from './coord';
 import { Force } from './force';
 import { degToRad, determineSlope, getAngle, getDistance, radToDeg } from './utils';
@@ -371,11 +372,16 @@ export class RealLink extends Link {
   }
 
   /**
-   * The link's own frame: origin at the uniform centroid, x̂ along the two
+   * The link's own frame: origin at the shape's centroid, x̂ along the two
    * *named* joints — the farthest pair at capture time, so the axis is never
    * degenerate by accident and never silently reinterpreted when the joints
    * array reorders. `ok` is false when a named joint has left the link, which
    * tells the caller to rebase rather than trust a different pair.
+   *
+   * The origin is `derivedCenterOfMass`, the same point the Edit panel calls
+   * "Shape's centroid" and the canvas marks. Measured from the bar's centroid
+   * instead, a disc's placed point drifted off the frame the panel showed it
+   * in as soon as the far joint moved, because the disc's centroid is its pin.
    */
   private comFrame(pair?: [string, string]): {
     origin: Coord;
@@ -384,7 +390,7 @@ export class RealLink extends Link {
     pair: [string, string];
     ok: boolean;
   } {
-    const origin = uniformBodyOf(this.joints).centroid;
+    const origin = derivedCenterOfMass(this);
     let a = pair ? this.joints.find((joint) => joint.id === pair[0]) : undefined;
     let b = pair ? this.joints.find((joint) => joint.id === pair[1]) : undefined;
     const named = !!(a && b);

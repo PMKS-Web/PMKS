@@ -522,7 +522,7 @@
               [formGroup]="linkForm"
               _formControl="drawAsDisc"
               [disabled]="!canDrawAsDisc()"
-              tooltip="Draw this link as the disc it sweeps, centered on its fixed pin. Its mass and rotational inertia are unchanged."
+              tooltip="Draw this link as the disc it sweeps, centered on its fixed pin. It is then treated as a solid disc: its mass is unchanged, and its center of mass and rotational inertia come from the disc."
             >
               Draw as a Disc
             </toggle-block>
