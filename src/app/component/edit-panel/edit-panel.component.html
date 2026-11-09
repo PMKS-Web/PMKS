@@ -676,14 +676,14 @@
                   }
                 </span>
               </input-block>
-              <!-- Drawing a crank as a disc is a picture, not a declaration that the
-               part is one. Said here, next to the two numbers it would otherwise
-               be reasonable to assume it had changed — and only here, because
-               with no mass there are no such numbers to mislead anyone. -->
+              <!-- A crank drawn as a disc is treated as a solid disc on its ground
+               pin (#156), which moves both numbers above off the bar's values.
+               Said here, next to them, so the change has a reason in view -- and
+               only here, because with no mass there are no such numbers. -->
               @if (drawnAsDisc()) {
                 <p class="shapeNote">
-                  Drawn as a disc. These two still follow the link's joints, not the circle — set
-                  Inertia by hand for a real flywheel.
+                  Drawn as a disc, so it is treated as a solid disc on its ground pin: the CoM sits
+                  on the pin.
                 </p>
               }
             }
