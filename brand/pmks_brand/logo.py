@@ -30,6 +30,8 @@ WORD = set_text('PMKS', wdth=112, wght=700)
 
 @dataclass(frozen=True)
 class Layout:
+    """Where the logo's parts sit, all measured from the corner pin's center."""
+
     top: float  # the amber bar, center to center
     side: float  # the blue bar, center to center
     word_x: float
@@ -38,15 +40,18 @@ class Layout:
 
     @property
     def view_box(self) -> tuple[float, float, float, float]:
+        """The bars plus one pin radius on every side."""
         return (-PIN, -PIN, self.top + 2 * PIN, self.side + 2 * PIN)
 
     @property
     def aspect(self) -> float:
+        """Width over height; LOGO_ASPECT in src/app/model/brand.ts must match it."""
         _, _, width, height = self.view_box
         return width / height
 
 
 def layout() -> Layout:
+    """The logo laid out by the three rules in this module's docstring."""
     size = CAP_HEIGHT * WORD.upem / WORD.cap_height
     word_x = BAR / 2 + GAP
     baseline = BAR / 2 + GAP + CAP_HEIGHT
@@ -55,6 +60,7 @@ def layout() -> Layout:
 
 
 def logo(paint: Paint = LIGHT) -> str:
+    """The logo as an SVG document, for a light ground unless `paint` says otherwise."""
     at = layout()
     body = linkage((0, 0), at.top, at.side, BAR, PIN, RING, paint) + WORD.placed(
         at.word_x, at.baseline, at.size, paint.word
@@ -63,4 +69,5 @@ def logo(paint: Paint = LIGHT) -> str:
 
 
 def logo_dark() -> str:
+    """The logo for a dark ground: white word, light-indigo side bar."""
     return logo(DARK)

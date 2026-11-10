@@ -24,6 +24,7 @@ ADDRESS = (('app.pmksplus.com',), 22, 30)
 
 
 def card() -> str:
+    """The 1200 x 630 link-preview card, as an SVG document."""
     headline = [set_text(t, wdth=112, wght=700, tracking=-0.03) for t in HEADLINE[0]]
     line = [set_text(t) for t in LINE[0]]
     address = [set_text(t, wght=600) for t in ADDRESS[0]]

@@ -58,6 +58,7 @@ def linkage(
 
 
 def svg(view_box: tuple[float, float, float, float], body: str, extra: str = '') -> str:
+    """A standalone SVG document: `extra` goes before the drawing, for a <style>."""
     vb = ' '.join(_n(v) for v in view_box)
     return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}">{extra}{body}</svg>\n'
 

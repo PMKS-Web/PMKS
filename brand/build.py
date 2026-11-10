@@ -16,6 +16,7 @@ WORK = HERE / '.work'  # sources of PNGs that are not shipped as SVG
 
 
 def main() -> None:
+    """Write the shipped SVGs and the working files rasterize.mjs renders."""
     OUT.mkdir(parents=True, exist_ok=True)
     WORK.mkdir(exist_ok=True)
 

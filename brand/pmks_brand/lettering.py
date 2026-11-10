@@ -37,6 +37,7 @@ class SetText:
         )
 
     def ink_width(self, size: float) -> float:
+        """How wide the text's ink is when set at `size`, in drawing units."""
         return (self.ink_right - self.ink_left) * size / self.upem
 
 

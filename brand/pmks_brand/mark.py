@@ -45,6 +45,7 @@ def tile(size: float, fill: float, ground: str, paint: Paint = Paint()) -> str:
 
 
 def app_icon() -> str:
+    """The install icon: the mark on white, filling 62% of a 512px square."""
     return tile(512, 0.62, palette.WHITE)
 
 
@@ -65,16 +66,19 @@ def profile_picture() -> str:
 
 
 def favicon_16() -> str:
+    """The 16px favicon, drawn on its pixel grid."""
     # No ring: at 16px a one-pixel ring around a five-pixel pin turns it into a "+".
     body = linkage((3.5, 3.5), 9, 9, 3, 2.5, 0)
     return svg((0, 0, 16, 16), body)
 
 
 def favicon_32() -> str:
+    """The 32px favicon, drawn on its pixel grid; favicon.svg is this one."""
     return svg((0, 0, 32, 32), _grid_32())
 
 
 def favicon_48() -> str:
+    """The 48px favicon, drawn on its pixel grid."""
     body = linkage((9.5, 9.5), 29, 29, 7, 6.5, 2)
     return svg((0, 0, 48, 48), body)
 
