@@ -35,9 +35,9 @@ def main() -> None:
         'social-card.svg': card.card(),
     }
     for name, text in shipped.items():
-        (OUT / name).write_text(text)
+        (OUT / name).write_text(text, encoding='utf-8')
     for name, text in working.items():
-        (WORK / name).write_text(text)
+        (WORK / name).write_text(text, encoding='utf-8')
 
     wide = 1200
     tall = round(wide / logo.layout().aspect)
@@ -63,7 +63,7 @@ def main() -> None:
             'sizes': [{'size': s, 'png': str(WORK / f'favicon-{s}.png')} for s in (16, 32, 48)],
         },
     }
-    (WORK / 'plan.json').write_text(json.dumps(plan, indent=1))
+    (WORK / 'plan.json').write_text(json.dumps(plan, indent=1), encoding='utf-8')
     print(f'Wrote {len(shipped)} SVGs to {OUT.relative_to(HERE.parent)}; {len(renders)} PNGs to render.')
 
 
