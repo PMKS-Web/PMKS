@@ -13,6 +13,15 @@ whose title covers it, and leave a heading here only if someone would still sear
 
 ---
 
+### `.gitattributes` keeps every text file LF, because specs compare checked-in bytes
+
+`fixture-gallery.spec.ts` compares `docs/fixture-urls.md` with freshly generated text, and
+`oracle.spec.ts` hashes the bytes of `oracle/pmks_oracle/*.py`. A Windows clone with Git's default
+`core.autocrlf` used to check those files out with CRLF endings, so both failed on a clean
+checkout. `* text=auto eol=lf` in `.gitattributes` now checks out LF everywhere. A clone made
+before that rule keeps its CRLF files until they are checked out again:
+`git rm -r --cached -q . && git reset --hard` (this discards uncommitted changes).
+
 ### `__dirname` in a shared test helper points somewhere else in the full run
 
 A spec file can resolve paths from its own `__dirname`, as `fixture-gallery.spec.ts` does. A
@@ -2479,7 +2488,7 @@ Number adjustment now starts on the field label, preserving the value's native t
 
 Vector paths were rebuilding all cycle samples on every drag move. In a four-bar drag with velocity and acceleration on B and C, this cost 30 rebuilds / 254ms and 143,144 sample reads. Reusing the cycle paths during the gesture and refreshing on release reduced this to one rebuild / 7ms and 20,032 reads; the current-pose arrows continue updating. The measured frame p90 fell from 17ms to 9ms on this machine (`e2e/vector-drag-profile.mjs`). Ask `DragStateService.isDragging`, not `onMechUpdateState`: a solve emits state 2 during the drag, so that observable alone cannot guard the expensive work.
 
-Shared reproductions: [Luffing crank label](https://deploy-preview-32--pmksnew.netlify.app/?2v.Ay,1E8.A,1V.1011.4O,O,0,0,0.0C,C,Qv,cP,0.0T,T,rn,1Co,0.6G,G,YO,09O,0.1K,K,Fs,Me,0,OCT,O,T..ARGK,Luffing%20crank,mr0,1T,P7,6e,303e9f,G,K,,.MROCT,Boom,4a_0,S7,LX,Uk,0d125a,O,C,T,,..1F1,OCT,F1,rn,1Co,sg,1X7,d4..N_P*2IoWB5), [HI beside orphan G](https://deploy-preview-32--pmksnew.netlify.app/?2v.EK,1E8.A,0.1011.6G,G,YO,09O,0.9H,H,1C4,0F2,0.0I,I,1TR,051,0..ARHI,HI,0,0,1Km,0A2,303e9f,H,I,,...N_d*1yshxG), [Standalone input A](https://deploy-preview-32--pmksnew.netlify.app/?2v.Ay,1E8.A,0.1011.6A,A,0d1,8J,0,,,,02SG....N_k*418cfy).
+Shared reproductions: [Luffing crank label](https://staging--pmksprod.netlify.app/?2v.Ay,1E8.A,1V.1011.4O,O,0,0,0.0C,C,Qv,cP,0.0T,T,rn,1Co,0.6G,G,YO,09O,0.1K,K,Fs,Me,0,OCT,O,T..ARGK,Luffing%20crank,mr0,1T,P7,6e,303e9f,G,K,,.MROCT,Boom,4a_0,S7,LX,Uk,0d125a,O,C,T,,..1F1,OCT,F1,rn,1Co,sg,1X7,d4..N_P*2IoWB5), [HI beside orphan G](https://staging--pmksprod.netlify.app/?2v.EK,1E8.A,0.1011.6G,G,YO,09O,0.9H,H,1C4,0F2,0.0I,I,1TR,051,0..ARHI,HI,0,0,1Km,0A2,303e9f,H,I,,...N_d*1yshxG), [Standalone input A](https://staging--pmksprod.netlify.app/?2v.Ay,1E8.A,0.1011.6A,A,0d1,8J,0,,,,02SG....N_k*418cfy).
 
 
 ### A tracer selected through a compound primitive still belongs to the root
@@ -2488,7 +2497,7 @@ The second click on a compound now selects a primitive object, not the root with
 
 The designer’s “Force rendering and frame visualization-2.zip” final card 2a replaces the older force weld-plus grammar: a disc and ring/keyway stay at the application point, independent of arrow sense. The inward tip stops one shaft width before the anchor. The lock badge is offset beside the disc so the frame stays legible. The panel Angle and its hover/focus guide both measure from the owning body for Local, and from +x for Grid; stored `angleRad` continues to be the physical world direction.
 
-[Compound tracer reproduction on PR32](https://deploy-preview-32--pmksnew.netlify.app/?2v.9x,1E8.A,0.1011.0H,H,ve,0Cg,0.8I,I,11m,He,0.0J,J,1YS,01G,0..ARHIJ,HIJ,0,0,17v,5L,303e9f,H,I,J,,HI,IJ.aRHI,HI,0,0,zi,2V,303e9f,H,I,,.aRIJ,IJ,0,0,1I6,8C,0d125a,I,J,,...N_l*2yNYpD).
+[Compound tracer reproduction on PR32](https://staging--pmksprod.netlify.app/?2v.9x,1E8.A,0.1011.0H,H,ve,0Cg,0.8I,I,11m,He,0.0J,J,1YS,01G,0..ARHIJ,HIJ,0,0,17v,5L,303e9f,H,I,J,,HI,IJ.aRHI,HI,0,0,zi,2V,303e9f,H,I,,.aRIJ,IJ,0,0,1I6,8C,0d125a,I,J,,...N_l*2yNYpD).
 
 
 ### Force marks need one geometry scale, and inward shafts end at the head’s base
@@ -2905,3 +2914,11 @@ with 422 while the PR belongs to a stack. Snapshot the membership, POST to
 entries in place. This is a metadata operation separate from rebasing the branches; recreating
 the groups does not replace the code checks. The [Stacks API](https://docs.github.com/en/rest/pulls/stacks)
 describes the endpoints.
+
+### Netlify previews a PR only into a branch that deploys
+
+`pmksprod` deploys `main` and `staging` and nothing else, to save build minutes, and that is also
+what decides which pull requests get a preview: Netlify builds one only for a PR whose base is the
+production branch or a branch-deploy branch. So a PR into `staging` gets
+`deploy-preview-NNN--pmksprod.netlify.app`, and a stacked PR into another feature branch gets none.
+Adding a branch to the branch-deploy list turns on both its own deploy and previews of PRs into it.

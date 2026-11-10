@@ -9,7 +9,7 @@ describe('a pasted link', () => {
   const here = 'localhost';
   const fourBar = `https://app.pmksplus.com/?${TEMPLATE_LINKAGES['Four_Bar']}`;
 
-  it('accepts production, either Netlify site and a local server, and nothing else', () => {
+  it('accepts production, pmksprod, an old pmksnew preview and a local server, and nothing else', () => {
     expect(isPmksHost('app.pmksplus.com', here)).toBe(true);
     expect(isPmksHost('deploy-preview-42--pmksnew.netlify.app', here)).toBe(true);
     expect(isPmksHost('staging--pmksprod.netlify.app', here)).toBe(true);
