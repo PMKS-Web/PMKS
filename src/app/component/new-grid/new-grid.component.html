@@ -1,6 +1,7 @@
 <svg
   id="canvas"
   [class.schematic]="settings.isSchematic"
+  [style.--drawing-scale]="settings.drawingScale"
   [attr.data-drawing-style]="settings.drawingStyle.value"
   display="block"
   width="100%"
@@ -586,6 +587,27 @@
       }
     </g>
   }
+  @if (!settings.isSchematic) {
+    <g id="linkGrabHolder" modelFrame>
+      @for (link of mechanismSrv.getLinks(); track link) {
+        @if (gridUtils.typeOfLink(link) == 'R' && !bodyDrawnByACylinder(link)) {
+          <path
+            (pointerover)="link.showHighlight = true"
+            (pointerout)="link.showHighlight = false"
+            (pointerdown)="setLastLeftClick(link, $event)"
+            (contextmenu)="setLastRightClick(link, $event)"
+            [attr.cursor]="mechanismSrv.isLinkLockedVisual(link) ? 'not-allowed' : null"
+            [attr.d]="objectDisplay.skeleton(link)"
+            [attr.id]="link.id + '__wideHit'"
+            stroke="transparent"
+            [attr.stroke-width]="svgGrid.scaleWithZoom(12)"
+            fill="none"
+            pointer-events="stroke"
+          />
+        }
+      }
+    </g>
+  }
   <g id="linkHolder" modelFrame>
     @for (link of mechanismSrv.getLinks(); track link) {
       <ng-container>
@@ -614,7 +636,7 @@
             [attr.fill-opacity]="0.7"
             [attr.stroke]="mechanismSrv.getLinkProp(link, 'fill')"
             [style.stroke]="settings.isSchematic ? mechanismSrv.getLinkProp(link, 'fill') : null"
-            [attr.stroke-width]="svgGrid.scaleWithZoom(3)"
+            [attr.stroke-width]="settings.drawingScale * 0.06"
             [class]="mechanismSrv.getLinkCSSClass(link)"
           ></path>
           <!-- The slot is a real hole in the bar, and a hole catches no pointer:
@@ -1585,7 +1607,7 @@
                   selectionRingOn(joint)
                     ? selectionRingWidth()
                     : settings.isSchematic
-                      ? svgGrid.scaleWithZoom(1)
+                      ? settings.drawingScale * 0.02
                       : null
                 "
               ></path>
@@ -2556,7 +2578,7 @@
                   stroke="black"
                   stroke-opacity="0.45"
                   stroke-linejoin="round"
-                  [attr.stroke-width]="svgGrid.scaleWithZoom(1)"
+                  [attr.stroke-width]="settings.drawingScale * 0.02"
                 ></path>
               }
             </g>
@@ -2668,7 +2690,7 @@
           ) {
             <text
               class="forceLabel"
-              [style.font-size.px]="Math.max(settings.drawingScale / 6, svgGrid.scaleWithZoom(11))"
+              [style.font-size.px]="tagFontSize"
               [attr.y]="0.1 * settings.drawingScale"
               [attr.stroke-width]="(3.5 / 90) * settings.drawingScale"
               style="text-anchor: middle; dominant-baseline: middle"

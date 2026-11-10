@@ -2,6 +2,12 @@ import { ObjectDisplayService } from '../../services/object-display.service';
 import { forceInk } from '../../model/force-ink';
 import { ForceMarkComponent } from '../force-mark/force-mark.component';
 import { barLabelAxis } from '../../model/bar-label-axis';
+import {
+  bodyLabelAngle,
+  bodyLabelCenter,
+  jointLabelOffset,
+  placeBarLabel,
+} from '../../model/label-placement';
 import { PlacementTargetService } from '../../services/placement-target.service';
 import { placementBearing } from '../../model/placement-snap';
 import { LinkTraceService } from '../../services/link-trace.service';
@@ -143,7 +149,7 @@ export interface SlotStackItem {
 }
 import { SvgArrowComponent } from '../svg-arrow/svg-arrow.component';
 import { KeyboardShortcutsService, ShortcutId } from '../../services/keyboard-shortcuts.service';
-import { INK_FLIPS_AT, luminanceOf } from '../../model/contrast';
+import { canvasLabelInk, INK_FLIPS_AT, luminanceOf } from '../../model/contrast';
 import { SELECTION_RING } from '../../model/joint-colors';
 import { isAdditiveSelectionGesture, SelectedPart } from '../../model/selection';
 import {
@@ -2576,8 +2582,8 @@ export class NewGridComponent implements OnDestroy {
    * It used to sit a fixed step up and left of the midpoint, which is on the
    * arrow for any force pointing up-left or down-right -- and a name printed
    * over a shaft is a name that cannot be read. The offset is taken along the
-   * arrow's own normal instead, a set distance in screen pixels so it holds at
-   * every zoom, and always to the side that is "up" on the screen, so the
+   * arrow's own normal instead, scaled with the arrow, and always to the side
+   * that is "up" on the screen, so the
    * name is above the arrow whichever way the arrow points.
    */
   forceLabelAt(force: Force): { x: number; y: number } {
@@ -5282,16 +5288,21 @@ export class NewGridComponent implements OnDestroy {
   /**
    * Where a joint's letter goes, in the tag layer's own half-flipped frame.
    *
-   * Up and a little to the left of the joint, for every joint but one. A seal
-   * sits in the middle of its own part, so "up" is along the barrel as often as
-   * it is clear of it — and the letter came out painted on the metal. Its own
-   * letter goes out along the axis's normal instead, clear of the barrel's
-   * widest edge, on whichever side of the part is nearer the top of the screen.
+   * Ordinary joints use an open sector between their connections. A cylinder
+   * seal instead clears the barrel's widest edge along the axis's normal.
    */
   jointTagAnchor(joint: Joint): { x: number; y: number } {
-    const scale = Math.max(this.settings.drawingScale, this.svgGrid.scaleWithZoom(22));
+    const scale = this.settings.drawingScale;
     const sealed = this.cylinderSealedAt(joint);
-    if (!sealed) return { x: joint.x - scale * 0.3, y: -joint.y - scale * 0.5 };
+    if (!sealed) {
+      const offset = jointLabelOffset(
+        joint,
+        this.tagFontSize,
+        scale,
+        this.mechanismSrv.mechanismContaining(joint)?.joints[0]
+      );
+      return { x: joint.x + offset.x, y: -(joint.y + offset.y) };
+    }
     const off = cylinderLabelOffset(
       { x: sealed.mountB.x - sealed.mountA.x, y: sealed.mountB.y - sealed.mountA.y },
       0.15 * scale
@@ -5452,33 +5463,10 @@ export class NewGridComponent implements OnDestroy {
   /**
    * How big a name on the canvas is drawn, for joints, links and forces alike.
    *
-   * A fraction of Object Size with an 11px readability floor. Compact drawings
-   * keep legible labels rather than shrinking names into specks.
+   * Fixed model proportions, so names stay attached to the parts through zoom.
    */
   get tagFontSize(): number {
-    return Math.max(this.settings.drawingScale * 0.2, this.svgGrid.scaleWithZoom(11));
-  }
-
-  /**
-   * The angle a link's name is written at, in degrees clockwise from flat.
-   *
-   * A bar is long and thin, and a name longer than a couple of letters written
-   * across it hangs off both edges. Written along it, it has the whole bar to
-   * sit in. Only bars: a compound body is not a direction, and a two-letter
-   * name already fits, so both stay level and stay easy to read.
-   *
-   * Kept within a quarter turn of flat, so the name is never upside down.
-   */
-  private linkLabelAngle(link: Link, name: string): number {
-    if ((link.joints?.length ?? 0) !== 2) return 0;
-    if (name.length <= 2) return 0;
-    const [from, to] = link.joints;
-    // Screen degrees: y runs down here, and the label sits in a frame that has
-    // already flipped it, so the rise is negated.
-    let angle = (Math.atan2(-(to.y - from.y), to.x - from.x) * 180) / Math.PI;
-    if (angle > 90) angle -= 180;
-    if (angle < -90) angle += 180;
-    return Math.round(angle * 10) / 10;
+    return this.settings.drawingScale * 0.2;
   }
 
   /**
@@ -5506,7 +5494,8 @@ export class NewGridComponent implements OnDestroy {
    * Two bodies are not their own hull. A welded link is the Boolean union of
    * its parts and can be any shape at all -- an L has nothing in the crook --
    * so the name goes in the middle of its biggest part, which is inside the
-   * union because that part is. And a bar carrying a slot is drawn as a rail
+   * union because that part is. A short bar whose center is occupied puts its
+   * long name beside the body rather than through an end pin. A slotted bar is drawn as a rail
    * with a channel down it, so the name goes in the channel, in full black:
    * there is no body color behind it there to be read against.
    */
@@ -5517,9 +5506,10 @@ export class NewGridComponent implements OnDestroy {
     opacity: number;
     name: string;
     angle: number;
+    outside?: boolean;
   } {
     const name = this.linkDisplayName(link);
-    const angle = this.linkLabelAngle(link, name);
+    const angle = bodyLabelAngle(link, name, this.tagFontSize, this.settings.drawingScale);
     // A member's tag sits on its own visible half: A to S, or S to B.
     const sealed = this.mechanismSrv.cylinderOfBar(link);
     const slot = this.slotCarriedBy(link);
@@ -5539,45 +5529,33 @@ export class NewGridComponent implements OnDestroy {
         // cylinder given one of the dark navies disappeared while the bar
         // beside it in the same color turned its name white.
         ink: sealed ? this.linkLabelInk(link) : 'black',
-        // A name in a channel is black on nothing, so it needs its full weight.
-        // A cylinder's name is on painted metal like every bar's, and at full
-        // weight it sat a shade darker than the bar beside it in the same
-        // color -- the one label in the row that did not match.
-        opacity: sealed ? 0.55 : 1,
+        opacity: 1,
         name,
         angle,
       };
     }
-    const parts = (link instanceof RealLink ? link.subset : []) ?? [];
-    const middleOf = (of: Link) => {
-      const joints = of.joints ?? [];
-      if (joints.length === 0) return { x: 0, y: 0 };
-      return {
-        x: joints.reduce((total, joint) => total + joint.x, 0) / joints.length,
-        y: joints.reduce((total, joint) => total + joint.y, 0) / joints.length,
-      };
-    };
-    const span = (part: Link) => {
-      const first = part.joints[0];
-      const last = part.joints[part.joints.length - 1];
-      return first && last ? Math.hypot(last.x - first.x, last.y - first.y) : 0;
-    };
-    const on =
-      parts.length === 0
-        ? link
-        : parts.reduce((best, part) => (span(part) > span(best) ? part : best));
-    const center = middleOf(on);
-    // On a bar the name gives up the center to the center-of-mass mark and a
-    // locked length's chip by moving *along* the bar, toward its higher end;
-    // stepping "up" across the bar put a flat bar's name on top of its chip.
+    const center = bodyLabelCenter(link, name, this.tagFontSize, this.settings.drawingScale);
     const axis = this.barAxis(link);
-    if (axis && (this.showsCoM(link) || this.lengthChipShown(link))) {
-      const along = this.labelHalfExtentAlong(name, angle, axis);
-      const off = this.centerClearance() + along;
-      center.x += axis.x * off;
-      center.y += axis.y * off;
+    if (axis) {
+      const placed = placeBarLabel(
+        link,
+        center,
+        name,
+        angle,
+        axis,
+        this.tagFontSize,
+        this.settings.drawingScale,
+        this.showsCoM(link) || this.lengthChipShown(link)
+      );
+      return {
+        ...placed,
+        ink: placed.outside ? 'black' : this.linkLabelInk(link),
+        opacity: 1,
+        name,
+        angle,
+      };
     }
-    return { ...center, ink: this.linkLabelInk(link), opacity: 0.55, name, angle };
+    return { ...center, ink: this.linkLabelInk(link), opacity: 1, name, angle };
   }
 
   /**
@@ -5609,22 +5587,7 @@ export class NewGridComponent implements OnDestroy {
 
   /** How far from the center anything must sit to clear the center-of-mass mark. */
   private centerClearance(): number {
-    return 0.16 * this.settings.drawingScale + this.svgGrid.scaleWithZoom(4);
-  }
-
-  /**
-   * Half of how much a name takes up along the bar: a name written along the
-   * bar is its own width; one left flat is its box projected onto the axis.
-   */
-  private labelHalfExtentAlong(
-    name: string,
-    angle: number,
-    axis: { x: number; y: number }
-  ): number {
-    const width = name.length * this.tagFontSize * 0.32;
-    const height = this.tagFontSize * 0.4;
-    if (angle !== 0) return width;
-    return Math.abs(axis.x) * width + Math.abs(axis.y) * height;
+    return 0.22 * this.settings.drawingScale;
   }
 
   /** Half of how much a chip takes up along the bar: its box projected onto the axis. */
@@ -5704,10 +5667,8 @@ export class NewGridComponent implements OnDestroy {
    * Black or white, whichever the link's own color can be read against.
    *
    * The label sits on the body it names, and the bodies run from pale mint to
-   * navy, so one ink cannot serve them all. Through `contrast.ts`, which is
-   * where the joint mark and the swatch picker get the same answer: this used
-   * to do its own luminance and flip at its own threshold, so a band of grays
-   * took dark ink on the mark and light ink on the name beside it.
+   * navy, so one ink cannot serve them all. `contrast.ts` compares black and
+   * white against the translucent body composited over the white canvas.
    */
   linkLabelInk(link: Link): string {
     // A body the analysis modes have nothing to say about is drawn in one pale
@@ -5716,7 +5677,7 @@ export class NewGridComponent implements OnDestroy {
     // name went invisible the moment the body went gray under it.
     if (this.settings.isSchematic || this.mechanismSrv.isPartInert(link)) return 'black';
     const fill = (link as { fill?: string }).fill ?? '#ffffff';
-    return luminanceOf(fill) > INK_FLIPS_AT ? 'black' : 'white';
+    return canvasLabelInk(fill);
   }
 
   /**

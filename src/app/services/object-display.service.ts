@@ -56,13 +56,9 @@ export class ObjectDisplayService {
     return this.mechanism.getLinks().find((root) => root.id !== part.id && holds(root, part));
   }
 
-  /**
-   * The center-of-mass mark's radius: the style's size, but never under 6px,
-   * because it is a handle as well as a glyph and a thin style made it one
-   * nobody could hit.
-   */
+  /** The center-of-mass glyph zooms with the body; its invisible grab stays generous. */
   comRadius(): number {
-    return Math.max(0.11 * this.settings.drawingScale, this.pixels(6));
+    return 0.11 * this.settings.drawingScale;
   }
 
   /** Where a grab on that mark lands: a 12px radius at the least. */

@@ -221,6 +221,7 @@ try {
         const style = getComputedStyle(document.getElementById(l.id));
         return style.fill !== 'none' && Math.abs(parseFloat(style.fillOpacity) - 0.12) < 1e-3;
       }),
+      pixels: g.settings.drawingScale * g.svgGrid.getZoom(),
       lineWidths: [...new Set(ink.map(px))],
       barrelWidths: [...new Set(barrels.map(px))],
       plates: plates.length,
@@ -232,7 +233,11 @@ try {
       blocks: blocks.length,
       heads: document.querySelectorAll('.cylinder-seal').length,
       hollow: blocks.every((p) => getComputedStyle(p).fill === 'rgb(255, 255, 255)'),
-      jointOutlines: joints.every((p) => getComputedStyle(p).stroke !== 'none' && px(p) <= 1.01),
+      jointOutlines: joints.every(
+        (p) =>
+          getComputedStyle(p).stroke !== 'none' &&
+          Math.abs(px(p) - 0.02 * g.settings.drawingScale * g.svgGrid.getZoom()) < 0.01
+      ),
       creamJoints: joints.every((p) => getComputedStyle(p).fill === 'rgb(255, 248, 225)'),
       riders: riderAbove.length,
       ridersAbove: riderAbove.every(Boolean),
@@ -259,16 +264,15 @@ try {
     schematic
   );
   check(
-    'Schematic lines are 3px, well clear of the grid lines under them',
-    schematic.lineWidths.length === 1 &&
-      schematic.lineWidths[0] >= 2.99 &&
-      schematic.gridWidth !== null &&
-      schematic.lineWidths[0] >= 2 * schematic.gridWidth,
+    'Schematic lines use a model width that zooms with the drawing',
+    schematic.lineWidths.length > 0 &&
+      schematic.lineWidths.every((width) => Math.abs(width - 0.06 * schematic.pixels) < 0.01),
     schematic
   );
   check(
     'Schematic draws a barrel heavier than the rod that slides in it',
-    schematic.barrelWidths.length === 1 && schematic.barrelWidths[0] >= 4.49,
+    schematic.barrelWidths.length > 0 &&
+      schematic.barrelWidths.every((width) => Math.abs(width - 0.09 * schematic.pixels) < 0.01),
     schematic
   );
   check(
@@ -320,8 +324,8 @@ try {
   );
   await grid((g) => g.activeObjService.updateSelectedObj(null));
   check(
-    'Schematic keeps the center-of-mass mark at least 6px, with a 12px target',
-    schematic.comRadius >= 5.99 && schematic.comHit >= 11.99,
+    'Schematic zooms the CoM glyph with the drawing, with a 12px target',
+    Math.abs(schematic.comRadius - 0.11 * schematic.pixels) < 0.01 && schematic.comHit >= 11.99,
     schematic
   );
   check(
@@ -337,6 +341,10 @@ try {
   await choose('Close');
   const zoomFilm = filmstrip(page, `${OUT}/zoom`);
   await page.waitForTimeout(400); // Let the drawer finish changing the free canvas.
+  const beforeZoom = await grid((g) => ({
+    scale: g.settings.drawingScale,
+    zoom: g.svgGrid.getZoom(),
+  }));
   for (const [direction, count] of [
     ['Out', 6],
     ['In', 8],
@@ -362,18 +370,22 @@ try {
       });
       return {
         welds,
+        scale: g.settings.drawingScale,
+        zoom: g.svgGrid.getZoom(),
+        font: g.tagFontSize,
+        com: g.objectDisplay.comRadius(),
         pixels: g.settings.drawingScale * g.svgGrid.getZoom(),
         diameter: 2 * Number(pin.getAttribute('r')) * Math.hypot(m.a, m.b),
       };
     });
     check(
-      `Zoom ${direction} ${count} keeps actual rendered symbols within readable limits`,
-      dims.pixels >= 23.99 &&
-        dims.pixels <= 38.01 &&
-        dims.diameter >= 7.19 &&
-        dims.diameter <= 11.41 &&
+      `Zoom ${direction} ${count} keeps symbols, text and CoM proportional to the drawing`,
+      Math.abs(dims.scale - beforeZoom.scale) < 1e-9 &&
+        Math.abs(dims.diameter / dims.zoom - 0.3 * beforeZoom.scale) < 1e-6 &&
+        Math.abs(dims.font - 0.2 * beforeZoom.scale) < 1e-6 &&
+        Math.abs(dims.com - 0.11 * beforeZoom.scale) < 1e-6 &&
         dims.welds.length > 0 &&
-        dims.welds.every((width) => width >= 4.4 && width <= 18),
+        dims.welds.every((width) => width > 0),
       dims
     );
     check(

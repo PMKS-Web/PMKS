@@ -233,10 +233,11 @@ describe('NewGridComponent cylinder selectables', () => {
     const clear = -anchor.y - cylinder.seal.y;
     expect(clear).toBeGreaterThan(CYLINDER.barrelHalf * 0.15 * SettingsService.objectScale);
 
-    // An ordinary joint keeps the offset every joint has always had.
+    // An ordinary joint's letter clears the pin and its connected bar.
     const plain = component.jointTagAnchor(cylinder.mountA);
-    expect(plain.x).toBeCloseTo(cylinder.mountA.x - SettingsService.objectScale * 0.3, 6);
-    expect(plain.y).toBeCloseTo(-cylinder.mountA.y - SettingsService.objectScale * 0.5, 6);
+    expect(Math.hypot(plain.x - cylinder.mountA.x, plain.y + cylinder.mountA.y)).toBeGreaterThan(
+      0.15 * SettingsService.objectScale
+    );
   });
 });
 

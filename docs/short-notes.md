@@ -2935,3 +2935,19 @@ what decides which pull requests get a preview: Netlify builds one only for a PR
 production branch or a branch-deploy branch. So a PR into `staging` gets
 `deploy-preview-NNN--pmksprod.netlify.app`, and a stacked PR into another feature branch gets none.
 Adding a branch to the branch-deploy list turns on both its own deploy and previews of PRs into it.
+
+
+### Proportional zoom and label placement (#275)
+
+`drawingScale`, CoM glyphs and names have fixed model proportions; keep invisible grab targets
+independent so thin parts remain selectable. A compound's center can sit on a narrow member while
+a horizontal name spills off both edges. `bodyLabelAngle` follows that member's longest axis when
+the text cannot fit across it, and `bodyLabelCenter` chooses a clear interval between pins.
+Use plain semibold ink: contrasting outlines made the canvas noisy. Label contrast must account
+for the body's translucent fill over the canvas rather than only its opaque color swatch.
+`e2e/link-labels.mjs` covers the luffing names and the aircraft gear's long compound ID through motion.
+
+The locomotive's joint I has collinear spoke neighbors. Wrapping its live sector gap into
+[0, 2π) made floating-point noise select 0 or 2π and move the letter half a turn. Preserve the
+authored full outside sector rather than rewrapping its live gap. Equal authored bearings leave
+one full outside sector. The label suite samples all 360 frames and keeps a filmstrip.

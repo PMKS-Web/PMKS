@@ -15,6 +15,9 @@ const { chromium } = await import(
   (process.env.PMKS_PLAYWRIGHT_DIR ?? '/tmp/pmks-playwright') + '/node_modules/playwright/index.mjs'
 );
 import { waitForReady } from './app-ready.mjs';
+import { filmstrip, contactSheet } from './filmstrip.mjs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { startQuiet } from './quiet-start.mjs';
 
 const BASE = process.env.PMKS_BASE_URL ?? 'http://localhost:4200';
 import { TEMPLATE_LINKAGES as payloads } from './template-payloads.mjs';
@@ -27,7 +30,9 @@ const record = (what, ok, detail) => {
 };
 
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+await startQuiet(context);
+const page = await context.newPage();
 const errors = [];
 page.on('pageerror', (error) => errors.push(String(error)));
 
@@ -82,42 +87,32 @@ const load = async (payload) => {
   await page.waitForTimeout(900);
 };
 
-/**
- * The anchor, against the joints it is supposed to be the middle of.
- *
- * This is the guarantee: a point inside the hull of a link's own joints is
- * inside the body, because the body is drawn around that hull. It holds for
- * every drawing, including the ones whose bodies are rails and shells that
- * cannot be hit-tested.
- */
-const anchorsAreCenters = () =>
+/** Check the actual body, allowing an outlined external name when it cannot fit. */
+const anchorsAreAttached = () =>
   page.evaluate(() => {
     const grid = ng.getComponent(document.querySelector('app-new-grid'));
     return grid.mechanismSrv.getLinks().map((link) => {
-      // A bar carrying a slot is drawn as a rail; its name goes in the channel,
-      // which is checked separately.
-      const carriedSlot = grid.mechanismSrv.joints.find(
+      const tag = grid.linkLabelStyle(link);
+      const paths = [
+        document.getElementById(link.id),
+        document.getElementById(link.id + '__rider'),
+      ];
+      const screen = grid.svgGrid.modelToScreen(tag);
+      const onBody = paths.some(
+        (path) =>
+          path instanceof SVGPathElement &&
+          path.isPointInFill(
+            new DOMPoint(screen.x, screen.y).matrixTransform(path.getScreenCTM().inverse())
+          )
+      );
+      // Channels and cylinder members are checked separately against their
+      // visible halves below; they may have no root path in the links layer.
+      const channel = grid.mechanismSrv.joints.some(
         (joint) => joint.carrier?.id === link.id && joint.slotJointA && joint.slotJointB
       );
-      if (carriedSlot) return { id: link.id, centered: true };
-      const parts = link.subset?.length ? link.subset : [link];
-      const span = (part) => {
-        const first = part.joints[0];
-        const last = part.joints[part.joints.length - 1];
-        return first && last ? Math.hypot(last.x - first.x, last.y - first.y) : 0;
-      };
-      const biggest = parts.reduce((best, part) => (span(part) > span(best) ? part : best));
-      const joints = biggest.joints ?? [];
-      const want = {
-        x: joints.reduce((total, joint) => total + joint.x, 0) / (joints.length || 1),
-        y: joints.reduce((total, joint) => total + joint.y, 0) / (joints.length || 1),
-      };
-      const got = grid.linkLabelStyle(link);
       return {
         id: link.id,
-        centered:
-          joints.length === 0 ||
-          (Math.abs(got.x - want.x) < 1e-6 && Math.abs(got.y - want.y) < 1e-6),
+        attached: tag.outside || !!grid.mechanismSrv.cylinderOfBar(link) || channel || onBody,
       };
     });
   });
@@ -132,11 +127,11 @@ for (const name of [
   'Scissor_Lift',
 ]) {
   await load(payloads[name]);
-  const anchors = await anchorsAreCenters();
+  const anchors = await anchorsAreAttached();
   record(
-    `every label in ${name} is anchored inside the joints of the link it names`,
-    anchors.length > 0 && anchors.every((link) => link.centered),
-    anchors.filter((link) => !link.centered)
+    `every label in ${name} stays attached to the body it names`,
+    anchors.length > 0 && anchors.every((link) => link.attached),
+    anchors.filter((link) => !link.attached)
   );
 }
 
@@ -217,7 +212,9 @@ const type = await page.evaluate(() => {
   const lum = (hex) => {
     const m = /^#?([0-9a-f]{6})$/i.exec(hex ?? '');
     if (!m) return null;
-    const [r, g, b] = [0, 2, 4].map((at) => parseInt(m[1].slice(at, at + 2), 16) / 255);
+    const [r, g, b] = [0, 2, 4].map(
+      (at) => 0.7 * (parseInt(m[1].slice(at, at + 2), 16) / 255) + 0.3
+    );
     const lin = (c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
     return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
   };
@@ -253,11 +250,8 @@ const bodyOf = (label) => type.bodies.find((body) => body.name === label.name);
 const wrongInk = type.labels.filter((label) => {
   const body = bodyOf(label);
   if (!body || body.inert || body.lum === null) return false;
-  // Clear of the threshold either way, so the band where the choice is a
-  // judgment call is left to the app rather than second-guessed here.
-  if (body.lum < 0.25) return label.ink !== 'white';
-  if (body.lum > 0.65) return label.ink !== 'black';
-  return false;
+  const contrast = label.ink === 'black' ? (body.lum + 0.05) / 0.05 : 1.05 / (body.lum + 0.05);
+  return contrast < 4.5;
 });
 record(
   'each label is inked black or white, whichever its body can be read against',
@@ -267,8 +261,8 @@ record(
   { wrongInk, labels: type.labels, bodies: type.bodies }
 );
 record(
-  'at 55%, so it sits on the body rather than over it',
-  type.labels.every((label) => label.opacity === '0.55'),
+  'at full opacity, so names keep their contrast',
+  type.labels.every((label) => label.opacity === '1'),
   type.labels
 );
 // Sized from the object scale rather than from the screen, so a name is the
@@ -281,8 +275,7 @@ record(
   { labels: type.labels.map((l) => l.size), want: type.tagFontSize }
 );
 
-// This fixture already reaches Standard's upper screen-size limit. Increasing
-// the legacy base scale must not make its labels grow beyond that limit.
+// Labels share the parts' model proportions, without a separate screen clamp.
 await inAngular(page, () => {
   const settings = ng.getComponent(document.querySelector('app-new-grid')).settings;
   settings.constructor._objectScale.next(settings.objectScale * 2);
@@ -295,8 +288,8 @@ const doubled = await page.evaluate(() => {
   return +(parseFloat(getComputedStyle(text).fontSize) * perUnit).toFixed(1);
 });
 record(
-  'labels stay at the readable upper limit when the base scale grows',
-  Math.abs(doubled - type.labels[0].size) < 0.5,
+  'labels grow in proportion when the base scale grows',
+  Math.abs(doubled - 2 * type.labels[0].size) < 0.5,
   {
     was: type.labels[0].size,
     now: doubled,
@@ -344,6 +337,235 @@ const governed = await inAngular(page, () => {
   return { off, on: count() };
 });
 record('the Labels button still governs the joint labels', true, governed);
+
+// --- the review's crane: long names, CoM, force IDs and proportional zoom ---
+const OUT = 'artifacts/proportional-zoom';
+mkdirSync(OUT, { recursive: true });
+await load(payloads['Crane_Two_Loads']);
+await inAngular(page, () => {
+  const g = ng.getComponent(document.querySelector('app-new-grid'));
+  g.settings.isShowID.next(true);
+  g.activeObjService.updateSelectedObj(g.mechanismSrv.forces[0]);
+});
+await page.waitForTimeout(200);
+const measure = () =>
+  page.evaluate(() => {
+    const g = ng.getComponent(document.querySelector('app-new-grid'));
+    const pin = document.querySelector('#jointHolder circle[id^="joint_"]');
+    const text = document.querySelector('#linkTagHolder text');
+    const jointText = document.querySelector('#jointTagHolder text');
+    const forceText = document.querySelector('#forceTagHolder text');
+    const zoom = Math.hypot(pin.getScreenCTM().a, pin.getScreenCTM().b);
+    const width = (node) =>
+      node.getBBox().width * Math.hypot(node.getScreenCTM().a, node.getScreenCTM().b);
+    return {
+      zoom,
+      pin: 2 * Number(pin.getAttribute('r')) * zoom,
+      linkName: width(text),
+      jointName: width(jointText),
+      forceName: width(forceText),
+      com: g.objectDisplay.comRadius() * zoom,
+      comStroke:
+        Number(document.querySelector('#comTagHolder path').getAttribute('stroke-width')) * zoom,
+      forceDisc: Number(document.querySelector('.forceDisc').getAttribute('r')) * zoom,
+      anchors: g.mechanismSrv.links.map((l) => g.linkLabelStyle(l)),
+      data: JSON.stringify({
+        joints: g.mechanismSrv.joints.map((j) => [j.id, j.x, j.y]),
+        links: g.mechanismSrv.links.map((l) => [l.id, l.d, l.mass, l.massMoI]),
+        forces: g.mechanismSrv.forces.map((f) => [f.mag, f.angleRad]),
+        solve: g.mechanismSrv.solveRevision,
+      }),
+    };
+  });
+const initial = await measure();
+const film = filmstrip(page, `${OUT}/crane-zoom`);
+const measurements = [initial];
+for (const [direction, count] of [
+  ['Out', 4],
+  ['In', 8],
+  ['Out', 4],
+]) {
+  await film.during(70, 8, `zoom-${direction}`, async () => {
+    for (let n = 0; n < count; n++)
+      await page.getByRole('button', { name: `Zoom ${direction}`, exact: true }).click();
+  });
+  const got = await measure();
+  measurements.push(got);
+  const ratio = got.zoom / initial.zoom;
+  record(
+    `crane zoom ${direction}: pins, all names, CoM and force marks keep their proportions`,
+    ['pin', 'linkName', 'jointName', 'forceName', 'com', 'comStroke', 'forceDisc'].every(
+      (key) => Math.abs(got[key] / initial[key] - ratio) < 0.002
+    ),
+    got
+  );
+  record(
+    `crane zoom ${direction}: label anchors and authored data stay unchanged`,
+    got.data === initial.data && JSON.stringify(got.anchors) === JSON.stringify(initial.anchors),
+    got
+  );
+}
+await inAngular(page, () => {
+  const g = ng.getComponent(document.querySelector('app-new-grid'));
+  g.activeObjService.clearPartSelection();
+  g.svgGrid.scaleToFitLinkage(false);
+});
+await page.waitForTimeout(300);
+const playback = filmstrip(page, `${OUT}/crane-playback`);
+const placements = [];
+for (let step = 0; step <= 300; step += 30) {
+  await inAngular(
+    page,
+    (step) =>
+      ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv.animate(step, false),
+    step
+  );
+  await page.waitForTimeout(60);
+  await playback.shot(`pose-${step}`);
+  placements.push(
+    ...(await inAngular(page, () => {
+      const g = ng.getComponent(document.querySelector('app-new-grid'));
+      return g.mechanismSrv.links
+        .filter((l) => l.name.includes('Luffing'))
+        .map((link) => {
+          const text = [...document.querySelectorAll('#linkTagHolder text')].find(
+            (t) => t.textContent.trim() === link.name
+          );
+          const box = text.getBBox();
+          const screen = g.svgGrid.modelToScreen(link.CoM);
+          const point = new DOMPoint(screen.x, screen.y).matrixTransform(
+            text.getScreenCTM().inverse()
+          );
+          const dx = Math.max(box.x - point.x, 0, point.x - box.x - box.width);
+          const dy = Math.max(box.y - point.y, 0, point.y - box.y - box.height);
+          return {
+            name: link.name,
+            clear: Math.hypot(dx, dy) > g.objectDisplay.comRadius(),
+            place: g.linkLabelStyle(link),
+          };
+        });
+    }))
+  );
+}
+record(
+  'both luffing names stay clear of their CoM glyphs throughout the sampled cycle',
+  placements.length > 0 && placements.every((p) => p.clear),
+  placements.filter((p) => !p.clear)
+);
+await inAngular(page, () =>
+  ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv.animate(0, false)
+);
+await page.screenshot({ path: `${OUT}/crane.png` });
+writeFileSync(`${OUT}/measurements.json`, JSON.stringify({ measurements, placements }, null, 2));
+await contactSheet(`${OUT}/crane-zoom/*.png`, `${OUT}/crane-zoom-film.png`, 4, 0.45);
+await contactSheet(`${OUT}/crane-playback/*.png`, `${OUT}/crane-playback-film.png`, 4, 0.45);
+
+// A long compound ID used to cross a narrow limb horizontally, leaving
+// white letters on the white background outside the body (review screenshot).
+await load(payloads['Aircraft_Landing_Gear'] + '#backdrop=Aircraft_Landing_Gear');
+const compoundFilm = filmstrip(page, `${OUT}/compound-motion`);
+const compoundChecks = [];
+for (const step of [0, 30, 60, 90, 120, 150]) {
+  await inAngular(
+    page,
+    (step) =>
+      ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv.animate(step, false),
+    step
+  );
+  await page.waitForTimeout(80);
+  await compoundFilm.shot(`pose-${step}`);
+  compoundChecks.push(
+    await page.evaluate(() => {
+      const g = ng.getComponent(document.querySelector('app-new-grid'));
+      const link = g.mechanismSrv.links.find((l) => l.id === 'ABHKLMNOPQ');
+      const text = [...document.querySelectorAll('#linkTagHolder text')].find(
+        (t) => t.textContent.trim() === g.linkDisplayName(link)
+      );
+      const path = document.getElementById(link.id);
+      const box = text.getBBox();
+      const matrix = path.getScreenCTM().inverse().multiply(text.getScreenCTM());
+      const points = [0.05, 0.5, 0.95].flatMap((x) =>
+        [0.1, 0.5, 0.9].map((y) =>
+          new DOMPoint(box.x + box.width * x, box.y + box.height * y).matrixTransform(matrix)
+        )
+      );
+      const style = getComputedStyle(text);
+      return {
+        name: text.textContent.trim(),
+        angle: g.linkLabelStyle(link).angle,
+        supported: points.every((point) => path.isPointInFill(point)),
+        clearOfPins: link.joints.every((joint) => {
+          const screen = g.svgGrid.modelToScreen(joint);
+          const point = new DOMPoint(screen.x, screen.y).matrixTransform(
+            text.getScreenCTM().inverse()
+          );
+          const dx = Math.max(box.x - point.x, 0, point.x - box.x - box.width);
+          const dy = Math.max(box.y - point.y, 0, point.y - box.y - box.height);
+          return Math.hypot(dx, dy) > 0.15 * g.settings.drawingScale;
+        }),
+        plainInk: style.stroke === 'none',
+      };
+    })
+  );
+}
+record(
+  'the entire long compound ID stays on its narrow member through motion',
+  compoundChecks.length > 0 && compoundChecks.every((c) => c.supported && c.clearOfPins),
+  compoundChecks
+);
+record(
+  'link names use plain ink without a contrasting outline',
+  compoundChecks.every((c) => c.plainInk),
+  compoundChecks
+);
+await inAngular(page, () =>
+  ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv.animate(0, false)
+);
+await page.waitForTimeout(100);
+await page.screenshot({ path: `${OUT}/compound-after.png` });
+writeFileSync(`${OUT}/compound-checks.json`, JSON.stringify(compoundChecks, null, 2));
+await contactSheet(`${OUT}/compound-motion/*.png`, `${OUT}/compound-film.png`, 3, 0.6);
+
+// Collinear spokes at I must not turn angular roundoff into a label flip.
+await load(payloads['Steam_Locomotive']);
+await inAngular(page, () =>
+  ng.getComponent(document.querySelector('app-new-grid')).settings.isShowID.next(true)
+);
+const locomotiveFilm = filmstrip(page, `${OUT}/locomotive-label`);
+const labelOffsets = [];
+for (let step = 0; step <= 360; step++) {
+  await inAngular(
+    page,
+    (step) =>
+      ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv.animate(step, false),
+    step
+  );
+  labelOffsets.push(
+    await page.evaluate(() => {
+      const g = ng.getComponent(document.querySelector('app-new-grid'));
+      const joint = g.mechanismSrv.joints.find((j) => j.id === 'I');
+      const anchor = g.jointTagAnchor(joint);
+      return {
+        x: (anchor.x - joint.x) / g.settings.drawingScale,
+        y: (-anchor.y - joint.y) / g.settings.drawingScale,
+      };
+    })
+  );
+  if (step % 30 === 0) await locomotiveFilm.shot(`pose-${step}`);
+}
+const labelSteps = labelOffsets
+  .slice(1)
+  .map((point, i) => Math.hypot(point.x - labelOffsets[i].x, point.y - labelOffsets[i].y));
+record(
+  'locomotive joint I moves its letter smoothly through a full revolution',
+  labelSteps.length === 360 && Math.max(...labelSteps) < 0.03,
+  { maxStep: Math.max(...labelSteps) }
+);
+writeFileSync(
+  `${OUT}/locomotive-label.json`,
+  JSON.stringify({ labelOffsets, maxStep: Math.max(...labelSteps) }, null, 2)
+);
+await contactSheet(`${OUT}/locomotive-label/*.png`, `${OUT}/locomotive-label-film.png`, 4, 0.55);
 
 record('nothing threw', errors.length === 0, errors.slice(0, 3));
 await browser.close();

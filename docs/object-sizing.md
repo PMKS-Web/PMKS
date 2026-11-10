@@ -9,9 +9,8 @@ Settings has one **Drawing Style** choice, using the same radio block as Global 
 
 ## Schematic symbols
 
-- **Lines are 3px**, picked or not (a pick is the band below): twice the axes and three times the
-  grid, so a bar lying along a grid line is never mistaken for it. A cylinder's barrel is 4.5px, so
-  its two members read as two bodies even in one color.
+- **Lines have a fixed model width** (0.06 of drawing scale), and the barrel is 1.5 times heavier
+  than the rod, so its two members read as two bodies even in one color. All zoom together.
 - **A plate of three or more joints is traced round its outside**, the same convex hull its filled
   body is drawn around in the other styles (`linkSkeletonPath`). Joined in joint order, a rectangle
   came out as a bow tie. Its inside takes a click, so it is shaded at 12% in its own color; a bar
@@ -25,7 +24,7 @@ Settings has one **Drawing Style** choice, using the same radio block as Global 
 - **A part inside a welded body is picked by its line first, then by its shaded inside**
   (`GridUtilsService.pickLinkAt`), so a bar lying across a plate or a disc is still picked by its
   line, and a click in the middle of a disc picks the disc rather than the whole body.
-- **Every joint is cream inside a 1px ink hairline**: pins, slides (the bar a Prismatic joint
+- **Every joint is cream inside a proportional ink outline**: pins, slides (the bar a Prismatic joint
   wears) and welds alike. The weld cross is drawn a little wider than a pin (1.15 pin radii, by
   `schematicPlusPath`), with arms broad enough to show the cream.
 - **A rider is drawn above its block**, as the filled rider is in the other styles. The slider
@@ -67,21 +66,27 @@ adds no undo entry and runs no analysis.
 
 ## Zoom behavior
 
-Marks scale with geometry through the ordinary zoom range, then stop becoming smaller or larger
-at readable screen limits. This is deliberately not a fixed-pixel drawing at every zoom. The style
-never switches itself. The normal pin diameter ranges are 12–27px for Standard, 7.5–15px for Fine,
-and 7.2–11.4px for Schematic. Bodies, welds, ground marks and sliders use the same bounded scale;
-labels retain readable minimum sizes and invisible pointer targets remain generous.
+Structural marks have fixed model proportions. The camera alone
+changes its screen size, with no pixel floor or ceiling for pins, ground marks, sliders, link
+widths, forces, CoM glyphs or joint/link/force names. A far zoom-out can make labels too small to
+read; a far zoom-in makes symbols large. Neither operation changes their proportions.
 
-**Forces are drawn at Standard's size in every style** (`SettingsService.forceScale`): a force is a
-load laid on the drawing, not a piece of it, so a thinner style has no reason to shrink it. Only its
-application point narrows in Schematic, to 0.8 of its width. A picked force's handles, the square at
-the tip and the grab at the base, are the same size in every style, each with a 20px target. The
-**center-of-mass mark** never draws under a 6px radius and takes a grab within 12px
-(`ObjectDisplayService.comRadius` and `comHitRadius`), because it is a handle as well as a glyph.
+Names use a semibold sans-serif at full opacity. Their black or white ink is chosen against the
+body's 70% fill composited on the white canvas. Joint names choose an open sector from their
+connections at the authored pose, then follow those connections during playback. A bar's name
+shares its center until CoM or a hold chip needs it; when there is insufficient room between the
+center mark and the end pin, the name sits beside the bar in dark ink.
+Long compound names follow a narrow member's axis and use the largest interval between its
+pins to keep the name clear of intermediate joints. Link names use plain ink without a contrasting outline. These offsets derive from text and
+symbol dimensions, not screen pixels.
 
-`SettingsService.drawingScale` is presentation only. It combines the document's legacy scale,
-current zoom and the selected style, without publishing to `OBJECT_SCALE`. No view operation
+Forces remain Standard's size in every style (`SettingsService.forceScale`), with Schematic's
+application point at 0.8 width. Invisible pointer targets retain their screen minimums: 9px for
+joints, 12px for link bands and CoM grabs, and 20px for force handles. Selection affordances,
+dimension chips, grid spacing and axis readings remain camera/UI aids.
+
+`SettingsService.drawingScale` is presentation only. It combines the document's legacy scale
+and the selected style, without publishing to `OBJECT_SCALE`. No view operation
 changes document coordinates, geometric tolerances, stroke, constraints, or solver fingerprints.
 Fit to view now moves the camera only; it never silently rewrites a legacy document's scale.
 Before the very first part is created, the initial geometry scale is still established from the
@@ -99,7 +104,7 @@ Typed Barrel Length, Rod Length, Starts at, available stroke, mass properties, f
 motion survive style changes and zoom. Undo/Redo still addresses the user's edits. Explicit length
 edits retain their existing validation and constraint behavior.
 
-`link-artwork.ts` builds display copies at the bounded width and caches their rigid placement across
+`link-artwork.ts` builds display copies at the style's width and caches their rigid placement across
 animation frames. It does not overwrite a link's document outline or CAD loops. Thus CAD exports
 remain independent of style and zoom. A held start-pose ghost takes its own geometry snapshot so
 changing its style cannot accidentally pick up an unreachable edited pose.
@@ -110,7 +115,7 @@ changing its style cannot accidentally pick up an unreachable edited pose.
   unchanged document/CAD data, local preference persistence, and narrow Settings layouts.
 - `e2e/bug-fixes-2.mjs`: types barrel and rod lengths in ordinary and welded cylinders; exercises
   styles, zoom, Undo/Redo, units, and saved URLs against authored geometry and solved samples.
-- Model tests cover bounded scaling, display-copy isolation, animated compound placement,
+- Model tests cover proportional scaling, display-copy isolation, animated compound placement,
   legacy head lengths, and held ghosts.
 
 ## Design references
@@ -120,5 +125,4 @@ distinguish screen-relative marks from absolute geometry.
 [Rhino curve display](https://docs.mcneel.com/rhino/8/help/en-us/options/view_display_mode_curves.htm)
 and [Onshape display modes](https://cad.onshape.com/help/Content/View/shaded_unshaded__and_translucent.htm)
 provide presentation controls separately from dimensions. PMKS groups coordinated presentation into
-three styles, with automatic limits at extreme zoom, instead of asking readers to manage several
-independent size and appearance controls.
+three styles instead of asking readers to manage several independent size and appearance controls.
