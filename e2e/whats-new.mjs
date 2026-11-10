@@ -30,7 +30,7 @@ const check = (name, pass, detail = '') => {
 
 const browser = await chromium.launch();
 
-/** A window that has never seen PMKS+, or one that carries the marks given. */
+/** A window that has never seen PMKS, or one that carries the marks given. */
 const arrive = async (marks, query = '') => {
   const context = await browser.newContext({ viewport: { width: 1500, height: 950 } });
   await context.addInitScript((entries) => {

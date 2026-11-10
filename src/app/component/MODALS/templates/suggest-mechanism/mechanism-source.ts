@@ -122,7 +122,7 @@ export type PastedLink =
     };
 
 /**
- * Where a PMKS+ link can come from: production, the branch and preview deploys
+ * Where a PMKS link can come from: production, the branch and preview deploys
  * of `pmksprod`, a local server, and wherever this copy is running. The
  * `pmksnew` site is gone, but a link copied from one of its previews still
  * carries a whole drawing in its query, which is read here and never fetched,
@@ -167,7 +167,7 @@ export function readPastedLink(text: string, here: string): PastedLink {
   } catch {
     return { kind: 'broken' };
   }
-  // A PMKS+ address with nothing after it, or only somebody's tracking, is the
+  // A PMKS address with nothing after it, or only somebody's tracking, is the
   // app's front door rather than a mechanism.
   if (payload === null || looksLikeQueryParameters(payload)) return { kind: 'foreign' };
 

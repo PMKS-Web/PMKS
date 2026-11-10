@@ -10,7 +10,7 @@ import { fixturePayload } from '../../test-utils/verification/fixture-payload';
 /**
  * The numerical oracle is exported from a drawing that has never been solved
  * (docs/numerical-oracle-plan.md, "Identical physical inputs"). An export that
- * solved first could carry PMKS+'s own answer -- a settled pose, a re-derived
+ * solved first could carry PMKS's own answer -- a settled pose, a re-derived
  * center of mass -- into the problem the oracle is supposed to check it with.
  * So every solver entry point is made to throw while a drawing is built and
  * encoded, and any path that reaches one fails here.

@@ -2,7 +2,7 @@ import { VerificationDataset } from '../../test-data/verification/types';
 import { KinematicsTrace } from './solve';
 
 /**
- * Pairs each PMKS+ timestep with the MATLAB row at the same input-crank
+ * Pairs each PMKS timestep with the MATLAB row at the same input-crank
  * rotation, matched on (whole degrees rotated since start, sweep direction).
  * Both sides step the input exactly 1 degree per row from the same starting
  * position, but they detect toggle points of non-full-rotation linkages a

@@ -3,7 +3,7 @@
 Writes, for each case, the problem file the oracle solves and the expected
 values it must reproduce. Every expected number is the closed form evaluated
 here, by hand-written Newton-Euler or by differentiating an explicit position
-law; nothing is taken from the oracle or from PMKS+.
+law; nothing is taken from the oracle or from PMKS.
 
     uv run python benchmarks/derivations/sympy_cases.py
 

@@ -1,4 +1,4 @@
-// PMKS+'s own decoded topology and solved joint positions for the five built-in
+// PMKS's own decoded topology and solved joint positions for the five built-in
 // templates, captured on staging before the Phase 0 solver refactor.
 //
 // This is NOT verification data: nothing here is checked against MATLAB or the

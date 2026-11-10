@@ -13,7 +13,7 @@ const TOGGLE_EXCLUSIONS = [
   {
     rows: [40, 41, 42, 140, 141, 142],
     actualTimesteps: [40, 41, 139, 140],
-    reason: 'PMKS+ and MATLAB reverse the rocking input at adjacent one-degree samples',
+    reason: 'PMKS and MATLAB reverse the rocking input at adjacent one-degree samples',
   },
 ];
 

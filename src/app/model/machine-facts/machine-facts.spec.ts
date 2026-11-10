@@ -4,7 +4,7 @@ import { solvedDrawing } from '../../../test-utils/machine-facts/drawing';
 import { machineFacts } from './machine-facts';
 import { panelRole } from './roles';
 
-/** What PMKS+ recognizes in each machine of a library drawing, in order. */
+/** What PMKS recognizes in each machine of a library drawing, in order. */
 function familiesOf(id: keyof typeof TEMPLATE_LINKAGES): string[] {
   const { partitions, mechanisms } = solvedDrawing(TEMPLATE_LINKAGES[id]);
   return partitions.map((partition, index) => {
@@ -13,7 +13,7 @@ function familiesOf(id: keyof typeof TEMPLATE_LINKAGES): string[] {
   });
 }
 
-describe('what PMKS+ recognizes in a machine', () => {
+describe('what PMKS recognizes in a machine', () => {
   it('names the family of each machine in a drawing of several', () => {
     expect(familiesOf('Straight_Line_Pair')).toEqual([
       'Chebyshev straight-line linkage',

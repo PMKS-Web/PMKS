@@ -1,7 +1,7 @@
 /**
  * The phone layout, and the gesture that replaces the right button.
  *
- * PMKS+ used to greet a touch device with a dialog explaining what it could not
+ * PMKS used to greet a touch device with a dialog explaining what it could not
  * do. Everything that *makes* something is behind the right-click menu, so the
  * apology was accurate: without a right button the app could be panned and read
  * and never built in. This checks the three things that changed -- the page is

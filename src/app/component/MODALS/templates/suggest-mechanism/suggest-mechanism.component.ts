@@ -199,7 +199,7 @@ export class SuggestMechanismComponent implements OnInit, OnDestroy {
         };
       case 'foreign':
         return {
-          text: 'That is not a PMKS+ link. Copy one with Share Project in the project menu.',
+          text: 'That is not a PMKS link. Copy one with Share Project in the project menu.',
           bad: true,
         };
       case 'broken':
@@ -211,7 +211,7 @@ export class SuggestMechanismComponent implements OnInit, OnDestroy {
         return this.submitted
           ? { text: 'Paste a link to the mechanism.', bad: true }
           : {
-              text: 'Copy one with Share Project in the project menu. Any PMKS+ link works, yours or someone else’s.',
+              text: 'Copy one with Share Project in the project menu. Any PMKS link works, yours or someone else’s.',
               bad: false,
             };
     }
@@ -269,7 +269,7 @@ export class SuggestMechanismComponent implements OnInit, OnDestroy {
       },
       { label: 'Section', value: section ?? 'Not sure', none: !section },
       { label: 'Reply to', value: email || 'No email given', none: !email },
-      { label: 'Version', value: 'PMKS+ version and browser, to open it as you drew it' },
+      { label: 'Version', value: 'PMKS version and browser, to open it as you drew it' },
     ];
   }
 

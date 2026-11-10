@@ -751,7 +751,7 @@ function addNotes(
 ): void {
   const outlines = choices.linkBodies === 'outlines';
   const lines = [
-    `PMKS+ CAD export - ${outlines ? 'part outlines' : 'kinematic centerlines'} from the start pose`,
+    `PMKS CAD export - ${outlines ? 'part outlines' : 'kinematic centerlines'} from the start pose`,
     // R12 has no header field for units, so this and the file's name are where
     // the answer lives -- and the import dialog will ask.
     `Units: ${unitWord(input.lengthUnit)}`,

@@ -33,7 +33,7 @@ says so.
 
 ### `Mechanism`'s frame 0 is the drawing as decoded, not as solved
 
-PMKS+ stores the drawing it was handed as frame 0, and the cycle's closing frame copies it; only
+PMKS stores the drawing it was handed as frame 0, and the cycle's closing frame copies it; only
 frames 1 onward are solved. A cylinder saved a hair off its line is therefore straightened from
 frame 1, and frame 0 keeps the misalignment. `solvedDrawing` in
 `src/test-utils/machine-facts/drawing.ts` decodes a URL and solves it at once, without the
@@ -2914,6 +2914,19 @@ with 422 while the PR belongs to a stack. Snapshot the membership, POST to
 entries in place. This is a metadata operation separate from rebasing the branches; recreating
 the groups does not replace the code checks. The [Stacks API](https://docs.github.com/en/rest/pulls/stacks)
 describes the endpoints.
+
+### `readme-shots` once photographed whatever opened, so look at every picture it writes
+
+`e2e/readme-shots.mjs` always writes a picture, even when a step fails. A template renamed in the
+library (`Backhoe_Bucket` to `Excavator_Bucket`) was opened as if its old name were a URL, and the
+README showed a "could not be opened" toast over an empty grid for a release. A link id that no
+longer existed (`DGH`) selected nothing, and `expandGraphs` closed the Position row, which an
+analysis panel now opens on its own. The script now stops on an unknown template and on a
+missing joint or link, keeps the old picture when any step fails, exits non-zero, and opens only
+rows that are closed. The library picture also waits for every thumbnail it shows: served by
+`python3 -m http.server`, a few cards drew a broken-image icon now and then. The hover GIFs are left
+out of that wait, because they sit at opacity 0 and Chrome may never fetch them. A picture can
+still be wrong with every step passing, so look at each one.
 
 ### Netlify previews a PR only into a branch that deploys
 

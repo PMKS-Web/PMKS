@@ -5,13 +5,13 @@
  * Every series is indexed by "row", where row r is the mechanism with its
  * input crank rotated r degrees from the initial position (1-degree steps,
  * reversing direction at toggle points for non-full-rotation linkages).
- * This matches PMKS+'s own timestep discretization in
+ * This matches PMKS's own timestep discretization in
  * Mechanism.findFullMovementPos, though toggle points may be detected a step
  * or two apart — align rows by crank angle + direction, not by index.
  *
- * Joint keys are single letters matching the PMKS+ joint IDs the fixtures
+ * Joint keys are single letters matching the PMKS joint IDs the fixtures
  * create; link keys are the MATLAB link names (concatenated joint letters,
- * which equal PMKS+ link IDs when the fixture uses the same joint sets).
+ * which equal PMKS link IDs when the fixture uses the same joint sets).
  */
 export interface VerificationDataset {
   source: {
@@ -119,7 +119,7 @@ export interface DynamicsData {
   /**
    * [Fx, Fy] per row. Sign convention: the force the joint exerts on the link
    * closer to the input crank in the MATLAB free-body chain (the fixtures
-   * order each joint's `links` array so PMKS+ uses the same convention).
+   * order each joint's `links` array so PMKS uses the same convention).
    */
   jointForce: Record<string, number[][]>;
   /** Input torque per row (z component, N*m). */

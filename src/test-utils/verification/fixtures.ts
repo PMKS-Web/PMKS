@@ -35,7 +35,7 @@ export function teachingLabFourBarFixture(gravity = false): MechanismFixture {
 
 /**
  * Crank-slider. The MATLAB link is named BCE, where E is a sensor mounted
- * exactly at joint B, so the PMKS+ link is just BC; the prismatic joint takes
+ * exactly at joint B, so the PMKS link is just BC; the prismatic joint takes
  * the next free letter D.
  */
 export function teachingLabSliderCrankFixture(gravity = false): MechanismFixture {

@@ -28,10 +28,10 @@ export interface MobilityComparison {
 }
 
 /**
- * PMKS+'s mobility of one machine against the oracle's, at the drawn pose: the
+ * PMKS's mobility of one machine against the oracle's, at the drawn pose: the
  * first-order count (the rank of the constraint Jacobian) and the second-order
  * one (the directions that survive a step along them). The two are computed
- * independently -- PMKS+ in its own body coordinates and step test, the oracle
+ * independently -- PMKS in its own body coordinates and step test, the oracle
  * from Exudyn's Jacobian and the quadratic form of its constraint curvature --
  * so they agreeing is evidence about both.
  */
@@ -53,7 +53,7 @@ export function compareMobility(
     secondOrder: reference.mobility.second_order_freedoms,
     settled: reference.mobility.second_order_settled,
   };
-  // Where the oracle's second-order count is only a lower bound, PMKS+'s
+  // Where the oracle's second-order count is only a lower bound, PMKS's
   // must reach it and may not exceed the first-order count.
   const second = oracle.settled
     ? pmks.secondOrder === oracle.secondOrder

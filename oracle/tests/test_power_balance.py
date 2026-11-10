@@ -27,7 +27,7 @@ ORACLE_DATA = Path(__file__).resolve().parents[2] / "src" / "test-data" / "oracl
 # cancel can only be checked to about that, relative to the largest term.
 RELATIVE = 1e-7
 # Above this the inverse dynamics are ill-conditioned and the forces are not
-# compared to PMKS+ (CONDITIONING_LIMIT in compare-oracle.ts); they are still
+# compared to PMKS (CONDITIONING_LIMIT in compare-oracle.ts); they are still
 # balanced, but only to the conditioning times the rounding.
 CONDITIONING_LIMIT = 1e3
 # A machine with no mass and no load still stores rounding noise for its

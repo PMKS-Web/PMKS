@@ -22,14 +22,14 @@ describe('a pasted link', () => {
     expect(readPastedLink('   ', here).kind).toBe('empty');
   });
 
-  it('is not a PMKS+ link when it is somebody else’s, or only the front door', () => {
+  it('is not a PMKS link when it is somebody else’s, or only the front door', () => {
     expect(readPastedLink('https://www.youtube.com/watch?v=hoeken', here).kind).toBe('foreign');
     expect(readPastedLink('not a link at all', here).kind).toBe('foreign');
     expect(readPastedLink('https://app.pmksplus.com/', here).kind).toBe('foreign');
     expect(readPastedLink('https://app.pmksplus.com/?utm_source=x', here).kind).toBe('foreign');
   });
 
-  it('is cut short when a PMKS+ link will not decode', () => {
+  it('is cut short when a PMKS link will not decode', () => {
     expect(readPastedLink(fourBar.slice(0, 60), here).kind).toBe('broken');
   });
 

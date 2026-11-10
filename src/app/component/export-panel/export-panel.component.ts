@@ -114,7 +114,7 @@ export class ExportPanelComponent implements OnInit, OnDestroy {
     sheets:
       'By analysis puts kinematics and forces on sheets of their own. By object gives every chosen joint and link a sheet.',
     images:
-      'SVG stays sharp at any size and can be opened and edited; PNG drops into a document that will not take a vector. Both carry the PMKS+ mark.',
+      'SVG stays sharp at any size and can be opened and edited; PNG drops into a document that will not take a vector. Both carry the PMKS mark.',
     name: 'The start of every exported file’s name. With several files, each name ends with what that file holds.',
     analysis:
       'Static solves the mechanism held still at each position — the equilibrium a hand calculation gives. In-motion adds the inertia of the moving parts.',

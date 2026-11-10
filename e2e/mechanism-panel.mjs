@@ -3,7 +3,7 @@
  * in detail, and one pick shared by the panel, the grid and the setup drawer.
  *
  * - A background click shows "All mechanisms", a row per machine with its chip
- *   and the family PMKS+ recognized; a lone machine shows in detail at once.
+ *   and the family PMKS recognized; a lone machine shows in detail at once.
  * - A link's job and size share its row; a plate's size is its joint count,
  *   with no tooltip of lengths.
  * - Links counts the ground: "4 (including ground)" on a four-bar.

@@ -10,7 +10,7 @@ import { siFactors } from './si-units';
 
 /**
  * One published machine by its problem id (`<case>.m<n>`), as oracle.spec.ts
- * sees it: the exported problem, its committed reference, PMKS+'s solved
+ * sees it: the exported problem, its committed reference, PMKS's solved
  * mechanism and its samples on the oracle's grid.
  */
 export function publishedMachine(id: string) {

@@ -13,7 +13,7 @@ const TOGGLE_EXCLUSIONS = [
   {
     rows: [4, 5, 6, 15, 16, 17],
     actualTimesteps: [4, 5, 14, 15],
-    reason: 'PMKS+ and MATLAB reverse the rocking input at adjacent one-degree samples',
+    reason: 'PMKS and MATLAB reverse the rocking input at adjacent one-degree samples',
   },
 ];
 
@@ -23,7 +23,7 @@ const TOGGLE_EXCLUSIONS = [
 // Verified against PMKS-Web/PMKS_Verification (Watt_I, 10 RPM). This is the
 // same geometry as the original SixbarService spec in app.component.spec.ts.
 //
-// PMKS+ and MATLAB detect the toggle points a step or two apart, so a couple
+// PMKS and MATLAB detect the toggle points a step or two apart, so a couple
 // of rows at the extremes may legitimately go unmatched (rows are aligned by
 // crank angle and sweep direction, not index).
 describe('Watt I @ 10 RPM vs MATLAB', () => {

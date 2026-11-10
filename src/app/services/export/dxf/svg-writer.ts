@@ -51,7 +51,7 @@ export function writeSvg(document: DxfDocument, units: DxfExportUnit): string {
     `<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"`,
     `     width="${round(width * physical.per)}${physical.suffix}" height="${round(height * physical.per)}${physical.suffix}"`,
     `     viewBox="${round(minX)} ${round(-minY - height)} ${round(width)} ${round(height)}">`,
-    '  <title>PMKS+ CAD export</title>',
+    '  <title>PMKS CAD export</title>',
     // One flip for the whole drawing: SVG counts y downward and every other
     // part of this pipeline counts it up.
     `  <g transform="scale(1,-1)" fill="none" stroke-width="${round(stroke)}" ` +
