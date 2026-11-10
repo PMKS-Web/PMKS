@@ -5,9 +5,9 @@ so the spacing is a rule and cannot drift:
 
 1. The gap from the blue bar to the P equals the gap from the amber bar to the
    top of the capitals.
-2. The S ends half a pin radius left of the right pin's centre, so the pin
+2. The S ends half a pin radius left of the right pin's center, so the pin
    overhangs the S a little without sitting on it.
-3. The bottom pin's centre sits on the baseline.
+3. The bottom pin's center sits on the baseline.
 
 Everything is in one unit, the drawing's; the word's size follows from the pins.
 """
@@ -30,8 +30,8 @@ WORD = set_text('PMKS', wdth=112, wght=700)
 
 @dataclass(frozen=True)
 class Layout:
-    top: float  # the amber bar, centre to centre
-    side: float  # the blue bar, centre to centre
+    top: float  # the amber bar, center to center
+    side: float  # the blue bar, center to center
     word_x: float
     baseline: float
     size: float  # the word's em, in drawing units

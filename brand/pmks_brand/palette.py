@@ -1,4 +1,4 @@
-"""The colours the artwork is drawn in, named for what they are in the app and on the landing page."""
+"""The colors the artwork is drawn in, named for what they are in the app and on the landing page."""
 
 BLUE = '#3F51B5'  # --brand: the side bar
 AMBER = '#FFC107'  # --accent: the top bar

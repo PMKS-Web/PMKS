@@ -33,23 +33,23 @@ def card() -> str:
         (line, LINE[1], LINE[2], palette.TEXT_SOFT, 40),
         (address, ADDRESS[1], ADDRESS[2], palette.BLUE, 0),
     ]
-    # The column is centred as a whole, as the landing page's flex column is.
+    # The column is centered as a whole, as the landing page's flex column is.
     total = LOGO_HEIGHT + 40 + sum(len(rows) * lead + after for rows, _, lead, _, after in blocks)
     y = (HEIGHT - total) / 2
 
     parts = [f'<rect width="{WIDTH}" height="{HEIGHT}" fill="{palette.WHITE}"/>', _grid(), _mark()]
     parts.append(_logo(MARGIN, y, LOGO_HEIGHT))
     y += LOGO_HEIGHT + 40
-    for rows, size, lead, colour, after in blocks:
+    for rows, size, lead, color, after in blocks:
         for row in rows:
-            parts.append(row.placed(MARGIN, _baseline(row, y, size, lead), size, colour))
+            parts.append(row.placed(MARGIN, _baseline(row, y, size, lead), size, color))
             y += lead
         y += after
     return svg((0, 0, WIDTH, HEIGHT), ''.join(parts))
 
 
 def _baseline(row: SetText, top: float, size: float, lead: float) -> float:
-    """Capitals centred in their line, so each line's ink sits where its box says."""
+    """Capitals centered in their line, so each line's ink sits where its box says."""
     cap = row.cap_height * size / row.upem
     return top + (lead + cap) / 2
 
@@ -77,7 +77,7 @@ def _grid() -> str:
 
 
 def _mark(size: float = 300) -> str:
-    """The mark on the grid, optically centred in the right half as the app icon is."""
+    """The mark on the grid, optically centered in the right half as the app icon is."""
     scale = size / (SIDE + 2 * logo.PIN)
     x = COLUMN + (WIDTH - COLUMN - size) / 2 + OPTICAL_SHIFT * size + logo.PIN * scale
     y = (HEIGHT - size) / 2 + OPTICAL_SHIFT * size + logo.PIN * scale

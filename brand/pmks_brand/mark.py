@@ -9,10 +9,10 @@ from .linkage import Paint, linkage, svg
 
 SIDE = logo.layout().side  # the logo's own side bar, so the two share a skeleton
 
-# An L carries its ink up and to the left of the box around it, so a centred box
+# An L carries its ink up and to the left of the box around it, so a centered box
 # looks parked in the top-left corner. Measured on the 512px icon, the ink's
-# centroid sits 13.9% of the mark's width from the box's centre on each axis;
-# the mark moves half of that, which reads as centred without looking pushed.
+# centroid sits 13.9% of the mark's width from the box's center on each axis;
+# the mark moves half of that, which reads as centered without looking pushed.
 OPTICAL_SHIFT = 0.139 / 2
 
 
@@ -55,7 +55,7 @@ def maskable_icon() -> str:
 
 
 def profile_picture() -> str:
-    """For an avatar a site crops to a circle, in the app's cream joint colour."""
+    """For an avatar a site crops to a circle, in the app's cream joint color."""
     return tile(1024, 0.62, palette.CREAM)
 
 
@@ -83,7 +83,7 @@ def favicon_svg() -> str:
     """The 32px drawing, which browsers that take an SVG favicon use at every size.
 
     In a dark browser theme the side bar lifts to the dark logo's light indigo and
-    the pins turn light grey, rings included: an ink ring vanishes against a dark
+    the pins turn light gray, rings included: an ink ring vanishes against a dark
     tab and leaves each pin looking a size smaller.
     """
     style = (

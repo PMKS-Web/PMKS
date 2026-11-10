@@ -33,22 +33,22 @@ The logo is built around the word, not the word fitted to a drawing, so its spac
 
 1. The gap from the blue bar to the P equals the gap from the amber bar to the top of the capitals,
    and is wide enough that the P clears the bottom pin.
-2. The S ends half a pin radius left of the right pin's centre: the pin overhangs the S a little
+2. The S ends half a pin radius left of the right pin's center: the pin overhangs the S a little
    without sitting on it.
-3. The bottom pin's centre sits on the baseline.
+3. The bottom pin's center sits on the baseline.
 
 The word is Archivo at the semi-expanded width (112) and bold weight (700) of the landing page's
 headlines, shaped by HarfBuzz for its kerning and turned into outlines, so no file depends on a
-font being installed. The font is checked in at `brand/fonts/` with its licence (SIL OFL), pinned
+font being installed. The font is checked in at `brand/fonts/` with its license (SIL OFL), pinned
 to google/fonts commit `95f4904f`.
 
-Colours are the app's: indigo `#3F51B5` and amber `#FFC107`, with pins `#6E6E6E` ringed in the
+Colors are the app's: indigo `#3F51B5` and amber `#FFC107`, with pins `#6E6E6E` ringed in the
 landing page's ink `#1E2230`. On a dark ground the side bar lifts to `#9FA8DA` and the rings stay
 ink — white rings were tried and read as cut-outs.
 
 The mark drops the word and makes both bars the length of the logo's side bar, because the logo's
 top bar is three times as long and does not fit a square. In a square it is moved half the way
-from its box's centre toward its ink's centre, because an L centred by its box looks parked in the
+from its box's center toward its ink's center, because an L centered by its box looks parked in the
 top-left corner. Below 64px each favicon is drawn on its own pixel grid instead of scaled, so its
 edges land on whole pixels; the 16px one has no rings, which at that size turn each pin into a "+".
 

@@ -33,8 +33,8 @@ def linkage(
 ) -> str:
     """The amber bar across the top, the blue bar down the side, and a pin at each end.
 
-    `corner` is the shared pin's centre; `top` and `side` are the bars' lengths,
-    centre to centre; `pin` is a pin's outer radius, ring included.
+    `corner` is the shared pin's center; `top` and `side` are the bars' lengths,
+    center to center; `pin` is a pin's outer radius, ring included.
     """
     x, y = corner
     if paint.ring and ring:

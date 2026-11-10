@@ -48,7 +48,7 @@ function icoOf(images) {
     const entry = 6 + 16 * index;
     header.writeUInt8(size % 256, entry); // 0 would mean 256
     header.writeUInt8(size % 256, entry + 1);
-    header.writeUInt16LE(1, entry + 4); // colour planes
+    header.writeUInt16LE(1, entry + 4); // color planes
     header.writeUInt16LE(32, entry + 6); // bits per pixel
     header.writeUInt32LE(bytes.length, entry + 8);
     header.writeUInt32LE(offset, entry + 12);
