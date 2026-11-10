@@ -472,10 +472,15 @@ for a padlock they had never pressed. `hold` stays the code's name for it.
 The rules are the CAD ones, and they live in one place, `model/hold-solver.ts`: the joint that was
 asked for reaches its ask when the holds allow and lands on the nearest allowed place when they do
 not; every other joint on a held bar moves as little as it must (drag the free end of a held bar and
-its far end is towed; drag it when the far end is grounded and it rides the arc); grounded, locked,
-slider and cylinder joints never move. A joint the holds have fully determined -- between two held
-lengths from two fixed points -- is refused at the grab, naming the holds, exactly as a locked joint
-is; an ask no configuration satisfies (a four-bar dragged past where its coupler can follow) is
+its far end is towed; drag it when the far end is locked and it rides the arc); locked, slider and
+cylinder joints never move. **A ground pin is fixed for a typed number and free under the pointer**
+(#261): a typed coordinate, length or angle keeps every ground pin still when the number can be met
+that way, and moves one only when it cannot, before refusing. A canvas drag treats a ground pin as an
+ordinary joint, so dragging a coupler next to a crank with a fixed length swings the crank about a
+moving A rather than stopping at it; only a Lock holds still. `GridUtilsService.byHand` reads
+`DragStateService` to tell the two apart, so no caller passes a flag. A joint the holds have fully
+determined -- between two held lengths from two locked points -- is refused at the grab, naming the
+holds, exactly as a locked joint is; an ask no configuration satisfies (a four-bar dragged past where its coupler can follow) is
 refused *whole* -- the half-settled positions the sweep stopped in have a hold false in them, and
 writing those was how a locked length once changed under a drag. A typed length or angle near a
 lock is a constraint, not a place: `setBarValue` adds the number to the holds and lets the solver

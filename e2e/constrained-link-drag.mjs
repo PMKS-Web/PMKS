@@ -1,4 +1,7 @@
-/** #259: a neighboring hold must not stretch a dragged body or make it creep. */
+/**
+ * #259: a neighboring hold must not stretch a dragged body or make it creep.
+ * #261: under the pointer a ground pin gives like any joint; only a Lock holds.
+ */
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { TEMPLATE_LINKAGES } from './template-payloads.mjs';
@@ -111,6 +114,15 @@ try {
       assert.equal(link(sample, 'BC').hold, null, 'No persistent hold was added');
     }
     samePose(stationary, landed, `${hold}: stationary pointer does not creep`);
+    // #261: a ground pin is not a Lock. With AB holding a value, A follows the
+    // drag rather than stopping it; with nothing held, nothing reaches A.
+    const groundA = (state) => state.joints.find((j) => j.id === 'A');
+    const aMoved = Math.hypot(
+      groundA(landed).x - groundA(before).x,
+      groundA(landed).y - groundA(before).y
+    );
+    if (hold === 'none') near(aMoved, 0, `${scenario}: unheld drag leaves ground pin A`);
+    else assert.ok(aMoved > 0.1, `${scenario}: held AB swings ground pin A (moved ${aMoved})`);
     assert.ok(
       after.joints.some(
         (j, i) => Math.hypot(j.x - before.joints[i].x, j.y - before.joints[i].y) > 1

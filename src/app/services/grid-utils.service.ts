@@ -3,7 +3,8 @@ import { linkArtwork, schematicLink } from '../model/link-artwork';
 import { cylinderJoints } from '../model/cylinder';
 import { pickLink } from '../model/link-pick';
 import { Injectable, Injector, inject } from '@angular/core';
-import { HoldBar, HoldGoal, reachedByHolds, settleHolds } from '../model/hold-solver';
+import { DragStateService } from './drag-state.service';
+import { HoldBar, HoldGoal, HoldSolution, reachedByHolds, settleHolds } from '../model/hold-solver';
 import {
   heldBars,
   heldBarsReaching,
@@ -12,7 +13,12 @@ import {
   holdOf,
 } from '../model/link-holds';
 import { Joint, PrisJoint, RealJoint, RevJoint } from '../model/joint';
-import { roundNumber, point_on_line_segment_closest_to_point } from '../model/utils';
+import {
+  jointStates,
+  linkStates,
+  roundNumber,
+  point_on_line_segment_closest_to_point,
+} from '../model/utils';
 import { Link, RealLink } from '../model/link';
 import {
   JointOperationContext,
@@ -101,6 +107,19 @@ function pointThroughFrame(
   return [toStart.x + along * toX - across * toY, toStart.y + along * toY + across * toX];
 }
 
+/** How far short of its ask a goal may land and still count as reached. */
+const REACHED = 1e-6;
+
+/** Whether a hold solve gave every goal exactly what it asked for. */
+function granted(solved: HoldSolution): boolean {
+  return solved.satisfied && solved.immovable.length === 0 && solved.shortfall <= REACHED;
+}
+
+/** Whether `next` honors the ask better than `current` does. */
+function goesFurther(next: HoldSolution, current: HoldSolution): boolean {
+  return next.satisfied && (!current.satisfied || next.shortfall < current.shortfall - REACHED);
+}
+
 /** A joint by the letter it wears, or the name somebody typed over it. */
 function nameOfJoint(joint: { name?: string; id: string }): string {
   return joint.name || joint.id;
@@ -130,6 +149,7 @@ export class GridUtilsService {
   private notify = inject(NotificationService);
   private nup = inject(NumberUnitParserService);
   private settings = inject(SettingsService);
+  private dragState = inject(DragStateService);
 
   /**
    * MechanismService injects this service, so it can only be resolved at call
@@ -380,10 +400,24 @@ export class GridUtilsService {
     // A grounded joint anchors the others, not itself: in Edit a ground pin
     // is dragged like any other, and the bar it is on follows.
     const moving = new Set(goals.map((goal) => goal.id));
-    const joints = holdJoints(this.mechanismSrv.joints, (joint) =>
-      this.holdAnchor(joint, frozen, moving)
-    );
-    const solved = settleHolds(joints, bars, goals);
+    const solveWith = (holdGrounds: boolean) =>
+      settleHolds(
+        holdJoints(this.mechanismSrv.joints, (joint) =>
+          this.holdAnchor(joint, frozen, moving, holdGrounds)
+        ),
+        bars,
+        goals
+      );
+    // Under the pointer a ground pin is an ordinary joint: only a Lock holds
+    // still, so dragging a coupler swings a held crank about its ground pin
+    // rather than stopping at it. A typed coordinate keeps its grounds where
+    // the number can be met that way, and moves them only when it cannot.
+    const byHand = this.byHand;
+    let solved = solveWith(!byHand);
+    if (!byHand && !granted(solved) && this.groundsReached(reached, moving)) {
+      const released = solveWith(false);
+      if (goesFurther(released, solved)) solved = released;
+    }
     // An ask no configuration satisfies is refused whole: the half-settled
     // positions the sweep stopped in have a hold or two false in them, and
     // writing those is how a locked length came to change under a drag.
@@ -476,16 +510,20 @@ export class GridUtilsService {
     const free = [a, b].filter((joint) => !frozen.has(joint.id));
     const preferred = free.filter((joint) => !joint.ground);
     const moving = new Set((preferred.length > 0 ? preferred : free).map((joint) => joint.id));
-    const joints = holdJoints(this.mechanismSrv.joints, (joint) =>
-      this.holdAnchor(joint, frozen, moving)
-    );
-    const solved = settleHolds(
-      joints,
-      [...others, asked],
-      [a, b].map((joint) => ({ id: joint.id, x: joint.x, y: joint.y })),
-      // A typed number changes the holds; the ends go where it puts them.
-      { holdStill: false }
-    );
+    const solveWith = (holdGrounds: boolean) =>
+      settleHolds(
+        holdJoints(this.mechanismSrv.joints, (joint) =>
+          this.holdAnchor(joint, frozen, moving, holdGrounds)
+        ),
+        [...others, asked],
+        [a, b].map((joint) => ({ id: joint.id, x: joint.x, y: joint.y })),
+        // A typed number changes the holds; the ends go where it puts them.
+        { holdStill: false }
+      );
+    // Grounds stay put when the number can be met that way. When it cannot,
+    // a ground pin gives before the number is refused: only a Lock refuses.
+    let solved = solveWith(true);
+    if (!solved.satisfied) solved = solveWith(false);
     if (!solved.satisfied) {
       this.lastHoldRefusal = {
         immovable: [],
@@ -546,12 +584,25 @@ export class GridUtilsService {
       }
     }
     const frozen = this.frozenJointIds();
-    const joints = holdJoints(
-      this.mechanismSrv.joints,
-      (joint) =>
-        this.holdAnchor(joint, frozen, moving) || (anchors.has(joint.id) && !moving.has(joint.id))
-    );
-    const solved = settleHolds(joints, constraints, [...goals.values()], { holdStill: false });
+    const solveWith = (holdGrounds: boolean) =>
+      settleHolds(
+        holdJoints(
+          this.mechanismSrv.joints,
+          (joint) =>
+            this.holdAnchor(joint, frozen, moving, holdGrounds) ||
+            (anchors.has(joint.id) &&
+              !moving.has(joint.id) &&
+              (holdGrounds || !(joint instanceof RealJoint && joint.ground)))
+        ),
+        constraints,
+        [...goals.values()],
+        { holdStill: false }
+      );
+    // The same preference as one bar's: ground pins stay put if the numbers
+    // allow it, and give before the edit is refused. An ungrounded anchor end
+    // stays pinned either way, so this retry relaxes grounds and nothing else.
+    let solved = solveWith(true);
+    if (!solved.satisfied) solved = solveWith(false);
     if (!solved.satisfied) {
       this.lastHoldRefusal = {
         immovable: [],
@@ -573,7 +624,8 @@ export class GridUtilsService {
    *
    * Asked at the grab, before anything moves: a joint the holds have fully
    * determined never enters the dragging state, the same way a locked one
-   * does not, so nothing downstream has to hold it still.
+   * does not, so nothing downstream has to hold it still. A drag moves ground
+   * pins like any other joint, so only Locks and the holds count here.
    */
   holdsImmobilizing(joint: RealJoint): RealLink[] {
     const links = this.mechanismSrv.links;
@@ -582,7 +634,7 @@ export class GridUtilsService {
     if (bars.length === 0 || heldBarsReaching(joint, links, cylinders).length === 0) return [];
     const frozen = this.frozenJointIds();
     const joints = holdJoints(this.mechanismSrv.joints, (j) =>
-      this.holdAnchor(j, frozen, new Set([joint.id]))
+      this.holdAnchor(j, frozen, new Set([joint.id]), false)
     );
     const solved = settleHolds(joints, bars, [{ id: joint.id, x: joint.x, y: joint.y }]);
     return solved.immovable.includes(joint.id) ? heldBarsReaching(joint, links, cylinders) : [];
@@ -607,12 +659,35 @@ export class GridUtilsService {
     return this.holdAnchor(joint, this.frozenJointIds());
   }
 
-  private holdAnchor(joint: RealJoint, frozen: Set<string>, moving = new Set<string>()): boolean {
+  private holdAnchor(
+    joint: RealJoint,
+    frozen: Set<string>,
+    moving = new Set<string>(),
+    holdGrounds = !this.byHand
+  ): boolean {
     return (
-      (joint.ground && !moving.has(joint.id)) ||
+      (holdGrounds && joint.ground && !moving.has(joint.id)) ||
       frozen.has(joint.id) ||
       joint instanceof PrisJoint ||
       this.mechanismSrv.cylindersAt(joint).some((cylinder) => isInsideCylinder(cylinder, joint))
+    );
+  }
+
+  /**
+   * Whether the pointer is moving a joint or a body right now. A drag treats a
+   * ground pin as an ordinary joint; a typed number keeps it where it can.
+   */
+  private get byHand(): boolean {
+    return (
+      this.dragState.joint === jointStates.dragging || this.dragState.link === linkStates.dragging
+    );
+  }
+
+  /** Whether any joint the holds reach is a ground pin the ask did not name. */
+  private groundsReached(reached: Set<string>, moving: Set<string>): boolean {
+    return this.mechanismSrv.joints.some(
+      (joint) =>
+        reached.has(joint.id) && !moving.has(joint.id) && joint instanceof RealJoint && joint.ground
     );
   }
 

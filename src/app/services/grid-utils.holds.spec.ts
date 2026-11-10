@@ -5,6 +5,7 @@ import { RevJoint } from '../model/joint';
 import { RealLink } from '../model/link';
 import { MODEL_SCALE } from '../model/render-scale';
 import { createMechanismHarness, wireGraph } from '../../test-utils/mechanism-harness';
+import { DragStateService } from './drag-state.service';
 import { GridUtilsService } from './grid-utils.service';
 import { MechanismService } from './mechanism.service';
 
@@ -45,11 +46,15 @@ describe('dragging against a held bar', () => {
     const harness = createMechanismHarness();
     service = harness.service;
     grid = harness.injector.get(GridUtilsService);
+    // Under the pointer: a ground pin is an ordinary joint, and only a Lock
+    // holds still.
+    harness.injector.get(DragStateService).beginDraggingJoint();
   });
 
-  it('slides the free end on the arc about the grounded end when the length is held', () => {
+  it('slides the free end on the arc about a locked end when the length is held', () => {
     const parts = fourBar(service);
     parts.ab.hold = 'length';
+    parts.a.locked = true;
     grid.dragJoint(parts.b, new Coord(3 * S, 2 * S));
     expect(dist(parts.a, parts.b)).toBeCloseTo(2 * S, 3);
     // Nearest point of the arc to the ask, not the ask itself.
@@ -57,6 +62,19 @@ describe('dragging against a held bar', () => {
     expect(grid.lastHoldRefusal).toBeUndefined();
     // The bar's own record of its length agrees with its joints.
     expect(parts.ab.length).toBeCloseTo(2 * S, 3);
+  });
+
+  it('swings a grounded end rather than stopping at it when the length is held', () => {
+    // A ground pin is not a lock: B goes where it is dragged, and A is towed
+    // along at the held length.
+    const parts = fourBar(service);
+    parts.ab.hold = 'length';
+    grid.dragJoint(parts.b, new Coord(3 * S, 2 * S));
+    expect(parts.b.x).toBeCloseTo(3 * S, 2);
+    expect(parts.b.y).toBeCloseTo(2 * S, 2);
+    expect(dist(parts.a, parts.b)).toBeCloseTo(2 * S, 3);
+    expect(parts.a.x).toBeGreaterThan(0.5 * S);
+    expect(grid.lastHoldRefusal).toBeUndefined();
   });
 
   it('lets the grounded end be dragged, towing the free end at the held length', () => {
@@ -72,9 +90,10 @@ describe('dragging against a held bar', () => {
     expect(grid.lastHoldRefusal).toBeUndefined();
   });
 
-  it('keeps the free end on the line through the grounded end when the angle is held', () => {
+  it('keeps the free end on the line through a locked end when the angle is held', () => {
     const parts = fourBar(service);
     parts.ab.hold = 'angle';
+    parts.a.locked = true;
     grid.dragJoint(parts.b, new Coord(1 * S, 3 * S));
     // The bar points straight up: B stays on x = 0, at the height asked.
     expect(parts.b.x).toBeCloseTo(0, 3);
@@ -97,6 +116,7 @@ describe('dragging against a held bar', () => {
     const parts = fourBar(service);
     parts.ab.hold = 'length';
     parts.bc.hold = 'length';
+    parts.a.locked = true;
     parts.c.locked = true;
     const bWas = { x: parts.b.x, y: parts.b.y };
     expect(grid.holdsImmobilizing(parts.b).map((bar) => bar.id)).toEqual(['AB', 'BC']);
@@ -117,10 +137,27 @@ describe('dragging against a held bar', () => {
     expect(parts.c.x).toBeGreaterThan(3 * S);
   });
 
+  it('swings a held crank about its ground pin when the coupler is dragged', () => {
+    // #261: with AB holding its length and A only grounded, dragging BC moves
+    // A too. The coupler stays rigid and reaches the pointer.
+    const parts = fourBar(service);
+    parts.ab.hold = 'length';
+    const start = service.joints.map(({ id, x, y }) => ({ id, x, y }));
+    const length = dist(parts.b, parts.c);
+    const target = new Coord(parts.b.x + S, parts.b.y - S);
+    grid.dragLinkTo(parts.bc, target, start);
+    expect(parts.b.x).toBeCloseTo(target.x, 2);
+    expect(parts.b.y).toBeCloseTo(target.y, 2);
+    expect(dist(parts.b, parts.c)).toBeCloseTo(length, 3);
+    expect(dist(parts.a, parts.b)).toBeCloseTo(2 * S, 3);
+    expect(Math.hypot(parts.a.x, parts.a.y)).toBeGreaterThan(0.1 * S);
+  });
+
   for (const hold of ['length', 'angle'] as const) {
     it(`keeps the body rigid and the absolute ask stable beside a held ${hold}`, () => {
       const parts = fourBar(service);
       parts.ab.hold = hold;
+      parts.a.locked = true;
       const start = service.joints.map(({ id, x, y }) => ({ id, x, y }));
       const length = dist(parts.b, parts.c);
       const target = new Coord(parts.b.x + S, parts.b.y - S / 2);
@@ -188,6 +225,7 @@ describe('dragging against a held bar', () => {
     const parts = fourBar(service);
     parts.ab.hold = 'length';
     parts.bc.hold = 'length';
+    parts.a.locked = true;
     parts.c.locked = true;
     grid.dragJoint(parts.b, new Coord(2 * S, 2 * S));
     expect(grid.lastHoldRefusal).toBeDefined();
@@ -195,6 +233,7 @@ describe('dragging against a held bar', () => {
     // reported as the limit it no longer is.
     parts.ab.hold = undefined;
     parts.bc.hold = undefined;
+    parts.a.locked = false;
     parts.c.locked = false;
     grid.dragJoint(parts.b, new Coord(1 * S, 2 * S));
     expect(parts.b.x).toBeCloseTo(1 * S, 6);
@@ -252,6 +291,9 @@ describe('a four-bar with every length locked', () => {
     parts.ab.hold = 'length';
     parts.bc.hold = 'length';
     parts.cd.hold = 'length';
+    // Locked, not just grounded: a ground pin gives before an ask is refused.
+    parts.a.locked = true;
+    parts.d.locked = true;
     const was = lengths(parts);
     const bWas = { x: parts.b.x, y: parts.b.y };
     grid.dragJoint(parts.b, new Coord(-1 * S, 0));
@@ -287,6 +329,38 @@ describe('a typed length or angle near a lock', () => {
     expect(dist(parts.a, parts.b)).toBeCloseTo(ab, 3);
     expect(dist(parts.c, parts.d)).toBeCloseTo(cd, 3);
     expect(parts.bc.length).toBeCloseTo(5 * S, 3);
+    // The number could be met with both ground pins where they were.
+    expect(parts.a).toMatchObject({ x: 0, y: 0 });
+    expect(parts.d).toMatchObject({ x: 4 * S, y: 0 });
+  });
+
+  it('moves a ground pin before refusing a number the grounds alone cannot allow', () => {
+    // BC at 20 cannot be spanned with A and D where they are, but neither is
+    // locked, so the grounds give and the number is honored.
+    const parts = fourBar(service);
+    parts.ab.hold = 'length';
+    parts.cd.hold = 'length';
+    expect(grid.setBarValue(parts.bc, 'length', 20 * S)).toBe('applied');
+    expect(dist(parts.b, parts.c)).toBeCloseTo(20 * S, 3);
+    expect(dist(parts.a, parts.b)).toBeCloseTo(2 * S, 3);
+    expect(dist(parts.c, parts.d)).toBeCloseTo(Math.hypot(S, 3 * S), 3);
+  });
+
+  it('keeps a ground pin still when a typed coordinate can be met that way', () => {
+    const parts = fourBar(service);
+    parts.ab.hold = 'angle';
+    grid.dragJoint(parts.b, new Coord(0, 3 * S));
+    expect(parts.b.y).toBeCloseTo(3 * S, 3);
+    expect(parts.a).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it('moves a ground pin when a typed coordinate cannot be met otherwise', () => {
+    const parts = fourBar(service);
+    parts.ab.hold = 'length';
+    grid.dragJoint(parts.b, new Coord(3 * S, 2 * S));
+    expect(parts.b.x).toBeCloseTo(3 * S, 2);
+    expect(parts.b.y).toBeCloseTo(2 * S, 2);
+    expect(dist(parts.a, parts.b)).toBeCloseTo(2 * S, 3);
   });
 
   it('gives a bar with a locked length the typed angle, sign and all', () => {
@@ -316,6 +390,8 @@ describe('a typed length or angle near a lock', () => {
     const parts = fourBar(service);
     parts.ab.hold = 'length';
     parts.cd.hold = 'length';
+    parts.a.locked = true;
+    parts.d.locked = true;
     const bc = dist(parts.b, parts.c);
     expect(grid.setBarValue(parts.bc, 'length', 20 * S)).toBe('refused');
     expect(dist(parts.b, parts.c)).toBeCloseTo(bc, 6);
