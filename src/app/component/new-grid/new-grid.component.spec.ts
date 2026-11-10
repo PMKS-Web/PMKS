@@ -21,6 +21,7 @@ import { SaveHistoryService } from '../../services/save-history.service';
 import { LONGEST_ARROW_FRACTION } from '../../model/vector-trace';
 import { CYLINDER, MARK, slideMarkPath } from '../../model/joint-marks';
 import { ColorService } from '../../services/color.service';
+import { CanvasLabelsService } from '../../services/canvas-labels.service';
 
 /**
  * NewGridComponent renders through svg-pan-zoom, which needs real SVG layout;
@@ -83,6 +84,16 @@ async function configureGridTestBed() {
     providers: [provideAnimations()],
   })
     .overrideProvider(SvgGridService, { useValue: svgGridStub })
+    // Packing uses real Canvas paths, just as framing uses real SVG layout.
+    // These drag tests keep the preferred model anchors; the browser library
+    // audit checks their final rendered clearance and contrast.
+    .overrideProvider(CanvasLabelsService, {
+      useFactory: () => {
+        const labels = new CanvasLabelsService();
+        vi.spyOn(labels, 'forLink').mockImplementation((link, preferred) => preferred(link, 1));
+        return labels;
+      },
+    })
     .compileComponents();
 }
 

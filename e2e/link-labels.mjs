@@ -160,11 +160,16 @@ for (const name of ['Scotch_Yoke', 'Whitworth_Quick_Return']) {
         );
         if (!slot) return null;
         const style = grid.linkLabelStyle(link);
+        const a = slot.slotJointA,
+          b = slot.slotJointB;
+        const dx = b.x - a.x,
+          dy = b.y - a.y;
+        const along = ((style.x - a.x) * dx + (style.y - a.y) * dy) / (dx * dx + dy * dy);
+        const across = Math.abs((style.x - a.x) * dy - (style.y - a.y) * dx) / Math.hypot(dx, dy);
         return {
           id: link.id,
-          inTheChannel:
-            Math.abs(style.x - (slot.slotJointA.x + slot.slotJointB.x) / 2) < 1e-6 &&
-            Math.abs(style.y - (slot.slotJointA.y + slot.slotJointB.y) / 2) < 1e-6,
+          attached: style.outside,
+          inTheChannel: along > 0 && along < 1 && across < grid.settings.drawingScale * 0.18,
           ink: style.ink,
           opacity: style.opacity,
         };
@@ -172,9 +177,11 @@ for (const name of ['Scotch_Yoke', 'Whitworth_Quick_Return']) {
       .filter(Boolean);
   });
   record(
-    `in ${name} the slotted bar's name sits in the middle of its slot, in full black`,
+    `in ${name} the slotted bar's name uses the channel or an attached clear position, in full black`,
     slotted.length > 0 &&
-      slotted.every((link) => link.inTheChannel && link.ink === 'black' && link.opacity === 1),
+      slotted.every(
+        (link) => (link.inTheChannel || link.attached) && link.ink === 'black' && link.opacity === 1
+      ),
     slotted
   );
 }
@@ -220,8 +227,10 @@ const type = await page.evaluate(() => {
   };
   const bodies = grid.mechanismSrv.getLinks().map((link) => ({
     name: grid.linkDisplayName(link),
-    fill: link.fill ?? null,
-    lum: lum(link.fill),
+    // The color it is painted, which for the two navies is a step lighter
+    // than the stored value (`paintOf`).
+    fill: grid.mechanismSrv.getLinkProp(link, 'fill') ?? null,
+    lum: lum(grid.mechanismSrv.getLinkProp(link, 'fill')),
     inert: grid.mechanismSrv.isPartInert(link),
   }));
   return {
@@ -241,22 +250,19 @@ const type = await page.evaluate(() => {
     tagFontSize: ng.getComponent(document.querySelector('app-new-grid')).tagFontSize,
   };
 });
-// The rule, not a drawing that happens to show both answers. It used to insist
-// on seeing black and white in the same picture, which held only while this
-// template had a pale body in it: the palette moved, Stephenson III went dark
-// throughout, and five white labels -- every one of them correct -- failed a
-// check about contrast.
+// Every name is black, and the palette is painted light enough that black
+// reads on each body. Checked against the body each label names, so the rule
+// is tested rather than the colors this drawing happens to use.
 const bodyOf = (label) => type.bodies.find((body) => body.name === label.name);
 const wrongInk = type.labels.filter((label) => {
   const body = bodyOf(label);
   if (!body || body.inert || body.lum === null) return false;
-  const contrast = label.ink === 'black' ? (body.lum + 0.05) / 0.05 : 1.05 / (body.lum + 0.05);
-  return contrast < 4.5;
+  return (body.lum + 0.05) / 0.05 < 4.5;
 });
 record(
-  'each label is inked black or white, whichever its body can be read against',
+  'each label is black, and black reads on the body it names',
   type.labels.length > 0 &&
-    type.labels.every((label) => ['black', 'white'].includes(label.ink)) &&
+    type.labels.every((label) => label.ink === 'black') &&
     wrongInk.length === 0,
   { wrongInk, labels: type.labels, bodies: type.bodies }
 );
@@ -265,17 +271,21 @@ record(
   type.labels.every((label) => label.opacity === '1'),
   type.labels
 );
-// Sized from the object scale rather than from the screen, so a name is the
-// size of the thing it names. On a drawing at the default scale that lands
-// within a few points of the grid's own numbers; on one whose parts are half
-// the size, so are their names, which is the point.
+// Sized from the drawing, held between 11 and 16 px on screen, and written
+// smaller when a long name would not otherwise fit its body. Never larger than
+// the drawing's own size (MIN_LABEL_PX and MAX_LABEL_PX in canvas-labels).
 record(
-  'every label is sized from the object scale',
-  type.labels.every((label) => Math.abs(label.size / type.perUnit - type.tagFontSize) < 0.5),
-  { labels: type.labels.map((l) => l.size), want: type.tagFontSize }
+  'every label is drawn between 11 and 16 px, no larger than the drawing size',
+  type.labels.every(
+    (label) =>
+      label.size >= 10.5 &&
+      label.size <= 16.5 &&
+      label.size <= type.tagFontSize * type.perUnit + 0.06
+  ),
+  { labels: type.labels.map((l) => l.size), want: type.tagFontSize * type.perUnit }
 );
 
-// Labels share the parts' model proportions, without a separate screen clamp.
+// Labels share the parts' model proportions between the screen limits.
 await inAngular(page, () => {
   const settings = ng.getComponent(document.querySelector('app-new-grid')).settings;
   settings.constructor._objectScale.next(settings.objectScale * 2);
@@ -287,9 +297,12 @@ const doubled = await page.evaluate(() => {
   const text = document.querySelector('#linkTagHolder text');
   return +(parseFloat(getComputedStyle(text).fontSize) * perUnit).toFixed(1);
 });
+// A larger object size makes the bars wider and leaves less room between the
+// pins, so a long name may be written smaller; it is never drawn outside the
+// screen limits.
 record(
-  'labels grow in proportion when the base scale grows',
-  Math.abs(doubled - 2 * type.labels[0].size) < 0.5,
+  'labels stay between 11 and 16 px when the base scale grows',
+  doubled >= 10.5 && doubled <= 16.5,
   {
     was: type.labels[0].size,
     now: doubled,
@@ -364,6 +377,14 @@ const measure = () =>
       linkName: width(text),
       jointName: width(jointText),
       forceName: width(forceText),
+      jointPx:
+        parseFloat(getComputedStyle(jointText).fontSize) *
+        Math.hypot(jointText.getScreenCTM().a, jointText.getScreenCTM().b),
+      linkPx: [...document.querySelectorAll('#linkTagHolder text')].map(
+        (node) =>
+          parseFloat(getComputedStyle(node).fontSize) *
+          Math.hypot(node.getScreenCTM().a, node.getScreenCTM().b)
+      ),
       com: g.objectDisplay.comRadius() * zoom,
       comStroke:
         Number(document.querySelector('#comTagHolder path').getAttribute('stroke-width')) * zoom,
@@ -393,15 +414,30 @@ for (const [direction, count] of [
   measurements.push(got);
   const ratio = got.zoom / initial.zoom;
   record(
-    `crane zoom ${direction}: pins, all names, CoM and force marks keep their proportions`,
-    ['pin', 'linkName', 'jointName', 'forceName', 'com', 'comStroke', 'forceDisc'].every(
+    `crane zoom ${direction}: pins, CoM and force marks keep their proportions`,
+    ['pin', 'com', 'comStroke', 'forceDisc'].every(
       (key) => Math.abs(got[key] / initial[key] - ratio) < 0.002
     ),
     got
   );
+  // Names scale with the zoom too, until they reach 11 or 16 px on screen,
+  // where they hold (MIN_LABEL_PX and MAX_LABEL_PX in canvas-labels).
+  const free = initial.jointPx * ratio;
+  record(
+    `crane zoom ${direction}: names scale with the zoom between 11 and 16 px and hold there`,
+    (free > 11.5 && free < 15.5
+      ? Math.abs(got.jointPx / initial.jointPx - ratio) < 0.01
+      : got.jointPx > 10.5 && got.jointPx < 16.5) &&
+      got.linkPx.every((px) => px > 10.5 && px < 16.5),
+    { ratio, jointPx: got.jointPx, linkPx: got.linkPx }
+  );
+  // Where a name sits changes only when its size does.
+  const sizes = (one) => JSON.stringify(one.anchors.map((tag) => tag.fontSize));
   record(
     `crane zoom ${direction}: label anchors and authored data stay unchanged`,
-    got.data === initial.data && JSON.stringify(got.anchors) === JSON.stringify(initial.anchors),
+    got.data === initial.data &&
+      (sizes(got) !== sizes(initial) ||
+        JSON.stringify(got.anchors) === JSON.stringify(initial.anchors)),
     got
   );
 }

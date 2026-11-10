@@ -2951,3 +2951,43 @@ The locomotive's joint I has collinear spoke neighbors. Wrapping its live sector
 [0, 2π) made floating-point noise select 0 or 2π and move the letter half a turn. Preserve the
 authored full outside sector rather than rewrapping its live gap. Equal authored bearings leave
 one full outside sector. The label suite samples all 360 frames and keeps a filmstrip.
+
+### Canvas labels must stay calm during motion (2026-11-10)
+
+The library audit covers all 55 development/library cards in Standard, Fine and Schematic.
+Text takes one model size across the styles, with a floor based on the authored drawing's span,
+and scales with the zoom between 11 and 16 px on screen, where it holds. A long name is written
+smaller to fit between its pins, never under 11 px. `CanvasLabelsService` chooses each name's
+place once per edit/style, then carries it with the body. A disc's name follows its center, not
+its rotating spokes. Joint names keep an authored angular offset to one connected body: bisecting a
+live sector jumps by half a turn when spokes cross, which is the general form of the locomotive I
+problem.
+
+The zoom reaches the layout only through those sizes, so the layout is keyed on the sizes rather
+than on the zoom: between the limits a zoom re-lays nothing, and at a limit only a change of size
+does. A full re-layout of the locomotive costs about 17 ms; scoring the cheap collisions first and
+skipping the path tests for a place already worse than the best is what keeps it there.
+
+Maintainer preference: **no color changes during animation and no leader lines connecting names
+to links**. Every name is black. The two navies are *painted* a step lighter (`paintOf`) rather than
+changed in `PART_COLORS`: every URL stores the hex, and the picker matches on it, so only the paint
+moves. Keep link text plain, without the previously removed contrasting outline. Names must stay on
+or immediately beside their own body: clearance cannot push a name into empty space. A name half on
+its body and half on the grid scores almost as badly as a collision.
+
+The `labelGaps` mask is written in the drawing's own coordinates, because the groups it masks wear
+`modelFrame`, and its region is the drawing plus a margin. A region of a billion units in each
+direction drew nothing at all: every Schematic line vanished, with no error.
+
+Names are placed most constrained first: bars, longest names first, then discs and plates, which
+have a whole face to use. In drawing order a wheel took the one spot its crossing rod had, and the
+rod's name was printed on the wheel's. A schematic body's own line is *scored* (below a collision,
+above crossing another line), not filtered: a wheel's rim and spokes cross most of its face, and the
+filter left its name only the places on its neighbors' letters. Test the own line along the text's
+middle row only, or a name correctly beside its line still counts as on it.
+The tracked `library-visual-audit.mjs` measures overlaps (name on name, joint letter, pin, block or
+force arrow) and fails on any name under 11 px; it crops each view to the mechanism with the app's
+chrome hidden and tiles a card's three styles into one review sheet. `library-label-motion.mjs`
+checks fixed ink/attachments across full cycles and captures actual Play filmstrips in all three
+styles. New-grid's jsdom drag tests stub the Canvas packing pass, as they already stub real SVG
+framing; the browser suites exercise the real paths.

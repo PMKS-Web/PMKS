@@ -268,6 +268,14 @@ Not suites — import them from one.
   the check to look at. The sheet needs Pillow under `python3` and is skipped without it.
 - `locking.mjs` — a locked link refuses a drag with an Unlock in the message, a locked joint
   turns a link drag into a swing, undo removes a lock, the marks stand down outside Edit.
+- `library-visual-audit.mjs` — every card in the running library, including development cards,
+  with its tracing backdrop in Standard, Fine and Schematic. Saves all views and label bounds
+  under `artifacts/library-visual-audit/` for individual inspection; `ONLY=id,id` narrows a recheck
+  and `PMKS_AUDIT_OUT` keeps before/after captures separate. Checks that style changes preserve
+  geometry and model text size, and that the rendered wheel and slider names clear their pins.
+- `library-label-motion.mjs` — six library mechanisms in all three styles: fixed label colors,
+  plain text without connecting lines, and stable body attachments over a full sampled cycle.
+  Also records actual Play filmstrips for visual inspection in `artifacts/library-label-motion/`.
 - `link-labels.mjs` — a link's name is readable against its body and lands on it, welded shapes
   included.
 

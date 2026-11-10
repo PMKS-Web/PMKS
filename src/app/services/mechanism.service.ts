@@ -1,4 +1,5 @@
 import { writeMechanismName } from '../model/mechanism/mechanism-name';
+import { paintOf } from '../model/joint-colors';
 import { orphanedByLinkRemoval } from '../model/link-removal';
 import { graftJoint } from '../model/graft-joint';
 import { pruneUnlinkedJoints } from '../model/prune-unlinked-joints';
@@ -1516,7 +1517,8 @@ export class MechanismService {
       case 'd':
         return link.d;
       case 'fill':
-        return link.fill;
+        // Painted, not stored: the canvas is the only reader of this case.
+        return paintOf(link.fill);
       case 'CoM_d1':
         return link.CoM_d1;
       case 'CoM_d2':

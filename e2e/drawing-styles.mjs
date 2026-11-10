@@ -317,7 +317,8 @@ try {
   const recolored = [await recolor('#0d125a'), await recolor('#26A69A')];
   check(
     'a picked schematic bar shows its new color at once, over its amber band',
-    recolored[0].stroke === 'rgb(13, 18, 90)' &&
+    // The darkest navy is painted a step lighter than it is stored (paintOf).
+    recolored[0].stroke === 'rgb(57, 73, 171)' &&
       recolored[1].stroke === 'rgb(38, 166, 154)' &&
       recolored.every((r) => r.bands === 1),
     recolored
@@ -344,6 +345,7 @@ try {
   const beforeZoom = await grid((g) => ({
     scale: g.settings.drawingScale,
     zoom: g.svgGrid.getZoom(),
+    font: g.tagFontSize,
   }));
   for (const [direction, count] of [
     ['Out', 6],
@@ -380,9 +382,12 @@ try {
     });
     check(
       `Zoom ${direction} ${count} keeps symbols, text and CoM proportional to the drawing`,
+      // Text keeps its model size too, except where that would fall under 11
+      // or over 16 px on screen (MIN_LABEL_PX and MAX_LABEL_PX), where it holds.
       Math.abs(dims.scale - beforeZoom.scale) < 1e-9 &&
         Math.abs(dims.diameter / dims.zoom - 0.3 * beforeZoom.scale) < 1e-6 &&
-        Math.abs(dims.font - 0.2 * beforeZoom.scale) < 1e-6 &&
+        (Math.abs(dims.font - beforeZoom.font) < 1e-6 ||
+          (dims.font * dims.zoom > 10.5 && dims.font * dims.zoom < 16.5)) &&
         Math.abs(dims.com - 0.11 * beforeZoom.scale) < 1e-6 &&
         dims.welds.length > 0 &&
         dims.welds.every((width) => width > 0),

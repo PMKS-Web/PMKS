@@ -149,7 +149,8 @@ export interface SlotStackItem {
 }
 import { SvgArrowComponent } from '../svg-arrow/svg-arrow.component';
 import { KeyboardShortcutsService, ShortcutId } from '../../services/keyboard-shortcuts.service';
-import { canvasLabelInk, INK_FLIPS_AT, luminanceOf } from '../../model/contrast';
+import { INK_FLIPS_AT, luminanceOf } from '../../model/contrast';
+import { CanvasLabel, CanvasLabelsService } from '../../services/canvas-labels.service';
 import { SELECTION_RING } from '../../model/joint-colors';
 import { isAdditiveSelectionGesture, SelectedPart } from '../../model/selection';
 import {
@@ -225,6 +226,7 @@ const SELECTION_RING_PX = 3;
 export class NewGridComponent implements OnDestroy {
   readonly Math = Math;
   readonly objectDisplay = inject(ObjectDisplayService);
+  readonly canvasLabels = inject(CanvasLabelsService);
   svgGrid = inject(SvgGridService);
   mechanismSrv = inject(MechanismService);
   protected linkTraces = inject(LinkTraceService);
@@ -2620,17 +2622,6 @@ export class NewGridComponent implements OnDestroy {
     const offSetRadius = this.settings.drawingScale * 2;
     const midAngle = Math.atan2(y2 - y1, x2 - x1) / 2;
     return { x: x1 + offSetRadius * Math.cos(midAngle), y: y1 + offSetRadius * Math.sin(midAngle) };
-  }
-
-  /**
-   * How far the link's name steps up from the center, in the label's own
-   * units: clear of the center-of-mass mark, and clear of a locked length's
-   * chip, which is a screen-sized pill and so needs a zoom-sized step.
-   */
-  linkLabelLift(link: Link): number {
-    // A bar's name has already moved along the bar; only a body steps up.
-    if (this.barAxis(link)) return 0;
-    return this.showsCoM(link) ? -this.settings.drawingScale * 0.13 : 0;
   }
 
   /** The label of the length hover dimension, as the panel spells it. */
@@ -5466,7 +5457,7 @@ export class NewGridComponent implements OnDestroy {
    * Fixed model proportions, so names stay attached to the parts through zoom.
    */
   get tagFontSize(): number {
-    return this.settings.drawingScale * 0.2;
+    return this.canvasLabels.fontSize();
   }
 
   /**
@@ -5499,17 +5490,60 @@ export class NewGridComponent implements OnDestroy {
    * with a channel down it, so the name goes in the channel, in full black:
    * there is no body color behind it there to be read against.
    */
-  linkLabelStyle(link: Link): {
-    x: number;
-    y: number;
-    ink: string;
-    opacity: number;
-    name: string;
-    angle: number;
-    outside?: boolean;
-  } {
+  linkLabelStyle(link: Link): CanvasLabel {
+    return this.canvasLabels.forLink(
+      link,
+      (one, font) => this.preferredLinkLabelStyle(one, font),
+      this.sliderMarkList,
+      this.cylinderList
+    );
+  }
+
+  /**
+   * Every body's name for this redraw, asked once: the text layer draws them,
+   * and the gap mask cuts the lines under them, and both must agree.
+   */
+  linkTags(): { link: Link; tag: CanvasLabel }[] {
+    return this.mechanismSrv.getLinks().map((link) => ({ link, tag: this.linkLabelStyle(link) }));
+  }
+
+  /**
+   * The area the line-gap mask covers, in the drawing's own coordinates: the
+   * drawing with a wide margin, for the rails that run past their pins. Not
+   * unbounded -- a mask region of a billion units drew nothing at all, which
+   * blanked every line it was applied to.
+   */
+  labelGapRegion(): { x: number; y: number; width: number; height: number } {
+    const joints = this.mechanismSrv.joints;
+    if (!joints.length) return { x: -1, y: -1, width: 2, height: 2 };
+    const xs = joints.map((joint) => joint.x);
+    const ys = joints.map((joint) => joint.y);
+    const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+    const margin = span * 2 + this.settings.drawingScale * 20;
+    return {
+      x: Math.min(...xs) - margin,
+      y: Math.min(...ys) - margin,
+      width: Math.max(...xs) - Math.min(...xs) + 2 * margin,
+      height: Math.max(...ys) - Math.min(...ys) + 2 * margin,
+    };
+  }
+
+  /**
+   * Where a name's line gap sits, in the drawing's own y-up frame: the text's
+   * rotation is a screen one, so it turns the other way here.
+   */
+  labelGapTransform(tag: CanvasLabel): string {
+    return `translate(${tag.x} ${tag.y})` + (tag.angle ? ` rotate(${-tag.angle})` : '');
+  }
+
+  private preferredLinkLabelStyle(link: Link, font: number): CanvasLabel {
     const name = this.linkDisplayName(link);
-    const angle = bodyLabelAngle(link, name, this.tagFontSize, this.settings.drawingScale);
+    // Whether a name turns along its body is asked at the drawing's own type
+    // size and Standard's proportions, so neither the zoom nor the style can
+    // turn it. Where it sits along the bar is asked at the size it is drawn.
+    const turnFont = this.canvasLabels.modelFontSize();
+    const turnScale = this.settings.forceScale;
+    const angle = bodyLabelAngle(link, name, turnFont, turnScale);
     // A member's tag sits on its own visible half: A to S, or S to B.
     const sealed = this.mechanismSrv.cylinderOfBar(link);
     const slot = this.slotCarriedBy(link);
@@ -5522,19 +5556,16 @@ export class NewGridComponent implements OnDestroy {
       return {
         x: (from.x + to.x) / 2,
         y: (from.y + to.y) / 2,
-        // Black *in a channel*, because there is no body color behind the name
-        // there. A cylinder's barrel carries a slot too -- that is how the rod
-        // slides in it -- but it is drawn as painted metal, so its name is read
-        // against its own color like every other body's. Left on black, a
-        // cylinder given one of the dark navies disappeared while the bar
-        // beside it in the same color turned its name white.
-        ink: sealed ? this.linkLabelInk(link) : 'black',
+        // Every name is black: the palette is painted light enough for black
+        // to read on each color (`paintOf`), in a channel or on metal alike.
+        ink: 'black',
         opacity: 1,
         name,
         angle,
+        fontSize: font,
       };
     }
-    const center = bodyLabelCenter(link, name, this.tagFontSize, this.settings.drawingScale);
+    const center = bodyLabelCenter(link, name, turnFont, turnScale);
     const axis = this.barAxis(link);
     if (axis) {
       const placed = placeBarLabel(
@@ -5543,19 +5574,20 @@ export class NewGridComponent implements OnDestroy {
         name,
         angle,
         axis,
-        this.tagFontSize,
+        font,
         this.settings.drawingScale,
         this.showsCoM(link) || this.lengthChipShown(link)
       );
       return {
         ...placed,
-        ink: placed.outside ? 'black' : this.linkLabelInk(link),
+        ink: 'black',
         opacity: 1,
         name,
         angle,
+        fontSize: font,
       };
     }
-    return { ...center, ink: this.linkLabelInk(link), opacity: 1, name, angle };
+    return { ...center, ink: 'black', opacity: 1, name, angle, fontSize: font };
   }
 
   /**
@@ -5661,23 +5693,6 @@ export class NewGridComponent implements OnDestroy {
         !!joint.slotJointA &&
         !!joint.slotJointB
     );
-  }
-
-  /**
-   * Black or white, whichever the link's own color can be read against.
-   *
-   * The label sits on the body it names, and the bodies run from pale mint to
-   * navy, so one ink cannot serve them all. `contrast.ts` compares black and
-   * white against the translucent body composited over the white canvas.
-   */
-  linkLabelInk(link: Link): string {
-    // A body the analysis modes have nothing to say about is drawn in one pale
-    // gray whatever color it was given, so its name is read against that gray
-    // rather than against the color it no longer wears. A dark link's white
-    // name went invisible the moment the body went gray under it.
-    if (this.settings.isSchematic || this.mechanismSrv.isPartInert(link)) return 'black';
-    const fill = (link as { fill?: string }).fill ?? '#ffffff';
-    return canvasLabelInk(fill);
   }
 
   /**

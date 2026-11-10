@@ -3,11 +3,34 @@ import {
   bodyLabelCenter,
   jointLabelOffset,
   placeBarLabel,
+  uprightAngle,
 } from './label-placement';
-import { RevJoint } from './joint';
+import { PrisJoint, RevJoint } from './joint';
 import { RealLink } from './link';
 
 describe('label clearance', () => {
+  it('does not flip a name when two connected spokes pass each other', () => {
+    const joint = new RevJoint('A', 0, 0);
+    const b = new RevJoint('B', 1, 0);
+    const c = new RevJoint('C', 1, 0.01);
+    joint.connectedJoints = [b, c];
+    const reference = [
+      new RevJoint('A', 0, 0),
+      new RevJoint('B', 1, 0),
+      new RevJoint('C', 1, 0.01),
+    ];
+    const before = jointLabelOffset(joint, 0.2, 1, reference);
+    c.y = -0.01;
+    const after = jointLabelOffset(joint, 0.2, 1, reference);
+    expect(before.x).toBeLessThan(0);
+    expect(after.x).toBeLessThan(0);
+    expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeLessThan(0.02);
+  });
+  it('clears the full slider block instead of treating it as a small round pin', () => {
+    const joint = new PrisJoint('C', 0, 0);
+    const offset = jointLabelOffset(joint, 0.2, 1);
+    expect(Math.hypot(offset.x, offset.y)).toBeGreaterThan(0.7);
+  });
   it('puts a long name beside a short bar instead of pushing it through the end pin', () => {
     const link = new RealLink('AB', [new RevJoint('A', -1, 0), new RevJoint('B', 1, 0)]);
     const placed = placeBarLabel(
@@ -74,5 +97,19 @@ describe('label clearance', () => {
     a.x = 0.01;
     b.x = -0.01;
     expect(Math.abs(bodyLabelAngle(body, body.id, 0.2, 1))).toBeGreaterThan(89);
+  });
+  it('reads a steep name bottom to top, a few degrees either side of vertical', () => {
+    const turned = { '-90': -90, '90': -90, '85': -95, '-95': -95, '79': 79, '0': 0, '100': -80 };
+    for (const [degrees, upright] of Object.entries(turned))
+      expect(uprightAngle(+degrees)).toBeCloseTo(upright, 9);
+    const bar = (dx: number) =>
+      new RealLink('AB', [new RevJoint('A', 0, 0), new RevJoint('B', dx, 20)]);
+    expect(bodyLabelAngle(bar(1), 'AB', 1, 1)).toBeLessThan(-80);
+    expect(bodyLabelAngle(bar(-1), 'AB', 1, 1)).toBeLessThan(-80);
+  });
+  it('runs every bar name along its bar, however short the name', () => {
+    const bar = new RealLink('AB', [new RevJoint('A', 0, 0), new RevJoint('B', 0, 50)]);
+    expect(bodyLabelAngle(bar, 'AB', 1, 100)).toBe(-90);
+    expect(bodyLabelAngle(bar, 'AB', 1, 0.01)).toBe(-90);
   });
 });

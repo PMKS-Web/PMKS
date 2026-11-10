@@ -67,18 +67,30 @@ adds no undo entry and runs no analysis.
 ## Zoom behavior
 
 Structural marks have fixed model proportions. The camera alone
-changes its screen size, with no pixel floor or ceiling for pins, ground marks, sliders, link
-widths, forces, CoM glyphs or joint/link/force names. A far zoom-out can make labels too small to
-read; a far zoom-in makes symbols large. Neither operation changes their proportions.
+changes their screen size, with no pixel floor or ceiling for pins, ground marks, sliders, link
+widths, forces or CoM glyphs. A far zoom-in makes symbols large; no view operation changes their
+proportions.
 
-Names use a semibold sans-serif at full opacity. Their black or white ink is chosen against the
-body's 70% fill composited on the white canvas. Joint names choose an open sector from their
-connections at the authored pose, then follow those connections during playback. A bar's name
-shares its center until CoM or a hold chip needs it; when there is insufficient room between the
-center mark and the end pin, the name sits beside the bar in dark ink.
+Names are the one exception. They scale with the zoom too, but hold between 11 and 16 px on
+screen (`MIN_LABEL_PX` and `MAX_LABEL_PX` in `canvas-labels.service.ts`): below 11 px nobody can
+read them, and above 16 px a small drawing's names outgrow its bars. Each body's name is drawn
+smaller when it would not fit between the pins, down to 11 px; a name that still does not fit sits
+beside its body.
+
+Names use a semibold sans-serif, in black at full opacity, on every body. The palette is painted
+light enough for that: the two navies are drawn a step lighter than they are stored (`paintOf` in
+`joint-colors.ts`), so URLs and the picker keep the stored values. Joint names choose an open
+sector from their connections at the authored pose, then follow those connections during playback.
+
+A body's name is placed once per edit, against everything on the drawing: other names and joint
+letters, pins, CoM marks, slider blocks, cylinder heads, ground and input glyphs, rails and force
+arrows. It sits wholly on its body or wholly beside it, never across the edge. A bar's name always
+runs along the bar, in every style, and a steep name always reads bottom to top
+(`uprightAngle`). Where a name lies across a rail, or in Schematic across a body's line, the line
+is cut for it (the `labelGaps` mask), the way a drawing breaks a line around a dimension.
 Long compound names follow a narrow member's axis and use the largest interval between its
-pins to keep the name clear of intermediate joints. Link names use plain ink without a contrasting outline. These offsets derive from text and
-symbol dimensions, not screen pixels.
+pins to keep the name clear of intermediate joints. Link names use plain ink without a contrasting
+outline.
 
 Forces remain Standard's size in every style (`SettingsService.forceScale`), with Schematic's
 application point at 0.8 width. Invisible pointer targets retain their screen minimums: 9px for

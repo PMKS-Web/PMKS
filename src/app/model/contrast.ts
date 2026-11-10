@@ -16,14 +16,18 @@ export function luminanceOf(color: string): number {
 /** Above this, a color takes dark ink; below it, light. */
 export const INK_FLIPS_AT = 0.55;
 
-/** Names are read against translucent metal on the canvas, not its opaque swatch. */
-export function canvasLabelInk(color: string): 'black' | 'white' {
+/**
+ * How well a black name reads on a body painted in `color`: the WCAG contrast
+ * ratio against the 70% fill composited over the white canvas. Every name on
+ * the canvas is black, so the palette is painted to keep this above 4.5.
+ */
+export function blackOnCanvas(color: string): number {
   const hex = color.replace('#', '');
-  if (!/^[\da-f]{6}$/i.test(hex)) return 'black';
+  if (!/^[\da-f]{6}$/i.test(hex)) return 21;
   const channels = [0, 2, 4].map((at) => {
     const channel = 0.7 * (parseInt(hex.slice(at, at + 2), 16) / 255) + 0.3;
     return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
   });
   const light = 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
-  return (light + 0.05) / 0.05 >= 1.05 / (light + 0.05) ? 'black' : 'white';
+  return (light + 0.05) / 0.05;
 }

@@ -16,7 +16,41 @@
   (pointerdown)="mouseDown($event)"
   (wheel)="onCanvasWheel($event)"
 >
+  @let labelTags = linkTags();
   <defs>
+    <!-- A gap in the lines under each body's name, the way a drawing breaks a
+         line around a dimension: the rails in every style, and the bodies' own
+         lines in Schematic. Black is cut. Written in the drawing's own
+         coordinates, because the groups it masks wear modelFrame. -->
+    @let gapRegion = labelGapRegion();
+    <mask
+      id="labelGaps"
+      maskUnits="userSpaceOnUse"
+      [attr.x]="gapRegion.x"
+      [attr.y]="gapRegion.y"
+      [attr.width]="gapRegion.width"
+      [attr.height]="gapRegion.height"
+    >
+      <rect
+        [attr.x]="gapRegion.x"
+        [attr.y]="gapRegion.y"
+        [attr.width]="gapRegion.width"
+        [attr.height]="gapRegion.height"
+        fill="white"
+      />
+      @for (item of labelTags; track item.link) {
+        @if (item.tag.width && item.tag.height) {
+          <rect
+            [attr.x]="-item.tag.width / 2"
+            [attr.y]="-item.tag.height / 2"
+            [attr.width]="item.tag.width"
+            [attr.height]="item.tag.height"
+            [attr.transform]="labelGapTransform(item.tag)"
+            fill="black"
+          />
+        }
+      }
+    </mask>
     <filter id="elevation-1" x="-50%" y="-50%" width="200%" height="200%">
       <feGaussianBlur in="SourceAlpha" [attr.stdDeviation]="0.008 * settings.drawingScale" />
       <feOffset
@@ -388,7 +422,7 @@
        of it and no gap has to track the rod — the links simply draw over it at
        whatever angle they happen to point. Hatching never rotates with the rod;
        the rails do, because they are the guide itself. -->
-  <g id="railHolder" modelFrame style="pointer-events: none">
+  <g id="railHolder" modelFrame mask="url(#labelGaps)" style="pointer-events: none">
     @for (mark of sliderMarkList; track mark.id) {
       @if (mark.rails) {
         <!-- The guide's own frame, not the block's: it is fixed in the world and
@@ -608,7 +642,7 @@
       }
     </g>
   }
-  <g id="linkHolder" modelFrame>
+  <g id="linkHolder" modelFrame [attr.mask]="settings.isSchematic ? 'url(#labelGaps)' : null">
     @for (link of mechanismSrv.getLinks(); track link) {
       <ng-container>
         <!-- A body welded to a cylinder mount is drawn by that cylinder's own
@@ -698,7 +732,7 @@
        why a random palette can never break the cue. Arrows sit above the plate
        so nothing can tint them: they are always white, and that is only safe
        because what is underneath is always black. -->
-  <g id="sliderHolder" modelFrame>
+  <g id="sliderHolder" modelFrame [attr.mask]="settings.isSchematic ? 'url(#labelGaps)' : null">
     <!-- Ordered by how deep in the stack each body sits, not grouped by
          assembly: a block is above the carrier it slides in, and a link is
          above the block it is pinned to, and no assignment of the two to fixed
@@ -2629,9 +2663,10 @@
   }
   <g id="linkTagHolder" style="pointer-events: none">
     <!-- One call, not four: this walks the link's joints, and the horse has
-         forty-five of them across twenty-seven links on every redraw. -->
-    @for (link of mechanismSrv.getLinks(); track link) {
-      @if (linkLabelStyle(link); as tag) {
+         forty-five of them across twenty-seven links on every redraw. The same
+         list cuts the gaps in the lines under the names (#labelGaps). -->
+    @for (item of labelTags; track item.link) {
+      @if (item.tag; as tag) {
         <svg
           [attr.x]="tag.x"
           [attr.y]="-tag.y"
@@ -2657,8 +2692,7 @@
               [attr.fill]="tag.ink"
               [attr.fill-opacity]="tag.opacity"
               [attr.transform]="tag.angle ? 'rotate(' + tag.angle + ')' : null"
-              [attr.dy]="linkLabelLift(link)"
-              [style.font-size.px]="tagFontSize"
+              [style.font-size.px]="tag.fontSize ?? tagFontSize"
               style="text-anchor: middle"
             >
               {{ tag.name }}

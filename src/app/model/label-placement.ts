@@ -1,4 +1,4 @@
-import { Joint, RealJoint } from './joint';
+import { Joint, PrisJoint, RealJoint } from './joint';
 import { Link, RealLink } from './link';
 
 type Point = { x: number; y: number };
@@ -34,18 +34,20 @@ export function jointLabelOffset(
     const gap = to.start + (i === directions.length - 1 ? turn : 0) - from.start;
     if (gap > widest + 1e-9) {
       widest = gap;
-      // Collinear authored spokes leave one full outside sector. Their live
-      // bearings differ by roundoff, so wrapping that gap anew alternated
-      // between 0 and 2π and flipped the locomotive's I label half a turn.
-      const currentGap = gap > turn - 1e-8 ? turn : positive(to.now - from.now);
-      angle = from.now + currentGap / 2;
+      // Keep the authored clearance relative to this body. Re-bisecting a
+      // live sector flips the name half a turn when two spokes cross, even
+      // though the pin itself moved smoothly. Some overlap is preferable to
+      // labels jumping between sectors during playback.
+      angle = from.now + gap / 2;
     }
   });
   const x = Math.cos(angle);
   const y = Math.sin(angle);
   const halfWidth = joint.name.length * fontSize * 0.34;
   const halfHeight = fontSize * 0.55;
-  const radius = scale * (joint instanceof RealJoint && joint.input ? 0.4 : 0.15);
+  const radius =
+    scale *
+    (joint instanceof PrisJoint ? 0.62 : joint instanceof RealJoint && joint.input ? 0.4 : 0.15);
   const distance = radius + fontSize * 0.35 + Math.abs(x) * halfWidth + Math.abs(y) * halfHeight;
   return { x: x * distance, y: y * distance };
 }
@@ -104,11 +106,15 @@ export function labelBody(link: Link): Link {
 
 /** The span a name follows when it cannot fit across a slender member. */
 function labelSpan(link: Link, name: string, fontSize: number, scale: number) {
-  if (name.length <= 2) return undefined;
   const on = labelBody(link);
   const span = longestSpan(on);
   if (!span || span.length < 1e-9 || (on instanceof RealLink && on.isCircle)) return undefined;
+  // A bar's name always runs along the bar, in every style. Whether it turned
+  // used to depend on whether two letters fit across the bar, which is a
+  // question of the style's width: the same name lay flat in Standard and
+  // stood up in Fine.
   if (link.joints.length !== 2) {
+    if (name.length <= 2) return undefined;
     const normal = {
       x: -(span.to.y - span.from.y) / span.length,
       y: (span.to.x - span.from.x) / span.length,
@@ -123,13 +129,39 @@ function labelSpan(link: Link, name: string, fontSize: number, scale: number) {
 }
 
 /** A long compound ID follows the narrow member instead of spilling across its edges. */
+export function bodyLabelTurns(link: Link, name: string, fontSize: number, scale: number): boolean {
+  return !!labelSpan(link, name, fontSize, scale);
+}
+
 export function bodyLabelAngle(link: Link, name: string, fontSize: number, scale: number): number {
   const span = labelSpan(link, name, fontSize, scale);
   if (!span) return 0;
-  let angle = (-Math.atan2(span.to.y - span.from.y, span.to.x - span.from.x) * 180) / Math.PI;
-  if (angle > 90) angle -= 180;
-  if (angle < -90) angle += 180;
-  return Math.round(angle * 10) / 10;
+  const angle = (-Math.atan2(span.to.y - span.from.y, span.to.x - span.from.x) * 180) / Math.PI;
+  return Math.round(uprightAngle(angle) * 10) / 10;
+}
+
+/**
+ * A text rotation, in screen degrees (clockwise positive), turned to read the
+ * right way up: within [-100, 80). A steep name therefore always reads bottom
+ * to top -- the drafting convention -- including a bar a few degrees past
+ * vertical, which split names on one drawing into two reading directions when
+ * the cut was exactly at 90.
+ */
+export function uprightAngle(degrees: number): number {
+  return ((((degrees + 100) % 180) + 180) % 180) - 100;
+}
+
+/**
+ * How long a name may be on this body before it no longer fits between the
+ * pins: the longest span, less a pin's clearance at each end. Nothing for a
+ * disc, whose name sits at its center with room to spare.
+ */
+export function labelRoom(link: Link, scale: number): number | undefined {
+  const on = labelBody(link);
+  if (on instanceof RealLink && on.isCircle) return undefined;
+  const span = longestSpan(on);
+  if (!span || span.length < 1e-9) return undefined;
+  return Math.max(0, span.length - 0.8 * scale);
 }
 
 /** Prefer the longest clear interval to keep intermediate pins out of the name. */
