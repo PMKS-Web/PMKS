@@ -2497,9 +2497,10 @@
 
   <g id="jointTagHolder" style="pointer-events: none">
     @for (joint of mechanismSrv.getJoints(); track joint) {
+      @let anchor = jointTagAnchor(joint);
       <svg
-        [attr.x]="jointTagAnchor(joint).x"
-        [attr.y]="jointTagAnchor(joint).y"
+        [attr.x]="anchor.x"
+        [attr.y]="anchor.y"
         [attr.height]="10"
         [attr.width]="10"
         style="overflow: visible; text-anchor: middle"

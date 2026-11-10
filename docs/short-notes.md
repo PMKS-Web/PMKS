@@ -46,7 +46,7 @@ leaves such a frame 0 out of the oracle comparison.
 `derivative` in `finite-difference-kinematics.ts` clamps its three-point stencil to `[1, count - 2]`,
 so frame 0 and the last frame get a first-order acceleration, though the last frame repeats the
 first and a central difference across it exists. On the hydraulic cylinder that is a hundred times
-the error of the same pose mid-cycle (#84). The oracle comparison calls those samples `undefined`.
+the error of the same pose mid-cycle (#255). The oracle comparison calls those samples `undefined`.
 
 ### A throwing spy inside `Mechanism` is swallowed, so a "no solver" guard counts calls
 
