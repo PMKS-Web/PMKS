@@ -24,6 +24,9 @@ import { KeyboardShortcutsService } from '../../services/keyboard-shortcuts.serv
 
 /** Error when invalid control is dirty, touched, or submitted. */
 /** Where the Help drawer's Donate button goes; `.github/FUNDING.yml` names the same page. */
+/** The public issue list, so a reader can check whether a bug is already known. */
+export const ISSUES_URL = 'https://github.com/PMKS-Web/PMKS/issues';
+
 export const DONATION_URL = 'https://ko-fi.com/pmksapp';
 
 export class MyErrorStateMatcher implements ErrorStateMatcher {
@@ -145,14 +148,9 @@ export class HelpPanelComponent {
   // bare: as ordinary methods these arrived with no `this`, and the two that
   // open a link logged their analytics event off the end of an undefined
   // service -- after the tab had already opened, which is why it looked fine.
-  readonly gotoHelpSite = (): void => {
-    window.open('https://pmks.mech.website/pmks-web-how-to-videos/', '_blank');
-    this.analytics.logEvent('goto_help_site');
-  };
-
-  readonly gotoGithub = (): void => {
-    window.open('https://github.com/PMKS-Web/PMKS', '_blank');
-    this.analytics.logEvent('goto_github');
+  readonly gotoIssues = (): void => {
+    window.open(ISSUES_URL, '_blank', 'noopener');
+    this.analytics.logEvent('goto_issues');
   };
 
   // A plain link rather than Ko-fi's embeddable widget, which would load its
