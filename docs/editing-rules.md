@@ -33,7 +33,7 @@ Every control belongs to exactly one kind. Find the kind, then read off the answ
 
 | Kind of control | Examples | Edit, at start | Edit, paused mid-cycle | Analysis, at start | Analysis, mid-cycle |
 | --- | --- | --- | --- | --- | --- |
-| **View** | Trace Path, velocity and acceleration traces, joint IDs, zoom | Yes | Yes | Yes | Yes |
+| **View** | Trace Path, velocity and acceleration traces, joint IDs, zoom, deleting a synthesis position, removing the background image | Yes | Yes | Yes | Yes |
 | **Annotation** | Add or delete a tracer point; add or delete a force | Yes | No | Yes | No |
 | **Gesture** | Drag a joint, a link or a force | Yes | Yes, put back on the start anchor | Yes | Yes, put back on the start anchor |
 | **Safe property** | Mass, moment of inertia, name, color, Lock, Fixed Length, Fixed Angle, Drawn as a Disc | Yes | Yes | No | No |

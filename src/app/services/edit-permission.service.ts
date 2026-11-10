@@ -11,6 +11,7 @@ import {
   menuRefusal,
   MenuPosePolicy,
 } from '../model/edit-permission';
+import { ActiveObjType } from './active-obj.service';
 import { MechanismService } from './mechanism.service';
 import { SelectedTabService, TabID } from '../selected-tab.service';
 
@@ -119,6 +120,30 @@ export class EditPermissionService {
   deleteJointRefusal(joint: Joint): EditRefusal | null {
     const kind = joint instanceof RealJoint && this.mechanism.isTracerPoint(joint);
     return this.menuRefusal(kind ? 'annotation' : 'design');
+  }
+
+  /**
+   * Why the Delete key cannot remove this selection: the answer the menu row
+   * and the panel button give for the same thing (principle 5 of
+   * `docs/editing-rules.md`).
+   *
+   * A synthesis position and the background image are notes beside the
+   * mechanism rather than parts of it, so their rows clear them in any mode.
+   * Asking the structure question of them refused Backspace on a position in
+   * Synthesis, the one mode that places positions.
+   */
+  deleteSelectionRefusal(kind: ActiveObjType, joint: Joint): EditRefusal | null {
+    switch (kind) {
+      case 'SynthesisPose':
+      case 'BackgroundImage':
+        return this.menuRefusal('view');
+      case 'Joint':
+        return this.deleteJointRefusal(joint);
+      case 'Force':
+        return this.menuRefusal('annotation');
+      default:
+        return this.menuRefusal('design');
+    }
   }
 
   /** The same question where only yes or no is wanted. */
