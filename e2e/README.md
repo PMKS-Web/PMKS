@@ -461,6 +461,10 @@ Not suites — import them from one.
   the drawing.
 - `background-image.mjs` — placing, moving, resizing, fading and deleting a background image, which
   cannot be clicked or dragged and follows the grid's zoom.
+- `brand.mjs` — the logo, favicons and icons as a browser receives them: every icon the page head
+  and manifest name is served with an image type, `/favicon.ico` answers, the link-preview card
+  exists, and the startup screen and top bar draw the logo in its own proportions.
+  `docs/brand.md` says where the files come from.
 
 ### Library, synthesis and export
 

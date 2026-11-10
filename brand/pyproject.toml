@@ -1,0 +1,9 @@
+[project]
+name = "pmks-brand"
+version = "0.1.0"
+description = "Draws the PMKS logo, icons, favicons and share card from one set of rules"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fonttools==4.68.0",
+    "uharfbuzz==0.57.0",
+]

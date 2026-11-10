@@ -30,3 +30,8 @@
 
 # The oracle's Python environment (uv sync); oracle/.gitignore keeps it out of git.
 /oracle/.venv
+
+# The brand generator's Python environment and its scratch files (npm run brand);
+# brand/.gitignore keeps both out of git.
+/brand/.venv
+/brand/.work

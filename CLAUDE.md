@@ -298,6 +298,7 @@ The **modes are tabs in the top strip, not a left rail**, and there are four of 
 ### Misc
 
 - `netlify/functions/getEmailJSKey.ts` is a Netlify serverless function supplying the EmailJS key for the feedback form.
+- The logo, icons, favicons and link-preview card are generated into `src/assets/brand/` by `npm run brand` from the rules in `brand/`; never edit them by hand. The landing page links to the app's published copies instead of keeping its own. See [`docs/brand.md`](docs/brand.md).
 - Circular service dependencies are broken with Angular's `Injector` (`injector.get(...)` at call time) in MechanismService, SaveHistoryService, and UrlProcessorService — keep that pattern in mind before adding constructor injections between those services.
 
 ## Conventions (from README)

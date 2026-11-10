@@ -1,4 +1,5 @@
 import { ANALYSIS_SERIES_COLORS } from '../../model/analysis-series';
+import { LOGO_ASPECT } from '../../model/brand';
 import { ExportPlot } from './export-table.service';
 import { escapeXml } from './xml';
 
@@ -18,6 +19,9 @@ export interface PlotSvgOptions {
 }
 
 const COLORS = [ANALYSIS_SERIES_COLORS.X, ANALYSIS_SERIES_COLORS.Y, ANALYSIS_SERIES_COLORS.Z];
+
+/** The logo on a standalone graph's title line, beside 15px type. */
+const MARK_HEIGHT = 18;
 
 /**
  * One solved quantity, drawn.
@@ -103,10 +107,10 @@ export function plotSvg(plot: ExportPlot, times: number[], options: PlotSvgOptio
 
   // On the top line, ahead of the title. The bottom right is where the last
   // axis label is, and a mark parked there sat on top of it.
-  const markWidth = 74;
+  const markWidth = Math.round(MARK_HEIGHT * LOGO_ASPECT);
   const mark =
     standalone && options.logo
-      ? `<image href="${options.logo}" x="12" y="8" width="${markWidth}" height="18" preserveAspectRatio="xMinYMid meet"/>`
+      ? `<image href="${options.logo}" x="12" y="8" width="${markWidth}" height="${MARK_HEIGHT}" preserveAspectRatio="xMinYMid meet"/>`
       : '';
   const titleAt = standalone && options.logo ? 12 + markWidth + 12 : left;
   const heading = standalone

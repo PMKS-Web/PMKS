@@ -28,6 +28,7 @@ import { SvgGridService } from 'src/app/services/svg-grid.service';
 import { TemplatesComponent } from '../MODALS/templates/templates.component';
 import { NotificationService } from '../../services/notification.service';
 import { TutorialService } from '../../services/tutorial.service';
+import { LOGO_URL } from '../../model/brand';
 import { MatTooltip } from '@angular/material/tooltip';
 import { MatIcon } from '@angular/material/icon';
 import { KeyboardShortcutsService, ShortcutId } from '../../services/keyboard-shortcuts.service';
@@ -174,6 +175,7 @@ export class TopBarComponent implements AfterViewInit, AfterViewChecked, OnDestr
 
   TabID = TabID;
   menuOpen = false;
+  protected readonly logo = LOGO_URL;
 
   private analytics: AnalyticsService = inject(AnalyticsService);
   shortcuts = inject(KeyboardShortcutsService);
