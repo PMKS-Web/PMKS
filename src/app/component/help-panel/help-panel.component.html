@@ -85,5 +85,18 @@
         </button-block>
       </form>
     </collapsible-subsection>
+
+    <!-- Kept last and quiet on purpose: a link someone can find, never a
+         prompt. Nothing else in the app mentions it. -->
+    <collapsible-subsection titleLabel="Donate" [expanded]="true">
+      <p class="sectionNote">
+        PMKS is free and stays free. If it has helped you, a small donation pays for hosting and the
+        AI features.
+      </p>
+      <button-block icon="coffee" [click]="gotoDonate">Donate on Ko-fi</button-block>
+      <p class="sectionNote">
+        Donations go to the maintainer, not to WPI, are not tax-deductible, and unlock nothing.
+      </p>
+    </collapsible-subsection>
   </panel-section>
 </div>

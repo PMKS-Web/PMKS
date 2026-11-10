@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
-import { HelpPanelComponent } from './help-panel.component';
+import { DONATION_URL, HelpPanelComponent } from './help-panel.component';
 import { NotificationService } from '../../services/notification.service';
 
 /**
@@ -76,5 +76,22 @@ describe('HelpPanelComponent, sending feedback', () => {
     expect(only.text).not.toContain('try again');
     // And the button is released, or the form is dead until the drawer closes.
     expect(component.sendingEmail).toBe(false);
+  });
+
+  it('opens the donation page in a new tab, cut off from this one', () => {
+    answerWith({});
+    const opened: unknown[][] = [];
+    const realOpen = window.open;
+    window.open = ((...args: unknown[]) => {
+      opened.push(args);
+      return null;
+    }) as typeof window.open;
+    try {
+      TestBed.createComponent(HelpPanelComponent).componentInstance.gotoDonate();
+    } finally {
+      window.open = realOpen;
+    }
+    expect(opened).toEqual([[DONATION_URL, '_blank', 'noopener']]);
+    expect(DONATION_URL).toBe('https://ko-fi.com/pmksapp');
   });
 });

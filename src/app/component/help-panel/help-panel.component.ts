@@ -23,6 +23,9 @@ import { TitleBlock } from '../BLOCKS/title/title.component';
 import { KeyboardShortcutsService } from '../../services/keyboard-shortcuts.service';
 
 /** Error when invalid control is dirty, touched, or submitted. */
+/** Where the Help drawer's Donate button goes; `.github/FUNDING.yml` names the same page. */
+export const DONATION_URL = 'https://ko-fi.com/pmksapp';
+
 export class MyErrorStateMatcher implements ErrorStateMatcher {
   isErrorState(control: FormControl | null, form: FormGroupDirective | NgForm | null): boolean {
     const isSubmitted = form && form.submitted;
@@ -150,6 +153,13 @@ export class HelpPanelComponent {
   readonly gotoGithub = (): void => {
     window.open('https://github.com/PMKS-Web/PMKS', '_blank');
     this.analytics.logEvent('goto_github');
+  };
+
+  // A plain link rather than Ko-fi's embeddable widget, which would load its
+  // scripts and cookies into an app that otherwise stores nothing anywhere.
+  readonly gotoDonate = (): void => {
+    window.open(DONATION_URL, '_blank', 'noopener');
+    this.analytics.logEvent('goto_donate');
   };
 
   readonly sendCommentEmail = async (): Promise<void> => {
