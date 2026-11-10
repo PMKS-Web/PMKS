@@ -261,7 +261,9 @@ Not suites — import them from one.
 
 - `link-mass-fields.mjs` — a link's Mass Settings: `CoM measured from` with its help mark after
   "from", choices that name a point, picking a joint re-describing rather than moving the point,
-  and `Inertia` on one line.
+  and `Inertia` on one line. CoM drags at the start and paused mid-cycle in Edit and both
+  analysis modes, through all three reference frames, preserve joint poses, survive playback,
+  and undo/redo in one step; typed CoM fields remain start-only. Writes drag filmstrips.
 - `link-holds.mjs` — holding a bar's length or angle: the menu rows, the chip, the padlocks, the
   joint riding its arc, a joint two holds pin down refusing with a Release button, and undo
   taking the hold off. The same for a cylinder's mounts.

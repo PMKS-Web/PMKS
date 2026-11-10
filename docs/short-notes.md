@@ -2591,6 +2591,16 @@ takes the pointer while its member is selected (`comGrabbable`), and `startComDr
 refusal rather than a drag. Left transparent to the pointer, the grab fell through to the member
 and dragged the whole cylinder.
 
+### A dragged center of mass commits through its body's start frame
+
+The CoM handle follows the `drag` permission, even where its typed fields are refused. Simply
+opening that gate mid-cycle is not enough: a rebuild restores solved CoMs as well as joints,
+overwriting the point under the pointer. `GridUtilsService.commitCenterOfMass` captures the point and body
+frame before rewinding, places it on the authored body, and recaptures both CoM offsets there.
+That last step matters for joint and grid references, whose offsets use world axes while editing
+but still ride the body during playback. `link-mass-fields.mjs` checks all three references in
+Edit and both analysis modes, through a reset, Undo and Redo.
+
 ### The start ghost's own rule takes the stroke off every body
 
 `.startGhost .ghostBody { stroke: none }` is right for a filled ghost and fatal for a schematic one,

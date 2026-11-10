@@ -131,6 +131,23 @@ export class GridUtilsService {
   private nup = inject(NumberUnitParserService);
   private settings = inject(SettingsService);
 
+  /** Commit a dragged CoM in the authored body frame, whatever the displayed pose. */
+  commitCenterOfMass(link: RealLink, save: boolean): void {
+    const point = { x: link.CoM.x, y: link.CoM.y };
+    const [a, b] = link.joints;
+    const fromA = { x: a.x, y: a.y };
+    const fromB = { x: b.x, y: b.y };
+    // A rebuild restores solved CoMs as well as joints. Capture the requested
+    // point before rewinding, then recapture both offsets at the authored pose:
+    // grid and joint anchors are editing references, not playback frames. The
+    // similarity also undoes an interpolated pose's tiny chord shortening.
+    this.mechanismSrv.editingAtStartPose(() => {
+      const [x, y] = pointThroughFrame(point, fromA, fromB, a, b);
+      link.placeCustomCoM({ x, y });
+      this.mechanismSrv.updateMechanism(save);
+    });
+  }
+
   /**
    * MechanismService injects this service, so it can only be resolved at call
    * time — the same cycle-breaking the codebase already uses in MechanismService

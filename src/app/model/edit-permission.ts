@@ -32,7 +32,7 @@ export type EditMode = 'synthesis' | 'edit' | 'analysis';
 export type EditAction =
   /** View: selecting, inspecting, panning, zooming -- never refused anywhere. */
   | 'inspect'
-  /** Gesture: dragging a joint, a link or a force. */
+  /** Gesture: dragging a joint, a link, a force or a center of mass. */
   | 'drag'
   /** Annotation: adding or deleting a tracer point or a force. */
   | 'annotate'
@@ -46,7 +46,7 @@ export type EditAction =
   | 'structure'
   /** Typed geometry: joint X/Y, link length and angle, an arrow-key nudge. */
   | 'placement'
-  /** Typed geometry: center of mass, a force's size, direction and place. */
+  /** Typed geometry: a typed center of mass, a force's size, direction and place. */
   | 'properties'
   /** Typed geometry: input speed and direction, which move the visible pose. */
   | 'drive'

@@ -4824,12 +4824,7 @@ export class NewGridComponent implements OnDestroy {
   startComDrag(link: RealLink, event: PointerEvent): void {
     event.stopPropagation();
     event.preventDefault();
-    // A center of mass is a *property*, not geometry -- `applyMechanismPose`
-    // writes it back from solved frames, and the panel speaks it in three
-    // different frames -- so it is refused wherever the panel's CoM fields are
-    // rather than wherever a drag is. It asked for `drag`, which Phase 2 allows
-    // at a paused pose, and so stayed live beside its own frozen fields.
-    if (!this.permission.may('properties')) return;
+    if (!this.permission.may('drag')) return;
     if (this.mechanismSrv.memberInertiaIsDerived(link)) {
       const why = "'s center of mass is computed from its shape, so it cannot be moved.";
       this.notify.refusal('com.derived', this.mechanismSrv.bodyLabel(link) + why);
@@ -4852,7 +4847,7 @@ export class NewGridComponent implements OnDestroy {
       // Both, every move. A Lock applied *during* the gesture -- the K key is
       // one press away -- left the panel showing Unlock and the lock marks
       // drawn while the mark kept following the pointer.
-      if (!this.permission.may('properties') || this.mechanismSrv.isLockedTarget(link)) {
+      if (!this.permission.may('drag') || this.mechanismSrv.isLockedTarget(link)) {
         // A Lock applied mid-gesture has already written the state it locked,
         // so the end of this gesture must not write it again: the two entries
         // were byte-identical, and the first Undo was a visible no-op that
@@ -4880,7 +4875,7 @@ export class NewGridComponent implements OnDestroy {
       if (!moved) return;
       // One undo step for the whole gesture, then the panel re-reads its
       // fields the same way a unit change makes it re-read them.
-      this.mechanismSrv.updateMechanism(!savedElsewhere);
+      this.gridUtils.commitCenterOfMass(link, !savedElsewhere);
       this.mechanismSrv.onMechUpdateState.next(2);
       this.activeObjService.fakeUpdateSelectedObj();
     };
