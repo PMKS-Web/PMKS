@@ -566,8 +566,8 @@ A fuller map of the codebase, and the conventions it is held to, is in
 Requires **Node 22.22.3+, 24.15+ or 26+**, the range the Angular 22 toolchain declares.
 
 ```bash
-git clone https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator.git
-cd Planar-Mechanism-Kinematic-Simulator
+git clone https://github.com/PMKS-Web/PMKS.git
+cd PMKS
 npm ci
 npm start          # http://localhost:4200
 ```
@@ -602,7 +602,9 @@ The rest of what is worth knowing before you start is in
   [app.pmksplus.com](https://app.pmksplus.com).
 - **Automatic publishing to production is paused in Netlify.** Nothing reaches app.pmksplus.com
   until someone publishes it by hand, so being on `main` does not mean being live.
-- Every other branch publishes to `https://[BRANCHNAME]--pmksnew.netlify.app`.
+- A pull request into `staging` or `main` gets a preview at
+  `https://deploy-preview-NNN--pmksprod.netlify.app`, and `staging` publishes to
+  `https://staging--pmksprod.netlify.app`. Other branches are not deployed.
 - CI runs ESLint, stylelint, a Prettier check, the unit suite, the production build, the gallery
   build and `git diff --check` on every pull request, and a pull request into `staging` or `main`
   cannot merge until it passes.

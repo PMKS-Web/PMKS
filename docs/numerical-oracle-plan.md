@@ -280,15 +280,15 @@ mass, local versus global loads, and every unit and speed conversion.
 Each fix changes PMKS, never the oracle or a budget, and deletes the manifest entries its issue
 held out.
 
-- **[#81][i81], a floating pin's motor torque** (2026-11-07). `force-solver.ts` now takes the
+- **[#252][i81], a floating pin's motor torque** (2026-11-07). `force-solver.ts` now takes the
   driven and reference bodies from `resolveActuator`, as the position solve does, and writes
   +τ into the driven body's moment row and −τ into the reference body's. The four machines it
   held out are compared in full: the coupler-rocker four-bar, the oscillating fan and the
   walking-beam pumping unit are verified, and the leg on a bicycle crank is verified but for
-  [#82][i82]'s one sample. 159,086 force samples now pass, and none fails.
+  [#253][i82]'s one sample. 159,086 force samples now pass, and none fails.
   `floating-pin-forces.spec.ts` checks the physics without the oracle: the frame's reactions
   and the load alone balance the whole machine, in force and in moment.
-- **[#78][i78], a second input's rates** (2026-11-07). `kinematic-solver.ts` gave no unknown to
+- **[#251][i78], a second input's rates** (2026-11-07). `kinematic-solver.ts` gave no unknown to
   any link touching a joint flagged as an input, while it put only the first input's link on the
   known side, so a link a second, ignored flag touched got neither. It now asks for the one input
   the solve uses, for links, slot carriers and guide ends alike. The four-bar with two inputs is
@@ -425,7 +425,7 @@ refusal of slot limits that Phase 0 added is gone.
   the last frame repeats the first and a central difference across it is available. On the
   hydraulic cylinder that put an angular acceleration 9.9×10⁻³ off at frame 0, where the same pose
   differenced centrally mid-sweep is 1.0×10⁻⁴ off. A differenced rate there, and any force resting
-  on one, is `undefined`, and the gap is filed as [#84][i84]: 80 kinematic and 58 force samples.
+  on one, is `undefined`, and the gap is filed as [#255][i84]: 80 kinematic and 58 force samples.
   The manifest records it in `ORACLE_FRAME_EXCLUSIONS`, which `oneSided` reads, since it leaves
   out frames of every machine rather than one. Compared anyway, those samples fall inside their
   budgets today, but the hydraulic cylinder's frame-0 acceleration is 9.92×10⁻³ against 10⁻², less
@@ -468,14 +468,14 @@ Four new issues, and no PMKS solver changed:
 
 | Machine | Kind | What | Issue |
 | --- | --- | --- | --- |
-| Four-bar driven at its coupler-rocker pin, oscillating fan, walking-beam pumping unit, leg on a bicycle crank | disagreement, **fixed** | A floating pin's motor torque is applied to one body only, so the frame supplies the reaction couple: every reaction and the effort differ. The body totals agree. Fixed since (see [Disagreements fixed](#disagreements-fixed)) | [#81][i81] |
-| Leg on a bicycle crank, and the pedaling-leg template | disagreement | One pose, k = −39, is solved twenty times looser than its neighbors, and at a condition of 557 the angular velocity of BP is 1.3×10⁻⁷ off | [#82][i82] |
-| Hood hinge, aircraft landing gear (templates), cylinder riding a slot | disagreement | A cylinder stored a hair off its line: PMKS straightens it from frame 1 but carries the members' centers of mass rigidly from the unstraightened frame 0, and on the slot-riding one every analytic rate comes out a uniform 10⁻⁷ high | [#83][i83] |
-| Every machine with differenced rates | disagreement | One-sided differences at the first and last frames | [#84][i84] |
+| Four-bar driven at its coupler-rocker pin, oscillating fan, walking-beam pumping unit, leg on a bicycle crank | disagreement, **fixed** | A floating pin's motor torque is applied to one body only, so the frame supplies the reaction couple: every reaction and the effort differ. The body totals agree. Fixed since (see [Disagreements fixed](#disagreements-fixed)) | [#252][i81] |
+| Leg on a bicycle crank, and the pedaling-leg template | disagreement | One pose, k = −39, is solved twenty times looser than its neighbors, and at a condition of 557 the angular velocity of BP is 1.3×10⁻⁷ off | [#253][i82] |
+| Hood hinge, aircraft landing gear (templates), cylinder riding a slot | disagreement | A cylinder stored a hair off its line: PMKS straightens it from frame 1 but carries the members' centers of mass rigidly from the unstraightened frame 0, and on the slot-riding one every analytic rate comes out a uniform 10⁻⁷ high | [#254][i83] |
+| Every machine with differenced rates | disagreement | One-sided differences at the first and last frames | [#255][i84] |
 | Scotch yoke on two guides | by design | Two guides hold one yoke, a redundant support; PMKS refuses its forces | — |
 | Cylinder-driven gripper | oracle limitation | Drawn within 10⁻⁵ m of a dead point of its drive; the oracle's projection onto the constraints slides along the nearly free direction | — |
 
-[#83][i83] may describe the test harness rather than the app: `solvedDrawing` decodes a URL and
+[#254][i83] may describe the test harness rather than the app: `solvedDrawing` decodes a URL and
 solves it directly, without the rebuild that `planDerivedInteriors` and `commitEditPlan` run in
 the app, which may straighten the cylinder before frame 0 is stored.
 
@@ -546,7 +546,7 @@ No new disagreement. Three manifest entries changed:
 
 | Machine | Kind | What | Issue |
 | --- | --- | --- | --- |
-| Four-bar with two inputs | disagreement, **fixed** | Its reactions, body totals and effort are left out in the dynamic mode, which needs the wrong rates; its static forces agree. Fixed since (see [Disagreements fixed](#disagreements-fixed)) | [#78][i78] |
+| Four-bar with two inputs | disagreement, **fixed** | Its reactions, body totals and effort are left out in the dynamic mode, which needs the wrong rates; its static forces agree. Fixed since (see [Disagreements fixed](#disagreements-fixed)) | [#251][i78] |
 | Parallelogram with a third parallel crank | by design | PMKS refuses its forces (`unsupported-topology`): three parallel cranks leave the reactions indeterminate. Its motion is verified | — |
 | Locomotive drive wheels | by design | The same refusal: one side rod couples three wheels. It carries no force, and was not solved until unloaded machines were compared | — |
 
@@ -634,8 +634,8 @@ In `src/test-data/oracle/manifest.ts`:
 
 | Machine | Kind | What | Issue |
 | --- | --- | --- | --- |
-| Slider-crank whose rod comes square to the guide | disagreement | PMKS refuses the published URL (`cycle-never-closes`); the oracle and the directly built fixture both close it after two turns | [#77][i77] |
-| Four-bar with two inputs | disagreement, **fixed** | The coupler's analytic angular velocity is wrong (0.1625 rad/s where PMKS's own joint velocities and the oracle give 0.1745), and the blank joint rates are differenced outside budget. Fixed since (see [Disagreements fixed](#disagreements-fixed)) | [#78][i78] |
+| Slider-crank whose rod comes square to the guide | disagreement | PMKS refuses the published URL (`cycle-never-closes`); the oracle and the directly built fixture both close it after two turns | [#250][i77] |
+| Four-bar with two inputs | disagreement, **fixed** | The coupler's analytic angular velocity is wrong (0.1625 rad/s where PMKS's own joint velocities and the oracle give 0.1745), and the blank joint rates are differenced outside budget. Fixed since (see [Disagreements fixed](#disagreements-fixed)) | [#251][i78] |
 | Four-bar with a second crank on its input | by design | PMKS refuses three bodies at a driven pin; the physics runs | — |
 | MotionGen gripper | oracle limitation | A first-order freedom that dies at second order; the oracle's rank test is first order | Phase 4 |
 | Crank-rocker driven from the rocker at its limit | oracle limitation | The drawn pose is the driver's dead point | — |
@@ -838,12 +838,12 @@ Settled with the team on 2026-11-03:
 
 [miet]: https://bamason2.github.io/miet2510-module/tutorials/Week+2+Tutorial.html "MIET2510 Week 2 tutorial"
 [ttu]: http://ttu-dom.wikidot.com/example-item-1 "TTU Dynamics of Machinery II: Force Analysis - 4 Bar"
-[i77]: https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator/issues/77 "Issue 77"
-[i78]: https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator/issues/78 "Issue 78"
-[i81]: https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator/issues/81 "Issue 81"
-[i82]: https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator/issues/82 "Issue 82"
-[i83]: https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator/issues/83 "Issue 83"
-[i84]: https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator/issues/84 "Issue 84"
+[i77]: https://github.com/PMKS-Web/PMKS/issues/250 "Issue 250"
+[i78]: https://github.com/PMKS-Web/PMKS/issues/251 "Issue 251"
+[i81]: https://github.com/PMKS-Web/PMKS/issues/252 "Issue 252"
+[i82]: https://github.com/PMKS-Web/PMKS/issues/253 "Issue 253"
+[i83]: https://github.com/PMKS-Web/PMKS/issues/254 "Issue 254"
+[i84]: https://github.com/PMKS-Web/PMKS/issues/255 "Issue 255"
 [metu]: https://ocw.metu.edu.tr/pluginfile.php/6467/mod_resource/content/6/ch6/6-5.htm "METU OCW ME 301, 6.4 Dynamic force analysis of machinery"
 [exudyn]: https://exudyn.readthedocs.io/ "Exudyn documentation"
 [simbody]: https://simbody.github.io/ "Simbody"

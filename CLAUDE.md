@@ -78,16 +78,23 @@ Unit specs stay co-located in `src/**/*.spec.ts`; browser-driven E2E tests are P
 Regenerate against a PR's deploy preview when you want links a reviewer can click before merge — a mechanism using a feature that has not shipped yet will not decode on production:
 
 ```bash
-PMKS_FIXTURE_BASE_URL=https://deploy-preview-NNN--pmksnew.netlify.app npm run fixture-urls
+PMKS_FIXTURE_BASE_URL=https://deploy-preview-NNN--pmksprod.netlify.app npm run fixture-urls
 ```
 
 ## Deployment / branch rules
 
 **Agents and contributors open pull requests against `staging`.** The team manually opens a
 release pull request from `staging` to `main`. Never push directly to `main` — it is the production
-branch for app.pmksplus.com — and don't push directly to `staging` either. Every non-main branch
-auto-publishes to `https://[BRANCHNAME]--pmksnew.netlify.app`, and a PR gets
-`https://deploy-preview-NNN--pmksnew.netlify.app`.
+branch for app.pmksplus.com — and don't push directly to `staging` either. A PR into `staging` or
+`main` gets `https://deploy-preview-NNN--pmksprod.netlify.app`, and `staging` itself publishes to
+`https://staging--pmksprod.netlify.app`. No other branch builds, and neither does a PR into another
+branch (a stacked PR), so free build minutes go to what is reviewed.
+
+**The repository is `PMKS-Web/PMKS`.** It moved on 2026-11-07 from
+`PMKS-Web/Planar-Mechanism-Kinematic-Simulator`, now archived, into the repository then named
+`PMKSWeb`, which kept its stars and was renamed. Pull requests and their reviews stayed in the
+archive, so **a bare `#N` written before the move means the archive's numbering**: #1–#96 there are
+not this repository's #1–#96. Its seven open issues moved here as #250–#256.
 
 **A new worktree starts from `origin/main`**, the repository's default branch, which lags `staging`
 by a whole release. Reset it before writing anything: `git fetch origin && git reset --hard
@@ -113,17 +120,19 @@ suites your change needs yourself** — the gate is about three fifths of the ba
 slow audits, and it reports after you have pushed. `node e2e/run-suites.mjs --list --lane gate`
 says what it will run. The nightly is where a suite earns its way into the gate.
 
-**The component gallery is hosted at [docs.pmksplus.com](https://docs.pmksplus.com)**, a third
+**The component gallery is hosted at [docs.pmksplus.com](https://docs.pmksplus.com)**, a second
 Netlify site (`pmksdocs`) that builds `npm run build-storybook` from `staging` on every push and
-publishes `storybook-static/`, the way the app sites build the app. It therefore shows `staging`,
-not your branch: check a change in a local `npm run storybook`. Its build command and publish
-directory live in that site's own settings, like the other two, and `netlify.toml` stays as it is.
+publishes `storybook-static/`, the way `pmksprod` builds the app. It builds no pull request
+previews, so it shows `staging`, not your branch: check a change in a local `npm run storybook`.
+Its build command and publish directory live in that site's own settings, like the app site's, and
+`netlify.toml` stays as it is.
 
-**There are two Netlify sites for the app, and the branch one moved.** Branch and preview builds come from
-`pmksnew` now; `[BRANCH]--pmksprod.netlify.app` still answers 200 and serves a **months-stale
-bundle**, which is worse than a 404 because it looks like a deploy that simply ignored your commit.
-Confirm a build landed by asking for something only the new commit has, not by the page loading.
-See [environment.md](docs/environment.md#deploys-domains-and-surrounding-services).
+**One Netlify site builds the app: `pmksprod`.** It serves production at app.pmksplus.com from
+`main`, a branch deploy of `staging`, and the deploy preview of every PR into `staging` or `main`.
+The `pmksnew` site that used to build branches and previews was deleted on 2026-11-07, so every
+`--pmksnew.netlify.app` link, in old PR comments included, is dead. Confirm a build landed by asking
+for something only the new commit has, not by the page loading. See
+[environment.md](docs/environment.md#deploys-domains-and-surrounding-services).
 
 `netlify.toml` carries exactly one setting — `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD`, so the deploy's
 `npm ci` does not fetch a browser for the `playwright` devDependency. A `netlify.toml` overrides only

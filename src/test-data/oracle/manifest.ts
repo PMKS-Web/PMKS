@@ -79,7 +79,7 @@ export const ORACLE_FRAME_EXCLUSIONS: FrameExclusion[] = [
       'last frame repeats the first, so a central difference across the seam was available. ' +
       'Compared anyway they fall inside the differenced budgets today, the hydraulic ' +
       "cylinder's frame-0 acceleration at 9.9e-3 against 1e-2, which is not agreement.",
-    issue: 'https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator/issues/84',
+    issue: 'https://github.com/PMKS-Web/PMKS/issues/255',
     review: 'When #84 is resolved.',
   },
 ];
@@ -91,7 +91,7 @@ export const ORACLE_EXCLUSIONS: Exclusion[] = [
     what: 'runs',
     reason:
       'Decoded from its published URL, PMKS refuses the machine (cycle-never-closes). The oracle runs it through both tangencies and closes it after two crank turns, as square-rod-tangency.spec.ts expects of the fixture built directly.',
-    issue: 'https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator/issues/77',
+    issue: 'https://github.com/PMKS-Web/PMKS/issues/250',
     review: 'When the issue is closed, delete this entry.',
   },
   {
@@ -132,7 +132,7 @@ export const ORACLE_EXCLUSIONS: Exclusion[] = [
     what: { quantities: ['omega'], parts: ['BP'], samples: [-39] },
     reason:
       "PMKS solves the pose at k = -39 twenty times looser than its neighbors (2.2e-9 of scale), and at a condition number of 557 the analytic angular velocity of BP carries that out to 1.29e-7, just outside the budget.",
-    issue: 'https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator/issues/82',
+    issue: 'https://github.com/PMKS-Web/PMKS/issues/253',
     review: 'When the issue is closed, delete this entry.',
   },
   {
@@ -176,7 +176,7 @@ export const ORACLE_EXCLUSIONS: Exclusion[] = [
     },
     reason:
       "The cylinder is stored a hair off its line. From frame 1 PMKS straightens its interior but carries the barrel's and rod's centers of mass rigidly from the unstraightened frame 0, which puts them 3e-6 of the machine's size off the members.",
-    issue: 'https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator/issues/83',
+    issue: 'https://github.com/PMKS-Web/PMKS/issues/254',
     review: 'When the issue is closed, delete this entry.',
   },
   {
@@ -188,7 +188,7 @@ export const ORACLE_EXCLUSIONS: Exclusion[] = [
     },
     reason:
       "The cylinder is stored a hair off its line. From frame 1 PMKS straightens its interior but carries the barrel's and rod's centers of mass rigidly from the unstraightened frame 0, which puts them 4e-5 of the machine's size off the members.",
-    issue: 'https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator/issues/83',
+    issue: 'https://github.com/PMKS-Web/PMKS/issues/254',
     review: 'When the issue is closed, delete this entry.',
   },
   {
@@ -199,7 +199,7 @@ export const ORACLE_EXCLUSIONS: Exclusion[] = [
     },
     reason:
       "The cylinder is stored a hair off its line. Every analytic rate comes out about 1e-7 of its scale too high, and the static forces 3e-8 of the largest force off, a uniform scale the size of 1 - cos of the drawn misalignment, against budgets of 1e-7 and 1e-8.",
-    issue: 'https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator/issues/83',
+    issue: 'https://github.com/PMKS-Web/PMKS/issues/254',
     review: 'When the issue is closed, delete this entry.',
   },
   {

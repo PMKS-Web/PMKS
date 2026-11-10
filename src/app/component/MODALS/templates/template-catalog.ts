@@ -651,7 +651,7 @@ export const DEV_TEMPLATE_CARDS: readonly TemplateCard[] = [
     animation: 'assets/gifs/scotch-yoke-one-guide.gif',
   },
   // Retired from the published library in the 2026-11 review
-  // (PMKS-Web/PMKSWeb issue 247): the crosshead tested welds rather than
+  // (PMKS-Web/PMKS issue 247): the crosshead tested welds rather than
   // teaching anything, the derrick repeated Crane with Two Loads, and Three
   // Mechanisms only showed what Walking Pair and Pumping Field show with a story
   // attached.
