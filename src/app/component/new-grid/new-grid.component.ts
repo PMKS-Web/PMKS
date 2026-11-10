@@ -71,7 +71,6 @@ import { SaveHistoryService } from 'src/app/services/save-history.service';
 import { SynthesisBuilderService } from 'src/app/services/synthesis/synthesis-builder.service';
 import { SelectedTabService, TabID } from 'src/app/selected-tab.service';
 import { EditPermissionService } from 'src/app/services/edit-permission.service';
-import { EditRefusal } from 'src/app/model/edit-permission';
 import { StartPoseGhost } from 'src/app/model/mechanism/anchor';
 import { SynthesisPose } from 'src/app/services/synthesis/synthesis-util';
 import { SynthesisCanvasService } from 'src/app/services/synthesis/synthesis-canvas.service';
@@ -6183,7 +6182,10 @@ export class NewGridComponent implements OnDestroy {
         // tracer point or a force at the start, and nothing else; where the
         // way out is Edit, it is said with the way out on the message rather
         // than swallowed.
-        const refused = this.deleteRefusal();
+        const refused = this.permission.deleteSelectionRefusal(
+          this.activeObjService.objType,
+          this.activeObjService.selectedJoint
+        );
         if (refused?.actionKind === 'toEdit') {
           this.notify.refusal('delete.analysis', 'Deleting this is an Edit change.', {
             actions: [{ label: 'Switch to Edit', run: () => this.tabService.setTab(TabID.EDIT) }],
@@ -6253,18 +6255,6 @@ export class NewGridComponent implements OnDestroy {
    * of its own: "delete" on it means all of its parts at once, which is its
    * panel's own button rather than a per-part key.
    */
-  /** Why the selection cannot be deleted: the menu's own answer for it. */
-  private deleteRefusal(): EditRefusal | null {
-    switch (this.activeObjService.objType) {
-      case 'Joint':
-        return this.permission.deleteJointRefusal(this.activeObjService.selectedJoint);
-      case 'Force':
-        return this.permission.menuRefusal('annotation');
-      default:
-        return this.permission.menuRefusal('design');
-    }
-  }
-
   private deleteSelection(): void {
     switch (this.activeObjService.objType) {
       case 'MultiSelection':

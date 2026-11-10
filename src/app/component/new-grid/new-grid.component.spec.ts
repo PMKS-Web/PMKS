@@ -1038,6 +1038,22 @@ describe('NewGridComponent keyboard shortcuts', () => {
     expect(builder.getAllPoses().length).toBe(0);
   });
 
+  // A position is a note beside the mechanism, so its menu row clears it in
+  // every mode. The key used to ask the structure question instead, which
+  // Synthesis always refuses -- the one mode a position is placed in.
+  it('takes away a synthesis position in Synthesis, as its menu row does', () => {
+    const component = setUp();
+    const builder = TestBed.inject(SynthesisBuilderService);
+    vi.spyOn(TestBed.inject(MechanismService), 'save').mockImplementation(() => {});
+    builder.placePose(new Coord(1, 1));
+    TestBed.inject(SelectedTabService).setTab(TabID.SYNTHESIZE);
+    TestBed.inject(ActiveObjService).updateSelectedObj(builder.getPose(1));
+
+    component['onShortcut']('edit.delete');
+
+    expect(builder.getAllPoses().length).toBe(0);
+  });
+
   // `getSelectedObj` throws for everything it has no case for, so asking it
   // before checking the type turned "there is nothing to lock" into an uncaught
   // error on a fresh grid.
