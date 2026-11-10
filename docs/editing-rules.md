@@ -35,9 +35,9 @@ Every control belongs to exactly one kind. Find the kind, then read off the answ
 | --- | --- | --- | --- | --- | --- |
 | **View** | Trace Path, velocity and acceleration traces, joint IDs, zoom, deleting a synthesis position, removing the background image | Yes | Yes | Yes | Yes |
 | **Annotation** | Add or delete a tracer point; add or delete a force | Yes | No | Yes | No |
-| **Gesture** | Drag a joint, a link or a force | Yes | Yes, put back on the start anchor | Yes | Yes, put back on the start anchor |
+| **Gesture** | Drag a joint, a link, a force or a center of mass | Yes | Yes, put back on the start anchor | Yes | Yes, put back on the start anchor |
 | **Safe property** | Mass, moment of inertia, name, color, Lock, Fixed Length, Fixed Angle, Drawn as a Disc | Yes | Yes | No | No |
-| **Typed geometry** | Joint X/Y, length, angle, center of mass (typed or dragged), Slider Angle, *Starts at*, Distance to Joints, an arrow-key nudge, a force's typed magnitude, angle and frame, Flip Force, input speed and direction | Yes | No | No | No |
+| **Typed geometry** | Joint X/Y, length, angle, typed center of mass, Slider Angle, *Starts at*, Distance to Joints, an arrow-key nudge, a force's typed magnitude, angle and frame, Flip Force, input speed and direction | Yes | No | No | No |
 | **Structure** | Add a link or cylinder, delete, duplicate, Joint Type, Split Joint, Grounded, Add Input, Delete Entire Mechanism | Yes | No | No | No |
 
 While anything plays, every row is **No**, except the transport and selecting.
@@ -52,10 +52,10 @@ Synthesis mode edits only its own positions; none of the rows above apply there.
      angle, a direction)? That makes it **Typed geometry**. Typed geometry is read at the pose on
      screen, so typing it mid-cycle would write the wrong thing into the design.
    - Does it add or remove a tracer point or a force? That makes it an **Annotation**.
-   - Is it a drag of a joint, a link or a force? That makes it a **Gesture**. A gesture means
+   - Is it a drag of a joint, a link, a force or a center of mass? That makes it a **Gesture**. A gesture means
      "put it here, at this pose", and the app can honor that at any paused pose by putting the
-     design back on its start anchor underneath. A dragged center of mass is the exception: it is
-     a property read in three frames, so it is typed geometry.
+     design back on its start anchor underneath. A dragged center of mass maps back through its
+     body's motion before saving, including when its typed fields use a joint or the grid origin.
    - Can it change without affecting whether the mechanism runs or where anything is? That makes
      it a **Safe property**. Mass, color and name are the examples.
    - Does it only change what is drawn, not the document? That makes it **View**.
