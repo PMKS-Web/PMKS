@@ -2935,3 +2935,18 @@ what decides which pull requests get a preview: Netlify builds one only for a PR
 production branch or a branch-deploy branch. So a PR into `staging` gets
 `deploy-preview-NNN--pmksprod.netlify.app`, and a stacked PR into another feature branch gets none.
 Adding a branch to the branch-deploy list turns on both its own deploy and previews of PRs into it.
+
+### A favicon `.ico` listed after the SVG wins in Chrome, so `index.html` names it first
+
+Chrome takes the *last* icon link it can use, and an `.ico` with no `sizes` counts as usable. Put
+after `favicon.svg`, the `.ico` replaced the SVG, and with it the SVG's dark-theme colors.
+`src/index.html` names `favicon.ico` first, with `sizes="32x32"`, then `assets/brand/favicon.svg`.
+Safari and older browsers that take no SVG icon still find the `.ico`. See
+[brand.md](brand.md).
+
+### Storybook takes its tab icon from whatever `staticDirs` serves at `/favicon.svg`
+
+Storybook 10's manager has no favicon option: it links `/favicon.svg`, and a `staticDirs` entry
+mapped to that path replaces Storybook's own pink one. `.storybook/main.ts` maps
+`src/assets/brand/favicon.svg` there. The sidebar logo is separate: `brandImage` in
+`.storybook/manager.ts`.
