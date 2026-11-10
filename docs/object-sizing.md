@@ -111,6 +111,10 @@ changing its style cannot accidentally pick up an unreachable edited pose.
 
 ## Verification
 
+Visual checks: [proportional zoom](images/object-sizing/zoom-film.png),
+[long compound ID](images/object-sizing/compound-label.png), and
+[locomotive joint I through a revolution](images/object-sizing/locomotive-film.png).
+
 - `e2e/drawing-styles.mjs`: all symbol types, style and zoom filmstrips, welded cylinder playback,
   unchanged document/CAD data, local preference persistence, and narrow Settings layouts.
 - `e2e/bug-fixes-2.mjs`: types barrel and rod lengths in ordinary and welded cylinders; exercises
