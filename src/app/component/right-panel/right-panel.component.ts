@@ -15,7 +15,6 @@ import { gridStates, jointStates, linkStates, forceStates } from '../../model/ut
 import { ActiveObjService } from '../../services/active-obj.service';
 import { MechanismService } from '../../services/mechanism.service';
 import { RealLink } from '../../model/link';
-import { AnalyticsService } from '../../services/analytics.service';
 import { SettingsService } from '../../services/settings.service';
 import { Arc, Line } from '../../model/line';
 import { Coord } from '../../model/coord';
@@ -127,8 +126,6 @@ export class RightPanelComponent implements DoCheck {
   frameOpen(): boolean {
     return RightPanelComponent.isOpen || this.tutorialShowing();
   }
-
-  private analytics: AnalyticsService = inject(AnalyticsService);
 
   constructor() {
     // A setup drawer answers a question about one mode, so it goes when that
@@ -372,7 +369,6 @@ export class RightPanelComponent implements DoCheck {
   }
 
   printMechanism() {
-    this.analytics.logEvent('debug_print_mechanism');
     console.log(this.mechanismService.mechanisms);
     console.log(this.mechanismService.links);
     console.log(this.mechanismService.joints);
@@ -386,7 +382,6 @@ export class RightPanelComponent implements DoCheck {
   }
 
   printActiveObject() {
-    this.analytics.logEvent('debug_print_active_object');
     switch (this.activeObjService.objType) {
       case 'Joint':
         console.log(this.activeObjService.selectedJoint);

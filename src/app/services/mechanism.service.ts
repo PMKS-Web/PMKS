@@ -1,4 +1,6 @@
 import { writeMechanismName } from '../model/mechanism/mechanism-name';
+import { familyReading, machineFacts } from '../model/machine-facts/machine-facts';
+import { AnalyticsService } from './analytics.service';
 import { orphanedByLinkRemoval } from '../model/link-removal';
 import { graftJoint } from '../model/graft-joint';
 import { pruneUnlinkedJoints } from '../model/prune-unlinked-joints';
@@ -218,6 +220,7 @@ export class MechanismService {
   private settingsService = inject(SettingsService);
   private nup = inject(NumberUnitParserService);
   private notify = inject(NotificationService);
+  private analytics = inject(AnalyticsService);
   /**
    * The synthesis design, whose poses are stored in user lengths like every
    * other coordinate. Injected directly rather than through the injector this
@@ -653,9 +656,44 @@ export class MechanismService {
     this.restoreHeldPoses(heldPoses);
 
     if (save) {
+      this.noticeFirstRun();
       this.save();
     }
     this.leaveForceAnalysisWithoutInputs();
+  }
+
+  /**
+   * Set by the URL reader while a different drawing arrives -- a template, a
+   * shared link, an opened file -- so one that already runs is not reported as
+   * a mechanism the reader made run (`noticeFirstRun`).
+   */
+  arriving = false;
+  /** Whether anything ran after the last edit, or after the drawing arrived. */
+  private ranBefore = false;
+
+  /** A drawing has finished arriving: what runs now is where the reader starts from. */
+  arrived(): void {
+    this.arriving = false;
+    this.ranBefore = this.oneValidMechanismExists();
+  }
+
+  /**
+   * Report the moment an edit of the reader's makes something run that did not
+   * before: the point at which a student's own build works. Once a visit.
+   *
+   * Named by family -- one PMKS recognized, or its body count -- which is a
+   * word from the app's own catalog, never anything the reader typed.
+   */
+  private noticeFirstRun(): void {
+    const index = this.mechanisms.findIndex((mechanism) => mechanism?.isMechanismValid());
+    const runs = index !== -1;
+    if (runs && !this.ranBefore && !this.arriving) {
+      const partition = this.partitions[index];
+      const solved = this.mechanisms[index];
+      const family = familyReading(partition, solved, machineFacts(partition, solved)).name;
+      this.analytics.trackOnce('mechanism_runs', { family });
+    }
+    if (!this.arriving) this.ranBefore = runs;
   }
 
   /**

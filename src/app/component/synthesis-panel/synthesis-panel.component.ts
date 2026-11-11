@@ -1,3 +1,4 @@
+import { AnalyticsService } from '../../services/analytics.service';
 import { AngleUnit } from '../../model/unit-enums';
 import { NumberDragDirective } from '../../directives/number-drag.directive';
 import { SegmentedComponent } from '../BLOCKS/segmented/segmented.component';
@@ -132,6 +133,7 @@ export class SynthesisPanelComponent implements OnInit, DoCheck, OnDestroy {
   private notify = inject(NotificationService);
   design = inject(SynthesisBuilderService);
   solution = inject(SynthesisSolutionService);
+  private analytics = inject(AnalyticsService);
   private nup = inject(NumberUnitParserService);
   private settings = inject(SettingsService);
   svgGrid = inject(SvgGridService);
@@ -854,6 +856,7 @@ export class SynthesisPanelComponent implements OnInit, DoCheck, OnDestroy {
   }
 
   generate(): void {
+    this.analytics.track('synthesis_run');
     this.solution.generate();
   }
 

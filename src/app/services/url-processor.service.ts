@@ -11,6 +11,8 @@ import { SelectedTabService, TabID } from '../selected-tab.service';
 import { SynthesisBuilderService } from './synthesis/synthesis-builder.service';
 import { applySynthesisDesign } from './synthesis/synthesis-url';
 import { SynthesisSolutionService } from './synthesis/synthesis-solution.service';
+import { AnalyticsService } from './analytics.service';
+import { AppEntry } from '../model/analytics-events';
 
 /** The one query that names a screen instead of describing a mechanism. */
 const LIBRARY_QUERY = 'library';
@@ -84,6 +86,7 @@ export class UrlProcessorService {
   private activeObj = inject(ActiveObjService);
   private notify = inject(NotificationService);
   private synthesis = inject(SynthesisBuilderService);
+  private analytics = inject(AnalyticsService);
 
   /**
    * Whether the address asked for the mechanism library rather than carrying a
@@ -144,6 +147,9 @@ export class UrlProcessorService {
     // stood on rather than walking backwards through the session. Refreshing
     // the work you are in the middle of is the case this exists for.
     const url = fromAddress ?? (!invalidAddress && returningToThePage() ? recallDrawing() : null);
+    this.analytics.track('app_start', {
+      entry: arrivedBy(invalidAddress, this.wantsLibrary, fromAddress, url),
+    });
 
     // update the mechanism from the url
     //
@@ -201,6 +207,24 @@ export class UrlProcessorService {
      * loading a template and the initial URL decode do not.
      */
     continuingHistory: boolean = false
+  ) {
+    // A different drawing arriving is not the reader building one, so a
+    // template that runs is not reported as a mechanism they made run.
+    const mechanismSrv = this.injector.get(MechanismService);
+    mechanismSrv.arriving = !continuingHistory;
+    try {
+      this.decode(url, resetSvgScale, updateSettings, save, continuingHistory);
+    } finally {
+      if (mechanismSrv.arriving) mechanismSrv.arrived();
+    }
+  }
+
+  private decode(
+    url: string | null,
+    resetSvgScale: boolean,
+    updateSettings: boolean,
+    save: boolean,
+    continuingHistory: boolean
   ) {
     const mechanismSrv = this.injector.get(MechanismService);
     // A different mechanism reuses the same joint letters and means something
@@ -434,4 +458,17 @@ export class UrlProcessorService {
       this.svgGrid.compensateForUnitChange(unitBefore, this.settingsSrv.lengthUnit.value);
     }
   }
+}
+
+/** How the reader arrived, for `app_start`. */
+function arrivedBy(
+  invalid: boolean,
+  library: boolean,
+  fromAddress: string | null,
+  url: string | null
+): AppEntry {
+  if (invalid) return 'bad_link';
+  if (library) return 'library';
+  if (fromAddress !== null) return 'link';
+  return url !== null ? 'restored' : 'blank';
 }

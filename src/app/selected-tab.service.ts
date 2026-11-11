@@ -5,6 +5,8 @@ import { MechanismService } from './services/mechanism.service';
 import { SynthesisBuilderService } from './services/synthesis/synthesis-builder.service';
 import { ActiveObjService } from 'src/app/services/active-obj.service';
 import { SettingsService } from './services/settings.service';
+import { AnalyticsService } from './services/analytics.service';
+import { ReportedMode } from './model/analytics-events';
 
 export enum TabID {
   SYNTHESIZE,
@@ -15,6 +17,13 @@ export enum TabID {
   FORCE,
 }
 
+/** Edit is where every visit starts, so only leaving it is worth counting. */
+const REPORTED_MODES: Partial<Record<TabID, ReportedMode>> = {
+  [TabID.SYNTHESIZE]: 'synthesis',
+  [TabID.ANALYZE]: 'kinematic',
+  [TabID.FORCE]: 'force',
+};
+
 @Injectable({
   providedIn: 'root',
 })
@@ -23,6 +32,7 @@ export class SelectedTabService {
   private mechanism = inject(MechanismService);
   private activeObjService = inject(ActiveObjService);
   private settings = inject(SettingsService);
+  private analytics = inject(AnalyticsService);
 
   private _tabNum: BehaviorSubject<TabID>;
   private _tabVisible: BehaviorSubject<boolean>;
@@ -112,6 +122,9 @@ export class SelectedTabService {
   }
 
   private onNewTab(previousTab: TabID) {
+    const mode = REPORTED_MODES[this.getCurrentTab()];
+    if (mode) this.analytics.trackOnce('mode_open', { mode });
+
     // A setup drawer answers a question about one mode, so it goes when that
     // mode does -- otherwise the Force list sits over the Synthesis canvas
     // looking like the app is stuck between two places. The drawer registers

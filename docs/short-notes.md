@@ -13,6 +13,15 @@ whose title covers it, and leave a heading here only if someone would still sear
 
 ---
 
+### A new `inject()` in `MechanismService` has to be listed in `mechanism-harness.ts` too
+
+`createMechanismHarness` builds a real `Injector.create` with every provider written out, on
+purpose, so a missing service fails at the `get()` rather than hiding behind a stub. The cost is
+that `providedIn: 'root'` does not reach it: adding `inject(AnalyticsService)` to
+`MechanismService` (or to `SelectedTabService`, which the harness also builds) failed 614 specs
+across 53 files with NG0201, "No provider found". Add the service to the harness's list, and to
+`context-menu-builder.service.spec.ts`, which builds the same kind of injector of its own.
+
 ### `.gitattributes` keeps every text file LF, because specs compare checked-in bytes
 
 `fixture-gallery.spec.ts` compares `docs/fixture-urls.md` with freshly generated text, and

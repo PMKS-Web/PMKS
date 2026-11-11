@@ -397,7 +397,7 @@ export class ExportPanelComponent implements OnInit, OnDestroy {
     // cycle for eighty series holds the main thread, and a press that showed
     // nothing until it finished read as a press that had not registered.
     await new Promise((resolve) => setTimeout(resolve, 32));
-    this.analytics.logEvent(`export_data_${this.flow.format}`);
+    this.analytics.track('export_data', { format: this.flow.format });
     // Read before the work starts, for the same reason the writer snapshots its
     // own settings: the message has to name the file that was actually written.
     const arriving = this.arrivingName;
