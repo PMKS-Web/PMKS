@@ -5504,7 +5504,11 @@ export class NewGridComponent implements OnDestroy {
    * and the gap mask cuts the lines under them, and both must agree.
    */
   linkTags(): { link: Link; tag: CanvasLabel }[] {
-    return this.mechanismSrv.getLinks().map((link) => ({ link, tag: this.linkLabelStyle(link) }));
+    return this.canvasLabels.forLinks(
+      (one, font) => this.preferredLinkLabelStyle(one, font),
+      this.sliderMarkList,
+      this.cylinderList
+    );
   }
 
   /**

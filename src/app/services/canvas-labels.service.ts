@@ -164,13 +164,39 @@ export class CanvasLabelsService {
     return Math.max(fitted, Math.min(base, this.screenUnits(MIN_LABEL_PX)));
   }
 
+  /** One body's name, for a caller asking about a single body. */
   forLink(
     link: Link,
     preferred: PreferredLabel,
     marks: SliderMark[],
     cylinders: CylinderMark[] = []
   ): CanvasLabel {
+    this.relayIfChanged(this.mechanism.getLinks(), preferred, marks, cylinders);
+    return this.placedLabel(link, preferred);
+  }
+
+  /**
+   * Every body's name for one redraw. The canvas asks this rather than
+   * `forLink` once a body: the key that decides whether to lay the names out
+   * again reads every body's name, so asked per body it was built once for each
+   * of them, on every change-detection pass.
+   */
+  forLinks(
+    preferred: PreferredLabel,
+    marks: SliderMark[],
+    cylinders: CylinderMark[] = []
+  ): { link: Link; tag: CanvasLabel }[] {
     const links = this.mechanism.getLinks();
+    this.relayIfChanged(links, preferred, marks, cylinders);
+    return links.map((link) => ({ link, tag: this.placedLabel(link, preferred) }));
+  }
+
+  private relayIfChanged(
+    links: Link[],
+    preferred: PreferredLabel,
+    marks: SliderMark[],
+    cylinders: CylinderMark[]
+  ): void {
     const names = links.map((one) => this.mechanism.visibleBodyName(one));
     const drawing = `${this.mechanism.solveRevision}/${this.settings.drawingStyle.value}/${this.settings.drawingScale}/${this.settings.isShowCOM.value}/${this.settings.isShowID.value}/${links.map((one, i) => names[i] + this.mechanism.isPartInert(one)).join('|')}`;
     const quick = `${drawing}/${this.screenUnits(MIN_LABEL_PX)}`;
@@ -186,6 +212,9 @@ export class CanvasLabelsService {
         this.arrange(links, preferred, marks, cylinders);
       }
     }
+  }
+
+  private placedLabel(link: Link, preferred: PreferredLabel): CanvasLabel {
     const held = this.placements.get(link);
     const tag = preferred(
       link,
