@@ -88,10 +88,17 @@ And one user property, `app_version`, so behavior can be read against the releas
 
 `mechanism_runs` is the one worth understanding before reading it. A template, a shared link or an
 opened file that already runs does not count: the URL reader sets `MechanismService.arriving`
-while a different drawing comes in, and `arrived()` records whether it ran -- after an undo or redo
-too, so an edit is never credited with what the undo did. What counts is the
-first undoable edit after which something runs that did not before -- the moment a student's own
-build works.
+while a different drawing comes in, and `arrived()` records which of its machines ran -- after an
+undo or redo too, so an edit is never credited with what the undo did. What counts is the first
+undoable edit after which a machine runs that did not before -- the moment a student's own build
+works. A machine is told apart by its `partitionKey`, so a second machine built beside a template
+that already runs counts, and editing the template's own machine does not. It is asked in
+`MechanismService.save()`, which every committed gesture reaches, drags included, and never
+mid-drag. On a drawing large enough that Edit puts the solve off, the question waits for
+`solveNow`. Reported once a visit, with the first machine's family.
+
+`app_start` is sent after the address has been decoded, so a link whose payload fails its checksum
+is `bad_link`, not `link`.
 
 ### Names that changed
 

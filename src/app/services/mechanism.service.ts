@@ -446,6 +446,10 @@ export class MechanismService {
     if (!this.solvingDeferred) return;
     this.forceSolveOnce = true;
     this.updateMechanism();
+    // An edit saved while the solve was put off is asked about now that its
+    // answer exists; with none pending, this solve is only the starting point.
+    if (this.runCheckPending) this.noticeFirstRun();
+    else this.runningBefore ??= this.runningMachines();
   }
 
   updateMechanism(save: boolean = false) {
@@ -656,7 +660,6 @@ export class MechanismService {
     this.restoreHeldPoses(heldPoses);
 
     if (save) {
-      this.noticeFirstRun();
       this.save();
     }
     this.leaveForceAnalysisWithoutInputs();
@@ -668,42 +671,73 @@ export class MechanismService {
    * a mechanism the reader made run (`noticeFirstRun`).
    */
   arriving = false;
-  /** Whether anything ran after the last edit, the last undo or redo, or the drawing's arrival. */
-  private ranBefore = false;
+  /**
+   * The machines (by `partitionKey`) that ran after the last saved edit, undo,
+   * redo or arrival. Undefined while a deferred solve hides what runs: there
+   * is nothing to compare against until the first solve, and that solve is
+   * then the starting point rather than something the reader made run.
+   */
+  private runningBefore?: Set<string>;
+  /** An edit was saved while the solve was put off, so whether it made a machine run is still unknown. */
+  private runCheckPending = false;
   /** Whether this visit has reported its first run; one report a visit, whatever family runs next. */
   private reportedFirstRun = false;
 
   /** A drawing has arrived, or an undo or redo has landed: what runs now is the starting point. */
   arrived(): void {
     this.arriving = false;
-    this.ranBefore = this.oneValidMechanismExists();
+    this.runCheckPending = false;
+    this.runningBefore = this.solvingDeferred ? undefined : this.runningMachines();
+  }
+
+  private runningMachines(): Set<string> {
+    return new Set(
+      this.partitions
+        .filter((_, index) => this.mechanisms[index]?.isMechanismValid())
+        .map(partitionKey)
+    );
   }
 
   /**
-   * Report the moment an edit of the reader's makes something run that did not
-   * before: the point at which a student's own build works. Once a visit.
+   * Report the moment an edit of the reader's makes a machine run that did
+   * not before: the point at which a student's own build works. Once a visit.
+   *
+   * Asked after every saved edit, which is every committed gesture -- a drag
+   * that saves directly as much as an edit that rebuilds with `save` -- and
+   * never mid-drag. A machine is new by its key, so building a second machine
+   * beside a template that already runs still counts, and a running machine
+   * that is merely edited does not.
    *
    * Named by family -- one PMKS recognized, or its body count -- which is a
    * word from the app's own catalog, never anything the reader typed.
    */
   private noticeFirstRun(): void {
-    const index = this.mechanisms.findIndex((mechanism) => mechanism?.isMechanismValid());
-    const runs = index !== -1;
-    if (runs && !this.ranBefore && !this.arriving && !this.reportedFirstRun) {
-      this.reportedFirstRun = true;
-      const partition = this.partitions[index];
-      const solved = this.mechanisms[index];
-      let family = 'Not recognized';
-      try {
-        family = familyReading(partition, solved, machineFacts(partition, solved)).name;
-      } catch {
-        // Recognition reads the solved cycle. Whatever goes wrong in it, the
-        // save right after this must still happen: an edit with no undo entry
-        // is far worse than a report with no family.
-      }
-      this.analytics.track('mechanism_runs', { family });
+    if (this.arriving) return;
+    if (this.solvingDeferred) {
+      this.runCheckPending = true;
+      return;
     }
-    if (!this.arriving) this.ranBefore = runs;
+    this.runCheckPending = false;
+    const before = this.runningBefore;
+    const running = this.runningMachines();
+    this.runningBefore = running;
+    if (!before || this.reportedFirstRun) return;
+    const index = this.partitions.findIndex(
+      (partition, at) =>
+        this.mechanisms[at]?.isMechanismValid() && !before.has(partitionKey(partition))
+    );
+    if (index === -1) return;
+    this.reportedFirstRun = true;
+    const partition = this.partitions[index];
+    const solved = this.mechanisms[index];
+    let family = 'Not recognized';
+    try {
+      family = familyReading(partition, solved, machineFacts(partition, solved)).name;
+    } catch {
+      // Recognition reads the solved cycle. Whatever goes wrong in it, the
+      // edit around it must not: a report with no family is the worst case.
+    }
+    this.analytics.track('mechanism_runs', { family });
   }
 
   /**
@@ -1359,6 +1393,10 @@ export class MechanismService {
     if (this.savesHeld) return;
     const saveHistoryService = this.injector.get(SaveHistoryService);
     saveHistoryService.save();
+    // After the entry is written, so nothing in the report can cost an edit
+    // its undo. Here rather than in `updateMechanism` because a drag commits by
+    // calling this directly, after rebuilds that did not save.
+    this.noticeFirstRun();
   }
 
   /** Apply a pose-independent change to the authored drawing, then restore every clock. */

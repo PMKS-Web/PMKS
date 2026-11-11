@@ -112,6 +112,9 @@ export class UrlProcessorService {
    */
   readonly wantsBackdropFor: string | null;
 
+  /** Whether the last decode was handed a payload it could not open. */
+  private payloadRefused = false;
+
   constructor() {
     // the content part of the url (the part after the ?)
     let fromAddress: string | null = null;
@@ -147,9 +150,6 @@ export class UrlProcessorService {
     // stood on rather than walking backwards through the session. Refreshing
     // the work you are in the middle of is the case this exists for.
     const url = fromAddress ?? (!invalidAddress && returningToThePage() ? recallDrawing() : null);
-    this.analytics.track('app_start', {
-      entry: arrivedBy(invalidAddress, this.wantsLibrary, fromAddress, url),
-    });
 
     // update the mechanism from the url
     //
@@ -157,6 +157,13 @@ export class UrlProcessorService {
     // the word to the decoder would raise "that shared link could not be
     // opened" over the library the reader just asked for.
     this.updateFromURL(this.wantsLibrary ? null : url, true, true, true);
+    // After the decode, not before: a payload whose checksum fails is only
+    // found out by decoding it, and reported before that it counted as a link
+    // that worked.
+    const badLink = invalidAddress || (fromAddress !== null && this.payloadRefused);
+    this.analytics.track('app_start', {
+      entry: arrivedBy(badLink, this.wantsLibrary, fromAddress, url),
+    });
     // The strip that a decode does in its `finally`, for the branch that skips
     // it: a reload should not be a second trip through the front door, and the
     // address bar should say what is on screen.
@@ -357,6 +364,7 @@ export class UrlProcessorService {
         // be dismissed: the reader followed a link that did not work, and the
         // grid they are looking at instead is not an obvious clue that it
         // didn't.
+        this.payloadRefused = true;
         this.reportInvalidURL(error);
       } finally {
         // Invalid data must not remain in the address bar or be retried on refresh.
