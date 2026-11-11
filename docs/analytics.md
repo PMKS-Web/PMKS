@@ -126,10 +126,3 @@ The custom dimensions the app's events need:
 `template` and `destination` are already registered for the landing page's events and serve both
 sites; filter by event name to tell them apart. `share`'s parameters and `exception`'s
 `description` are left unregistered on purpose: the counts are what is read.
-
-## Link previews
-
-`src/index.html` carries Open Graph and Twitter tags, with `src/assets/social-card.png` -- a copy of
-the landing page's front-page card -- as the image. Every link to the app shows that one card, a
-shared mechanism included: a preview of the mechanism itself would need a server to draw it,
-because a crawler does not run the app.
