@@ -334,6 +334,7 @@ function isRateUnknown(joint: Joint): joint is RealJoint {
 export interface SolverPose {
   positions: Map<string, number[]>;
   prior: Map<string, number[]>;
+  earlier: Map<string, number[]>;
   /**
    * Where the moving boundary stood, and which spans have been solved.
    *
@@ -351,6 +352,8 @@ export class PositionSolver {
   static jointMapPositions = new Map<string, Array<number>>();
   /** One step behind jointMapPositions; see concentricSolution. */
   private static priorJointPositions = new Map<string, Array<number>>();
+  /** Where each joint stood the step before `priorJointPositions`: the curve of its motion, not only its heading. */
+  private static earlierJointPositions = new Map<string, Array<number>>();
   static sliderAngleMap = new Map<string, number>();
   static desiredJointGroundIndexMap = new Map<string, number>();
   static unknownJointsIndicesMap = new Map<string, number[]>();
@@ -419,6 +422,11 @@ export class PositionSolver {
   private static cylinderDrive?: CylinderDrive;
   /** The cylinder the input flag names, before the walk decides which end moves. */
   private static drivenCylinder?: Cylinder;
+
+  /** Whether the input this solve steps is a cylinder's, which reverses at its own stops. */
+  static get drivesCylinder(): boolean {
+    return this.drivenCylinder !== undefined;
+  }
   /**
    * A driven *pin* (§2.9, Phase 6): the actuator's two bodies, as the three
    * points whose angle the drive prescribes. Held in the same shape as the
@@ -560,6 +568,7 @@ export class PositionSolver {
   static resetStaticVariables() {
     this.jointMapPositions = new Map<string, Array<number>>();
     this.priorJointPositions = new Map<string, Array<number>>();
+    this.earlierJointPositions = new Map<string, Array<number>>();
     this.refusalKind = 'none';
     this.coupledRoute = false;
     this.sliderAngleMap = new Map<string, number>();
@@ -3568,6 +3577,7 @@ export class PositionSolver {
     return {
       positions: new Map(this.jointMapPositions),
       prior: new Map(this.priorJointPositions),
+      earlier: new Map(this.earlierJointPositions),
       boundary: this.boundaryPose
         ? new Map([...this.boundaryPose].map(([id, at]) => [id, [...at]]))
         : undefined,
@@ -3578,6 +3588,7 @@ export class PositionSolver {
   static restorePose(pose: SolverPose): void {
     this.jointMapPositions = new Map(pose.positions);
     this.priorJointPositions = new Map(pose.prior);
+    this.earlierJointPositions = new Map(pose.earlier);
     this.boundaryPose = pose.boundary
       ? new Map([...pose.boundary].map(([id, at]) => [id, [...at]]))
       : undefined;
@@ -3820,6 +3831,8 @@ export class PositionSolver {
   private static recordJointPosition(id: string, x: number, y: number) {
     const previous = this.jointMapPositions.get(id);
     if (previous) {
+      const prior = this.priorJointPositions.get(id);
+      if (prior) this.earlierJointPositions.set(id, prior);
       this.priorJointPositions.set(id, previous);
     }
     this.jointMapPositions.set(id, [x, y]);
@@ -3920,8 +3933,23 @@ export class PositionSolver {
     // With no history — the first sample, or just after a reversal dropped it —
     // this reduces to the current point, which picks the starting assembly mode.
     const prior = this.priorJointPositions.get(unknownJoint.id) ?? current;
-    const predicted = [2 * current[0] - prior[0], 2 * current[1] - prior[1]];
-    return distance(sols[0], predicted) <= distance(sols[1], predicted) ? sols[0] : sols[1];
+    // Where the two roots stand closer together than one step -- a
+    // parallelogram coming through its change point, a dyad near a fold --
+    // a straight line is not good enough either: the joint is speeding up or
+    // slowing down there, and a step's worth of that curve is more than the
+    // half-gap between the roots. So follow the curve of the last three
+    // positions instead. Everywhere else the roots are far apart and the
+    // straight line is all it ever needed.
+    const earlier = this.earlierJointPositions.get(unknownJoint.id);
+    const curved = earlier !== undefined && distance(sols[0], sols[1]) < distance(current, prior);
+    const predicted = curved
+      ? [3 * current[0] - 3 * prior[0] + earlier[0], 3 * current[1] - 3 * prior[1] + earlier[1]]
+      : [2 * current[0] - prior[0], 2 * current[1] - prior[1]];
+    const [chosen, other] =
+      distance(sols[0], predicted) <= distance(sols[1], predicted)
+        ? [sols[0], sols[1]]
+        : [sols[1], sols[0]];
+    return this.carriedPast(unknownJoint.id, chosen, other, current) ?? chosen;
   }
 
   /**
@@ -3931,6 +3959,43 @@ export class PositionSolver {
    */
   static clearMotionHistory() {
     this.priorJointPositions = new Map<string, Array<number>>();
+    this.earlierJointPositions = new Map<string, Array<number>>();
+  }
+
+  /**
+   * The pose a prismatic input's first step back from a reversal would
+   * retrace, while that step is asked again to see whether a crank can turn on
+   * through the dead center instead. Undefined the rest of the time.
+   */
+  static carryPast: Map<string, number[]> | undefined;
+
+  /** How many of its own last step a joint may move and still be turning on through a fold. */
+  private static readonly CARRY_REACH = 8;
+
+  /**
+   * The other root, if `chosen` is the retrace `carryPast` is asking to avoid
+   * and the other is the same fold seen from its far side.
+   *
+   * At a dead center the folding joint's two roots meet, so a step back from
+   * it finds them close together -- the way it came, and the way on -- and
+   * which one one step of motion history picks depends only on how far short
+   * of the fold the last sample happened to stand. Every other joint's roots
+   * are a whole assembly apart, so the same test leaves them alone.
+   */
+  private static carriedPast(
+    id: string,
+    chosen: number[],
+    other: number[],
+    current: number[]
+  ): number[] | undefined {
+    const avoid = this.carryPast?.get(id);
+    if (!avoid) return undefined;
+    const step = Math.hypot(current[0] - avoid[0], current[1] - avoid[1]);
+    if (step === 0) return undefined;
+    const retraces = Math.hypot(chosen[0] - avoid[0], chosen[1] - avoid[1]) <= 0.5 * step;
+    const turnsOn =
+      Math.hypot(other[0] - current[0], other[1] - current[1]) <= this.CARRY_REACH * step;
+    return retraces && turnsOn ? other : undefined;
   }
 
   private static TwoCircleIntersectionMethod(j1: Joint, j2: Joint, unknownJoint: Joint) {

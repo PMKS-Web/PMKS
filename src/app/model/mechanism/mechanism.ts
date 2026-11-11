@@ -243,7 +243,32 @@ export class Mechanism {
   /** Everything a valid, driven, one-freedom machine is solved for, in order. */
   private solveFromTheDrawnPose(inputAngVel: number): void {
     this._requiredLoops = LoopSolver.determineLoops(this._joints[0], this._links[0]);
+    const start = {
+      joints: this._joints[0],
+      links: this._links[0],
+      forces: this._forces[0],
+      loops: this._requiredLoops.slice(),
+      speed: this._inputAngularVelocities[0],
+      sampleStep: PositionSolver.drivenSampleStep,
+    };
     this.findFullMovementPos(inputAngVel);
+    if (this._failure === 'cycle-never-closes' && this.carriedADeadCenter) {
+      this._joints = [start.joints];
+      this._links = [start.links];
+      this._forces = [start.forces];
+      this._timeNum = [];
+      this._addedSamples = [];
+      this._inputAngularVelocities = [start.speed];
+      this._requiredLoops = start.loops;
+      this.mechanismValid = true;
+      this._failure = undefined;
+      this._cycleGap = undefined;
+      this.refineAttempted = false;
+      this.wholeAttempted = false;
+      PositionSolver.drivenSampleStep = start.sampleStep;
+      this.carryRefused = true;
+      this.findFullMovementPos(inputAngVel);
+    }
     // The solver's static holds what *this* build found; read it now, before
     // the next mechanism's build resets and overwrites it.
     this._unusableCylinder = PositionSolver.unusableCylinderDrive;
@@ -488,6 +513,19 @@ export class Mechanism {
     this.setMechanismInvalid('dead-position');
   }
 
+  /**
+   * Whether this build's walk carried a crank on through a dead center of a
+   * prismatic input, and whether it has been told not to.
+   *
+   * Carrying through is what a piston does, but a walk that turns on through
+   * a dead center no longer comes home over the ground it went out on, and
+   * where it cannot come home at all the drawing is walked again retracing at
+   * every dead center, as every slider-driven drawing did before -- so no
+   * drawing that ran stops running because of it.
+   */
+  private carriedADeadCenter = false;
+  private carryRefused = false;
+
   /** One refinement per build, and never again after its fallback re-solve. */
   private refineAttempted = false;
 
@@ -582,6 +620,12 @@ export class Mechanism {
    */
   private static readonly MAX_SAMPLES = 6000;
 
+  /**
+   * How many times the step into a dead center the step out of it may be and
+   * still be the crank turning on. See where it is used for the 5.8 it covers.
+   */
+  private static readonly CARRY_REACH = 8;
+
   /** The span of the drawing at rest, which the jump limit is a fraction of. */
   private startingSpan(): number {
     const start = this._joints[0] ?? [];
@@ -597,6 +641,18 @@ export class Mechanism {
       maxY = Math.max(maxY, joint.y);
     }
     return Math.hypot(maxX - minX, maxY - minY);
+  }
+
+  /** The furthest any joint moved over the step that arrived at sample `at`. */
+  private stepInto(at: number): number {
+    if (at === 0) return 0;
+    const before = this._joints[at - 1];
+    let worst = 0;
+    this._joints[at].forEach((joint, index) => {
+      const was = before[index];
+      if (was) worst = Math.max(worst, Math.hypot(joint.x - was.x, joint.y - was.y));
+    });
+    return worst;
   }
 
   /** The furthest any joint has moved from `from` to the pose just solved. */
@@ -705,6 +761,16 @@ export class Mechanism {
     const requestedAngVel = inputAngVel;
     let simForward = true;
     let falseTwice = 0;
+    // Whether the last thing the walk did was turn round, which is when a
+    // prismatic input's crank may be standing at a dead center.
+    let justReversed = false;
+    // Whether the walk since the last reversal is a crank turning on through
+    // a dead center, onto poses the way out never visited.
+    let carriedLeg = false;
+    // Whether any dead center has been carried through yet. A cycle that has
+    // does not come home over the ground it went out on, so arriving back at
+    // the starting travel on the other branch is not a failure to close.
+    let carriedOnce = false;
     let inputAngVelDirection = inputAngVel > 0;
     let currentTimeStamp = 0;
     // The floor under every "is it home" question below, for a drawing too
@@ -728,6 +794,10 @@ export class Mechanism {
     const CRANK_BUDGET = 4 * MAX_REVOLUTIONS * STEPS_PER_REVOLUTION;
     const inputJoint = this.joints[0].find((j) => j instanceof RealJoint && j.input);
     const revoluteInput = inputJoint !== undefined && !(inputJoint instanceof PrisJoint);
+    // A slider on a ground rail, which is what carries a crank through a dead
+    // center below. A block driven along a slot that itself moves is stepped
+    // along that slot by the coupled route, which asking a step twice upsets.
+    const groundedSlider = inputJoint instanceof PrisJoint && inputJoint.carrier === undefined;
     // An input that cannot go round reverses instead, and only the
     // return-to-start tolerance can tell us where its cycle ends.
     let reversals = 0;
@@ -872,13 +942,20 @@ export class Mechanism {
         : !home();
 
     while (!simForward || currentTimeStamp === 0 || cycleIncomplete()) {
+      // The pose the first step back from a prismatic input's reversal starts
+      // from, kept so that step can be asked again leaning further forward.
+      const steppedFrom =
+        groundedSlider && justReversed && !this.carryRefused
+          ? PositionSolver.capturePose()
+          : undefined;
+      const room = roomToNextPoint();
       const attempt = this.solveLookingAhead(
         currentTimeStamp,
         inputAngVelDirection,
         revoluteStep,
         jumpLimit,
         canSubdivide,
-        roomToNextPoint()
+        room
       );
       const possible = attempt.solved;
       if (possible) {
@@ -896,12 +973,55 @@ export class Mechanism {
           // way out to its own noise, far under a step, while a step past a
           // dead center leaves the two branches about two steps apart. Not
           // the jump limit, which is bigger than either.
-          const retraced =
+          let retraced =
             revoluteInput || this.poseGapTo(covered) <= 0.5 * this.solvedJump(currentTimeStamp);
+          // A retrace on the first step back may only mean the last sample
+          // fell too far short of the dead center for one step of history to
+          // see past it. Ask once more with the retrace named as the root to
+          // avoid wherever the other is the near side of the same fold
+          // (`PositionSolver.carryPast`); a crank that can turn on then does,
+          // and a rocker's other root is too far away to pass the test below.
+          if (retraced && steppedFrom) {
+            const retrace = PositionSolver.capturePose();
+            PositionSolver.restorePose(steppedFrom);
+            PositionSolver.carryPast = new Map(
+              this._joints[covered].map((joint) => [joint.id, [joint.x, joint.y]])
+            );
+            const onward = this.solveLookingAhead(
+              currentTimeStamp,
+              inputAngVelDirection,
+              revoluteStep,
+              jumpLimit,
+              canSubdivide,
+              room
+            );
+            PositionSolver.carryPast = undefined;
+            retraced =
+              !onward.solved ||
+              onward.fraction !== attempt.fraction ||
+              this.poseGapTo(covered) <= 0.5 * this.solvedJump(currentTimeStamp);
+            if (retraced) PositionSolver.restorePose(retrace);
+          }
           // A pose on the other branch that is a *jump* away is the crossed
           // assembly a rocker's limit offers, not a wheel turning on: the
-          // rocker retraces. Only a move under the jump limit is continuous.
-          const carriedThrough = !retraced && this.solvedJump(currentTimeStamp) <= jumpLimit;
+          // rocker retraces. Only a continuous move is kept -- under the jump
+          // limit, or, on the first step back past a dead center, within a few
+          // of the step that came into it. A prismatic input is not cut finer
+          // near a fold, so the crank there moves as the square root of the
+          // travel, and turning on moves it up to (1 + sqrt 2)^2, about 5.8,
+          // times the step before; the crossed assembly is most of the
+          // mechanism away.
+          // The same holds for the rest of the way back from a dead center
+          // carried through: the steps there shrink from the big one out of
+          // it, and a jump to the crossed assembly would still be far larger.
+          const continuous: number =
+            steppedFrom || carriedLeg
+              ? Math.max(jumpLimit, Mechanism.CARRY_REACH * this.stepInto(currentTimeStamp))
+              : jumpLimit;
+          const carriedThrough: boolean =
+            !retraced && this.solvedJump(currentTimeStamp) <= continuous;
+          if (steppedFrom) carriedLeg = carriedThrough;
+          if (carriedLeg) carriedOnce = this.carriedADeadCenter = true;
           if (!carriedThrough) this.reinstatePose(covered);
         }
         this._joints.push([]);
@@ -963,6 +1083,7 @@ export class Mechanism {
         Force.normalizeVisualWidths(this._forces[currentTimeStamp + 1]);
         this.attachForcesToLinks(currentTimeStamp + 1);
         falseTwice = 0;
+        justReversed = false;
         currentTimeStamp++;
         if (curTimeNum + timeNumIncrement * attempt.fraction <= 0) {
           timeNumIncrement = timeNumIncrement * -1;
@@ -1020,8 +1141,22 @@ export class Mechanism {
           this.explainDeadPosition();
           return;
         }
+        // Back at the starting travel on the far side of a dead center that
+        // lies less than a step past it. The drawn pose is on the other side
+        // of that dead center at this same travel, so no sample will ever land
+        // on it again: the cycle closes here, and the wrap to the first frame
+        // is the crank turning on through the dead center.
+        if (carriedOnce && onSpacing && travel === 0 && currentTimeStamp > 0) {
+          reversals += 1;
+          break;
+        }
         falseTwice += 1;
         reversals += 1;
+        // Only where the geometry ran out: a dead center has no pose past it.
+        // A bound the mechanism reached -- a ram at its stop, a block at the
+        // end of its slot -- is refused as travel, and is retraced as ever.
+        justReversed = PositionSolver.refusalKind === 'unsolved' && !PositionSolver.drivesCylinder;
+        carriedLeg = false;
         simForward = !simForward;
         inputAngVel = inputAngVel * -1;
         inputAngVelDirection = !inputAngVelDirection;
@@ -1054,7 +1189,7 @@ export class Mechanism {
       // where it started exactly when its travel is. Standing somewhere else
       // at that point means it came back on another branch, and no amount of
       // further walking will close that.
-      if (possible && reversals >= 2 && onSpacing && travel === 0 && !home()) {
+      if (possible && reversals >= 2 && onSpacing && travel === 0 && !home() && !carriedOnce) {
         this._cycleGap = this.seamGapAt(currentTimeStamp) / MODEL_SCALE;
         this.setMechanismInvalid('cycle-never-closes');
         return;

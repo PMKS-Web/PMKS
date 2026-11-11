@@ -424,8 +424,36 @@ just took of the visited pose) or *jumped* (moved further than the jump limit, w
 assembly a rocker's limit offers, not a wheel turning on). A continuous move onto the other branch
 is kept. Not the jump limit as the retrace test: just past a dead center the two branches stand
 about two steps apart, well under 5% of the span, and the first cut reinstated the retrace anyway.
-`piston-driven-wheels.spec.ts` requires a monotone full turn; `linear-actuator-rocker.spec.ts` is
-the rocker that must still retrace; the template baselines pin every cylinder's out-and-back.
+`piston-driven-wheels.spec.ts` requires a monotone full turn; the template baselines pin every
+cylinder's out-and-back.
+
+That was still luck. Approached in equal steps of the slider, a crank near its dead center moves as
+the square root of the travel left, so one step of history only sees past the fold when the last
+sample lands within about a third of a step of it -- and the step out is up to (1 + sqrt 2)^2, about
+5.8, times the step in, which is more than 5% of most drawings. A plain slider-crank swung back at
+all 48 start angles tried; the wheels above carried only because their samples happened to fall
+right. Now, on the first step back from a reversal of a slider on a ground rail that the solver
+refused as `'unsolved'` (a cylinder's stop and a slot's end are `'travel'`, and retrace as ever; a
+block driven along a slot that itself moves is stepped by the coupled route, which a second asking
+of one step upsets, so it retraces too), a retrace is asked again with
+`PositionSolver.carryPast` naming the pose to avoid: a joint whose usual pick is that retrace, and
+whose other root is within `CARRY_REACH` (8) of its own last step, takes the other root. Only the
+folding joint's two roots are that close; every other joint's are a whole assembly apart. The step
+is then kept if it is within 8 times the step into the dead center, and so is the rest of that leg.
+
+Three things follow. A carried cycle no longer comes home over the ground it went out on, so
+arriving back at the starting travel on the other branch is not `cycle-never-closes`, and a drawing
+less than a step from a dead center closes there, the wrap to the first frame being the turn
+through it. If a carried walk still never closes, the drawing is walked again retracing, so nothing
+that ran stops running. And a carried crank sweeps poses a retracing one never reached, such as a
+parallelogram's change point, where its two roots stand closer than a step and a straight-line
+prediction picked the anti-parallelogram for one frame: `solutionNearestCurrent` follows the curve
+of the last three positions wherever the roots are closer together than one step.
+
+This is not only a piston's. A gripper's hanger or a screw jack's rocker is the same slider-crank,
+and carries through too; `reversal-retrace.spec.ts` now asks only that no joint jumps.
+`piston-carry-through.spec.ts` is the guard, with the square-rod slider-crank driven at its slider,
+which needs two whole crank turns to come home.
 
 ### A toggle block's `disabled` goes through its form control, and hands back only what it took
 

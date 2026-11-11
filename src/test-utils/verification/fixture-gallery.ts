@@ -39,6 +39,7 @@ import {
   radialEngineFixture,
   windshieldWiperFixture,
   slottedCouplerFixture,
+  squareRodPistonFixture,
   squareRodSliderCrankFixture,
   WHITWORTH_CRANK,
   WHITWORTH_OFFSET,
@@ -341,6 +342,15 @@ export const FIXTURE_GALLERY: GalleryEntry[] = [
     spec: 'square-rod-tangency.spec.ts',
     floatingSlot: false,
     fixture: squareRodSliderCrankFixture(),
+  },
+  {
+    name: 'Square-rod slider-crank, driven at the slider',
+    purpose:
+      'A piston whose crank carries on through both dead centers and needs two whole turns to come home',
+    spec: 'piston-carry-through.spec.ts',
+    floatingSlot: false,
+    speed: { unitsPerSecond: 1.5 },
+    fixture: squareRodPistonFixture(),
   },
   {
     name: 'MotionGen gripper',

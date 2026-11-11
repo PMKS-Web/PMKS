@@ -356,6 +356,40 @@ export function squareRodSliderCrankFixture(): MechanismFixture {
   };
 }
 
+/**
+ * The same square-rod slider-crank, driven at its slider instead of its crank.
+ *
+ * A piston, then, and a piston whose crank cannot come home in one turn. The
+ * slider reverses at each end of its stroke, where crank and rod lie in one
+ * line, and the crank carries on through on its momentum rather than swinging
+ * back. Once a turn the rod stands square to the guide, where the slider
+ * passes through the foot of the perpendicular and the two assembly modes
+ * trade places, so after one turn the slider is on the other side of the
+ * crank. It takes a second turn to bring the drawing home: one stroke out and
+ * one back, two whole turns of the crank, in one direction all the way.
+ *
+ * Starts an eighth of a turn above the crank's horizontal, well clear of both
+ * dead centers and of the square pose.
+ */
+export function squareRodPistonFixture(): MechanismFixture {
+  const rod = SQUARE_ROD_OFFSET + SQUARE_ROD_CRANK;
+  const start = Math.PI / 4;
+  const pin = {
+    x: SQUARE_ROD_CRANK * Math.cos(start),
+    y: SQUARE_ROD_OFFSET + SQUARE_ROD_CRANK * Math.sin(start),
+  };
+  return {
+    joints: [
+      { id: 'A', x: 0, y: SQUARE_ROD_OFFSET, ground: true },
+      { id: 'B', ...pin },
+      { id: 'C', x: pin.x + Math.sqrt(rod * rod - pin.y * pin.y), y: 0 },
+    ],
+    links: [{ joints: 'AB' }, { joints: 'BC' }],
+    sliders: [{ at: 'C', angleRad: 0, input: true }],
+    inputAngVel: INPUT_SPEED,
+  };
+}
+
 /** How far off the slot line the tracer arm reaches. */
 export const TRACER_OFFSET = 2;
 
