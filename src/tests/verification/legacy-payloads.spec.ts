@@ -75,9 +75,13 @@ const RETIRED_TEMPLATES: Record<string, string> = {
 
 // Modern encodings of templates redrawn since, as they stood before the redraw.
 // The 2026-11 review moved both pumps' drive from the beam to the crank, which
-// is a different mechanism on purpose; what this file checks is that the old
-// bytes still decode to the drawing they always were.
+// is a different mechanism on purpose, and the elliptical trammel traded its
+// driven block for a crank and rod so it could draw its whole ellipse; what
+// this file checks is that the old bytes still decode to the drawing they
+// always were.
 const REDRAWN_TEMPLATES: Record<string, string> = {
+  Elliptical_Trammel:
+    '2v.Ay,Im.5,0.1011.7A,A,Fe,0,0,,,,,,Elliptical trammel.5B,B,0,Fe,OZ.GT,T,AR,5D,0..YRABT,ABT,0,0,8i,6y,26A69A,A,B,T,,...N_.PJB~2~1.5707963267948966,PJT~0~0.6666666666666665,PJT~1~0.33333333333333326,PLABT~2~0.5555555555555555,PLABT~3~0.44444444444444442*2QZxip',
   Pumpjack:
     '2v.Ay,1E8.3,0.1011.4A,A,0gB,0oI,0.0M,M,0QZ,0o1,0.2P,P,0d4,0,0.4S,S,0,0,0.0H,H,o0,0,0.5R,R,r8,0eW,OZ..YRAM,AM,0,0,0YN,0oA,303e9f,A,M,,.YRMP,MP,0,0,0Wq,0P1,26A69A,M,P,,.YRPSH,PSH,0,0,3f,0,0d125a,P,S,H,,.YRHR,HR,0,0,pa,0KG,00695C,H,R,,...N_.PJA~0~-2.6990643176077627,PJA~1~-3.217926632074842,PJM~0~-1.6992015124463058,PJM~1~-3.20136248843078,PJR~1~-2.5922962793631443,PJR~2~1.5707963267948966,PLAM~2~-2.1991329150270342,PLAM~3~-3.2096445602528108,PLMP~2~-2.099600756223153,PLMP~3~-1.60068124421539,PLPSH~2~0.2333333333333334,PLHR~3~-1.2961481396815722q*0iiBXx',
   Pumping_Field:

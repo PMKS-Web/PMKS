@@ -5,9 +5,8 @@ import { PrisJoint } from '../../app/model/joint';
 import { buildMechanism } from '../../test-utils/verification/fixture';
 import { RATE_TOLERANCE, velocityAgreesWithPositions } from '../../test-utils/verification/rates';
 import { scissorLiftFixture } from '../../test-utils/verification/library-fixtures';
+import { ellipticalTrammelFixture } from '../../test-utils/verification/slot-fixtures';
 import { MODEL_SCALE } from '../../app/model/render-scale';
-import { TEMPLATE_LINKAGES } from '../../app/component/MODALS/templates/template-linkages';
-import { buildMechanismFixture } from '../fixtures/mechanism-fixtures';
 import { solveKinematics } from '../../test-utils/verification/solve';
 
 /**
@@ -24,15 +23,19 @@ import { solveKinematics } from '../../test-utils/verification/solve';
  * Both rate checks below were red when a slider first became one joint, for
  * two different reasons, and both are fixed here: see the comments on each.
  */
+/** The elliptical trammel with a slide driven, in the units a slide steps in, sampled as the app samples it. */
+const drivenTrammel = () => buildMechanism(ellipticalTrammelFixture(true, MODEL_SCALE), 'adaptive');
+
 describe('a mechanism whose ends all slide', () => {
   it('draws an elliptical trammel that solves, whatever its rates say', () => {
-    // The part that does work, and the harness note that matters: the
-    // *fixture* -- `ellipticalTrammelFixture(true, 1)` -- comes back
-    // `dead-position` with one sample at every object scale from a quarter of
-    // MODEL_SCALE to four times it, so a spec reaching for it measures nothing.
-    // The template payload encoded from that same fixture solves. Anything
-    // asking this mechanism a question has to come in this way.
-    const { mechanism } = buildMechanismFixture(TEMPLATE_LINKAGES['Elliptical_Trammel']);
+    // The harness note that matters: `ellipticalTrammelFixture(true, 1)`
+    // comes back `dead-position` with one sample at every object scale from a
+    // quarter of MODEL_SCALE to four times it, because a driven slide steps in
+    // internal units, so a spec reaching for it measures nothing. Built in
+    // those units it solves. The library's template was this mechanism until
+    // it was given a crank to draw the whole ellipse; it is the slide-driven
+    // one this spec is about.
+    const { mechanism } = drivenTrammel();
 
     expect(mechanism.isMechanismValid()).toBe(true);
     expect(mechanism.dof).toBe(1);
@@ -52,7 +55,7 @@ describe('a mechanism whose ends all slide', () => {
   // the input joint: B was handed a large velocity across its own slot and
   // driven A was left at exactly zero.
   it('moves an elliptical trammel at the rate its positions imply', () => {
-    const { mechanism } = buildMechanismFixture(TEMPLATE_LINKAGES['Elliptical_Trammel']);
+    const { mechanism } = drivenTrammel();
     const trace = solveKinematics({ mechanism } as never);
     const mid = Math.floor(trace.steps / 2);
     const sliders = mechanism.joints[0].filter(

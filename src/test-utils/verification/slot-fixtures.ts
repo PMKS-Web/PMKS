@@ -427,6 +427,66 @@ export function ellipticalTrammelFixture(
 }
 
 /**
+ * The elliptical trammel driven all the way round: a crank turns the middle of
+ * the bar through a connecting rod, so the traced point goes round the whole
+ * ellipse rather than half of it.
+ *
+ * A drive on a block cannot do that. Its travel ends where the bar lies along
+ * its guide, and the other block, at the crossing there, could go on either
+ * way, so a driven block runs out and back over one half of the curve. Turning
+ * the bar instead has no such end: the middle of the bar always stands half
+ * the bar's length from the crossing, so it goes round a circle, and a crank
+ * that drives it round that circle drives the bar round with it.
+ *
+ * Through a rod, and not pinned straight to the middle. A crank of exactly
+ * half the bar from the crossing would follow the same circle, but it is a
+ * second constraint on a path the guides already fix: Gruebler counts zero,
+ * and only exact proportions let it move, so the first joint a reader drags
+ * locks it. The rod is the freedom that redundancy lacks. The crank's pivot,
+ * the crossing, the rod and the middle of the bar make a drag-link -- the
+ * pivots a short ground link apart, both cranks turning fully -- so the count
+ * is one by Gruebler alone and stays one when any joint is moved. The pivot
+ * stands off both guides so neither block passes over it.
+ */
+export function crankedTrammelFixture(scale: number = 1): MechanismFixture {
+  // Twice the size of the driven trammel: the crank and rod turn inside the
+  // bar's sweep, and at the smaller size the blocks covered them.
+  const pivot = { x: -0.5, y: -0.5 };
+  const middle = { x: 1, y: 1 };
+  const crank = 1;
+  const rod = 1.4;
+  // The crank pin: a crank's length from the pivot and a rod's from the
+  // middle, on the side that puts it below and right of the line between them.
+  const dx = middle.x - pivot.x;
+  const dy = middle.y - pivot.y;
+  const span = Math.hypot(dx, dy);
+  const foot = (crank * crank - rod * rod + span * span) / (2 * span);
+  const rise = Math.sqrt(crank * crank - foot * foot);
+  const pin = {
+    x: pivot.x + (foot * dx + rise * dy) / span,
+    y: pivot.y + (foot * dy - rise * dx) / span,
+  };
+  const at = (point: { x: number; y: number }) => ({ x: point.x * scale, y: point.y * scale });
+  return {
+    joints: [
+      { id: 'O', ...at(pivot), ground: true, input: true },
+      { id: 'C', ...at(pin) },
+      { id: 'A', ...at({ x: 2, y: 0 }) },
+      { id: 'B', ...at({ x: 0, y: 2 }) },
+      { id: 'M', ...at(middle) },
+      // A third of the way along the bar from A, as on the driven trammel.
+      { id: 'T', ...at({ x: 4 / 3, y: 2 / 3 }), trace: true },
+    ],
+    links: [{ joints: 'OC' }, { joints: 'CM' }, { joints: 'ABMT' }],
+    sliders: [
+      { at: 'A', angleRad: 0 },
+      { at: 'B', angleRad: Math.PI / 2 },
+    ],
+    inputAngVel: INPUT_SPEED,
+  };
+}
+
+/**
  * A hydraulic cylinder: a rod welded to a block that slides in a barrel, with
  * the barrel's far end and the rod's far end on opposite sides of the block and
  * everything on one line (§2.7).

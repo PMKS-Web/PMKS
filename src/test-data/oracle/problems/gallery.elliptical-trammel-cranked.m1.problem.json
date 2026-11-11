@@ -1,0 +1,192 @@
+{
+ "schema": "pmks-oracle-problem/1",
+ "id": "gallery.elliptical-trammel-cranked.m1",
+ "title": "Elliptical trammel, cranked, M1",
+ "source": {
+  "kind": "published",
+  "case": "gallery.elliptical-trammel-cranked",
+  "machine": "M1"
+ },
+ "gravity": 9.80665,
+ "bodies": [
+  {
+   "id": "OC",
+   "mass": 0.001,
+   "inertia": 0.0001,
+   "com": [
+    -0.00010128247300949356,
+    -0.003998717526990506
+   ]
+  },
+  {
+   "id": "CM",
+   "mass": 0.001,
+   "inertia": 0.0001,
+   "com": [
+    0.007398717526990507,
+    0.0035012824730094945
+   ]
+  },
+  {
+   "id": "ABMT",
+   "mass": 0.001,
+   "inertia": 0.0001,
+   "com": [
+    0.010833333333333332,
+    0.009166666666666665
+   ]
+  }
+ ],
+ "joints": [
+  {
+   "id": "O",
+   "kind": "pin",
+   "at": [
+    -0.005,
+    -0.005
+   ],
+   "bodies": [
+    "OC"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "C",
+   "kind": "pin",
+   "at": [
+    0.004797435053981013,
+    -0.0029974350539810125
+   ],
+   "bodies": [
+    "OC",
+    "CM"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "M",
+   "kind": "pin",
+   "at": [
+    0.01,
+    0.01
+   ],
+   "bodies": [
+    "CM",
+    "ABMT"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "A",
+   "kind": "slider",
+   "at": [
+    0.02,
+    0
+   ],
+   "guide": "ground",
+   "linePoint": [
+    0.02,
+    0
+   ],
+   "axis": [
+    1,
+    0
+   ],
+   "riders": [
+    "ABMT"
+   ],
+   "rotates": true,
+   "blockMass": 0
+  },
+  {
+   "id": "B",
+   "kind": "slider",
+   "at": [
+    0,
+    0.02
+   ],
+   "guide": "ground",
+   "linePoint": [
+    0,
+    0.02
+   ],
+   "axis": [
+    6.123233995736766e-17,
+    1
+   ],
+   "riders": [
+    "ABMT"
+   ],
+   "rotates": true,
+   "blockMass": 0
+  }
+ ],
+ "driver": {
+  "joint": "O",
+  "kind": "rotation",
+  "speed": -1.0471975511965976,
+  "bodies": [
+   "ground",
+   "OC"
+  ]
+ },
+ "loads": [],
+ "points": [
+  {
+   "id": "O",
+   "body": "ground",
+   "at": [
+    -0.005,
+    -0.005
+   ]
+  },
+  {
+   "id": "C",
+   "body": "OC",
+   "at": [
+    0.004797435053981013,
+    -0.0029974350539810125
+   ]
+  },
+  {
+   "id": "M",
+   "body": "CM",
+   "at": [
+    0.01,
+    0.01
+   ]
+  },
+  {
+   "id": "A",
+   "body": "ABMT",
+   "at": [
+    0.02,
+    0
+   ]
+  },
+  {
+   "id": "B",
+   "body": "ABMT",
+   "at": [
+    0,
+    0.02
+   ]
+  },
+  {
+   "id": "T",
+   "body": "ABMT",
+   "at": [
+    0.01333333333333333,
+    0.006666666666666665
+   ]
+  }
+ ],
+ "sweep": {
+  "step": 0.017453292519943295,
+  "maxSamples": 2000
+ },
+ "unsupported": []
+}

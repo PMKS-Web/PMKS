@@ -3,7 +3,10 @@
 import '../../app/model/joint';
 import { Joint } from '../../app/model/joint';
 import { buildMechanism } from '../../test-utils/verification/fixture';
-import { ellipticalTrammelFixture } from '../../test-utils/verification/slot-fixtures';
+import {
+  crankedTrammelFixture,
+  ellipticalTrammelFixture,
+} from '../../test-utils/verification/slot-fixtures';
 import { MODEL_SCALE } from '../../app/model/render-scale';
 
 // Test-ladder case 6. The trammel was in this suite for its *mobility* only --
@@ -73,6 +76,86 @@ describe('an elliptical trammel', () => {
     for (const frame of mechanism.joints) {
       const at = (id: string): Joint => frame.find((joint) => joint.id === id)!;
       expect(Math.hypot(at('A').x - at('B').x, at('A').y - at('B').y) / S).toBeCloseTo(L, 4);
+    }
+  });
+});
+
+// The library's trammel. A drive on a block runs out and back over the half of
+// the ellipse on one side of its guide: at the end of the block's travel the
+// bar lies along that guide, and the other block could go either way. A crank
+// and rod turning the middle of the bar has no such end, so the traced point
+// goes round the whole curve.
+describe('an elliptical trammel driven by a crank and rod', () => {
+  // A at (2,0), B at (0,2): twice the driven trammel, T a third along from A.
+  const bar = 2 * L;
+  const semiMajor = (2 / 3) * bar;
+  const semiMinor = bar / 3;
+
+  /** How far the crank turned over the whole cycle, in radians. */
+  const crankSwept = (frames: Joint[][]): number => {
+    const angle = (frame: Joint[]) => {
+      const pivot = frame.find((joint) => joint.id === 'O')!;
+      const pin = frame.find((joint) => joint.id === 'C')!;
+      return Math.atan2(pin.y - pivot.y, pin.x - pivot.x);
+    };
+    let swept = 0;
+    for (let step = 1; step < frames.length; step++) {
+      let increment = angle(frames[step]) - angle(frames[step - 1]);
+      while (increment > Math.PI) increment -= 2 * Math.PI;
+      while (increment < -Math.PI) increment += 2 * Math.PI;
+      swept += increment;
+    }
+    return swept;
+  };
+
+  it('turns the crank all the way round, and loops', () => {
+    const { mechanism } = buildMechanism(crankedTrammelFixture(S), 'adaptive');
+    expect(mechanism.isMechanismValid()).toBe(true);
+    expect(mechanism.dof).toBe(1);
+    expect(mechanism.reciprocates).toBe(false);
+    expect(Math.abs(crankSwept(mechanism.joints))).toBeCloseTo(2 * Math.PI, 6);
+  });
+
+  it('carries its point around the whole ellipse, not half of it', () => {
+    const { mechanism } = buildMechanism(crankedTrammelFixture(S), 'adaptive');
+    let lowest = Infinity;
+    let highest = -Infinity;
+    for (const frame of mechanism.joints) {
+      const at = (id: string): Joint => frame.find((joint) => joint.id === id)!;
+      const x = at('T').x / S;
+      const y = at('T').y / S;
+      expect(Math.abs((x * x) / semiMajor ** 2 + (y * y) / semiMinor ** 2 - 1)).toBeLessThan(1e-6);
+      expect(Math.abs(at('A').y / S)).toBeLessThan(1e-6);
+      expect(Math.abs(at('B').x / S)).toBeLessThan(1e-6);
+      lowest = Math.min(lowest, y);
+      highest = Math.max(highest, y);
+    }
+    // Both halves: above the guide A rides on, and below it.
+    expect(highest).toBeCloseTo(semiMinor, 3);
+    expect(lowest).toBeCloseTo(-semiMinor, 3);
+  });
+
+  it('keeps running when a reader moves the crank, which a crank pinned to the middle would not', () => {
+    // A crank pinned straight to the middle of the bar runs only while it is
+    // exactly half the bar from the crossing; moved at all, Gruebler's zero is
+    // the truth and it locks. Through the rod, moving the crank's pivot or pin
+    // changes the drag-link and nothing else.
+    for (const [id, dx, dy] of [
+      ['O', 0.1, 0],
+      ['O', 0, -0.1],
+      ['C', 0.06, 0.04],
+    ] as const) {
+      const fixture = crankedTrammelFixture(S);
+      const moved = {
+        ...fixture,
+        joints: fixture.joints.map((joint) =>
+          joint.id === id ? { ...joint, x: joint.x + dx * S, y: joint.y + dy * S } : joint
+        ),
+      };
+      const { mechanism } = buildMechanism(moved, 'adaptive');
+      expect(mechanism.isMechanismValid(), `${id} moved`).toBe(true);
+      expect(mechanism.dof, `${id} moved`).toBe(1);
+      expect(mechanism.reciprocates, `${id} moved`).toBe(false);
     }
   });
 });

@@ -2441,10 +2441,12 @@ ungated half, and `coordinateRuleFor` calls it, so there is still one answer.
 
 ### Only one shipped drawing's scrub track moved when that was fixed
 
-`Elliptical_Trammel` is the whole library's only bare-slider input, and its
-block runs against its slot's stored direction, so its handle now starts at
-0.856 of the track where it started at 0.144. Nothing stored moved: the anchor
-has its own coordinate rule and never read `DriveProfile.along`.
+`Elliptical_Trammel` was then the whole library's only bare-slider input, and
+its block runs against its slot's stored direction, so its handle started at
+0.856 of the track where it had started at 0.144. Nothing stored moved: the
+anchor has its own coordinate rule and never read `DriveProfile.along`. The
+template is cranked now (below), so no library template drives a bare slider;
+the gallery's `Elliptical trammel, driven` and `Screw jack` still do.
 
 ### `advanceBoundary` used to interpolate its boundary along *chords*
 
@@ -2935,3 +2937,25 @@ what decides which pull requests get a preview: Netlify builds one only for a PR
 production branch or a branch-deploy branch. So a PR into `staging` gets
 `deploy-preview-NNN--pmksprod.netlify.app`, and a stacked PR into another feature branch gets none.
 Adding a branch to the branch-deploy list turns on both its own deploy and previews of PRs into it.
+
+### A trammel driven at a block draws half its ellipse, and a crank pinned to its middle locks
+
+The library's elliptical trammel used to drive block A along its guide, and drew only the half of
+the ellipse above that guide. Not a solver fault: A's travel ends where the bar lies along A's
+guide, and B, at the crossing there, could go on either way, so a driven block runs out and back
+over one half. Turning the bar is what draws the whole curve.
+
+The textbook way -- a crank from the crossing pinned straight to the middle of the bar -- is a
+redundant constraint, since the guides already keep the middle on that circle. Gruebler counts
+zero, `mobility.ts` finds the one freedom the exact geometry leaves, and
+`template-count-stability.spec.ts` rightly refuses it: nudged by 1e-9 it locks, and so would the
+first joint a reader dragged. The template is a drag-link instead, crank and rod from a pivot off
+both guides to the middle of the bar (`crankedTrammelFixture`), which is one freedom by Gruebler
+alone and keeps running however its joints are moved.
+
+The redundant version also turned back at random, which is a separate bug not yet fixed:
+`circleLineIntersection` in `utils.ts` rejects a negative discriminant outright, with none of the
+0.001 tolerance `circleCircleIntersection` gives a tangency. Twice a turn that trammel solves a
+block on a slot line tangent to its circle, rounding makes the line miss as often as not, and the
+walk reverses at a limit that is not there -- at a different crank angle for every start angle.
+Giving the line the circles' tolerance and clamping the root made it loop from every start.
