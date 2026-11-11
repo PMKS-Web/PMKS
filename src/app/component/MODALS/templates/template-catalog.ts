@@ -563,6 +563,16 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
     thumbnail: 'assets/gifs/double-butterfly.png',
     animation: 'assets/gifs/double-butterfly.gif',
   },
+  {
+    id: 'Running_Horse',
+    name: 'Running Horse',
+    category: 'sixbar',
+    description:
+      "Ross McSweeney's automaton, from MotionGen: forty-five joints gallop on one crank, " +
+      'tracing the path of both hooves.',
+    thumbnail: 'assets/gifs/running-horse.png',
+    animation: 'assets/gifs/running-horse.gif',
+  },
 
   // Multiple Mechanisms
   {
@@ -620,15 +630,6 @@ export const DEV_TEMPLATE_CARDS: readonly TemplateCard[] = [
       'Every kind of pin, block, weld, slot and cylinder, with forces. Deliberately not ' +
       'simulatable.',
     thumbnail: 'assets/gifs/dev-object-gallery.png',
-  },
-  {
-    id: 'Dev_Render_Stress',
-    name: 'Render Stress Test',
-    category: 'dev',
-    description:
-      "Ross McSweeney's Running Horse Automata, from MotionGen: forty-five joints on one " +
-      'degree of freedom, tracing both hooves.',
-    thumbnail: 'assets/gifs/dev-render-stress.png',
   },
   // Redrawn in the 2026-11 review: the library's Four-Bar and Scotch Yoke cards
   // open new drawings now, and these are the old ones under their old ids.
