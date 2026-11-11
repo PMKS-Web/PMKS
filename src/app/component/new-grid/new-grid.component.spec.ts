@@ -992,6 +992,32 @@ describe('NewGridComponent typed multi-selection', () => {
     expect(b.y).toBeCloseTo(MODEL_SCALE);
   });
 
+  it('neither drags nor nudges a group of nothing but forces into an undo entry', () => {
+    const { component, active, mechanism, link } = setUpSelection();
+    const f1 = new Force('F1', link, new Coord(0, 0), new Coord(0, MODEL_SCALE));
+    const f2 = new Force(
+      'F2',
+      link,
+      new Coord(MODEL_SCALE, 0),
+      new Coord(MODEL_SCALE, MODEL_SCALE)
+    );
+    mechanism.forces = [f1, f2];
+    active.replacePartSelection(f1);
+    active.togglePartSelection(f2);
+    const save = vi.spyOn(mechanism, 'save').mockImplementation(() => {});
+
+    component.setLastLeftClick(f1, new MouseEvent('pointerdown'));
+    component.mouseDown(new MouseEvent('mousedown', { button: 0, clientX: 0, clientY: 0 }));
+    component['timeMouseDown'] = 0;
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 30, clientY: 20 }));
+    component.mouseUp(new MouseEvent('mouseup', { button: 0, clientX: 30, clientY: 20 }));
+    component['nudgeSelection'](1, 0, false);
+
+    expect([f1.startCoord.x, f1.startCoord.y]).toEqual([0, 0]);
+    expect(active.selectedPartRefs).toHaveLength(2);
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it('refuses the whole transform when one canonical member is locked', () => {
     const { component, active, mechanism, a, b } = setUpSelection();
     active.replacePartSelection(a);

@@ -1481,6 +1481,10 @@ export class NewGridComponent implements OnDestroy {
     if (!gesture) return false;
     if (!this.canEditNow() || !this.pastDragThreshold(event)) return true;
     gesture.attempted = true;
+    // A group of nothing but forces carries no geometry to move: each force
+    // goes where its body goes. Applying the empty transform reported success
+    // and saved an undo entry for a drag that changed nothing.
+    if (gesture.snapshot.jointIds.size === 0) return true;
 
     let transform: SelectionAffineTransform;
     if (gesture.mode === 'translate') {
@@ -1583,7 +1587,9 @@ export class NewGridComponent implements OnDestroy {
   private nudgeSelection(dx: number, dy: number, coarse: boolean): void {
     if (!this.canEditNow()) return;
     const selected = this.activeObjService.selectedParts;
-    if (selected.length === 0) return;
+    // Nothing but forces is nothing to move (see `moveSelectionGesture`), and
+    // an empty nudge would still have saved an undo entry.
+    if (selected.every((part) => part instanceof Force)) return;
     const step = coarse ? this.svgGrid.majorCellSize : this.svgGrid.minorCellSize;
     if (!(step > 0)) return;
     // Before anything moves. Staging is where a selection spanning two machines
