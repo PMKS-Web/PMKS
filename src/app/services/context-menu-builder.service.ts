@@ -1458,14 +1458,16 @@ export class ContextMenuBuilderService {
     if (this.tabs.isAnalysisMode()) {
       return {
         icon: 'edit_outline',
-        tip: this.keys.tip('Edit', 'mode.edit'),
+        label: 'Edit',
+        shortcut: 'mode.edit' as const,
         action: () => this.tabs.setTab(TabID.EDIT),
       };
     }
     return {
       icon: 'query_stats',
       material: true,
-      tip: this.keys.tip('Kinematic Analysis', 'mode.kinematic'),
+      label: 'Kinematic Analysis',
+      shortcut: 'mode.kinematic' as const,
       action: () => this.tabs.setTab(TabID.ANALYZE),
       refusal: this.analysisRefusal(part),
     };

@@ -296,17 +296,6 @@ export class KeyboardShortcutsService {
     return this.shortcuts.find((one) => one.id === id)?.keys ?? '';
   }
 
-  /**
-   * A tooltip with its shortcut on the end: "Zoom In (+)".
-   *
-   * The name first and the key in brackets after it, because the name is what
-   * a reader came to the tooltip for and the key is what they leave with.
-   */
-  tip(name: string, id: ShortcutId): string {
-    const keys = this.keysFor(id);
-    return keys ? `${name} (${keys})` : name;
-  }
-
   /** The whole set, grouped, for the list that teaches them. */
   bySection(): { section: string; shortcuts: Shortcut[] }[] {
     const sections: string[] = [];

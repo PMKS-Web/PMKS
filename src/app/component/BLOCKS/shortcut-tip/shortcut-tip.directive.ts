@@ -1,11 +1,27 @@
 import { Directive, ElementRef, HostListener, OnDestroy, inject, input } from '@angular/core';
-import { Overlay, OverlayRef } from '@angular/cdk/overlay';
+import { ConnectedPosition, Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { ShortcutId, KeyboardShortcutsService } from '../../../services/keyboard-shortcuts.service';
 import { ShortcutTipComponent } from './shortcut-tip.component';
 
 /** How long a pointer rests before the tip appears, matching Material's own. */
 const OPEN_DELAY_MS = 400;
+
+/** Which side of its control a tip sits on; the opposite side is the fallback. */
+export type ShortcutTipPosition = 'below' | 'left';
+
+const POSITIONS: Record<ShortcutTipPosition, ConnectedPosition[]> = {
+  below: [
+    { originX: 'center', originY: 'bottom', overlayX: 'center', overlayY: 'top', offsetY: 6 },
+    { originX: 'center', originY: 'top', overlayX: 'center', overlayY: 'bottom', offsetY: -6 },
+  ],
+  // For a control at the edge of a card, whose tip below it would lie over
+  // the rows the reader is about to choose from.
+  left: [
+    { originX: 'start', originY: 'center', overlayX: 'end', overlayY: 'center', offsetX: -6 },
+    { originX: 'end', originY: 'center', overlayX: 'start', overlayY: 'center', offsetX: 6 },
+  ],
+};
 
 /**
  * A tooltip whose keyboard shortcut is drawn as a key rather than written as
@@ -28,6 +44,7 @@ export class ShortcutTipDirective implements OnDestroy {
   /** Which shortcut to draw. Without one there is nothing to add and no tip. */
   readonly shortcutTipFor = input<ShortcutId>();
   readonly shortcutTipDisabled = input(false);
+  readonly shortcutTipPosition = input<ShortcutTipPosition>('below');
 
   private host = inject<ElementRef<HTMLElement>>(ElementRef);
   private overlay = inject(Overlay);
@@ -66,16 +83,7 @@ export class ShortcutTipDirective implements OnDestroy {
       positionStrategy: this.overlay
         .position()
         .flexibleConnectedTo(this.host)
-        .withPositions([
-          { originX: 'center', originY: 'bottom', overlayX: 'center', overlayY: 'top', offsetY: 6 },
-          {
-            originX: 'center',
-            originY: 'top',
-            overlayX: 'center',
-            overlayY: 'bottom',
-            offsetY: -6,
-          },
-        ])
+        .withPositions(POSITIONS[this.shortcutTipPosition()])
         /* CDK shrinks a flexible overlay to fit the space it lands in, which
            near a corner squeezed the tip narrow enough to break "Reset View"
            over two lines. The tip is small and pushes into view instead. */
