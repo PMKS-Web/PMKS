@@ -670,6 +670,8 @@ export class MechanismService {
   arriving = false;
   /** Whether anything ran after the last edit, the last undo or redo, or the drawing's arrival. */
   private ranBefore = false;
+  /** Whether this visit has reported its first run; one report a visit, whatever family runs next. */
+  private reportedFirstRun = false;
 
   /** A drawing has arrived, or an undo or redo has landed: what runs now is the starting point. */
   arrived(): void {
@@ -687,7 +689,8 @@ export class MechanismService {
   private noticeFirstRun(): void {
     const index = this.mechanisms.findIndex((mechanism) => mechanism?.isMechanismValid());
     const runs = index !== -1;
-    if (runs && !this.ranBefore && !this.arriving) {
+    if (runs && !this.ranBefore && !this.arriving && !this.reportedFirstRun) {
+      this.reportedFirstRun = true;
       const partition = this.partitions[index];
       const solved = this.mechanisms[index];
       let family = 'Not recognized';
@@ -698,7 +701,7 @@ export class MechanismService {
         // save right after this must still happen: an edit with no undo entry
         // is far worse than a report with no family.
       }
-      this.analytics.trackOnce('mechanism_runs', { family });
+      this.analytics.track('mechanism_runs', { family });
     }
     if (!this.arriving) this.ranBefore = runs;
   }
