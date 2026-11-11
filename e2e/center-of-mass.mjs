@@ -160,6 +160,7 @@ const disc = await inAngular(page, () => {
   const grid = ng.getComponent(document.querySelector('app-new-grid'));
   const srv = grid.mechanismSrv;
   const crank = srv.links.find((one) => one.canBeCircular && one.canBeCircular());
+  if (!crank) throw new Error('no link can be drawn as a disc');
   crank.mass = 1;
   crank.isCircle = true;
   srv.updateMechanism(true);
