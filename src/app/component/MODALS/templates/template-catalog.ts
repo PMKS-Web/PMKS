@@ -568,8 +568,8 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
     name: 'Running Horse',
     category: 'sixbar',
     description:
-      "Ross McSweeney's automaton, from MotionGen: forty-five joints gallop on one crank, " +
-      'tracing the path of both hooves.',
+      "Ross McSweeney's automaton: forty-five joints gallop on one crank, tracing the path of " +
+      'both hooves.',
     thumbnail: 'assets/gifs/running-horse.png',
     animation: 'assets/gifs/running-horse.gif',
   },
