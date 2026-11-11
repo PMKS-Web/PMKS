@@ -3370,8 +3370,8 @@ export class NewGridComponent implements OnDestroy {
     this.restoreSelectionAfterDrag(this.dragState.travelled);
     this.beforeDrag = undefined;
     this.linkCreateFrom = undefined;
+    // Which clears it: every way out of the gesture runs through its `up`.
     this.endComDrag?.(revert);
-    this.endComDrag = undefined;
     this.dragState.cancel();
     // Including a staged posed edit. This is the path a pinch and a long press
     // take, and staging left behind outlives the gesture -- the next ambient
@@ -4839,7 +4839,8 @@ export class NewGridComponent implements OnDestroy {
       return;
     }
     this.draggingCoMLink = link;
-    const started = { x: link.CoM.x, y: link.CoM.y };
+    // Restored whole on a cancel, not re-placed: see `restoreComState`.
+    const started = link.comState();
     let moved = false;
     let savedElsewhere = false;
     const move = (e: PointerEvent) => {
@@ -4892,7 +4893,7 @@ export class NewGridComponent implements OnDestroy {
         // The gesture never finished, so nothing was decided. Same rule the
         // joints follow: what a view gesture moved on its way to being
         // recognized is put back, not committed.
-        link.placeCustomCoM({ x: started.x, y: started.y });
+        link.restoreComState(started);
         moved = false;
       }
       up();
@@ -6175,6 +6176,12 @@ export class NewGridComponent implements OnDestroy {
       }
       case 'edit.lock':
         if (this.permission.menuRefusal('safe')) return;
+        // A center of mass mid-drag is committed first, through its own
+        // release. Locked under it, the lock's rebuild re-derived the point
+        // from the offset the drag had captured in the displayed frame, so
+        // the entry it saved could put the center somewhere it was never
+        // dragged to.
+        this.endComDrag?.();
         this.toggleLockOnSelection();
         return;
       case 'history.undo':
