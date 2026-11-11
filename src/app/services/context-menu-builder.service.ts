@@ -1,3 +1,4 @@
+import { refuseForceOnJoint } from '../model/force-on-joint';
 import { LinkTraceService } from './link-trace.service';
 import { Injectable, inject } from '@angular/core';
 import { NumberUnitParserService } from './number-unit-parser.service';
@@ -516,15 +517,12 @@ export class ContextMenuBuilderService {
         })
       );
     }
-    // A load has to say which body carries it. At a joint two links share there
-    // is no answer, so the row is grayed here and offered on the bar, where the
-    // anchor can be placed unambiguously.
+    // A load has to say which body carries it. Where a second body meets the
+    // link -- another link, the ground, a slider's slot -- there is no answer,
+    // so the row is grayed here and offered on the bar, where the anchor can be
+    // placed unambiguously. `model/force-on-joint.ts` says which joints.
     const bars = joint.links.filter((link): link is RealLink => link instanceof RealLink);
-    // The block a slider pin rides is a body as much as the bar is: a load put
-    // on the pin could be pushing the bar or pushing the block, and the two
-    // answer differently. So a slider pin is refused for the same reason two
-    // bars meeting are, and sent to the bar.
-    const bodiesHere = bars.length + (this.mechanism.sliderFor(joint) ? 1 : 0);
+    const forceRefused = refuseForceOnJoint(joint);
     // On every joint, grayed where it cannot land. The joint menu is one menu:
     // a row that is there on one joint and gone on the next is a row a reader
     // cannot learn the place of, so nothing here comes and goes -- it grays,
@@ -546,11 +544,8 @@ export class ContextMenuBuilderService {
                 short: 'not on a link',
                 long: 'A load has to have a body to push on, and this joint is on none. Attach a link here first.',
               }
-            : bodiesHere > 1
-              ? {
-                  short: bars.length > 1 ? `${bars.length} links share it` : 'a block shares it',
-                  long: 'A load applied where several bodies meet does not say which one carries it. Attach it to the link instead.',
-                }
+            : forceRefused
+              ? { short: forceRefused.short, long: forceRefused.long }
               : undefined),
       })
     );

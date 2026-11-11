@@ -82,6 +82,7 @@ export const SUITES = [
   { name: 'force-frame', seconds: 40, lanes: BOTH },
   { name: 'force-precision', seconds: 30, lanes: BOTH },
   { name: 'force-edit', seconds: 39, lanes: BOTH },
+  { name: 'force-on-joint', seconds: 20, lanes: BOTH },
   { name: 'force-labels-and-legend', seconds: 20, lanes: BOTH },
   { name: 'force-units', seconds: 21, lanes: BOTH },
   {

@@ -361,6 +361,9 @@ Not suites — import them from one.
 
 - `force-edit.mjs` — picking a force up by its arrow, where its anchor may land and snap, and
   drawing a new one.
+- `force-on-joint.mjs` — a force kept off a joint where a second body meets its link (issue
+  #138): held short of a grounded pin under a drag, moved off one when a drawing opens with it
+  there, and moved off a tracer point another link's end is merged onto, each said out loud.
 - `force-analysis-panels.mjs` — the Force Analysis rows on the joint and link panels and the
   shared Force Analysis Type toggle. Needs installed Chrome (`PMKS_CHROME`).
 - `force-labels-and-legend.mjs` — force graph titles name parts the reader can see, both cylinder

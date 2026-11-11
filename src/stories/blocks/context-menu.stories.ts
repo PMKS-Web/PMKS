@@ -61,7 +61,7 @@ function jointMenu(): ContextMenuModel {
             action: noop,
             refusal: {
               short: '2 links share it',
-              long: 'A load applied where several bodies meet does not say which one carries it. Attach it to the link instead.',
+              long: 'A force cannot sit on joint B: 2 links meet there, so it would not say which one carries it. Attach it to the link, away from the joint.',
             },
           }),
         ],

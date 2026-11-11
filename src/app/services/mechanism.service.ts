@@ -130,6 +130,7 @@ import {
   refuseJointMerge,
   slotWouldFoldACylinder,
 } from '../model/drop-target';
+import { forceOffRefusedJoint, refuseForceOnJoint } from '../model/force-on-joint';
 import { constrainForceAnchor } from '../model/force-anchor';
 import { OperationRefusal, refuseAttach } from '../model/joint-operation-permission';
 import { redundantlyHeldJointSets } from '../model/rigid-bodies';
@@ -7944,15 +7945,48 @@ export class MechanismService {
    * row is on a joint's menu as well as a link's and the selection there is
    * the joint. Falls back to the selected link for the callers that have one.
    */
-  /** Move any force whose anchor has left the region its link's joints span. */
+  /**
+   * Move any force whose anchor has left the region its link's joints span, or
+   * that sits on a joint a force may not sit on.
+   *
+   * The second is how a force that was legal when it was placed stops being
+   * legal: a tracer point carrying one is merged onto another joint, a link is
+   * attached to it, it is grounded or made a slider -- or a URL or a library
+   * drawing arrived with a load on a pin (issue #138). The edit is what the
+   * reader asked for, so it stands; the force is moved a short way along its
+   * link, and the reader is told where it went.
+   */
   private keepForcesOnTheirLinks(): void {
+    const { within, margin } = this.forceJointMargins();
     for (const force of this.forces) {
       if (!(force.link instanceof RealLink)) continue;
       const kept = constrainForceAnchor(force.link, force.startCoord, 0);
       if (Math.hypot(kept.x - force.startCoord.x, kept.y - force.startCoord.y) > 1e-9) {
         force.moveAnchor(kept);
       }
+      const off = forceOffRefusedJoint(force.link, force.startCoord, within, margin);
+      if (!off) continue;
+      if (Math.hypot(off.to.x - force.startCoord.x, off.to.y - force.startCoord.y) <= 1e-9) {
+        continue;
+      }
+      force.moveAnchor(off.to);
+      const why = refuseForceOnJoint(off.joint)?.because;
+      this.notify.news(
+        `force.moved-off-joint.${force.id}`,
+        `Force ${force.name || force.id} moved off joint ${off.joint.id} onto link ${this.visibleBodyName(force.link)}: ${why}.`
+      );
     }
+  }
+
+  /**
+   * How near a joint's center a force counts as on it -- the pin's own radius,
+   * a joint being 0.15 object scales across -- and how far off it one is put.
+   * In object scales rather than the drawing style's scale, because a rebuild
+   * is about the mechanism and not about how it is drawn.
+   */
+  private forceJointMargins(): { within: number; margin: number } {
+    const scale = this.settingsService.objectScale;
+    return { within: 0.075 * scale, margin: 0.3 * scale };
   }
 
   createForce(startCoord: Coord, endCoord: Coord, onLink?: RealLink): Force | undefined {
@@ -7963,7 +7997,12 @@ export class MechanismService {
     // Where the click landed, kept to the region the link's joints span: the
     // line between a bar's two joints, the inside of a plate. A right-click
     // out at a plate's drawn edge is a load on its skin, not on the linkage.
-    const kept = constrainForceAnchor(selectedLink, startCoord, 0);
+    // And off a joint where a second body meets the link, quietly: a new force
+    // has nowhere it "was", so there is nothing to tell the reader it moved
+    // from (`model/force-on-joint.ts`).
+    const { within, margin } = this.forceJointMargins();
+    const onBody = constrainForceAnchor(selectedLink, startCoord, 0);
+    const kept = forceOffRefusedJoint(selectedLink, onBody, within, margin)?.to ?? onBody;
     endCoord.x += kept.x - startCoord.x;
     endCoord.y += kept.y - startCoord.y;
     startCoord = kept;
