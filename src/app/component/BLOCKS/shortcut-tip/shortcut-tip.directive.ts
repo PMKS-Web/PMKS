@@ -1,4 +1,13 @@
-import { Directive, ElementRef, HostListener, OnDestroy, inject, input } from '@angular/core';
+import {
+  Directive,
+  ElementRef,
+  HostListener,
+  OnDestroy,
+  effect,
+  inject,
+  input,
+} from '@angular/core';
+import { AriaDescriber } from '@angular/cdk/a11y';
 import { ConnectedPosition, Overlay, OverlayRef } from '@angular/cdk/overlay';
 import { ComponentPortal } from '@angular/cdk/portal';
 import { ShortcutId, KeyboardShortcutsService } from '../../../services/keyboard-shortcuts.service';
@@ -36,6 +45,12 @@ const POSITIONS: Record<ShortcutTipPosition, ConnectedPosition[]> = {
  *
  * Only for controls that *have* a shortcut. Everything else keeps `matTooltip`,
  * which is one dependency and one behavior fewer.
+ *
+ * The drawn tip is for the pointer. A screen reader is told the key through
+ * the control's accessible description instead, which is where the key went
+ * when it was written into the label in brackets: through CDK's
+ * `AriaDescriber`, as `matTooltip` does, so the two can share one control
+ * without either overwriting the other's `aria-describedby`.
  */
 @Directive({ selector: '[appShortcutTip]' })
 export class ShortcutTipDirective implements OnDestroy {
@@ -49,8 +64,18 @@ export class ShortcutTipDirective implements OnDestroy {
   private host = inject<ElementRef<HTMLElement>>(ElementRef);
   private overlay = inject(Overlay);
   private shortcuts = inject(KeyboardShortcutsService);
+  private describer = inject(AriaDescriber);
   private open?: OverlayRef;
   private waiting?: ReturnType<typeof setTimeout>;
+  /** The sentence currently attached to the host's `aria-describedby`, if any. */
+  private described = '';
+
+  constructor() {
+    effect(() => {
+      const keys = this.shortcutTipDisabled() ? '' : this.keys();
+      this.describe(keys ? `Keyboard shortcut: ${keys}` : '');
+    });
+  }
 
   @HostListener('mouseenter')
   @HostListener('focus')
@@ -76,6 +101,14 @@ export class ShortcutTipDirective implements OnDestroy {
 
   ngOnDestroy(): void {
     this.hide();
+    this.describe('');
+  }
+
+  private describe(sentence: string): void {
+    if (sentence === this.described) return;
+    if (this.described) this.describer.removeDescription(this.host.nativeElement, this.described);
+    if (sentence) this.describer.describe(this.host.nativeElement, sentence);
+    this.described = sentence;
   }
 
   private paint(): void {
