@@ -72,7 +72,8 @@ export class ShortcutTipDirective implements OnDestroy {
 
   constructor() {
     effect(() => {
-      const keys = this.shortcutTipDisabled() ? '' : this.keys();
+      const id = this.shortcutTipFor();
+      const keys = this.shortcutTipDisabled() || !id ? '' : this.shortcuts.spokenKeysFor(id);
       this.describe(keys ? `Keyboard shortcut: ${keys}` : '');
     });
   }

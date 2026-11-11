@@ -99,6 +99,24 @@ function onAMac(): boolean {
  * transport with nothing to play stays put. A service reaching past them to do
  * the work itself would have to repeat every one of those rules.
  */
+/** Each glyph a shortcut is drawn with, as a screen reader should say it. */
+const SPOKEN_KEYS: Record<string, string> = {
+  '⌘': 'Command',
+  Ctrl: 'Control',
+  '⇧': 'Shift',
+  '+': 'Plus',
+  '−': 'Minus',
+  '←': 'Left arrow',
+  '→': 'Right arrow',
+  '↑': 'Up arrow',
+  '↓': 'Down arrow',
+  ',': 'Comma',
+  '?': 'Question mark',
+  Esc: 'Escape',
+};
+
+const SPOKEN_GLYPH = /⌘|Ctrl|⇧|\+|−|←|→|↑|↓|,|\?|Esc/g;
+
 @Injectable({ providedIn: 'root' })
 export class KeyboardShortcutsService {
   private zone = inject(NgZone);
@@ -294,6 +312,16 @@ export class KeyboardShortcutsService {
   /** The keys for a control's tooltip, or nothing if it has no shortcut. */
   keysFor(id: ShortcutId): string {
     return this.shortcuts.find((one) => one.id === id)?.keys ?? '';
+  }
+
+  /**
+   * The same keys in words, for a screen reader. A glyph is not always read:
+   * with punctuation turned down, "+" and "−" are skipped, and the description
+   * of Zoom In said nothing about which key to press.
+   */
+  spokenKeysFor(id: ShortcutId): string {
+    const spoken = this.keysFor(id).replace(SPOKEN_GLYPH, (glyph) => ` ${SPOKEN_KEYS[glyph]} `);
+    return spoken.replace(/\s+/g, ' ').trim();
   }
 
   /** The whole set, grouped, for the list that teaches them. */

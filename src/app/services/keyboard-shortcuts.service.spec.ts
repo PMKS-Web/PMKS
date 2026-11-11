@@ -109,4 +109,14 @@ describe('KeyboardShortcutsService', () => {
     // Option on a Mac, Alt everywhere else -- named the way this keyboard does.
     expect(nudges[0].label).toMatch(/\((Option|Alt) for a coarser step\)/);
   });
+
+  it('says each key in words for a screen reader, which can skip a bare glyph', () => {
+    const { service } = setup();
+    expect(service.spokenKeysFor('view.zoomIn')).toBe('Plus');
+    expect(service.spokenKeysFor('view.zoomOut')).toBe('Minus');
+    expect(service.spokenKeysFor('playback.toggle')).toBe('Space');
+    expect(service.spokenKeysFor('history.redo')).toMatch(/^(Command|Control) Shift Z$/);
+    // The drawn tip keeps its glyphs.
+    expect(service.keysFor('view.zoomIn')).toBe('+');
+  });
 });
