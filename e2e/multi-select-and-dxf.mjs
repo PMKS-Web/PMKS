@@ -551,6 +551,9 @@ await page.waitForTimeout(300);
       );
       grid.mechanismSrv.createForceAtCOM();
     }
+    // A poke from outside the zone repaints nothing until the next real input,
+    // so without this pass the arrows were never drawn and `#F1` never appeared.
+    ng.applyChanges(document.querySelector('app-new-grid'));
   });
   await page.waitForTimeout(700);
   const forces = () =>

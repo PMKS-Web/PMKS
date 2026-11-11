@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { RevJoint } from '../../model/joint';
 import { RealLink } from '../../model/link';
+import { Force } from '../../model/force';
 import { ActiveObjService } from '../../services/active-obj.service';
 import { DragStateService } from '../../services/drag-state.service';
 import { GridUtilsService } from '../../services/grid-utils.service';
@@ -779,6 +780,52 @@ describe('NewGridComponent typed multi-selection', () => {
     } finally {
       Object.defineProperty(navigator, 'platform', { configurable: true, value: oldPlatform });
     }
+  });
+
+  it('Meta-click on a force body adds it to the selection instead of replacing it (#290)', () => {
+    const { component, active, mechanism, link } = setUpSelection();
+    const force = (id: string, x: number) =>
+      new Force(id, link, new Coord(x, 0), new Coord(x, MODEL_SCALE));
+    const f1 = force('F1', 0.5 * MODEL_SCALE);
+    const f2 = force('F2', 1.5 * MODEL_SCALE);
+    mechanism.forces = [f1, f2];
+    // The template's order: the body grab runs first, then the click.
+    const press = (target: Force, init: MouseEventInit) => {
+      const event = new MouseEvent('pointerdown', { button: 0, ...init }) as PointerEvent;
+      component.beginDraggingForceBody(target, event);
+      component.setLastLeftClick(target, event);
+    };
+    const oldPlatform = navigator.platform;
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' });
+    try {
+      press(f1, {});
+      press(f2, { metaKey: true });
+      expect(active.selectedPartRefs).toEqual([
+        { kind: 'force', id: 'F1' },
+        { kind: 'force', id: 'F2' },
+      ]);
+
+      press(f1, { metaKey: true });
+      expect(active.selectedPartRefs).toEqual([{ kind: 'force', id: 'F2' }]);
+    } finally {
+      Object.defineProperty(navigator, 'platform', { configurable: true, value: oldPlatform });
+    }
+  });
+
+  it('a body press clears a force handle mark left from an earlier grab', () => {
+    const { component, active, mechanism, link } = setUpSelection();
+    const f1 = new Force('F1', link, new Coord(0, 0), new Coord(0, MODEL_SCALE));
+    mechanism.forces = [f1];
+    active.updateSelectedObj(f1.endCoord, f1);
+    expect(f1.isEndSelected).toBe(true);
+
+    const event = new MouseEvent('pointerdown', { button: 0 }) as PointerEvent;
+    component.beginDraggingForceBody(f1, event);
+    component.setLastLeftClick(f1, event);
+
+    expect(f1.isEndSelected).toBe(false);
+    expect(active.selectedForce).toBe(f1);
+    expect(active.objType).toBe('Force');
   });
 
   it('preserves an existing multi-selection for an inside right-click and replaces it outside', () => {

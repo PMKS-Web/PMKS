@@ -1840,7 +1840,13 @@ export class NewGridComponent implements OnDestroy {
     // The arrow itself was grabbed, so neither handle is: a press on the
     // base or the head leaves that end selected, and a body grab that kept
     // it dragged that one end to the pointer instead of the whole arrow.
-    this.activeObjService.updateSelectedObj(force);
+    //
+    // Only the marks are cleared. Which forces are selected is
+    // `setLastLeftClick`'s to decide, on the same press: replacing the
+    // selection here first left a Cmd/Ctrl-click nothing to add to, so forces
+    // could not join a group.
+    force.isStartSelected = false;
+    force.isEndSelected = false;
     const at = this.svgGrid.screenToModelFromXY(event.clientX, event.clientY);
     this.forceGrabOffset = new Coord(at.x - force.startCoord.x, at.y - force.startCoord.y);
   }
