@@ -15,21 +15,62 @@ const QUADRATIC_STEPS = 12;
 const CORNER_THRESHOLD = Math.PI / 12;
 const EPSILON = 1e-9;
 
+/**
+ * The grids a union's vertices are snapped to, finest first.
+ *
+ * polygon-clipping is exact about coincidence and nothing else: two vertices a
+ * hair apart are two vertices, and a pair of edges that cross between them can
+ * leave it unable to close a ring. Two bars welded at a pin both end in a cap
+ * on the same circle, and flattened at the same angular step their vertices
+ * land within 1e-14 of each other -- the Bell Crank's right-angled weld threw
+ * "Unable to complete output ring" and drew as two loose bars (#291). Snapping
+ * makes those vertices one vertex. The grid is in drawing units, where a joint
+ * is tens of units across, so the finest step is far below anything drawn;
+ * the coarser ones are only tried if a finer one still fails.
+ */
+const SNAP_GRIDS = [1e-6, 1e-4, 1e-2];
+
 export function buildCompoundPath(leafPaths: string[], filletRadius: number): CompoundPathGeometry {
+  let flattened: Ring[];
   try {
-    const polygons = leafPaths.map((path) => [flattenPath(path)] as Polygon);
-    if (polygons.length === 0) return { path: '', rings: [] };
-    const result = polygonClipping.union(polygons[0], ...polygons.slice(1));
-    const rings = result.flatMap((polygon) => polygon);
-    if (rings.length === 0) return { path: leafPaths.join(' '), rings: [] };
-    return {
-      path: rings.map((ring) => roundedRingPath(ring, filletRadius)).join(' '),
-      rings,
-    };
+    flattened = leafPaths.map(flattenPath);
   } catch {
     // A malformed legacy leaf must not prevent the mechanism from rendering.
     return { path: leafPaths.join(' '), rings: [] };
   }
+  if (flattened.length === 0) return { path: '', rings: [] };
+  for (const grid of SNAP_GRIDS) {
+    const rings = unionRings(flattened, grid);
+    if (rings === undefined) continue;
+    if (rings.length === 0) break;
+    return {
+      path: rings.map((ring) => roundedRingPath(ring, filletRadius)).join(' '),
+      rings,
+    };
+  }
+  return { path: leafPaths.join(' '), rings: [] };
+}
+
+/** The union of these rings snapped to `grid`, or undefined where the library gives up. */
+function unionRings(flattened: Ring[], grid: number): Ring[] | undefined {
+  const polygons = flattened.map((ring) => [snapRing(ring, grid)] as Polygon);
+  try {
+    return polygonClipping.union(polygons[0], ...polygons.slice(1)).flatMap((polygon) => polygon);
+  } catch {
+    return undefined;
+  }
+}
+
+function snapRing(ring: Ring, grid: number): Ring {
+  const snapped: Ring = [];
+  ring.forEach((point) =>
+    appendPoint(snapped, [Math.round(point[0] / grid) * grid, Math.round(point[1] / grid) * grid])
+  );
+  // Snapping can merge the closing point into its neighbor; keep the ring closed.
+  const first = snapped[0];
+  const last = snapped[snapped.length - 1];
+  if (first && last && distance(first, last) > EPSILON) snapped.push([first[0], first[1]]);
+  return snapped;
 }
 
 /**
