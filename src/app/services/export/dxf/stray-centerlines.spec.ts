@@ -5,9 +5,10 @@ import { FIXTURE_GALLERY } from '../../../../test-utils/verification/fixture-gal
 import { Force } from '../../../model/force';
 import { Joint } from '../../../model/joint';
 import { Link, RealLink } from '../../../model/link';
-import { DxfCircle, DxfEntity, DxfPoint } from './dxf-model';
+import { DxfEntity, DxfLine, DxfPoint } from './dxf-model';
+import { MODEL_SCALE } from '../../../model/render-scale';
 import { DXF_PRESETS, NEUTRAL_DXF_OPTIONS } from './dxf-options';
-import { buildSemanticDxf, DXF_LAYER } from './semantic-dxf';
+import { buildSemanticDxf, centimetersIn, DXF_LAYER, originShift } from './semantic-dxf';
 
 /**
  * A body exported as an outline is not drawn a second time as a centerline.
@@ -20,43 +21,59 @@ import { buildSemanticDxf, DXF_LAYER } from './semantic-dxf';
  * which is the one thing allowed to keep a centerline under Build parts.
  */
 function centerlinesUnderBuildParts(joints: Joint[], links: Link[], forces: Force[]): number {
+  const options = { ...NEUTRAL_DXF_OPTIONS, ...DXF_PRESETS.build };
   const { entities } = buildSemanticDxf({
     joints,
     links,
     forces,
     lengthUnit: 'cm',
     defaultInputClockwise: false,
-    options: { ...NEUTRAL_DXF_OPTIONS, ...DXF_PRESETS.build },
+    options,
   });
   const shared = entities.filter(
     (entity) => entity.type === 'LINE' && entity.layer === DXF_LAYER.links
   ).length;
-  return shared + axesOnOutlinedLayers(entities);
+  return shared + linesAlongABody(entities, joints, links, options);
 }
 
 /**
- * Lines from one joint hole to another on a part's own layer that also holds
- * its outline.
+ * Lines on any layer that run from one joint of a body to another, sliders
+ * included.
  *
- * Build moves a centerline that matches one body's axis onto that body's
- * layer, so a returning per-body centerline would never reach the shared
- * layer counted above. A weld mark is not hole to hole, and a body collapsed
- * onto a line keeps its centerline on a layer with no outline, so neither is
- * counted.
+ * Build moves a centerline that matches a body's axis onto a layer of that
+ * body's own -- a welded leaf's included, which carries no outline of its own
+ * -- so a returning centerline need never reach the shared layer counted
+ * above. Measured against the joints, in the exporter's own coordinates,
+ * rather than against the holes, because a slider's end has no hole.
  */
-function axesOnOutlinedLayers(entities: DxfEntity[]): number {
+function linesAlongABody(
+  entities: DxfEntity[],
+  joints: Joint[],
+  links: Link[],
+  choices: { origin: string; originJointId?: string }
+): number {
+  const unitScale = centimetersIn('cm') / MODEL_SCALE;
+  const shift = originShift({ joints }, choices, unitScale);
+  const at = (joint: Joint): DxfPoint => ({
+    x: joint.x * unitScale - shift.x,
+    y: joint.y * unitScale - shift.y,
+  });
+  const bodies: RealLink[] = [];
+  const visit = (link: Link) => {
+    if (!(link instanceof RealLink)) return;
+    bodies.push(link);
+    link.subset.forEach(visit);
+  };
+  links.forEach(visit);
   const near = (a: DxfPoint, b: DxfPoint) => Math.hypot(a.x - b.x, a.y - b.y) < 1e-6;
-  const outlined = new Set(
-    entities.filter((entity) => entity.type === 'POLYLINE').map((entity) => entity.layer)
-  );
-  return entities.filter((entity) => {
-    if (entity.type !== 'LINE' || !outlined.has(entity.layer)) return false;
-    const holes = entities.filter(
-      (other): other is DxfCircle => other.type === 'CIRCLE' && other.layer === entity.layer
+  const along = (line: DxfLine, body: RealLink) =>
+    body.joints.some((from, i) =>
+      body.joints.some((to, j) => i !== j && near(line.start, at(from)) && near(line.end, at(to)))
     );
-    const atHole = (point: DxfPoint) => holes.some((hole) => near(hole.center, point));
-    return atHole(entity.start) && atHole(entity.end);
-  }).length;
+  return entities.filter(
+    (entity): entity is DxfLine =>
+      entity.type === 'LINE' && bodies.some((body) => along(entity, body))
+  ).length;
 }
 
 describe('Build parts leaves no centerline beside an outline', () => {
