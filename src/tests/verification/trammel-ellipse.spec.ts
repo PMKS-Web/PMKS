@@ -86,53 +86,57 @@ describe('an elliptical trammel', () => {
 // and rod turning the middle of the bar has no such end, so the traced point
 // goes round the whole curve.
 describe('an elliptical trammel driven by a crank and rod', () => {
-  // A at (2,0), B at (0,2): twice the driven trammel, T a third along from A.
+  // A at (2,0), B at (0,2): twice the driven trammel.
   const bar = 2 * L;
-  const semiMajor = (2 / 3) * bar;
-  const semiMinor = bar / 3;
 
-  /** How far the crank turned over the whole cycle, in radians. */
-  const crankSwept = (frames: Joint[][]): number => {
+  /** How far a joint turned about a center over the whole cycle, in radians. */
+  const swept = (frames: Joint[][], id: string, center: (frame: Joint[]) => Joint | null) => {
     const angle = (frame: Joint[]) => {
-      const pivot = frame.find((joint) => joint.id === 'O')!;
-      const pin = frame.find((joint) => joint.id === 'C')!;
-      return Math.atan2(pin.y - pivot.y, pin.x - pivot.x);
+      const about = center(frame);
+      const at = frame.find((joint) => joint.id === id)!;
+      return Math.atan2(at.y - (about?.y ?? 0), at.x - (about?.x ?? 0));
     };
-    let swept = 0;
+    let total = 0;
     for (let step = 1; step < frames.length; step++) {
       let increment = angle(frames[step]) - angle(frames[step - 1]);
       while (increment > Math.PI) increment -= 2 * Math.PI;
       while (increment < -Math.PI) increment += 2 * Math.PI;
-      swept += increment;
+      total += increment;
     }
-    return swept;
+    return total;
   };
+  const pivot = (frame: Joint[]) => frame.find((joint) => joint.id === 'O')!;
+  const crossing = () => null;
 
-  it('turns the crank all the way round, and loops', () => {
+  it('turns the crank and the bar all the way round, and loops', () => {
     const { mechanism } = buildMechanism(crankedTrammelFixture(S), 'adaptive');
     expect(mechanism.isMechanismValid()).toBe(true);
     expect(mechanism.dof).toBe(1);
     expect(mechanism.reciprocates).toBe(false);
-    expect(Math.abs(crankSwept(mechanism.joints))).toBeCloseTo(2 * Math.PI, 6);
+    expect(Math.abs(swept(mechanism.joints, 'C', pivot))).toBeCloseTo(2 * Math.PI, 6);
+    // The middle of the bar, about the crossing: one turn of it is one turn of the bar.
+    expect(Math.abs(swept(mechanism.joints, 'M', crossing))).toBeCloseTo(2 * Math.PI, 6);
   });
 
   it('carries its point around the whole ellipse, not half of it', () => {
     const { mechanism } = buildMechanism(crankedTrammelFixture(S), 'adaptive');
-    let lowest = Infinity;
-    let highest = -Infinity;
     for (const frame of mechanism.joints) {
       const at = (id: string): Joint => frame.find((joint) => joint.id === id)!;
-      const x = at('T').x / S;
-      const y = at('T').y / S;
-      expect(Math.abs((x * x) / semiMajor ** 2 + (y * y) / semiMinor ** 2 - 1)).toBeLessThan(1e-6);
+      // The trammel itself: each end on its own guide, the bar its own length.
       expect(Math.abs(at('A').y / S)).toBeLessThan(1e-6);
       expect(Math.abs(at('B').x / S)).toBeLessThan(1e-6);
-      lowest = Math.min(lowest, y);
-      highest = Math.max(highest, y);
+      expect(Math.hypot(at('A').x - at('B').x, at('A').y - at('B').y) / S).toBeCloseTo(bar, 4);
+      // A point a third of the way along the bar, read off the ends, is on the
+      // ellipse the driven trammel draws: the curve is the trammel's, whoever
+      // drives it.
+      const x = (at('A').x + (at('B').x - at('A').x) / 3) / S;
+      const y = (at('A').y + (at('B').y - at('A').y) / 3) / S;
+      const onEllipse = (x * x) / ((2 / 3) * bar) ** 2 + (y * y) / (bar / 3) ** 2;
+      expect(Math.abs(onEllipse - 1)).toBeLessThan(1e-6);
     }
-    // Both halves: above the guide A rides on, and below it.
-    expect(highest).toBeCloseTo(semiMinor, 3);
-    expect(lowest).toBeCloseTo(-semiMinor, 3);
+    // The traced point goes once round the crossing: the whole curve, where a
+    // driven block covers half of it, out and back.
+    expect(Math.abs(swept(mechanism.joints, 'P', crossing))).toBeCloseTo(2 * Math.PI, 6);
   });
 
   it('keeps running when a reader moves the crank, which a crank pinned to the middle would not', () => {

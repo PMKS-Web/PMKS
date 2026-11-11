@@ -28,12 +28,12 @@
    ]
   },
   {
-   "id": "ABMT",
+   "id": "ABMP",
    "mass": 0.001,
    "inertia": 0.0001,
    "com": [
-    0.010833333333333332,
-    0.009166666666666665
+    0.014008905912500001,
+    0.0057611404
    ]
   }
  ],
@@ -74,7 +74,7 @@
    ],
    "bodies": [
     "CM",
-    "ABMT"
+    "ABMP"
    ],
    "grounded": false,
    "welded": false
@@ -96,7 +96,7 @@
     0
    ],
    "riders": [
-    "ABMT"
+    "ABMP"
    ],
    "rotates": true,
    "blockMass": 0
@@ -118,19 +118,19 @@
     1
    ],
    "riders": [
-    "ABMT"
+    "ABMP"
    ],
    "rotates": true,
    "blockMass": 0
   }
  ],
  "driver": {
-  "joint": "O",
+  "joint": "M",
   "kind": "rotation",
-  "speed": -1.0471975511965976,
+  "speed": -2.0943951023931953,
   "bodies": [
-   "ground",
-   "OC"
+   "CM",
+   "ABMP"
   ]
  },
  "loads": [],
@@ -161,7 +161,7 @@
   },
   {
    "id": "A",
-   "body": "ABMT",
+   "body": "ABMP",
    "at": [
     0.02,
     0
@@ -169,18 +169,18 @@
   },
   {
    "id": "B",
-   "body": "ABMT",
+   "body": "ABMP",
    "at": [
     0,
     0.02
    ]
   },
   {
-   "id": "T",
-   "body": "ABMT",
+   "id": "P",
+   "body": "ABMP",
    "at": [
-    0.01333333333333333,
-    0.006666666666666665
+    0.026035623650000003,
+    -0.0069554384000000006
    ]
   }
  ],

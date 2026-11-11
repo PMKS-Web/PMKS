@@ -733,14 +733,15 @@ export const FIXTURE_GALLERY: GalleryEntry[] = [
   },
   {
     // The library's trammel. Driving a block runs it out and back over half
-    // the ellipse; a crank and rod turning the middle of the bar take it all
-    // the way round.
+    // the ellipse; turning the bar through a crank and rod takes it all the
+    // way round. At 20 rpm, twice the library's usual speed, as it was
+    // finished in the app.
     name: 'Elliptical trammel, cranked',
     purpose:
       'A crank and rod turn the middle of the bar, so the traced point draws the whole ellipse',
     spec: 'trammel-ellipse.spec.ts',
     floatingSlot: false,
-    speed: { rpm: LIBRARY_RPM },
+    speed: { rpm: 20 },
     fixture: crankedTrammelFixture(),
   },
   {

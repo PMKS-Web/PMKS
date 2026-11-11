@@ -427,9 +427,9 @@ export function ellipticalTrammelFixture(
 }
 
 /**
- * The elliptical trammel driven all the way round: a crank turns the middle of
- * the bar through a connecting rod, so the traced point goes round the whole
- * ellipse rather than half of it.
+ * The elliptical trammel driven all the way round: a crank and rod turn the
+ * middle of the bar, so a point carried on the bar goes round the whole ellipse
+ * rather than half of it.
  *
  * A drive on a block cannot do that. Its travel ends where the bar lies along
  * its guide, and the other block, at the crossing there, could go on either
@@ -447,6 +447,12 @@ export function ellipticalTrammelFixture(
  * pivots a short ground link apart, both cranks turning fully -- so the count
  * is one by Gruebler alone and stays one when any joint is moved. The pivot
  * stands off both guides so neither block passes over it.
+ *
+ * The motor is at M, between the rod and the bar, as the library's drawing
+ * was finished in the app. The traced point P rides on the bar beyond A, where
+ * it was placed there; every point carried by the bar draws an ellipse about
+ * the crossing, and one past the end draws a wider one than any point between
+ * the blocks.
  */
 export function crankedTrammelFixture(scale: number = 1): MechanismFixture {
   // Twice the size of the driven trammel: the crank and rod turn inside the
@@ -469,15 +475,14 @@ export function crankedTrammelFixture(scale: number = 1): MechanismFixture {
   const at = (point: { x: number; y: number }) => ({ x: point.x * scale, y: point.y * scale });
   return {
     joints: [
-      { id: 'O', ...at(pivot), ground: true, input: true },
+      { id: 'O', ...at(pivot), ground: true },
       { id: 'C', ...at(pin) },
       { id: 'A', ...at({ x: 2, y: 0 }) },
       { id: 'B', ...at({ x: 0, y: 2 }) },
-      { id: 'M', ...at(middle) },
-      // A third of the way along the bar from A, as on the driven trammel.
-      { id: 'T', ...at({ x: 4 / 3, y: 2 / 3 }), trace: true },
+      { id: 'M', ...at(middle), input: true },
+      { id: 'P', ...at({ x: 2.603562365, y: -0.69554384 }), trace: true },
     ],
-    links: [{ joints: 'OC' }, { joints: 'CM' }, { joints: 'ABMT' }],
+    links: [{ joints: 'OC' }, { joints: 'CM' }, { joints: 'ABMP' }],
     sliders: [
       { at: 'A', angleRad: 0 },
       { at: 'B', angleRad: Math.PI / 2 },
