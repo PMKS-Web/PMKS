@@ -1069,6 +1069,8 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
     // Any transport action is the reader moving on from the news that the
     // start moved, so the row stops carrying it.
     this.mechanism.clearStartMoved();
+    // A row's own Play is Play too, when the machines are unsynced.
+    if (!this.mechanism.isMechanismPlaying(row.index)) this.analytics.trackOnce('playback_start');
     this.mechanism.toggleMechanismPlaying(row.index);
   }
 

@@ -71,10 +71,10 @@ else. "Once" means once per visit for each set of parameters (`trackOnce`).
 | --- | --- | --- |
 | `app_start` | The app opens | `entry`: `blank`, `link`, `library`, `restored`, `bad_link` |
 | `template_open` | A library card is opened | `template` (its id), `placement`: `here`, `new_tab` |
-| `tutorial_begin` | Start Tutorial, or restart | |
+| `tutorial_begin` | Start Tutorial, or restart (not Resume) | |
 | `tutorial_complete` | The tutorial's last step is done | |
 | `mechanism_runs` | Once: an edit of the reader's makes something run that did not | `family` |
-| `playback_start` | Once: Play is pressed | |
+| `playback_start` | Once: Play is pressed, or a machine's own Play when unsynced | |
 | `mode_open` | Once per mode: Synthesis or an analysis is opened | `mode`: `synthesis`, `kinematic`, `force` |
 | `graph_open` | Once per graph: the reader opens one (those open by default are not counted) | `analysis`, `graph` |
 | `synthesis_run` | Generate Solutions | |
@@ -88,7 +88,8 @@ And one user property, `app_version`, so behavior can be read against the releas
 
 `mechanism_runs` is the one worth understanding before reading it. A template, a shared link or an
 opened file that already runs does not count: the URL reader sets `MechanismService.arriving`
-while a different drawing comes in, and `arrived()` records whether it ran. What counts is the
+while a different drawing comes in, and `arrived()` records whether it ran -- after an undo or redo
+too, so an edit is never credited with what the undo did. What counts is the
 first undoable edit after which something runs that did not before -- the moment a student's own
 build works.
 

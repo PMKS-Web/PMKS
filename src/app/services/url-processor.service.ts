@@ -215,7 +215,10 @@ export class UrlProcessorService {
     try {
       this.decode(url, resetSvgScale, updateSettings, save, continuingHistory);
     } finally {
-      if (mechanismSrv.arriving) mechanismSrv.arrived();
+      // An undo or redo is not the reader building either: what runs after
+      // one is the new starting point, or the next edit would be credited
+      // with what the undo did.
+      mechanismSrv.arrived();
     }
   }
 

@@ -271,7 +271,8 @@ export class TutorialService {
   // ---------- entering and leaving ----------
 
   start(): void {
-    this.analytics.track('tutorial_begin');
+    // Resume calls this too, and a resumed tutorial is not a new one.
+    if (!this.started) this.analytics.track('tutorial_begin');
     this.started = true;
     this.exited = false;
     this.knownStep = stepOf(this.mechanism.joints, this.mechanism.links);

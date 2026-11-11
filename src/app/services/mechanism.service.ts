@@ -668,10 +668,10 @@ export class MechanismService {
    * a mechanism the reader made run (`noticeFirstRun`).
    */
   arriving = false;
-  /** Whether anything ran after the last edit, or after the drawing arrived. */
+  /** Whether anything ran after the last edit, the last undo or redo, or the drawing's arrival. */
   private ranBefore = false;
 
-  /** A drawing has finished arriving: what runs now is where the reader starts from. */
+  /** A drawing has arrived, or an undo or redo has landed: what runs now is the starting point. */
   arrived(): void {
     this.arriving = false;
     this.ranBefore = this.oneValidMechanismExists();
@@ -690,7 +690,14 @@ export class MechanismService {
     if (runs && !this.ranBefore && !this.arriving) {
       const partition = this.partitions[index];
       const solved = this.mechanisms[index];
-      const family = familyReading(partition, solved, machineFacts(partition, solved)).name;
+      let family = 'Not recognized';
+      try {
+        family = familyReading(partition, solved, machineFacts(partition, solved)).name;
+      } catch {
+        // Recognition reads the solved cycle. Whatever goes wrong in it, the
+        // save right after this must still happen: an edit with no undo entry
+        // is far worse than a report with no family.
+      }
       this.analytics.trackOnce('mechanism_runs', { family });
     }
     if (!this.arriving) this.ranBefore = runs;
