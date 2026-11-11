@@ -332,7 +332,18 @@ export class RealLink extends Link {
    * a world coordinate goes stale the moment the mechanism moves. The URL
    * still carries the global coordinate; this is re-captured at decode.
    */
-  public comOffset?: { along: number; across: number; frame: [string, string] };
+  public comOffset?: {
+    along: number;
+    across: number;
+    frame: [string, string];
+    /**
+     * The pin a disc was centered on when this was captured, if it was a disc.
+     * The offset is measured from the shape's centroid, which for a disc is
+     * that pin and for a bar its middle: a change of shape moves the origin
+     * under the point, so `customCoMFromOffset` rebases rather than follow it.
+     */
+    disc?: string;
+  };
 
   /**
    * What a hand-placed center of mass is held against while the mechanism is
@@ -442,6 +453,7 @@ export class RealLink extends Link {
       along: dx * frame.ux + dy * frame.uy,
       across: -dx * frame.uy + dy * frame.ux,
       frame: frame.pair,
+      disc: this.discCenter()?.id,
     };
     const anchor = this.anchorPoint();
     this.comAnchorOffset = anchor
@@ -465,7 +477,12 @@ export class RealLink extends Link {
     }
     if (!this.comOffset) return undefined;
     const frame = this.comFrame(this.comOffset.frame);
-    if (!frame.ok) {
+    // Or the shape changed between a bar and a disc -- switched in the panel,
+    // or a disc's pin grounded or freed. The origin moved and the point did not, so the same rebase holds it. Asked
+    // here, in the rebuild after the start pose is restored, rather than at
+    // the switch: a grid or joint anchor's offset captured at a paused pose
+    // would be measured in the displayed frame.
+    if (!frame.ok || this.comOffset.disc !== this.discCenter()?.id) {
       // A frame joint left the link (deleted, merged away). The point itself
       // is still where it was, so rebase: keep the CoM, re-anchor the offset
       // to the pair the link has now, rather than silently reading the old

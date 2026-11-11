@@ -1,13 +1,17 @@
 import '../model/joint';
 import { Coord } from '../model/coord';
 import { RevJoint } from '../model/joint';
-import { RealLink } from '../model/link';
+import { ComAnchor, RealLink } from '../model/link';
 import { derivedBodyOf } from '../model/link-body';
 import { MODEL_SCALE as S } from '../model/render-scale';
 import { createMechanismHarness, wireGraph } from '../../test-utils/mechanism-harness';
 import { GridUtilsService } from './grid-utils.service';
 import { NotificationService } from './notification.service';
 import { SettingsService } from './settings.service';
+import { fixturePayload } from '../../test-utils/verification/fixture-gallery';
+import { fourBarDrivenAtFixture } from '../../test-utils/verification/fixtures';
+import { MechanismBuilder } from './transcoding/mechanism-builder';
+import { StringTranscoder } from './transcoding/string-transcoder';
 
 /**
  * Where a link's automatic center of mass is, asked from every door (#156).
@@ -228,6 +232,24 @@ describe('a link drawn as a disc', () => {
     expect(at(h.crank.CoM), 'as a bar again').toEqual([1, 0.5]);
   });
 
+  it('leaves a point placed by hand where it was when the disc loses its pin and gets it back', () => {
+    const h = disc();
+    h.crank.placeCustomCoM(new Coord(1 * S, 0.5 * S));
+    h.service.updateMechanism(false);
+
+    // Grounding is what makes the disc: without a fixed pin it is drawn as a
+    // bar again, whose centroid is its middle rather than the pin.
+    h.a.ground = false;
+    h.service.updateMechanism(false);
+    expect(h.crank.drawnAsDisc).toBe(false);
+    expect(at(h.crank.CoM), 'freed').toEqual([1, 0.5]);
+
+    h.a.ground = true;
+    h.service.updateMechanism(false);
+    expect(h.crank.drawnAsDisc).toBe(true);
+    expect(at(h.crank.CoM), 'grounded again').toEqual([1, 0.5]);
+  });
+
   it('holds a point placed by hand against the pin, the frame the panel shows', () => {
     const h = disc();
     h.crank.placeCustomCoM(new Coord(1 * S, 0));
@@ -242,4 +264,34 @@ describe('a link drawn as a disc', () => {
     expect(during[0], 'mid-drag').toBeCloseTo(1, 9);
     expect(at(h.crank.CoM)[0], 'after release').toBeCloseTo(1, 9);
   });
+});
+
+describe('switching a link between bar and disc at a paused pose', () => {
+  for (const anchor of ['centroid', 'grid'] as ComAnchor[]) {
+    it(`leaves a point placed by hand, anchored ${anchor}, where it was at the start`, () => {
+      const h = scene();
+      const decoder = new StringTranscoder();
+      decoder.decodeURL(fixturePayload(fourBarDrivenAtFixture('A')));
+      new MechanismBuilder(h.service, decoder, h.settings, h.active).build();
+      h.service.updateMechanism();
+      const crank = h.service.links.find(
+        (link) => link instanceof RealLink && link.canBeCircular()
+      ) as RealLink;
+      if (!crank) throw new Error('no link can be drawn as a disc');
+      crank.isCircle = false;
+      crank.comAnchor = anchor;
+      crank.placeCustomCoM(new Coord(crank.CoM.x + 0.3 * S, crank.CoM.y + 0.2 * S));
+      h.service.updateMechanism();
+      const placed = { x: crank.CoM.x, y: crank.CoM.y };
+
+      h.service.seekMechanism(0, h.service.mechanisms[0].cyclePeriod * 0.217);
+      h.active.updateSelectedObj(crank);
+      h.service.toggleLinkCircular();
+      expect(crank.isCircle).toBe(true);
+      h.service.seekMechanism(0, 0);
+
+      expect(crank.CoM.x).toBeCloseTo(placed.x, 6);
+      expect(crank.CoM.y).toBeCloseTo(placed.y, 6);
+    });
+  }
 });

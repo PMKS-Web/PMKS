@@ -3684,11 +3684,6 @@ export class MechanismService {
     if (!link.canBeCircular()) return;
     link.isCircle = !link.isCircle;
     link.reComputeDPath();
-    // A placed center of mass is held against the shape's centroid, and a
-    // disc's centroid is its pin, not the bar's middle. Re-read the offset
-    // against the new shape, or the rebuild below moves the point by the
-    // distance between the two centroids.
-    if (link.comIsCustom) link.captureComOffset();
     this.updateMechanism(true);
     this.onMechUpdateState.next(2);
   }
@@ -4044,9 +4039,6 @@ export class MechanismService {
       // removed, and the panel and the canvas disagreed about what it was.
       if (link.isCircle && link.drawnAsDisc !== link.canBeCircular()) {
         link.reComputeDPath();
-        // The centroid a placed point is held against just moved with the
-        // shape; the point itself has not. See `toggleLinkCircular`.
-        if (link.comIsCustom) link.captureComOffset();
       }
       if (link.comIsCustom) {
         // A placed point rides the link: re-derived from its stored offset
