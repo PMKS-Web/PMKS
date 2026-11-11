@@ -21,6 +21,10 @@ import { SaveHistoryService } from '../../services/save-history.service';
 import { LONGEST_ARROW_FRACTION } from '../../model/vector-trace';
 import { CYLINDER, MARK, slideMarkPath } from '../../model/joint-marks';
 import { ColorService } from '../../services/color.service';
+import { StringTranscoder } from '../../services/transcoding/string-transcoder';
+import { MechanismBuilder } from '../../services/transcoding/mechanism-builder';
+import { fixturePayload } from '../../../test-utils/verification/fixture-gallery';
+import { fourBarDrivenAtFixture } from '../../../test-utils/verification/fixtures';
 
 /**
  * NewGridComponent renders through svg-pan-zoom, which needs real SVG layout;
@@ -1218,3 +1222,81 @@ function shaftLengths(d: string): number[] {
       return Math.hypot(x2 - x1, y2 - y1);
     });
 }
+
+/**
+ * A center of mass dragged at a paused pose, and the two ways a gesture can
+ * end other than by its own release. Both used to write a point measured in
+ * the displayed frame, which the next rebuild read at the start pose.
+ */
+describe('NewGridComponent center of mass drag at a paused pose', () => {
+  beforeEach(configureGridTestBed);
+
+  function pausedFourBar() {
+    const mechanism = TestBed.inject(MechanismService);
+    const decoder = new StringTranscoder();
+    decoder.decodeURL(fixturePayload(fourBarDrivenAtFixture('A')));
+    new MechanismBuilder(
+      mechanism,
+      decoder,
+      TestBed.inject(SettingsService),
+      TestBed.inject(ActiveObjService)
+    ).build();
+    const link = mechanism.links.find((one) => one.id === 'ACT') as RealLink;
+    // An automatic center, anchored to the grid: the case a re-placed start
+    // point turned custom and measured in the displayed frame.
+    link.comIsCustom = false;
+    link.comAnchor = 'grid';
+    mechanism.updateMechanism();
+    const fixture = TestBed.createComponent(NewGridComponent);
+    fixture.detectChanges();
+    const startCoM = new Coord(link.CoM.x, link.CoM.y);
+    mechanism.seekMechanism(0, mechanism.mechanisms[0].cyclePeriod * 0.217);
+    TestBed.inject(ActiveObjService).updateSelectedObj(link);
+    return { mechanism, link, startCoM, component: fixture.componentInstance };
+  }
+
+  function grabAndMove(component: NewGridComponent, link: RealLink): void {
+    component.startComDrag(link, new PointerEvent('pointerdown', { button: 0 }));
+    expect(component.draggingCoMLink, 'the drag began').toBe(link);
+    window.dispatchEvent(
+      new PointerEvent('pointermove', {
+        clientX: link.CoM.x + 30,
+        clientY: link.CoM.y - 20,
+        altKey: true,
+      })
+    );
+  }
+
+  it('puts back an automatic center as automatic when the gesture is cancelled', () => {
+    const { mechanism, link, startCoM, component } = pausedFourBar();
+    expect(link.comIsCustom).toBe(false);
+    const saved = vi.spyOn(mechanism, 'save');
+
+    grabAndMove(component, link);
+    component['endComDrag']!(true);
+
+    expect(link.comIsCustom).toBe(false);
+    mechanism.seekMechanism(0, 0);
+    mechanism.updateMechanism();
+    expect(link.CoM.x).toBeCloseTo(startCoM.x, 6);
+    expect(link.CoM.y).toBeCloseTo(startCoM.y, 6);
+    expect(saved).not.toHaveBeenCalled();
+  });
+
+  it('commits a center of mass mid-drag before the lock key locks its link', () => {
+    const { mechanism, link, component } = pausedFourBar();
+    const commit = vi.spyOn(TestBed.inject(GridUtilsService), 'commitCenterOfMass');
+    const lock = vi.spyOn(
+      component as unknown as { toggleLockOnSelection(): void },
+      'toggleLockOnSelection'
+    );
+
+    grabAndMove(component, link);
+    component['onShortcut']('edit.lock');
+
+    expect(commit).toHaveBeenCalledWith(link, true);
+    expect(commit.mock.invocationCallOrder[0]).toBeLessThan(lock.mock.invocationCallOrder[0]);
+    expect(component.draggingCoMLink).toBeUndefined();
+    expect(mechanism.isLockedTarget(link)).toBe(true);
+  });
+});
