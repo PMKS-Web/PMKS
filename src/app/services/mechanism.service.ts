@@ -56,6 +56,7 @@ import {
 import { Mechanism } from '../model/mechanism/mechanism';
 import {
   MechanismPartition,
+  movingJointIds,
   MOST_MACHINES,
   partitionKey,
   partitionMechanisms,
@@ -672,10 +673,10 @@ export class MechanismService {
    */
   arriving = false;
   /**
-   * The machines (by `partitionKey`) that ran after the last saved edit, undo,
-   * redo or arrival. Undefined while a deferred solve hides what runs: there
-   * is nothing to compare against until the first solve, and that solve is
-   * then the starting point rather than something the reader made run.
+   * The moving joints of every machine that ran after the last saved edit,
+   * undo, redo or arrival. Undefined while a deferred solve hides what runs:
+   * there is nothing to compare against until the first solve, and that solve
+   * is then the starting point rather than something the reader made run.
    */
   private runningBefore?: Set<string>;
   /** An edit was saved while the solve was put off, so whether it made a machine run is still unknown. */
@@ -694,7 +695,7 @@ export class MechanismService {
     return new Set(
       this.partitions
         .filter((_, index) => this.mechanisms[index]?.isMechanismValid())
-        .map(partitionKey)
+        .flatMap(movingJointIds)
     );
   }
 
@@ -704,9 +705,10 @@ export class MechanismService {
    *
    * Asked after every saved edit, which is every committed gesture -- a drag
    * that saves directly as much as an edit that rebuilds with `save` -- and
-   * never mid-drag. A machine is new by its key, so building a second machine
-   * beside a template that already runs still counts, and a running machine
-   * that is merely edited does not.
+   * never mid-drag. A machine is new when none of its moving joints was in a
+   * machine that ran, so building a second machine beside a template that
+   * already runs still counts, and a running machine that is merely edited --
+   * even given a tracer with a letter earlier than any it had -- does not.
    *
    * Named by family -- one PMKS recognized, or its body count -- which is a
    * word from the app's own catalog, never anything the reader typed.
@@ -724,7 +726,8 @@ export class MechanismService {
     if (!before || this.reportedFirstRun) return;
     const index = this.partitions.findIndex(
       (partition, at) =>
-        this.mechanisms[at]?.isMechanismValid() && !before.has(partitionKey(partition))
+        this.mechanisms[at]?.isMechanismValid() &&
+        !movingJointIds(partition).some((id) => before.has(id))
     );
     if (index === -1) return;
     this.reportedFirstRun = true;

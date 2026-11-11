@@ -23,11 +23,14 @@ describe('MechanismService mechanism_runs report', () => {
   let internals: FirstRunInternals;
   let track: MockInstance<AnalyticsService['track']>;
 
-  /** The drawing after a rebuild: one entry per machine, keyed by its moving joint. */
-  function machines(...running: [key: string, runs: boolean][]): void {
-    internals.partitions = running.map(([key]) => ({
-      id: key,
-      ownJoints: [new RevJoint(key, 0, 0)],
+  /**
+   * The drawing after a rebuild: one entry per machine, named by its moving
+   * joints ("BC" is a machine made of B and C).
+   */
+  function machines(...running: [joints: string, runs: boolean][]): void {
+    internals.partitions = running.map(([joints]) => ({
+      id: joints,
+      ownJoints: [...joints].map((id) => new RevJoint(id, 0, 0)),
     }));
     internals.mechanisms = running.map(([, runs]) => ({ isMechanismValid: () => runs }));
   }
@@ -107,6 +110,18 @@ describe('MechanismService mechanism_runs report', () => {
     service.arrived();
 
     solveTo(['B', true]);
+    service.save();
+
+    expect(reports()).toBe(0);
+  });
+
+  it('does not count a running machine as new when a tracer gives it an earlier letter', () => {
+    machines(['GH', true]);
+    service.arrived();
+
+    // A tracer lettered A joins G and H: the machine's lowest letter changes,
+    // and it is still the machine that arrived running.
+    machines(['AGH', true]);
     service.save();
 
     expect(reports()).toBe(0);

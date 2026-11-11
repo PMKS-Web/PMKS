@@ -112,8 +112,12 @@ export class UrlProcessorService {
    */
   readonly wantsBackdropFor: string | null;
 
-  /** Whether the last decode was handed a payload it could not open. */
-  private payloadRefused = false;
+  /**
+   * What the last decode made of the address: a mechanism it opened, a
+   * payload it could not open, or ordinary query parameters that were never a
+   * mechanism -- a mailer's or a social share's tracking.
+   */
+  private decoded: 'opened' | 'refused' | 'not-a-mechanism' = 'opened';
 
   constructor() {
     // the content part of the url (the part after the ?)
@@ -160,9 +164,16 @@ export class UrlProcessorService {
     // After the decode, not before: a payload whose checksum fails is only
     // found out by decoding it, and reported before that it counted as a link
     // that worked.
-    const badLink = invalidAddress || (fromAddress !== null && this.payloadRefused);
+    const badLink = invalidAddress || (fromAddress !== null && this.decoded === 'refused');
+    // A query that was never a mechanism brought none: that visit is a blank grid.
+    const ignored = this.decoded === 'not-a-mechanism';
     this.analytics.track('app_start', {
-      entry: arrivedBy(badLink, this.wantsLibrary, fromAddress, url),
+      entry: arrivedBy(
+        badLink,
+        this.wantsLibrary,
+        ignored ? null : fromAddress,
+        ignored ? null : url
+      ),
     });
     // The strip that a decode does in its `finally`, for the branch that skips
     // it: a reload should not be a second trip through the front door, and the
@@ -291,6 +302,7 @@ export class UrlProcessorService {
 
     // if the url exists, decode it and build the mechanism. Otherwise, skip to updating mechanism directly
     if (url !== null) {
+      this.decoded = 'opened';
       try {
         console.log('decoded url: ' + url);
         decoder.decodeURL(url);
@@ -356,6 +368,7 @@ export class UrlProcessorService {
         // level, so every '&'-separated piece carrying one is somebody else's
         // tracking, not our payload.
         if (looksLikeQueryParameters(url)) {
+          this.decoded = 'not-a-mechanism';
           window.history.replaceState({}, document.title, window.location.pathname);
           return;
         }
@@ -364,7 +377,7 @@ export class UrlProcessorService {
         // be dismissed: the reader followed a link that did not work, and the
         // grid they are looking at instead is not an obvious clue that it
         // didn't.
-        this.payloadRefused = true;
+        this.decoded = 'refused';
         this.reportInvalidURL(error);
       } finally {
         // Invalid data must not remain in the address bar or be retried on refresh.

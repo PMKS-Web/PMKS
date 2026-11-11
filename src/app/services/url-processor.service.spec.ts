@@ -36,7 +36,7 @@ describe('malformed address recovery', () => {
     }
   );
 
-  it('counts a link whose payload fails to decode as a bad link, and a good one as a link', () => {
+  it('counts a link by what its decode found: a link, a bad link, or nothing at all', () => {
     const entryFor = (address: string) => {
       TestBed.resetTestingModule();
       window.history.replaceState({}, '', '/?' + address);
@@ -57,6 +57,8 @@ describe('malformed address recovery', () => {
 
     expect(entryFor(good)).toBe('link');
     expect(entryFor(broken)).toBe('bad_link');
+    // A share's tracking parameters bring no mechanism: an empty grid.
+    expect(entryFor('utm_source=twitter')).toBe('blank');
   });
 
   it('still opens a valid mechanism with a percent-encoded backdrop name', () => {
