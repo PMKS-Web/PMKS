@@ -209,6 +209,25 @@ describe('a link drawn as a disc', () => {
     expect(at(h.crank.CoM)).toEqual([0, 0]);
   });
 
+  it('leaves a point placed by hand where it was when the shape switches, both ways', () => {
+    const h = disc();
+    h.crank.isCircle = false;
+    h.service.updateMechanism(false);
+    h.crank.placeCustomCoM(new Coord(1 * S, 0.5 * S));
+    h.service.updateMechanism(false);
+    h.active.updateSelectedObj(h.crank);
+
+    // The bar's centroid is its middle and the disc's is its pin, so an offset
+    // read against one and applied against the other moved the point by one.
+    h.service.toggleLinkCircular();
+    expect(h.crank.isCircle).toBe(true);
+    expect(at(h.crank.CoM), 'as a disc').toEqual([1, 0.5]);
+
+    h.service.toggleLinkCircular();
+    expect(h.crank.isCircle).toBe(false);
+    expect(at(h.crank.CoM), 'as a bar again').toEqual([1, 0.5]);
+  });
+
   it('holds a point placed by hand against the pin, the frame the panel shows', () => {
     const h = disc();
     h.crank.placeCustomCoM(new Coord(1 * S, 0));
