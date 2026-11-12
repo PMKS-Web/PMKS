@@ -1302,7 +1302,9 @@ export class ContextMenuBuilderService {
                   }
                 : undefined,
               icon: 'switch_force_dir',
-              // A property of the force, not of the linkage's shape.
+              // A property of the force, not of the linkage's shape, and the
+              // same at every pose -- so it is offered wherever a pause is.
+              posePolicy: 'load',
               action: () => {
                 if (!force.locked) this.mechanism.changeForceDirection();
               },

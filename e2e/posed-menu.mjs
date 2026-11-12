@@ -313,11 +313,20 @@ await section('force', async () => {
     });
     await openAt(point);
   };
-  // A force's direction and frame are typed geometry: Edit's alone.
+  // A force's frame is typed geometry, Edit's alone. Flip Force is the load,
+  // the same at every pose, so an analysis mode offers it (#262).
   await openForce();
-  await refused('Flip Force', 'Edit mode only');
   await refused('Global Frame', 'Edit mode only');
   await page.keyboard.press('Escape');
+  await openForce();
+  const outward = () =>
+    page.evaluate(
+      () =>
+        ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv.forces[0].arrowOutward
+    );
+  const wasOutward = await outward();
+  if (!(await clickEnabled('Flip Force', 'in an analysis mode'))) return;
+  check('Flip Force reverses the force in an analysis mode', (await outward()) === !wasOutward);
   await openForce();
   if (!(await clickEnabled('Delete Force', 'at the start'))) return;
   const deleted = await snapshot();

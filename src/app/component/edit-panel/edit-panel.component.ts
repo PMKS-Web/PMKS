@@ -282,9 +282,14 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
     return this.permission.menuRefusal('annotation') !== null;
   }
 
-  /** A force's direction, size and frame are typed geometry. */
+  /** A force's direction and frame are typed geometry. */
   forceGeometryRefused(): boolean {
     return !this.permission.may('properties');
+  }
+
+  /** A force's size and Flip Force are the load, the same at every pose. */
+  forceLoadRefused(): boolean {
+    return !this.permission.may('load');
   }
 
   /**
@@ -344,7 +349,9 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
       this.frozenByPose.add(control);
     });
     freeze(this.linkForm, ['length', 'angle', 'comX', 'comY']);
-    freeze(this.forceForm, ['magnitude', 'angle', 'xComp', 'yComp', 'isGlobal']);
+    // Not the magnitude: it is the load, not a place, and `editForcesAtPose`
+    // carries it back to the start the way Flip Force is carried.
+    freeze(this.forceForm, ['angle', 'xComp', 'yComp', 'isGlobal']);
   }
 
   /** The controls this freeze disabled, so unfreezing gives back only those. */
@@ -380,6 +387,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
       });
     freeze(this.jointForm, ['sliderMass']);
     freeze(this.linkForm, ['mass', 'massMoI']);
+    freeze(this.forceForm, ['magnitude']);
   }
 
   private frozenByPlay = new Set<AbstractControl>();
@@ -539,7 +547,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
 
   flipForce(): void {
     const force = this.activeSrv.selectedForce;
-    if (this.forceGeometryRefused() || force.locked) return;
+    if (this.forceLoadRefused() || force.locked) return;
     this.mechanismService.changeForceDirection();
     this.activeSrv.fakeUpdateSelectedObj();
   }
@@ -1760,9 +1768,12 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
             { emitEvent: false }
           );
         } else {
-          this.activeSrv.selectedForce.setMagnitude(value);
-          this.mechanismService.updateMechanism(true);
-          this.mechanismService.onMechUpdateState.next(2);
+          const force = this.activeSrv.selectedForce;
+          if (!this.mechanismService.editForcesAtPose([force], () => force.setMagnitude(value))) {
+            force.setMagnitude(value);
+            this.mechanismService.updateMechanism(true);
+            this.mechanismService.onMechUpdateState.next(2);
+          }
           this.forceForm.patchValue(
             {
               magnitude: this.forceText(this.activeSrv.selectedForce.mag),

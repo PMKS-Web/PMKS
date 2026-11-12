@@ -61,6 +61,7 @@ import {
 } from '../../model/utils';
 import { Force } from '../../model/force';
 import { NotificationService } from '../../services/notification.service';
+import { DeleteWaysOut, sayWhyNotDeleted } from './delete-refusal';
 import { BackgroundImageService, MIN_WIDTH } from '../../services/background-image.service';
 import { CdkContextMenuTrigger } from '@angular/cdk/menu';
 import { MatDialog } from '@angular/material/dialog';
@@ -2831,8 +2832,14 @@ export class NewGridComponent implements OnDestroy {
     };
   }
 
+  /** Where a refused Delete key points the reader. */
+  private readonly deleteWaysOut: DeleteWaysOut = {
+    toEdit: () => this.tabService.setTab(TabID.EDIT),
+    toStart: () => this.goToStart(),
+  };
+
   /** Press the picture of the start pose to go there. */
-  goToStart(ghost: StartPoseGhost): void {
+  goToStart(_ghost?: StartPoseGhost): void {
     this.mechanismSrv.pauseInPlace();
     this.settings.animating.next(false);
     this.mechanismSrv.easeToStart();
@@ -6182,12 +6189,7 @@ export class NewGridComponent implements OnDestroy {
           this.activeObjService.objType,
           this.activeObjService.selectedJoint
         );
-        if (refused?.actionKind === 'toEdit') {
-          this.notify.refusal('delete.analysis', 'Deleting this is an Edit change.', {
-            actions: [{ label: 'Switch to Edit', run: () => this.tabService.setTab(TabID.EDIT) }],
-          });
-        }
-        if (refused) return;
+        if (refused) return sayWhyNotDeleted(this.notify, refused, this.deleteWaysOut);
         this.deleteSelection();
         return;
       }

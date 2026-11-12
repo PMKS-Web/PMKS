@@ -718,7 +718,7 @@ describe('the right-click menu', () => {
     expect(harness.mechanism.joints).not.toContain(parts.t);
   });
 
-  it('offers an analysis mode only drags, tracer points, forces and traces', () => {
+  it('offers an analysis mode only drags, tracer points, forces, loads and traces', () => {
     const parts = fourBar(harness.mechanism);
     harness.tabs.setTab(TabID.ANALYZE);
     const force = new Force('F1', parts.crank, new Coord(0, S), new Coord(S, S));
@@ -740,7 +740,8 @@ describe('the right-click menu', () => {
     expect(rows(body).find((r) => r.label.startsWith('Duplicate Link'))!.disabled).toBe(true);
     const load = harness.builder.build(force, noHandlers);
     expect(row(load, 'Delete Force')!.disabled).toBe(false);
-    expect(row(load, 'Flip Force')!.disabled).toBe(true);
+    // The load is what Force Analysis asks about; the frame is a direction.
+    expect(row(load, 'Flip Force')!.disabled).toBe(false);
     expect(row(load, 'Global Frame')!.disabled).toBe(true);
   });
 

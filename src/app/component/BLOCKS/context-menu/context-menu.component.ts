@@ -190,7 +190,28 @@ export class ContextMenuComponent {
    */
   hoverTextFor(choice: MenuChoice, option: MenuChoiceOption, index: number): string {
     if (option.refusal) return option.refusal.long ?? option.refusal.short;
-    return index === choice.chosen ? (choice.fault?.long ?? '') : '';
+    if (index !== choice.chosen) return '';
+    return choice.fault?.long ?? (this.settled(choice) ? this.sharedReason(choice) : '');
+  }
+
+  /**
+   * Whether every other value is refused, so the chosen one is a reading rather
+   * than a control. Left live, it took the hover and the focus ring while the
+   * three beside it were grayed, and looked like the one thing left to press.
+   */
+  protected settled(choice: MenuChoice): boolean {
+    const others = choice.options.filter((_, index) => index !== choice.chosen);
+    return others.length > 0 && others.every((option) => !!option.refusal);
+  }
+
+  /** The reason the others are refused, when they are all refused for one. */
+  private sharedReason(choice: MenuChoice): string {
+    const reasons = new Set(
+      choice.options
+        .filter((option) => option.refusal)
+        .map((option) => option.refusal!.long ?? option.refusal!.short)
+    );
+    return reasons.size === 1 ? [...reasons][0] : '';
   }
 
   /**

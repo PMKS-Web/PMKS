@@ -56,8 +56,9 @@
           class="cm-choice__cell"
           cdkMenuItemRadio
           [cdkMenuItemChecked]="$index === choice.chosen"
-          [cdkMenuItemDisabled]="!!option.refusal"
+          [cdkMenuItemDisabled]="!!option.refusal || ($index === choice.chosen && settled(choice))"
           [class.cm-choice__cell--chosen]="$index === choice.chosen"
+          [class.cm-choice__cell--settled]="$index === choice.chosen && settled(choice)"
           [class.cm-choice__cell--off]="!!option.refusal"
           [class.cm-choice__cell--fault]="$index === choice.chosen && !!choice.fault"
           [matTooltip]="hoverTextFor(choice, option, $index)"

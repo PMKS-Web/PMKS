@@ -46,8 +46,13 @@ export type EditAction =
   | 'structure'
   /** Typed geometry: joint X/Y, link length and angle, an arrow-key nudge. */
   | 'placement'
-  /** Typed geometry: a typed center of mass, a force's size, direction and place. */
+  /** Typed geometry: a typed center of mass, a force's direction and place. */
   | 'properties'
+  /**
+   * Load: a force's magnitude and Flip Force. Neither places nor turns
+   * anything, so neither is read off the pose on screen.
+   */
+  | 'load'
   /** Typed geometry: input speed and direction, which move the visible pose. */
   | 'drive'
   /** Units, gravity and the other document-wide settings. */
@@ -68,6 +73,7 @@ export const EDIT_ACTIONS: readonly EditAction[] = [
   'structure',
   'placement',
   'properties',
+  'load',
   'drive',
   'settings',
   'transport',
@@ -318,6 +324,9 @@ export function refusalFor(action: EditAction, state: EditState): EditRefusal | 
   // Playing is read-only whatever the action. A reader reaching for a joint
   // that is moving is a fight nothing here can win.
   if (state.playing) return PLAYING;
+  // How hard a force pushes is a question an analysis exists to ask, and the
+  // answer is the same at every pose: `editForcesAtPose` carries it home.
+  if (action === 'load') return state.solveDeferred && !state.atStart ? DEFERRED_DISPLACED : null;
   if (state.mode === 'analysis') {
     if (action === 'create') return CREATE_IN_EDIT;
     if (EDIT_ONLY_ACTIONS.has(action)) return EDIT_MODE_ONLY;
@@ -394,11 +403,12 @@ export function displacementRefusal(state: EditState): EditRefusal | null {
  * `design` covers both Structure and Typed geometry: the two rows of the table
  * have the same answer in every column, and a menu row never types a number.
  */
-export type MenuPosePolicy = 'view' | 'annotation' | 'safe' | 'design' | 'create';
+export type MenuPosePolicy = 'view' | 'annotation' | 'safe' | 'load' | 'design' | 'create';
 
 const MENU_ACTION: Record<Exclude<MenuPosePolicy, 'view'>, EditAction> = {
   annotation: 'annotate',
   safe: 'safeProperty',
+  load: 'load',
   design: 'structure',
   create: 'create',
 };

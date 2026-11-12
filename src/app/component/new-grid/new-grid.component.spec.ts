@@ -1058,6 +1058,30 @@ describe('NewGridComponent keyboard shortcuts', () => {
     expect(builder.getAllPoses().length).toBe(0);
   });
 
+  // Playing or parked mid-cycle, the key used to do nothing and say nothing,
+  // while the same refusal in an analysis mode was announced.
+  it('says why Delete is refused while playing, with the way back to the start', () => {
+    const component = setUp();
+    const refusal = vi.spyOn(TestBed.inject(NotificationService), 'refusal');
+    const deleting = vi.spyOn(component as never, 'deleteSelection' as never);
+    vi.spyOn(TestBed.inject(EditPermissionService), 'deleteSelectionRefusal').mockReturnValue({
+      short: 'animation running',
+      long: 'Pause the animation to change the mechanism.',
+      lead: 'Pause the animation to change the mechanism.',
+      glyph: 'play_circle',
+      backToStartHelps: true,
+    });
+
+    component['onShortcut']('edit.delete');
+
+    expect(deleting).not.toHaveBeenCalled();
+    expect(refusal).toHaveBeenCalledWith(
+      'delete.pose',
+      'Pause the animation to change the mechanism.',
+      { actions: [expect.objectContaining({ label: 'Return to start' })] }
+    );
+  });
+
   // `getSelectedObj` throws for everything it has no case for, so asking it
   // before checking the type turned "there is nothing to lock" into an uncaught
   // error on a fresh grid.

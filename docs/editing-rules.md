@@ -37,7 +37,8 @@ Every control belongs to exactly one kind. Find the kind, then read off the answ
 | **Annotation** | Add or delete a tracer point; add or delete a force | Yes | No | Yes | No |
 | **Gesture** | Drag a joint, a link, a force or a center of mass | Yes | Yes, put back on the start anchor | Yes | Yes, put back on the start anchor |
 | **Safe property** | Mass, moment of inertia, name, color, Lock, Fixed Length, Fixed Angle, Drawn as a Disc | Yes | Yes | No | No |
-| **Typed geometry** | Joint X/Y, length, angle, typed center of mass, Slider Angle, *Starts at*, Distance to Joints, an arrow-key nudge, a force's typed magnitude, angle and frame, Flip Force, input speed and direction | Yes | No | No | No |
+| **Load** | A force's magnitude, Flip Force | Yes | Yes | Yes | Yes |
+| **Typed geometry** | Joint X/Y, length, angle, typed center of mass, Slider Angle, *Starts at*, Distance to Joints, an arrow-key nudge, a force's typed angle and frame, input speed and direction | Yes | No | No | No |
 | **Structure** | Add a link or cylinder, delete, duplicate, Joint Type, Split Joint, Grounded, Add Input, Delete Entire Mechanism | Yes | No | No | No |
 
 While anything plays, every row is **No**, except the transport and selecting.
@@ -49,8 +50,19 @@ Synthesis mode edits only its own positions; none of the rows above apply there.
 1. **Decide its kind** by asking what could go wrong with it:
    - Does it change *which* parts exist or how they connect? That makes it **Structure**.
    - Is it a number or choice the reader types that places something (a coordinate, a length, an
-     angle, a direction)? That makes it **Typed geometry**. Typed geometry is read at the pose on
-     screen, so typing it mid-cycle would write the wrong thing into the design.
+     angle, a direction)? That makes it **Typed geometry**. **A position is only ever typed at the
+     start pose.** The design *is* the start pose, so that is the only pose whose numbers mean
+     anything to type. Away from it, the panel shows the values at the pose on screen, and nobody
+     should be typing those: they change the moment the mechanism moves on, and writing one would
+     have to guess whether the reader meant this pose or the design. A drag is different, and
+     allowed, because it says "put it here, at this pose" and the app can carry that back to the
+     start.
+   - Does it change how hard a force pushes, or reverse it, without moving or turning anything?
+     That makes it **Load**. A force's magnitude and Flip Force read the same at every pose, so
+     they are offered whenever the mechanism is paused, in Edit and in the analysis modes:
+     changing the load and watching the force graphs answer is what Force Analysis is for.
+     `MechanismService.editForcesAtPose` carries the change back to the start. A force's typed
+     angle and frame are not Load: an angle is a direction, so it is typed geometry.
    - Does it add or remove a tracer point or a force? That makes it an **Annotation**.
    - Is it a drag of a joint, a link, a force or a center of mass? That makes it a **Gesture**. A gesture means
      "put it here, at this pose", and the app can honor that at any paused pose by putting the
