@@ -92,23 +92,58 @@ describe('a tracer point on a bar', () => {
 });
 
 describe('a welded body', () => {
-  it('weighs its members while one of its joints is dragged', () => {
+  // #279: one mass, shared by length. AB is four long and BC one, so of the
+  // 4 kg the bars brought, AB carries 4/5 and BC 1/5 -- whatever each weighed
+  // before the weld.
+  it('shares its one mass among its members by length', () => {
     const h = vee();
     h.active.updateSelectedObj(h.b);
     h.service.weldJoint();
     const body = compound(h.service.links);
-    // 3 kg at (2, 0) and 1 kg at (4, 0.5).
-    expect(at(body.CoM)[0]).toBeCloseTo(2.5, 9);
-    expect(at(body.CoM)[1]).toBeCloseTo(0.125, 9);
+    expect(body.mass).toBeCloseTo(4, 9);
+    // 3.2 kg at (2, 0) and 0.8 kg at (4, 0.5).
+    expect(at(body.CoM)[0]).toBeCloseTo(2.4, 9);
+    expect(at(body.CoM)[1]).toBeCloseTo(0.1, 9);
+    expect(h.ab.mass).toBeCloseTo(3.2, 9);
+    expect(h.bc.mass).toBeCloseTo(0.8, 9);
+  });
+
+  // Alex's L on #279: a 10 g bar welded to a 0 g one put the center of mass on
+  // the heavy bar, and dragging the light one's far end did not move it.
+  it('moves the center of mass when a member is lengthened, whatever it weighed before', () => {
+    const h = vee();
+    h.service.assignBodyMass(h.bc, 0);
+    h.service.updateMechanism(false);
+    h.active.updateSelectedObj(h.b);
+    h.service.weldJoint();
+    const body = compound(h.service.links);
+    const before = at(body.CoM);
 
     h.grid.dragJoint(h.c, new Coord(4 * S, 2 * S), false);
 
-    // BC's middle is now (4, 1): the weighted point, not the joints' mean.
-    expect(at(body.CoM)[0]).toBeCloseTo(2.5, 9);
-    expect(at(body.CoM)[1]).toBeCloseTo(0.25, 9);
+    // BC is two long now: 2/3 of the mass at (2, 0), 1/3 at (4, 1).
+    expect(at(body.CoM)[0]).toBeCloseTo(8 / 3, 9);
+    expect(at(body.CoM)[1]).toBeCloseTo(1 / 3, 9);
+    expect(at(body.CoM)).not.toEqual(before);
   });
 
-  it('weighs a member placed by hand where it was put, during the drag and after', () => {
+  it('sets its mass on the compound and refuses it on a member', () => {
+    const h = vee();
+    h.active.updateSelectedObj(h.b);
+    h.service.weldJoint();
+    const body = compound(h.service.links);
+
+    expect(h.service.assignBodyMass(h.bc, 9)).toBe(false);
+    expect(body.mass).toBeCloseTo(4, 9);
+
+    expect(h.service.assignBodyMass(body, 10)).toBe(true);
+    expect(h.ab.mass).toBeCloseTo(8, 9);
+    expect(h.bc.mass).toBeCloseTo(2, 9);
+  });
+
+  // A member's own placed point is not an input any more: the compound has
+  // one density, and an override belongs to the compound.
+  it('places its center by its shape even where a member had one placed by hand', () => {
     const h = vee();
     h.bc.placeCustomCoM(new Coord(4.5 * S, 0.5 * S));
     h.service.updateMechanism(false);
@@ -116,15 +151,8 @@ describe('a welded body', () => {
     h.service.weldJoint();
     const body = compound(h.service.links);
 
-    h.grid.dragJoint(h.c, new Coord(4 * S, 2 * S), false);
-    const during = at(body.CoM);
-    h.service.updateMechanism(false);
-
-    // A member's placed point stays put on a joint drag, so 3 kg at (2, 0)
-    // and 1 kg at (4.5, 0.5) on both sides of the release.
-    expect(during[0]).toBeCloseTo(2.625, 9);
-    expect(during[1], 'mid-drag').toBeCloseTo(0.125, 9);
-    expect(at(body.CoM)[1], 'after release').toBeCloseTo(0.125, 9);
+    expect(at(body.CoM)[0]).toBeCloseTo(2.4, 9);
+    expect(at(body.CoM)[1]).toBeCloseTo(0.1, 9);
   });
 
   it('gives each bar back its own center of mass when the weld comes off', () => {
