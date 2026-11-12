@@ -48,23 +48,29 @@ export const DEFAULT_OBJECT_SCALE = 0.7 * MODEL_SCALE;
  * way out — so the copy built for a URL scales up first, and the published
  * payload carries exactly the numbers it always has.
  */
-function scaleBuiltToModelUnits(built: BuiltDrawing): void {
+function scaleBuiltToModelUnits(built: BuiltDrawing, size = 1): void {
+  const by = MODEL_SCALE * size;
   built.joints.forEach((joint) => {
-    joint.x *= MODEL_SCALE;
-    joint.y *= MODEL_SCALE;
+    joint.x *= by;
+    joint.y *= by;
+    // A slider's own drive is a length a second, so it grows with the drawing
+    // and the cycle takes as long as it did. A pin's rpm is scale-free.
+    if (joint instanceof PrisJoint && joint.driveSpeed !== 0) joint.driveSpeed *= size;
   });
   const scaleLink = (link: Link): void => {
     if (!(link instanceof RealLink)) return;
-    link.CoM.x *= MODEL_SCALE;
-    link.CoM.y *= MODEL_SCALE;
+    link.CoM.x *= by;
+    link.CoM.y *= by;
+    // In length squared: the same body drawn `size` times larger.
+    link.massMoI *= size * size;
     link.subset.forEach(scaleLink);
   };
   built.links.forEach(scaleLink);
   built.forces.forEach((force) => {
-    force.startCoord.x *= MODEL_SCALE;
-    force.startCoord.y *= MODEL_SCALE;
-    force.endCoord.x *= MODEL_SCALE;
-    force.endCoord.y *= MODEL_SCALE;
+    force.startCoord.x *= by;
+    force.startCoord.y *= by;
+    force.endCoord.x *= by;
+    force.endCoord.y *= by;
   });
 }
 
@@ -277,6 +283,13 @@ function nameMachines(built: BuiltDrawing, names: Readonly<Record<string, string
  * inches opens with the same numbers, each now an inch; its masses and loads
  * are read in pounds and pounds-force with it.
  *
+ * `size` publishes the drawing that many times larger in `lengthUnit`'s numbers
+ * (#308): a library template is drawn at the size of the machine it models,
+ * while the fixture a spec asserts on keeps the numbers MATLAB checked. Every
+ * length grows with it -- joints, centers of mass, forces, slider speeds, the
+ * drawn size of pins -- and nothing else does. Masses and loads keep their
+ * numbers, read in the unit system `lengthUnit` implies.
+ *
  * `machineNames` names machines, each keyed by one of its own joints: a name
  * belongs to a machine, and a machine is worked out from the drawing rather
  * than stored, so the joint is how the name finds it (see `mechanism-name.ts`).
@@ -288,17 +301,21 @@ export function fixturePayload(
   masses: PublishedMasses = 'as-built',
   fills?: Map<string, string>,
   lengthUnit: LengthUnit = LengthUnit.CM,
-  machineNames: Readonly<Record<string, string>> = {}
+  machineNames: Readonly<Record<string, string>> = {},
+  size = 1
 ): string {
   const previousColors = ColorService.instance;
   const previousScale = SettingsService.objectScale;
   new ColorService();
-  SettingsService._objectScale.next(objectScale);
+  // Pins, bar widths and cylinders are drawn in model units, so a drawing
+  // published `size` times larger draws them `size` times larger too, and
+  // looks the same on opening.
+  SettingsService._objectScale.next(objectScale * size);
   try {
     // Built and never solved: the payload is the drawing as authored, which is
     // also what the numerical oracle is exported from.
     const built = buildDrawing(fixture);
-    scaleBuiltToModelUnits(built);
+    scaleBuiltToModelUnits(built, size);
     if (masses === 'zeroed') stripMass(built);
     else if (masses !== 'as-built') scaleLoading(built, masses);
     if (fills) recolor(built.links, fills);
@@ -313,7 +330,7 @@ export function fixturePayload(
     // fixture names none. The app's own default fell to one unit a second
     // for new drawings; a published mechanism keeps the payload it was
     // tuned at, byte for byte, until someone retunes it on purpose.
-    settings.linearInputSpeed.next(speed.unitsPerSecond ?? PUBLISHED_LINEAR_SPEED);
+    settings.linearInputSpeed.next((speed.unitsPerSecond ?? PUBLISHED_LINEAR_SPEED) * size);
     return urlGeneratorFor(
       {
         joints: built.joints,

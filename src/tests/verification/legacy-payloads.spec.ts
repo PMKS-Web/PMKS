@@ -8,6 +8,7 @@ import { TEMPLATE_LINKAGES } from '../../app/component/MODALS/templates/template
 import { buildMechanismFixture } from '../fixtures/mechanism-fixtures';
 import { MODEL_SCALE } from '../../app/model/render-scale';
 import { MechanismService } from '../../app/services/mechanism.service';
+import { LIBRARY_TEMPLATE_SIZES } from '../../test-utils/verification/template-fixtures';
 
 /**
  * The seventeen payloads a shipped release emitted, against the seventeen the
@@ -30,10 +31,15 @@ interface Shape {
   links: string[];
 }
 
-function shapeOf(service: MechanismService): Shape {
+/**
+ * `size` is how many times larger the template is published today than it was
+ * drawn when the old payload was written (#308), divided back out so the two
+ * compare as the same drawing.
+ */
+function shapeOf(service: MechanismService, size = 1): Shape {
   // Old URLs store thousandths of a user unit; compare their quantized
   // drawing against the precise modern one at that original storage grain.
-  const position = (value: number) => Math.round((value / MODEL_SCALE) * 1000);
+  const position = (value: number) => Math.round((value / MODEL_SCALE / size) * 1000);
   const mass = (value: number) => Math.round(value * 1000);
   return {
     joints: service.joints
@@ -95,7 +101,10 @@ describe('the payloads a release before Stage 1 actually shipped', () => {
       expect(current, `${name} is still a template`).toBeDefined();
 
       const was = shapeOf(buildMechanismFixture(legacy).service);
-      const now = shapeOf(buildMechanismFixture(current).service);
+      const resized = REDRAWN_TEMPLATES[name]
+        ? undefined
+        : LIBRARY_TEMPLATE_SIZES[name as keyof typeof LIBRARY_TEMPLATE_SIZES];
+      const now = shapeOf(buildMechanismFixture(current).service, resized?.factor);
 
       // The old spelling has one extra joint per slider -- the coincident pin
       // the fold keeps the letter of -- so a payload that decoded without

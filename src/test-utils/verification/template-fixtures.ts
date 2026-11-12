@@ -1,4 +1,5 @@
 import type { LibraryTemplateID } from '../../app/component/MODALS/templates/template-linkages';
+import { LengthUnit } from '../../app/model/unit-enums';
 import {
   FIXTURE_GALLERY,
   GalleryEntry,
@@ -57,6 +58,58 @@ export const LIBRARY_TEMPLATE_SOURCES: Record<LibraryTemplateID, string> = {
   Locking_Pliers: 'Locking pliers',
   Double_Wishbone: 'Double-wishbone suspension',
   Steam_Locomotive: 'Steam locomotive',
+};
+
+/**
+ * How large a library template is drawn: the unit it opens in, and how many
+ * times its fixture's numbers it publishes (#308).
+ *
+ * The fixtures are drawn at whatever size made them easy to check against
+ * MATLAB -- a few centimeters, mostly -- so a pumpjack opened at 6 cm and a
+ * windshield wiper at 10, and a student reading a length off the panel read a
+ * toy's. A template that names a real machine is published at that machine's
+ * size, in the unit someone building it would use; the fixture keeps its
+ * numbers, because the specs assert on them. The factor multiplies every
+ * length and nothing else (see `fixturePayload`), so the motion, the cycle
+ * time and the picture on the card are unchanged.
+ *
+ * Not listed: the textbook linkages, which model no particular machine; the
+ * dev and multi-machine studies; and the templates already drawn at real size
+ * (Toggle_Clamp and Locking_Pliers in inches, Double_Wishbone, Steam_Locomotive,
+ * Oscillating_Fan, Reciprocating_Saw).
+ */
+export const LIBRARY_TEMPLATE_SIZES: Partial<
+  Record<LibraryTemplateID, { unit: LengthUnit; factor: number }>
+> = {
+  // Machine-shop drives, about half a meter across.
+  Whitworth_Quick_Return: { unit: LengthUnit.CM, factor: 10 },
+  Shaper_Quick_Return: { unit: LengthUnit.CM, factor: 10 },
+  // Seventy centimeters, near a light aircraft's. Not ten, for a reason
+  // that is not about engines: a piston driven in place of the crank steps a
+  // fixed tenth of a unit a sample, and at four to ten times this drawing
+  // that walk misses the dead center and the drive will not run (see
+  // drive-profile.spec.ts, which drives one).
+  Radial_Engine: { unit: LengthUnit.CM, factor: 12 },
+  Flywheel_Engine: { unit: LengthUnit.CM, factor: 10 },
+  Punch_Press: { unit: LengthUnit.CM, factor: 10 },
+  Elliptical_Trammel: { unit: LengthUnit.CM, factor: 20 },
+  Pantograph: { unit: LengthUnit.CM, factor: 6 },
+  // A car's hatch, about a meter, in centimeters rather than meters. The
+  // solver rounds every step to a fixed grain of model length, and this
+  // linkage passes near a toggle, where that grain is amplified; drawn as
+  // 1.1 m its rates miss the numerical oracle's budget by about twice, drawn
+  // as 110 cm they are well inside it.
+  Offset_Mount_Hatch: { unit: LengthUnit.CM, factor: 10 },
+  // Field and vehicle machines, read in meters.
+  Cylinder_Boom: { unit: LengthUnit.METER, factor: 1 },
+  Pumpjack: { unit: LengthUnit.METER, factor: 1 },
+  Pumping_Field: { unit: LengthUnit.METER, factor: 1 },
+  Crane_Two_Loads: { unit: LengthUnit.METER, factor: 1 },
+  Windshield_Wiper: { unit: LengthUnit.METER, factor: 0.1 },
+
+  Scissor_Lift: { unit: LengthUnit.METER, factor: 0.15 },
+  Jansen_Leg: { unit: LengthUnit.METER, factor: 0.01 },
+  Walking_Pair: { unit: LengthUnit.METER, factor: 0.01 },
 };
 
 /**
@@ -134,7 +187,9 @@ const FORCE_STUDY_BODIES: Record<string, Partial<PublishedLoading>> = {
   // and newtons, and its numbers are those, converted.
   Toggle_Clamp: { mass: 1, load: 1, offsetCom: { HE: { between: ['H', 'E'], at: 0.35 } } },
   Offset_Load_Rocker: {},
-  Crane_Two_Loads: { keepMoi: ['OCT'] },
+  // Published in meters, so its masses read in kilograms rather than grams: a
+  // thousandfold on the load keeps it the same share of the weight it carries.
+  Crane_Two_Loads: { load: 10, keepMoi: ['OCT'] },
 };
 
 /**
