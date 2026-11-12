@@ -2935,3 +2935,13 @@ what decides which pull requests get a preview: Netlify builds one only for a PR
 production branch or a branch-deploy branch. So a PR into `staging` gets
 `deploy-preview-NNN--pmksprod.netlify.app`, and a stacked PR into another feature branch gets none.
 Adding a branch to the branch-deploy list turns on both its own deploy and previews of PRs into it.
+
+### A scrub handle reaches the start by snapping, not by landing on it
+
+The `.rowScrubber` range counts in thousandths, and one thousandth of a 300-pixel track is a third of
+a pixel, so a hand dragging back to the left end used to stop a sample short (79° / 0.01 s) and the
+editor stayed shut. `snapsToStart` (`model/scrub-snap.ts`) treats a value within `SCRUB_SNAP_PX`
+screen pixels of the row's `anchorAt` as the start, and `PlaybackBarComponent.scrubRow` then seeks by
+*time* to 0 rather than by position, because an input that turns back passes its seat twice a cycle
+and only one of those is the start. It writes the handle's DOM value itself: the `[value]` binding
+does not move a handle whose row value has not changed.

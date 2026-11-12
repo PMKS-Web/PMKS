@@ -43,6 +43,7 @@ import { SaveHistoryService } from '../../services/save-history.service';
 import { PrisJoint, RealJoint } from '../../model/joint';
 import { inputSetFor, NO_INPUT_SET } from '../../model/mechanism/readiness';
 import { StartMoveRefusal } from '../../model/start-move-refusal';
+import { snapsToStart } from '../../model/scrub-snap';
 import { CdkConnectedOverlay, CdkOverlayOrigin, ConnectedPosition } from '@angular/cdk/overlay';
 
 /** What the stylesheet is asked for, and what to assume if it has not loaded. */
@@ -1081,7 +1082,12 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
     // Any transport action is the reader moving on from the news that the
     // start moved, so the row stops carrying it.
     this.mechanism.clearStartMoved();
-    const along = Number((event.target as HTMLInputElement).value) / 1000;
+    const input = event.target as HTMLInputElement;
+    if (snapsToStart(Number(input.value), row.anchorAt, input.getBoundingClientRect().width)) {
+      this.seekRowToStart(row, input);
+      return;
+    }
+    const along = Number(input.value) / 1000;
     if (row.index === -1) {
       // The combined row stands for all of them, so all of them go -- led by
       // the longest cycle, which is the one whose frames the handle spans.
@@ -1089,6 +1095,25 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
       return;
     }
     this.mechanism.seekMechanismTo(row.index, along);
+    this.publishMotion();
+  }
+
+  /**
+   * Land exactly on the start pose, because the handle came within a few
+   * pixels of its seat.
+   *
+   * By time rather than by position: the start is t = 0 by construction, and
+   * an input that turns back passes its seat twice a cycle, only once of which
+   * is the start. The handle is put in the seat too, because the binding will
+   * not move it -- the row's value may well not have changed.
+   */
+  private seekRowToStart(row: PlaybackRow, input: HTMLInputElement): void {
+    input.value = String(row.anchorAt ?? 0);
+    if (row.index === -1) {
+      this.mechanism.seekAllAlong(row.leader, 0);
+      return;
+    }
+    this.mechanism.seekMechanism(row.index, 0);
     this.publishMotion();
   }
 
