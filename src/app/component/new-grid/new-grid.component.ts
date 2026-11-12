@@ -104,6 +104,7 @@ import {
   motorBodyPath,
   motorBodyAt,
   Segment,
+  endTicks,
 } from '../../model/joint-marks';
 import {
   JointDropCandidate,
@@ -122,7 +123,9 @@ import { CylinderPreview, cylinderPreviewOf } from '../../model/cylinder-preview
 import { Cylinder, cylinderSizeOf, cylinderSpanRange, cylinderJoints } from '../../model/cylinder';
 import { accentOutlineClass, CylinderRole, hiddenByCylinder } from '../../model/cylinder-skin';
 import { memberIsFused, PaintStep } from '../../model/cylinder-paint-order';
-import { SnapGuide, snapToAxes } from '../../model/axis-snap';
+import { SnapGuide, SnapPoint, snapToAxes } from '../../model/axis-snap';
+import { linesThrough, SnapLine, snapToLines } from '../../model/line-snap';
+import { tracerSnapTargets } from '../../model/tracer-lines';
 import { drawDepths } from '../../model/draw-order';
 import { MODEL_SCALE } from '../../model/render-scale';
 import { uniformBodyOf } from '../../model/uniform-body';
@@ -1692,7 +1695,13 @@ export class NewGridComponent implements OnDestroy {
       this.lastRightClickCoord.y
     );
 
-    this.mechanismSrv.addJointAt(this.svgGrid.snapToGrid(coord, this.snapSuspendedAtRightClick));
+    // On the bar's line if nearly on it: just off it makes a plate (#307).
+    const lines = linesThrough(this.activeObjService.selectedLink?.joints ?? []);
+    const lined = this.lineSnap(coord, lines, [], this.snapSuspendedAtRightClick);
+    this.axisSnapGuides = [];
+    this.mechanismSrv.addJointAt(
+      lined ?? this.svgGrid.snapToGrid(coord, this.snapSuspendedAtRightClick)
+    );
   }
 
   /**
@@ -2160,13 +2169,14 @@ export class NewGridComponent implements OnDestroy {
             ? new Coord(this.snapTargetJoint.x, this.snapTargetJoint.y)
             : this.slotCandidate
               ? new Coord(this.slotCandidate.x, this.slotCandidate.y)
-              : this.alongItsSlot(
+              : (this.tracerLineSnap(this.activeObjService.selectedJoint, mousePosInSvg) ??
+                this.alongItsSlot(
                   this.activeObjService.selectedJoint,
                   // Last, and only here: a capture is a target the reader
                   // picked, and a joint on a slot has a line to stay on. The
                   // grid gets the position nothing else has a claim on.
                   this.svgGrid.snapToGrid(mousePosInSvg, $event.altKey)
-                )
+                ))
         );
         this.afterHoldMove(this.activeObjService.selectedJoint);
         this.dragState.noteMechanismModified();
@@ -3083,8 +3093,25 @@ export class NewGridComponent implements OnDestroy {
   private snapSuspendedAtRightClick = false;
 
   /** Is the app allowed to square this drag up with anything? */
-  private alignmentAllowed(): boolean {
-    return this.settings.isSnapToAlignment.value && !this.snapSuspended;
+  private alignmentAllowed(suspended = this.snapSuspended): boolean {
+    return this.settings.isSnapToAlignment.value && !suspended;
+  }
+
+  /** A dragged tracer on its bar's line when nearly there, tried before the grid (#307). */
+  private tracerLineSnap(joint: Joint, wanted: Coord): Coord | undefined {
+    const pins = this.mechanismSrv.getJoints();
+    const { lines, others } = tracerSnapTargets(joint, pins, (link) =>
+      this.isCylinderMemberLink(link)
+    );
+    return this.lineSnap(wanted, lines, others, this.snapSuspended);
+  }
+
+  /** On one of `lines` if `wanted` is within the axis snap's reach of it. */
+  private lineSnap(wanted: Coord, lines: SnapLine[], others: SnapPoint[], suspended: boolean) {
+    if (!lines.length || !this.alignmentAllowed(suspended)) return undefined;
+    const snapped = snapToLines(wanted, lines, others, this.svgGrid.scaleWithZoom(8));
+    if (snapped) this.axisSnapGuides = snapped.guides;
+    return snapped && new Coord(snapped.point.x, snapped.point.y);
   }
 
   /**
@@ -5109,18 +5136,7 @@ export class NewGridComponent implements OnDestroy {
 
   /** End ticks across the travel line, so its two ends read as limits. */
   cylinderRangeCaps(range: { from: Coord; to: Coord }): Segment[] {
-    const dx = range.to.x - range.from.x;
-    const dy = range.to.y - range.from.y;
-    const length = Math.hypot(dx, dy) || 1;
-    const half = 0.12 * this.settings.drawingScale;
-    const nx = (-dy / length) * half;
-    const ny = (dx / length) * half;
-    return [range.from, range.to].map((end) => ({
-      x1: end.x - nx,
-      y1: end.y - ny,
-      x2: end.x + nx,
-      y2: end.y + ny,
-    }));
+    return endTicks(range, 0.12 * this.settings.drawingScale);
   }
 
   /** The label sits clear of the line, on the side away from the barrel. */

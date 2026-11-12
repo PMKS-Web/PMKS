@@ -2935,3 +2935,13 @@ what decides which pull requests get a preview: Netlify builds one only for a PR
 production branch or a branch-deploy branch. So a PR into `staging` gets
 `deploy-preview-NNN--pmksprod.netlify.app`, and a stacked PR into another feature branch gets none.
 Adding a branch to the branch-deploy list turns on both its own deploy and previews of PRs into it.
+
+### A tracer point snaps to its bar's line against the cursor, not its grid corner
+
+`snapToLines` (`model/line-snap.ts`) is asked before the grid in the joint-drag branch and in
+`addJoint`, because a slanted bar's line passes between grid corners: a point taken to the corner
+first is as likely as not to be pushed off the line it was on. Only a tracer asks
+(`NewGridComponent.tracerBody`: a free revolute pin on one body that has two other joints). In a
+welded compound the tracer's `links[0]` is the whole compound, so the lines come from the subset bar
+that holds it. The panel's Add Tracer Point (`addJointAtCOM`) still puts the point a hair off the
+line on purpose; only the right-click row and a drag snap.
