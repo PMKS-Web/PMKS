@@ -62,4 +62,13 @@ describe('the loads the Force Analysis overview reads', () => {
     expect(readings.peakInput?.valueSI).toBe(1);
     expect(readings.largestReaction?.valueSI).toBe(1);
   });
+
+  it('reads a machine that carries nothing as zero, not as no reading', () => {
+    const readings = forceReadings(
+      series([frame('ok', 0, { B: { AB: [0, 0] } }), frame('ok', 0, { B: { AB: [0, 0] } })]),
+      new Set(['B'])
+    );
+    expect(readings.peakInput).toEqual({ kind: 'torque', valueSI: 0 });
+    expect(readings.largestReaction).toEqual({ jointId: 'B', valueSI: 0 });
+  });
 });

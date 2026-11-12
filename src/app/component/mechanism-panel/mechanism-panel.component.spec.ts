@@ -259,6 +259,9 @@ describe('MechanismPanelComponent', () => {
     expect(reading(0.012345)).toBe('0.0123');
     expect(reading(0.64)).toBe('0.640');
     expect(reading(12.345)).toBe('12.3');
-    expect(reading(1234.5)).toBe('1235');
+    expect(reading(1234.5)).toBe('1230');
+    expect(reading(999.6)).toBe('1000');
+    // A small load is never rounded away to nothing.
+    expect(reading(1e-9)).toBe('0.00000000100');
   });
 });

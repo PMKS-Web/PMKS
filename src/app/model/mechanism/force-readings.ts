@@ -22,6 +22,8 @@ export function forceReadings(
   series: ForceAnalysisSeries,
   shownJoints: ReadonlySet<string>
 ): ForceReadings {
+  // Seeded from the first solved value, not from zero: a machine that carries
+  // nothing at all reads 0, which is an answer, rather than no row.
   const readings: ForceReadings = {};
   for (const frame of series.frames) {
     if (frame.status !== 'ok') continue;
@@ -29,7 +31,7 @@ export function forceReadings(
     if (
       effort &&
       Number.isFinite(effort.valueSI) &&
-      Math.abs(effort.valueSI) > (readings.peakInput?.valueSI ?? 0)
+      (!readings.peakInput || Math.abs(effort.valueSI) > readings.peakInput.valueSI)
     ) {
       readings.peakInput = { kind: effort.kind, valueSI: Math.abs(effort.valueSI) };
     }
@@ -37,7 +39,10 @@ export function forceReadings(
       if (!shownJoints.has(jointId)) continue;
       for (const [x, y] of byLink.values()) {
         const size = Math.hypot(x, y);
-        if (Number.isFinite(size) && size > (readings.largestReaction?.valueSI ?? 0)) {
+        if (
+          Number.isFinite(size) &&
+          (!readings.largestReaction || size > readings.largestReaction.valueSI)
+        ) {
           readings.largestReaction = { jointId, valueSI: size };
         }
       }

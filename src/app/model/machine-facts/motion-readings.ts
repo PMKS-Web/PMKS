@@ -6,7 +6,8 @@ import { inputSeries } from './roles';
 
 /** How far the input goes in one cycle. */
 export type InputRange =
-  | { kind: 'turn' }
+  /** A crank that goes all the way round, as many times as one cycle takes to close. */
+  | { kind: 'turn'; turns: number }
   /** A crank that rocks: degrees between its two ends. */
   | { kind: 'angle'; degrees: number }
   /** A slider or a cylinder: its stroke, in the drawing's length unit. */
@@ -54,13 +55,28 @@ export function motionReadings(machine: MachineContext, rateAt: RateAt): MotionR
 
 function inputRange(machine: MachineContext): InputRange | undefined {
   const input = inputSeries(machine.ctx, machine.driven);
-  if (!input?.values.length) return undefined;
-  const span = Math.max(...input.values) - Math.min(...input.values);
-  if (!input.angle) return { kind: 'length', length: span };
+  const values = input?.values ?? drivenSliderTravel(machine);
+  if (!values?.length) return undefined;
+  const span = Math.max(...values) - Math.min(...values);
+  if (!input?.angle) return { kind: 'length', length: span };
   const reciprocates = machine.ctx.samples.mechanism.reciprocates;
+  // Some machines close their cycle only after two turns of the input, and
+  // "Full turn" would say half of it.
   return !reciprocates && span >= FULL_TURN_DEGREES
-    ? { kind: 'turn' }
+    ? { kind: 'turn', turns: Math.max(1, Math.round(span / 360)) }
     : { kind: 'angle', degrees: span };
+}
+
+/**
+ * A driven slider the input reading does not cover: one whose guide is not
+ * fixed. The drive moves it along its own guide angle all the same, so its
+ * travel is measured along that angle.
+ */
+function drivenSliderTravel(machine: MachineContext): number[] | undefined {
+  const { driven } = machine;
+  if (!(driven instanceof PrisJoint)) return undefined;
+  if (machine.ctx.cylinders.some((cylinder) => cylinder.seal === driven)) return undefined;
+  return travelAlong(driven, machine);
 }
 
 /** The joint that reaches the largest reading at any sample. Ground pins never move, so never win. */
@@ -158,8 +174,13 @@ function sliderTravel(machine: MachineContext): number[] | undefined {
     (joint): joint is PrisJoint =>
       joint instanceof PrisJoint && joint.ground && joint !== machine.driven
   );
-  const path = slider && machine.ctx.samples.paths.get(slider.id);
-  if (!slider || !path) return undefined;
+  return slider ? travelAlong(slider, machine) : undefined;
+}
+
+/** Where a slider is along its own guide angle, at every sample. */
+function travelAlong(slider: PrisJoint, machine: MachineContext): number[] | undefined {
+  const path = machine.ctx.samples.paths.get(slider.id);
+  if (!path) return undefined;
   const ux = Math.cos(slider.angle_rad);
   const uy = Math.sin(slider.angle_rad);
   return path.map(([x, y]) => x * ux + y * uy);

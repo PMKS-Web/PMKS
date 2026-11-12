@@ -28,13 +28,13 @@ describe('how a machine moves, as the Kinematic Analysis overview reads it', () 
 
   it('says the input turns fully, and times a crank-rocker’s two strokes', () => {
     const { readings } = readingsOf('4-Bar');
-    expect(readings.inputRange).toEqual({ kind: 'turn' });
+    expect(readings.inputRange).toEqual({ kind: 'turn', turns: 1 });
     expect(readings.timeRatio).toBeGreaterThan(1);
   });
 
   it('times a slider-crank by its slider, with no four-bar to measure', () => {
     const { readings } = readingsOf('Slider_Crank');
-    expect(readings.inputRange).toEqual({ kind: 'turn' });
+    expect(readings.inputRange).toEqual({ kind: 'turn', turns: 1 });
     expect(readings.transmission).toBeUndefined();
     expect(readings.timeRatio).toBeGreaterThanOrEqual(1);
   });
@@ -47,7 +47,7 @@ describe('how a machine moves, as the Kinematic Analysis overview reads it', () 
   it('claims no time ratio where the output turns fully and has no stroke', () => {
     // Whitworth's slotted link goes all the way round, unevenly.
     const { readings } = readingsOf('Whitworth_Quick_Return');
-    expect(readings.inputRange).toEqual({ kind: 'turn' });
+    expect(readings.inputRange).toEqual({ kind: 'turn', turns: 1 });
     expect(readings.timeRatio).toBeUndefined();
   });
 

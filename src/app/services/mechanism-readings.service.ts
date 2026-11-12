@@ -102,7 +102,8 @@ export class MechanismReadingsService {
       facts.push({
         label: 'Largest joint reaction',
         value: `${reading(reaction.valueSI * toForce)} ${this.nup.unitLabel(force)}`,
-        at: joint,
+        // Nothing carries a load, so no joint carries the most of it.
+        at: reaction.valueSI > 0 ? joint : undefined,
       });
     }
     return facts;
@@ -189,7 +190,7 @@ export class MechanismReadingsService {
   }
 
   private rangeText(range: InputRange): string {
-    if (range.kind === 'turn') return 'Full turn';
+    if (range.kind === 'turn') return range.turns === 1 ? 'Full turn' : `${range.turns} full turns`;
     if (range.kind === 'angle') return this.angleText(range.degrees);
     return this.nup.formatValueAndUnit(range.length, this.settings.lengthUnit.value);
   }
@@ -223,6 +224,9 @@ function readingCache<T>(): ReadingCache<T> {
  */
 export function reading(value: number): string {
   if (value === 0 || !Number.isFinite(value)) return '0';
-  const decimals = Math.max(0, 2 - Math.floor(Math.log10(Math.abs(value))));
-  return value.toFixed(Math.min(decimals, 8));
+  // Rounded first, so the figures are counted on the number shown: 999.6
+  // becomes 1000, not 999.6 with a decimal to spare, and 1234.5 is 1230.
+  const rounded = Number(value.toPrecision(3));
+  const decimals = Math.max(0, 2 - Math.floor(Math.log10(Math.abs(rounded))));
+  return rounded.toFixed(Math.min(decimals, 100));
 }
