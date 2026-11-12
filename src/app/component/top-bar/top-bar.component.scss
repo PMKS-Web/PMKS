@@ -11,10 +11,10 @@
     position: absolute;
     top: nav.$card-inset;
 
-    // Below the mode strip, which on a phone takes the top of the window and
-    // the notch's inset with it.
+    // The first thing at the top of a phone's window, so it stands off the
+    // notch's inset as well as off the edge.
     @media (max-width: nav.$phone-max-width) {
-      top: calc(34px + env(safe-area-inset-top) + #{nav.$card-inset});
+      top: calc(env(safe-area-inset-top) + #{nav.$card-inset});
       // And clear of the rounded corners, which is the same question sideways.
       left: calc(#{nav.$card-inset} + env(safe-area-inset-left));
       right: calc(12px + env(safe-area-inset-right));

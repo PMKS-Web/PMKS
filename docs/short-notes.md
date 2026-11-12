@@ -13,6 +13,23 @@ whose title covers it, and leave a heading here only if someone would still sear
 
 ---
 
+### `body` is `position: fixed`, because iOS Safari pans over overflow `clip` does not stop
+
+On a phone the whole interface could be dragged sideways with a finger (issue #298), though
+`html` and `body` both carry `overflow: clip` and Chromium's touch emulation moves nothing. Safari
+on iOS pans the page over anything hanging past the window: here the closed right drawer, parked
+one width off screen. `src/styles.scss` now pins `body` to the window, so it is the containing
+block that clips every absolutely positioned card, and adds `overscroll-behavior: none`. A card that
+has to reach past the window must therefore be `position: fixed`, as `#canvas` is. `e2e/mobile.mjs`
+checks the rule is in place; only a real iPhone shows the gesture itself.
+
+### `ng serve` does not rebuild a component stylesheet that is a theme mixin
+
+The `*.component.scss` files here are `@mixin css($theme)` partials pulled into the global
+`styles.scss`, so the dev server can report a rebuild while the old rule stays in `styles.css`.
+When a style change seems to have no effect, check the served `styles.css` for it, then restart
+`npm start`.
+
 ### `.gitattributes` keeps every text file LF, because specs compare checked-in bytes
 
 `fixture-gallery.spec.ts` compares `docs/fixture-urls.md` with freshly generated text, and

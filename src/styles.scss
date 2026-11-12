@@ -36,9 +36,22 @@ body {
   // could be brought back into view.
   overflow: hidden;
   overflow: clip;
+  // No rubber band either: on a phone the window has nothing to scroll, so a
+  // finger dragged across a card should move nothing at all.
+  overscroll-behavior: none;
 }
 
+// Pinned to the window, so the document has nothing to pan. Safari on iOS does
+// not take `overflow: clip` on the root as a reason to stop a finger: anything
+// hanging past the right edge -- the closed drawer, parked a width off screen --
+// let the whole interface be dragged sideways (issue #298). A fixed body is the
+// containing block for every card positioned in it, so it clips them, and
+// fixed boxes add nothing to the page's scrollable area. The size is the inline
+// one on `<body>` in index.html, the same box the window gave it before.
 body {
+  position: fixed;
+  top: 0;
+  left: 0;
   margin: 0;
   font-family: Roboto, 'Helvetica Neue', sans-serif;
 
