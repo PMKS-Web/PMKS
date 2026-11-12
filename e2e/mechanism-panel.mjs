@@ -287,6 +287,14 @@ record(
   text.includes('Chebyshev straight-line linkage') && text.includes('Cycle time'),
   text
 );
+// Issue 266: an analysis says how the machine moves, not how it is counted.
+record(
+  'and how it moves: its peaks and its transmission angle, not its counts',
+  /Peak velocity\s*[\d.]+ cm\/s at\s*[A-Z]/.test(text) &&
+    text.includes('Transmission angle') &&
+    !text.includes('Degrees of freedom'),
+  text
+);
 
 // --- one blocked: arriving opens the list, and one pick drives both ---------
 await open(galleryQuery('Four-bar with its coupler missing'));
@@ -355,6 +363,18 @@ for (const [mode, modeId, tag] of [
 ]) {
   await open(payloads['Punch_Press']);
   await tab(mode).click();
+  if (mode === 'Force') {
+    // Issue 266: Force Analysis says what the machine carries, not how it moves.
+    await page.waitForTimeout(800);
+    const overview = await panelText();
+    record(
+      'Force: the overview gives the peak input effort and the largest joint reaction',
+      /Peak input (torque|force)/.test(overview) &&
+        /Largest joint reaction\s*[\d.]+ \S+ at\s*[A-Z]/.test(overview) &&
+        !overview.includes('Peak velocity'),
+      overview
+    );
+  }
   await page
     .locator('app-mechanism-panel .fact', { hasText: 'Input joint' })
     .locator('part-link button')

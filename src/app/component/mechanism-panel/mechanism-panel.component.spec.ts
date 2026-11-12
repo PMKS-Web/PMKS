@@ -11,13 +11,14 @@ import { RealJoint } from '../../model/joint';
 import { MechanismService } from '../../services/mechanism.service';
 import { MechanismPanelStateService } from '../../services/mechanism-panel-state.service';
 import { SettingsService } from '../../services/settings.service';
+import { reading } from '../../services/mechanism-readings.service';
 import { MechanismPanelComponent } from './mechanism-panel.component';
 
 /**
  * The machines on the grid, with nothing selected: every one in a list, or
  * one in detail, the same way in Edit and in the analysis modes.
  */
-async function createPanel(payload: string, editable = false) {
+async function createPanel(payload: string, editable = false, tab = TabID.ANALYZE) {
   const harness = createMechanismHarness();
   const decoder = new StringTranscoder();
   decoder.decodeURL(payload);
@@ -25,7 +26,7 @@ async function createPanel(payload: string, editable = false) {
   harness.service.updateMechanism();
   const data = harness;
   const tabs = {
-    getCurrentTab: () => (editable ? TabID.EDIT : TabID.ANALYZE),
+    getCurrentTab: () => (editable ? TabID.EDIT : tab),
     isAnalysisMode: () => !editable,
   } as unknown as SelectedTabService;
   await TestBed.configureTestingModule({
@@ -98,6 +99,55 @@ describe('MechanismPanelComponent', () => {
       'Input joint',
       'Input speed',
     ]);
+    fixture.destroy();
+  });
+
+  it('in Kinematic Analysis, says how it moves rather than how it is counted', async () => {
+    const { fixture } = await createPanel(TEMPLATE_LINKAGES['4-Bar']);
+    const labels = text(fixture, '.fact .factLabel');
+    expect(labels).toEqual([
+      'Input joint',
+      'Input speed',
+      'Cycle time',
+      'Input range',
+      'Peak velocity',
+      'Peak acceleration',
+      'Transmission angle',
+      'Time ratio',
+    ]);
+    const values = text(fixture, '.fact .factValue');
+    expect(values[labels.indexOf('Input range')]).toBe('Full turn');
+    expect(values[labels.indexOf('Transmission angle')]).toMatch(/^\d+ to \d+ deg$/);
+    // A peak names the joint it happens at, as a link to that joint.
+    const peak = [...fixture.nativeElement.querySelectorAll('.fact')][
+      labels.indexOf('Peak velocity')
+    ] as HTMLElement;
+    expect(peak.textContent).toMatch(/[\d.]+ cm\/s at [A-Z]/);
+    expect(peak.querySelector('part-link')).not.toBeNull();
+    fixture.destroy();
+  });
+
+  it('in Force Analysis, says what it carries', async () => {
+    const { fixture, data } = await createPanel(TEMPLATE_LINKAGES['4-Bar'], false, TabID.FORCE);
+    // The template is massless and unloaded: until something loads it there
+    // are no loads to read, and the panel says where to look.
+    expect(text(fixture, '.factNote').join(' ')).toContain('Force Analysis setup');
+    data.settings.isGravity.next(true);
+    for (const link of data.service.links) (link as { mass: number }).mass = 1;
+    data.service.updateMechanism();
+    fixture.detectChanges();
+    const labels = text(fixture, '.fact .factLabel');
+    expect(labels).toEqual([
+      'Input joint',
+      'Force analysis',
+      'Peak input torque',
+      'Largest joint reaction',
+    ]);
+    const values = text(fixture, '.fact .factValue');
+    expect(values[labels.indexOf('Force analysis')]).toBe('Static');
+    expect(values[labels.indexOf('Peak input torque')]).toMatch(/^[\d.]+ N·cm$/);
+    expect(values[labels.indexOf('Largest joint reaction')]).toMatch(/^[\d.]+ N at [A-Z]$/);
+    expect(text(fixture, '.factNote')).toEqual([]);
     fixture.destroy();
   });
 
@@ -203,5 +253,12 @@ describe('MechanismPanelComponent', () => {
     expect(facts[labels.indexOf('Input speed')].querySelector('input, button')).toBeNull();
     expect(text(fixture, '.fact .factValue')[labels.indexOf('Input speed')]).toContain('RPM');
     fixture.destroy();
+  });
+
+  it('gives every peak three significant figures, whatever its size', () => {
+    expect(reading(0.012345)).toBe('0.0123');
+    expect(reading(0.64)).toBe('0.640');
+    expect(reading(12.345)).toBe('12.3');
+    expect(reading(1234.5)).toBe('1235');
   });
 });
