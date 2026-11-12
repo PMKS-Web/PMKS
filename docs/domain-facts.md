@@ -453,11 +453,17 @@ gray force chip, so the three cannot disagree.
 
 ### A hold is a constraint, not a lock, and every move goes through the solver
 
-A bar can hold its **length** or its **angle** against edits (`RealLink.hold`, the menu's Fixed
-Length / Fixed Angle rows, the padlocks on the Link Length and Link Angle fields). It is not a Lock:
-the joints stay free to move, on the arc or the line the held value leaves them. One or the other,
-never both -- both is what a Lock on the joints already means -- so asking for the second moves the
-hold and says so, with "Fix length instead" on the message.
+A bar can hold its **length**, its **angle**, or **both** against edits (`RealLink.hold`, the
+menu's Fixed Length / Fixed Angle rows, the padlocks on the Link Length and Link Angle fields). It
+is not a Lock: the joints stay free to move, on the arc or the line the held value leaves them.
+**Both is not a Lock either** (#309): a bar holding its length and its angle keeps its shape and its
+direction and may still slide sideways, which a Lock on its joints does not allow. Each padlock and
+each menu row is about its own value, so fixing the second adds to the first rather than replacing
+it (`holdWith` in `model/link.ts`). The solver is given one entry per held value (`heldBars`), and
+the URL writes one `H` entry per value, `Hl<bar>` and `Ha<bar>`, so a bar holding both is two
+entries and every URL written before this decodes exactly as it did. A cylinder's member is the
+exception: the part has one angle between two members, so its padlocks keep the S5 table in
+`memberHoldTransition`.
 
 **To the reader the word is "fixed", and never "locked".** The padlock inside a field says
 **Fixed**, the menu rows say **Fixed Length** and **Fixed Angle**, a refusal says "Held by fixed

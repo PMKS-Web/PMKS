@@ -12,7 +12,7 @@ import {
 } from '../model/link-holds';
 import { Joint, PrisJoint, RealJoint, RevJoint } from '../model/joint';
 import { roundNumber, point_on_line_segment_closest_to_point } from '../model/utils';
-import { Link, RealLink } from '../model/link';
+import { holdsLength, Link, RealLink } from '../model/link';
 import {
   JointOperationContext,
   OperationRefusal,
@@ -1013,8 +1013,8 @@ export class GridUtilsService {
    */
   private cylinderLengthHolds(sealed: Cylinder): CylinderHolds {
     return {
-      barrel: sealed.barrel instanceof RealLink && sealed.barrel.hold === 'length',
-      rod: sealed.rod.hold === 'length',
+      barrel: sealed.barrel instanceof RealLink && holdsLength(sealed.barrel.hold),
+      rod: holdsLength(sealed.rod.hold),
     };
   }
 
@@ -1373,7 +1373,7 @@ export class GridUtilsService {
       // neither of them.
       heldBy: (cylinder) => {
         const holding = [cylinder.barrel, cylinder.rod].filter(
-          (member): member is RealLink => member instanceof RealLink && member.hold === 'length'
+          (member): member is RealLink => member instanceof RealLink && holdsLength(member.hold)
         );
         return holding.length > 0
           ? heldBySentence(holding, undefined, (bar) => this.mechanismSrv.visibleBodyName(bar))

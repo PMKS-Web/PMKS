@@ -273,7 +273,7 @@ record('the amber arc guide is drawn while dragging', guideSeen);
 record('A did not move', (await jointModel('A')).x === a.x && (await jointModel('A')).y === a.y);
 await page.screenshot({ path: `${OUT}/03-after-arc-drag.png` });
 
-// --- Holding the angle moves the hold, and the message offers the way back --
+// --- Holding the angle as well holds both (#309) ----------------------------
 
 // The drag left joint B selected, and moved the bar; the padlocks belong to
 // the link's panel, so select the bar where it now is.
@@ -282,28 +282,84 @@ await page.mouse.click(abNow.x, abNow.y);
 await page.waitForTimeout(300);
 await page.click('[data-hold-toggle="angle"]');
 await page.waitForTimeout(300);
-record('the padlock on the angle moves the hold to the angle', (await holdOf('AB')) === 'angle');
+record('the padlock on the angle adds it to the length', (await holdOf('AB')) === 'both');
 record(
-  'the locked angle field still shows its number, signed as the chip and the menu sign it',
+  'both padlocks read Fixed, and the bar wears a chip for each',
+  await page.evaluate(() => {
+    const pressed = ['length', 'angle'].every(
+      (which) =>
+        document.querySelector(`[data-hold-toggle="${which}"]`)?.getAttribute('aria-pressed') ===
+        'true'
+    );
+    const chips = [...document.querySelectorAll('[data-hold-chip="AB"]')].map((chip) =>
+      chip.getAttribute('data-hold-value')
+    );
+    return pressed && chips.sort().join() === 'angle,length';
+  })
+);
+record(
+  'the fixed angle field still shows its number, signed as the chip and the menu sign it',
   await page.evaluate(() => {
     const field = document.querySelector('[data-hold-field="angle"]').value;
-    const chip = document.querySelector('[data-hold-chip="AB"]')?.textContent?.trim() ?? '';
+    const chip =
+      document
+        .querySelector('[data-hold-chip="AB"][data-hold-value="angle"]')
+        ?.textContent?.trim() ?? '';
     return /-?\d/.test(field) && field.replace(/\s+/g, '') === chip.replace(/\s+/g, '');
   })
 );
 record(
-  'a message says the fix moved and offers the length instead',
-  await page.evaluate(() => {
-    const action = [...document.querySelectorAll('.notificationAction')].find((b) =>
-      /Fix length instead/.test(b.textContent)
-    );
-    return !!action;
-  })
+  'no message: nothing was moved or released',
+  await page.evaluate(
+    () =>
+      ![...document.querySelectorAll('.notificationAction')].some((b) =>
+        /instead/.test(b.textContent)
+      )
+  )
 );
-await page.screenshot({ path: `${OUT}/04-hold-moved.png` });
-await page.click('.notificationAction:has-text("Fix length instead")');
+record(
+  'the status strip says the bar holds both',
+  await page.evaluate(() => /fixed length and angle/.test(document.body.textContent))
+);
+await page.screenshot({ path: `${OUT}/04-hold-both.png` });
+await page.click('[data-hold-toggle="angle"]');
 await page.waitForTimeout(300);
-record('the way back puts the hold on the length again', (await holdOf('AB')) === 'length');
+record('releasing the angle leaves the length held', (await holdOf('AB')) === 'length');
+
+// --- A bar holding both slides sideways: it is not a Lock (#309) ------------
+
+const bcFirst = await linkOnScreen('BC');
+await page.mouse.click(bcFirst.x, bcFirst.y, { button: 'right' });
+await page.waitForTimeout(350);
+await clickRow('Fixed Length');
+const bcAgain = await linkOnScreen('BC');
+await page.mouse.click(bcAgain.x, bcAgain.y, { button: 'right' });
+await page.waitForTimeout(350);
+await clickRow('Fixed Angle');
+record('the menu rows hold both on BC', (await holdOf('BC')) === 'both');
+const [b0, c0] = [await jointModel('B'), await jointModel('C')];
+await dragBy(await jointOnScreen('B'), -60, -30, async () => {
+  await film.shot('both-held-slide');
+});
+const [b1, c1] = [await jointModel('B'), await jointModel('C')];
+const angleOf = (p, q) => Math.atan2(q.y - p.y, q.x - p.x);
+record(
+  'dragging B carries C along: BC keeps its length and its angle',
+  dist(b0, b1) > 0.05 &&
+    Math.abs(dist(b1, c1) - dist(b0, c0)) < 1e-3 &&
+    Math.abs(angleOf(b1, c1) - angleOf(b0, c0)) < 1e-3,
+  { b0, b1, c0, c1 }
+);
+record(
+  'and C moved exactly as B did, so the bar slid rather than turned',
+  Math.abs(c1.x - c0.x - (b1.x - b0.x)) < 1e-3 && Math.abs(c1.y - c0.y - (b1.y - b0.y)) < 1e-3
+);
+await page.screenshot({ path: `${OUT}/05-both-held-slid.png` });
+await inAngular(page, () => {
+  const c = ng.getComponent(document.querySelector('app-new-grid'));
+  c.mechanismSrv.releaseHolds([c.mechanismSrv.links.find((l) => l.id === 'BC')]);
+});
+await page.waitForTimeout(200);
 
 // --- Two holds on one joint, with nowhere to go ----------------------------
 
@@ -582,6 +638,7 @@ record(
 );
 
 await contactSheet(`${OUT}/*mid-drag*.png`, `${OUT}/sheet-mid-drag.png`, 2);
+await contactSheet(`${OUT}/*both-held-slide*.png`, `${OUT}/sheet-both-held-slide.png`, 4);
 await browser.close();
 
 if (errors.length) console.log('page errors:', errors.slice(0, 5));

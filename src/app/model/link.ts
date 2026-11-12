@@ -120,8 +120,46 @@ export class Link {
   }
 }
 
-/** Which of a bar's two numbers an edit may not change, if either. */
-export type LinkHold = 'length' | 'angle' | undefined;
+/**
+ * Which of a bar's two numbers an edit may not change: one, both, or neither.
+ *
+ * Both is not a Lock. A bar holding its length and its angle keeps its shape
+ * and its direction but may still slide sideways; a Lock on its joints pins it
+ * where it is (#309).
+ */
+export type LinkHold = 'length' | 'angle' | 'both' | undefined;
+
+/** One of the two numbers a hold can be about. */
+export type HeldValue = 'length' | 'angle';
+
+/** Whether this hold keeps the bar's length. */
+export function holdsLength(hold: LinkHold): boolean {
+  return hold === 'length' || hold === 'both';
+}
+
+/** Whether this hold keeps the bar's angle. */
+export function holdsAngle(hold: LinkHold): boolean {
+  return hold === 'angle' || hold === 'both';
+}
+
+/** Whether this hold keeps `which`. */
+export function holdsValue(hold: LinkHold, which: HeldValue): boolean {
+  return which === 'length' ? holdsLength(hold) : holdsAngle(hold);
+}
+
+/** The values a hold keeps, length first: what the solver and the URL are given. */
+export function heldValues(hold: LinkHold): HeldValue[] {
+  return (['length', 'angle'] as const).filter((which) => holdsValue(hold, which));
+}
+
+/** The hold after fixing or releasing one value, leaving the other as it was. */
+export function holdWith(hold: LinkHold, which: HeldValue, on: boolean): LinkHold {
+  const length = which === 'length' ? on : holdsLength(hold);
+  const angle = which === 'angle' ? on : holdsAngle(hold);
+  if (length && angle) return 'both';
+  if (length) return 'length';
+  return angle ? 'angle' : undefined;
+}
 
 export class RealLink extends Link {
   private _fill: string = 'Set Later';
@@ -226,10 +264,9 @@ export class RealLink extends Link {
   public static debugDesiredJointsIDs: unknown;
   public lastSelectedSublink: Link | null = null;
   /**
-   * The one value of this bar an edit may not change: its length or its angle
-   * from the grid's x axis. One or the other, never both -- a bar holding both
-   * can only translate, which is what a Lock on its joints already means, so
-   * asking for the second moves the hold rather than adding to it.
+   * The values of this bar an edit may not change: its length, its angle
+   * from the grid's x axis, or both. A bar holding both keeps its length and
+   * its direction and may still slide sideways, which a Lock does not allow.
    *
    * A hold is not a Lock: the joints stay free to move, on the arc or the line
    * the held value leaves them. It is meaningful on a two-joint bar only, and

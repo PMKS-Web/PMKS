@@ -18,7 +18,7 @@
 
 import { Cylinder } from './cylinder';
 import { Joint } from './joint';
-import { Link, RealLink } from './link';
+import { heldValues, Link, RealLink } from './link';
 import { cylinderAngleCarrier, holdOf, memberHoldReads } from './link-holds';
 
 /** One held value, and the span it labels. */
@@ -48,9 +48,10 @@ export function holdChips(links: readonly Link[], cylinders: readonly Cylinder[]
 
   for (const link of links) {
     if (!(link instanceof RealLink) || memberIds.has(link.id)) continue;
-    const hold = holdOf(link);
     const [a, b] = link.joints;
-    if (hold && a && b) chips.push({ id: link.id, link, hold, a, b });
+    if (!a || !b) continue;
+    // A chip per value held, so a bar keeping both wears both (#309).
+    for (const hold of heldValues(holdOf(link))) chips.push({ id: link.id, link, hold, a, b });
   }
 
   for (const sealed of cylinders) {
