@@ -35,15 +35,17 @@ describe('what is allowed when', () => {
     expect(allowed(at({ playing: true, atStart: false }))).toEqual(['inspect', 'transport']);
   });
 
-  it('lets a gesture and the safe properties edit at a paused pose, and nothing else', () => {
+  it('lets a gesture, the safe properties and the load edit at a paused pose, and nothing else', () => {
     // docs/editing-rules.md, the Edit mid-cycle column. A drag at a pose means
     // "put it here, at this pose" and the machine is put back on its anchor
-    // underneath; a mass or a color cannot stop it running. Structure, typed
-    // geometry and annotations wait for the start.
+    // underneath; a mass or a color cannot stop it running, and a force's size
+    // is the same at every pose. Structure, typed geometry and annotations wait
+    // for the start.
     expect(allowed(at({ playing: false, atStart: false }))).toEqual([
       'inspect',
       'drag',
       'safeProperty',
+      'load',
       'transport',
       'history',
     ]);
@@ -102,6 +104,7 @@ describe('what is allowed when', () => {
       'inspect',
       'drag',
       'annotate',
+      'load',
       'settings',
       'transport',
       'history',
@@ -183,7 +186,21 @@ describe('what is allowed when', () => {
     // A mass or a color needs no cycle, so it is the one edit left.
     expect(allowed(heavy)).toEqual(['inspect', 'safeProperty', 'transport']);
     expect(refusalFor('drag', heavy)!.long).toContain('Press Play');
+    expect(refusalFor('load', heavy)!.long).toContain('Press Play');
     expect(allowed(at({ solveDeferred: true }))).toEqual([...EDIT_ACTIONS]);
+  });
+
+  // #262: how hard a force pushes, and which way along its line, is the same
+  // at every pose -- and changing it is what Force Analysis is for.
+  it('lets the load change wherever the mechanism is paused, and nowhere it is playing', () => {
+    for (const mode of ['edit', 'analysis'] as const) {
+      expect(refusalFor('load', at({ mode }))).toBeNull();
+      expect(refusalFor('load', at({ mode, atStart: false }))).toBeNull();
+      expect(refusalFor('load', at({ mode, playing: true }))!.short).toBe('animation running');
+    }
+    expect(refusalFor('load', at({ mode: 'synthesis' }))).not.toBeNull();
+    // A force's angle is a direction, so it stays typed geometry.
+    expect(refusalFor('properties', at({ atStart: false }))).not.toBeNull();
   });
 
   it('names the mechanism when the shared clock disagrees', () => {

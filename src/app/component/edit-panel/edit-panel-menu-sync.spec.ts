@@ -163,7 +163,7 @@ describe('the Edit panel and the context menu agree', () => {
       it('agrees about a force', () => {
         const menu = select(parts.force);
         expect(panelButton('Delete').disabled).toBe(menuRow(menu, 'Delete Force').disabled);
-        expect(fixture.componentInstance.forceGeometryRefused()).toBe(
+        expect(fixture.componentInstance.forceLoadRefused()).toBe(
           menuRow(menu, 'Flip Force').disabled
         );
       });

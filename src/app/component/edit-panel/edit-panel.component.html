@@ -736,7 +736,7 @@
           </dual-input-block>
           <button-block
             customIcon="switch_force_dir"
-            [disabled]="activeSrv.selectedForce.locked || forceGeometryRefused()"
+            [disabled]="activeSrv.selectedForce.locked || forceLoadRefused()"
             (pressed)="flipForce()"
             tooltip="Reverse the force at the same endpoints, keeping its application point in place."
             >Flip Force</button-block

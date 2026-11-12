@@ -1093,6 +1093,26 @@ describe('editing at a displaced pose', () => {
     expect(joints.map((joint) => [joint.x, joint.y])).toEqual(shown);
   });
 
+  // #262: the magnitude field goes through the same door as Flip Force, so a
+  // load typed mid-cycle reaches the design and leaves the pose on screen.
+  it('retains a force magnitude typed at a paused pose', () => {
+    const { service, joints, links } = oneBar();
+    const force = service.createForce(new Coord(1.5, 1.5), new Coord(1.5, 2.5), links[1])!;
+    const start = startPoses(service);
+    displace(service);
+    const shown = joints.map((joint) => [joint.x, joint.y]);
+    const tail = { x: force.startCoord.x, y: force.startCoord.y };
+
+    expect(service.editForcesAtPose([force], () => force.setMagnitude(7))).toBe(true);
+
+    expect(force.mag).toBeCloseTo(7, 6);
+    expect(service.mechanisms[0].forces[0][0].mag).toBeCloseTo(7, 6);
+    expect(force.startCoord.x).toBeCloseTo(tail.x, 6);
+    expect(force.startCoord.y).toBeCloseTo(tail.y, 6);
+    expect(joints.map((joint) => [joint.x, joint.y])).toEqual(shown);
+    expect(startPoses(service)).toBe(start);
+  });
+
   it('keeps paused locks, shape and hold changes independent of mode and geometry', () => {
     const { service, active, injector, joints, links } = oneBar();
     const start = startPoses(service);
