@@ -2916,3 +2916,11 @@ verification fixtures do the same on purpose (`buildFixtureLink` in
 `test-utils/verification/fixture.ts`), and their unstated CoM is the mean of the joints written out
 there, because the `RealLink` constructor's seed is now the shape's centroid and fixture data must
 not move with it (#156).
+
+### A welded member's `mass` is written, never read
+
+Since #279 a compound's one mass is shared among its members by length (`model/weld-density.ts`),
+and the property pass writes each member's share onto `member.mass` on every rebuild. Setting a
+member's mass by hand does nothing that lasts: the next pass overwrites it, and `assignBodyMass`
+refuses it outright. Set the compound's mass instead. A spec that builds a compound by hand and
+wants a particular member to weigh more has to make that member longer.

@@ -1,3 +1,4 @@
+import { PartLinkComponent } from '../BLOCKS/part-link/part-link.component';
 import { forceFrameAngle, forceFrameDirection } from '../../model/force-frame';
 import { ForceGuideService } from '../../services/force-guide.service';
 import { NumberDragDirective } from '../../directives/number-drag.directive';
@@ -137,6 +138,7 @@ const INPUT_SPEED_UNITS = [
     RadioComponent,
     MultiEditPanelComponent,
     SegmentedComponent,
+    PartLinkComponent,
   ],
 })
 export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, OnDestroy {
@@ -384,6 +386,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
   ngDoCheck(): void {
     this.freezePoseBoundFields();
     this.freezeMassesWhilePlaying();
+    this.freezeWeldedMemberMass();
     if (!this.editingRefused() || this.activeSrv.objType !== 'Joint') return;
     const joint = this.activeSrv.selectedJoint;
     if (!joint) return;
@@ -778,6 +781,33 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
    * the next decode is worse than no control: the reader has no way to find
    * out their number is gone.
    */
+  /** The compound the selected link is welded into, which owns its mass. */
+  protected weldedInto(): RealLink | undefined {
+    if (this.activeSrv.objType !== 'Link') return undefined;
+    const link = this.activeSrv.selectedLink;
+    if (!this.mechanismService.isWeldedMember(link)) return undefined;
+    return this.mechanismService.rootLinkOwning(link) as RealLink | undefined;
+  }
+
+  /**
+   * A welded member's mass is its share of the compound's, so its field is
+   * read-only. Kept apart from the play freeze so neither hands back a field
+   * the other is still holding.
+   */
+  private freezeWeldedMemberMass(): void {
+    const control = this.linkForm.controls['mass'];
+    if (this.weldedInto()) {
+      if (control.enabled) control.disable({ emitEvent: false });
+      this.frozenAsMember = true;
+    } else if (this.frozenAsMember && !this.playingNow()) {
+      this.frozenAsMember = false;
+      control.enable({ emitEvent: false });
+      this.syncLockDisabledFields();
+    }
+  }
+
+  private frozenAsMember = false;
+
   protected memberMassDerived(): boolean {
     if (this.activeSrv.objType !== 'Link') return false;
     return this.mechanismService.memberInertiaIsDerived(this.activeSrv.selectedLink);
@@ -1627,7 +1657,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
           );
           return;
         }
-        this.mechanismService.assignBodyMass(this.activeSrv.selectedLink, value);
+        if (!this.mechanismService.assignBodyMass(this.activeSrv.selectedLink, value)) return;
         this.syncMassDependents();
         this.mechanismService.updateMechanism(true);
         this.mechanismService.onMechUpdateState.next(2);

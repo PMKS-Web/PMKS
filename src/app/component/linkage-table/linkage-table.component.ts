@@ -163,7 +163,8 @@ export class LinkageTableComponent implements OnInit {
         if (typed < 0) {
           return this.notify.refusal('value.mass', NOT_A.nonNegativeMass);
         }
-        link.mass = typed;
+        // Through the one door, so a compound's members follow its mass.
+        this.mechanismService.assignBodyMass(link, typed);
         break;
       }
       case 'massMoI':

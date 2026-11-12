@@ -4,6 +4,7 @@ import '../../app/model/joint';
 import { Coord } from '../../app/model/coord';
 import { PrisJoint, RealJoint, RevJoint } from '../../app/model/joint';
 import { RealLink } from '../../app/model/link';
+import { materialOf } from '../../app/model/link-body';
 import { buildCompoundPath } from '../../app/model/compound-link-path';
 import { Cylinder, cylindersIn } from '../../app/model/cylinder';
 import { memberSilhouette } from '../../app/model/cylinder-fusion';
@@ -203,21 +204,20 @@ describe('a compound holding one of a cylinder’s bars', () => {
   it('leaves the compound’s mass, inertia and center of mass alone', () => {
     const { service, compound, ram } = weldedAt('rod');
     const leaves = compound.subset.filter((leaf): leaf is RealLink => leaf instanceof RealLink);
-    leaves.forEach((leaf, index) => (leaf.mass = index + 1));
+    service.assignBodyMass(compound, 3);
     service.finishStructuralEdit(true);
 
-    // Straight off the joints, by the mass-weighted sum `uniformBodyFor` runs.
-    // Nothing here can see a silhouette: the rod's is wider than the bar its
-    // two joints describe and reaches back behind the seal, so a center of mass
-    // that had drifted toward the picture would miss this by a visible margin.
-    const totalMass = leaves.reduce((sum, leaf) => sum + leaf.mass, 0);
+    // Straight off the joints: each leaf's centroid, weighted by its share of
+    // the one mass, which is its length (#279). Nothing here can see a
+    // silhouette: the rod's is wider than the bar its two joints describe and
+    // reaches back behind the seal, so a center of mass that had drifted toward
+    // the picture would miss this by a visible margin.
+    const totalMaterial = leaves.reduce((sum, leaf) => sum + materialOf(leaf), 0);
     const expected = leaves.reduce(
       (sum, leaf) => {
         const centroid = uniformBodyOf(leaf.joints).centroid;
-        return {
-          x: sum.x + (leaf.mass * centroid.x) / totalMass,
-          y: sum.y + (leaf.mass * centroid.y) / totalMass,
-        };
+        const share = materialOf(leaf) / totalMaterial;
+        return { x: sum.x + share * centroid.x, y: sum.y + share * centroid.y };
       },
       { x: 0, y: 0 }
     );

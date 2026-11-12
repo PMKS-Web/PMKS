@@ -119,7 +119,7 @@ function platedPolygon(points: { x: number; y: number }[]): UniformBody | undefi
 }
 
 /** Andrew's monotone chain; returns the hull counterclockwise. */
-function convexHull(points: { x: number; y: number }[]): { x: number; y: number }[] {
+export function convexHull(points: { x: number; y: number }[]): { x: number; y: number }[] {
   const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
   const cross = (
     o: { x: number; y: number },

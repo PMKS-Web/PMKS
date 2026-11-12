@@ -2,6 +2,7 @@ import { Coord } from './coord';
 import { RealLink } from './link';
 import { UniformBody, uniformBodyOf } from './uniform-body';
 import { getDistance } from './utils';
+import { materialOfShape, sharesOf } from './weld-density';
 
 /**
  * The body a link's automatic mass properties come from, and the one answer to
@@ -43,38 +44,55 @@ export function primitiveBodyOf(link: RealLink): UniformBody {
  * A compound is the *sum of its parts* -- each member as its own body,
  * combined by the parallel-axis theorem -- never a plate over the whole hull:
  * a V-shaped weld is two bars, and a plate spanning the crook would weigh
- * material that is not there. Members somebody typed at contribute the numbers
- * they were given. `inertiaFactor` converts mass x (model length)^2 into the
- * stored inertia unit; a caller after the center alone may leave it at 1.
+ * material that is not there. It has one mass, its own, spread evenly through
+ * its members by `weld-density.ts`; a member's stored mass is a copy of its
+ * share and never an input (#279). `inertiaFactor` converts mass x (model
+ * length)^2 into the stored inertia unit; a caller after the center alone may
+ * leave it at 1.
  */
 export function derivedBodyOf(link: RealLink, inertiaFactor = 1): DerivedBody {
-  if (link.subset.length === 0) {
+  return bodyAtMass(link, link.mass, inertiaFactor);
+}
+
+/** How much material a link is, its welded members' added up. */
+export function materialOf(link: RealLink): number {
+  const members = weldedMembers(link);
+  if (members.length > 0) return members.reduce((sum, member) => sum + materialOf(member), 0);
+  return materialOfShape(link.joints, link.discCenter());
+}
+
+/** What each welded member of `compound` weighs, in the order of `weldedMembers`. */
+export function memberMasses(compound: RealLink): number[] {
+  return sharesOf(weldedMembers(compound).map(materialOf)).map((share) => share * compound.mass);
+}
+
+/** The members a compound's mass is shared among. */
+export function weldedMembers(link: RealLink): RealLink[] {
+  return link.subset.filter((member): member is RealLink => member instanceof RealLink);
+}
+
+/** A link weighing `mass`, wherever that mass came from. */
+function bodyAtMass(link: RealLink, mass: number, inertiaFactor: number): DerivedBody {
+  const members = weldedMembers(link);
+  if (members.length === 0) {
     const body = primitiveBodyOf(link);
     return {
       com: new Coord(body.centroid.x, body.centroid.y),
-      moi: link.mass * body.gyrationSq * inertiaFactor,
+      moi: mass * body.gyrationSq * inertiaFactor,
     };
   }
-  const parts = link.subset
-    .filter((member): member is RealLink => member instanceof RealLink)
-    .map((member) => {
-      const own = derivedBodyOf(member, inertiaFactor);
-      return {
-        mass: member.mass,
-        com: member.comIsCustom ? new Coord(member.CoM.x, member.CoM.y) : own.com,
-        moi: member.moiIsCustom ? member.massMoI : own.moi,
-      };
-    });
-  const totalMass = parts.reduce((sum, part) => sum + part.mass, 0);
-  // Massless members still have to put the mark somewhere: their plain mean.
-  const weight = (mass: number) => (totalMass > 0 ? mass / totalMass : 1 / parts.length);
-  const com =
-    parts.length === 0
-      ? uniformBodyOf(link.joints).centroid
-      : new Coord(
-          parts.reduce((sum, part) => sum + weight(part.mass) * part.com.x, 0),
-          parts.reduce((sum, part) => sum + weight(part.mass) * part.com.y, 0)
-        );
+  // Weighted by share rather than by mass, so a massless compound still puts
+  // its mark where the material is.
+  const shares = sharesOf(members.map(materialOf));
+  const parts = members.map((member, index) => ({
+    share: shares[index],
+    mass: shares[index] * mass,
+    ...bodyAtMass(member, shares[index] * mass, inertiaFactor),
+  }));
+  const com = new Coord(
+    parts.reduce((sum, part) => sum + part.share * part.com.x, 0),
+    parts.reduce((sum, part) => sum + part.share * part.com.y, 0)
+  );
   const moi = parts.reduce(
     (sum, part) =>
       sum +

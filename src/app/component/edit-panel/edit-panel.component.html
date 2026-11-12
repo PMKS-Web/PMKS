@@ -554,7 +554,17 @@
              so where the two fields would otherwise be. The sentence is the one
              the retired Edit Cylinder panel carried, because it is the same
              promise. -->
-            @if (memberMassDerived()) {
+            <!-- A link welded into a compound shares the compound's one mass by
+             length (#279): the field shows its share and is read-only, and its
+             own center and inertia are not inputs to anything any more. -->
+            @if (weldedInto(); as compound) {
+              <p class="massNote">
+                Welded into
+                <part-link [part]="compound">{{ mechanismService.bodyLabel(compound) }}</part-link
+                >. A compound has one mass, shared among its links by length. Set it on the
+                compound.
+              </p>
+            } @else if (memberMassDerived()) {
               <p class="massNote">
                 Each part's rotational inertia and center of mass are computed from its own shape
                 and the mass you give it.

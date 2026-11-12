@@ -98,7 +98,12 @@ import { NotificationService } from './notification.service';
 import { SettingsService } from './settings.service';
 import { slotHalfLength } from '../model/joint-marks';
 import { interiorNames, nextFreeLetter } from '../model/joint-letters';
-import { derivedBodyOf, derivedCenterOfMass } from '../model/link-body';
+import {
+  derivedBodyOf,
+  derivedCenterOfMass,
+  memberMasses,
+  weldedMembers,
+} from '../model/link-body';
 import { siUnitFactors } from '../model/unit-conversions';
 import { DragStateService } from './drag-state.service';
 import { Coord } from '../model/coord';
@@ -2729,27 +2734,40 @@ export class MechanismService {
   /**
    * The one door for writing a body's mass, wherever the field lives.
    *
-   * A compound and its members must keep telling one story: edit a member and
-   * the compound's aggregate moves by the same amount; edit the compound and
-   * the members scale to match, so unwelding later restores what the sum
-   * really was. Without this, the mass table and the cylinder fields were two
-   * sources of truth that only agreed until the first unweld.
+   * A compound has one mass, spread evenly through its material, so it is set
+   * on the compound and its members' shares follow (`weld-density.ts`, #279).
+   * A member welded into a compound has no mass of its own to set, and is
+   * refused: answered `false`, with nothing changed. Unwelding later hands each
+   * member the share it carried.
    */
-  assignBodyMass(body: Link, value: number): void {
-    if (!(value >= 0)) return;
-    if (body instanceof RealLink && body.subset.length > 0) {
-      const members = body.subset;
-      const total = members.reduce((sum, member) => sum + member.mass, 0);
-      for (const member of members) {
-        member.mass = total > 0 ? (member.mass / total) * value : value / members.length;
-      }
-    } else {
-      const root = this.rootLinkOwning(body);
-      if (root && root !== body) {
-        root.mass += value - body.mass;
-      }
-    }
+  assignBodyMass(body: Link, value: number): boolean {
+    if (!(value >= 0)) return false;
+    const root = this.rootLinkOwning(body);
+    if (root && root !== body) return false;
     body.mass = value;
+    if (body instanceof RealLink) this.shareCompoundMass(body);
+    return true;
+  }
+
+  /** Whether `link` is welded into a compound, whose mass it shares. */
+  isWeldedMember(link: Link | undefined): boolean {
+    if (!link) return false;
+    const root = this.rootLinkOwning(link);
+    return root !== undefined && root !== link;
+  }
+
+  /**
+   * Write each member's share of a compound's mass onto the member.
+   *
+   * The shares are derived, never typed; they are stored so an unweld, and a
+   * URL read by an older reader, carry what the member weighed.
+   */
+  private shareCompoundMass(compound: RealLink): void {
+    const members = weldedMembers(compound);
+    memberMasses(compound).forEach((mass, index) => {
+      members[index].mass = mass;
+      this.shareCompoundMass(members[index]);
+    });
   }
 
   /**
@@ -4023,6 +4041,9 @@ export class MechanismService {
     const factor = this.storedMoiFactor(unitStr);
     for (const link of this.links) {
       if (!(link instanceof RealLink)) continue;
+      // A compound's shares follow its shape, so a drag that lengthens one
+      // member moves weight onto it.
+      this.shareCompoundMass(link);
       // A body with no mass has no moment of inertia, full stop: the solver
       // applies I·α regardless of mass, so a leftover typed inertia on a
       // weightless bar would quietly steer every dynamic answer. Zeroing the

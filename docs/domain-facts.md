@@ -391,6 +391,24 @@ body. `anchoredTo` retains the member so unwelding can restore the load to it. D
 replacement, pass the new owner explicitly: the service's old graph still contains the compound.
 Paused tracer attachment uses `indexOfMechanismSolving`, including leaves and shared frame parts.
 
+### A compound has one mass, shared among its links by length
+
+A compound is one rigid part, so it has one mass, set on the compound. `model/weld-density.ts`
+spreads it evenly through the compound's material, and `derivedBodyOf` places the center of mass
+and inertia from those shares. A member's stored `mass` is a copy of its share, rewritten by the
+property pass whenever the shape changes, so it is right for an unweld and in the URL, but it is
+never read as an input. `assignBodyMass` refuses a member, and the Edit panel shows a member's
+mass read-only with the compound linked beside it.
+
+Material is measured by **length**: a bar by its own, a plate by its outline, a disc by its rim.
+The physics treats a bar as a line and a plate as an area, and adding the two needs a width. The
+only width on hand is the drawn one, which comes from Object Size, which comes from the zoom when
+the first part was drawn, so two readers drawing the same part would get different centers of
+mass. Length is exact for a weld of bars, the common case, and misjudges a plate's share only by
+treating it as its outline. Member-level custom centers of mass and inertias are ignored: a
+compound's override is the compound's own. (#279; before it, each member kept a typed mass, and a
+10 g bar welded to a 0 g bar put the center of mass on the heavy bar however long the other was.)
+
 ### Forces are assembled in SI, and a floating motor pushes back
 
 The force solver converts model coordinates and accelerations to SI at equation assembly. Its
