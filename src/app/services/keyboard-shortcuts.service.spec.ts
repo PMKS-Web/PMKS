@@ -17,8 +17,10 @@ describe('KeyboardShortcutsService', () => {
     return { service, heard };
   }
 
+  // Cancelable, as a real keystroke is: otherwise `defaultPrevented` stays false
+  // whatever a listener does, and the "not swallowed" checks below prove nothing.
   const press = (key: string, init: KeyboardEventInit = {}) => {
-    const event = new KeyboardEvent('keydown', { key, ...init });
+    const event = new KeyboardEvent('keydown', { key, cancelable: true, ...init });
     window.dispatchEvent(event);
     return event;
   };
@@ -73,7 +75,11 @@ describe('KeyboardShortcutsService', () => {
     document.body.appendChild(menu);
     // A right-click selects what it opened its card on, so Down was a nudge:
     // the joint moved behind the card, and the card closed itself on the way.
-    const event = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true });
+    const event = new KeyboardEvent('keydown', {
+      key: 'ArrowDown',
+      bubbles: true,
+      cancelable: true,
+    });
     item.dispatchEvent(event);
     expect(heard).toEqual([]);
     // Not answered *and* not prevented: the menu is the one that needs it.

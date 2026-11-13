@@ -1,4 +1,4 @@
-import { Injectable, NgZone, inject } from '@angular/core';
+import { DestroyRef, Injectable, NgZone, inject } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { Observable, Subject, map } from 'rxjs';
 
@@ -324,9 +324,11 @@ export class KeyboardShortcutsService {
     // Outside Angular, then back in only when a key actually matches: this
     // listener sees every keystroke in the app, and a change-detection pass
     // per keystroke is a pass per character typed into every field.
-    this.zone.runOutsideAngular(() =>
-      window.addEventListener('keydown', (event) => this.onKeyDown(event))
-    );
+    const listener = (event: KeyboardEvent) => this.onKeyDown(event);
+    this.zone.runOutsideAngular(() => window.addEventListener('keydown', listener));
+    // The app builds this once, but a spec builds one per test, and a listener
+    // left behind answers the next test's keystrokes with the last one's state.
+    inject(DestroyRef).onDestroy(() => window.removeEventListener('keydown', listener));
   }
 
   /**
