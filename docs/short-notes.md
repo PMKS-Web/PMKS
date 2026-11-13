@@ -1769,14 +1769,18 @@ dead code. The square's hitbox is a separate transparent path drawn *after* the 
 head is the marker now (decision S13) and the id went with it, because a hit area is a handle and
 not a joint.
 
-### A decoded joint always has an explicit name, even when nobody named it
+### A name written as the part's own id is read back as no name
 
-`Joint.name` falls back to the id when `_name` is empty, and the encoder writes the *getter's*
-answer -- so every joint in a URL carries a name, and `buildJoint` assigns it unconditionally.
-After a decode nothing is unnamed. That is invisible until something renames an id underneath it:
-re-lettering a cylinder's seal (decision S9) left the joint reading as its old interior name `A2`
-while its id was `E`. The reader clears a name that is only the old id back to empty, so the new
-letter is what a reader sees; a name somebody actually chose is left alone.
+`Joint.name`, `Link.name` and `Force.name` fall back to the id when `_name` is empty, and the
+encoder writes the *getter's* answer -- so every part in a URL carries a name, whether anyone chose
+one or not. The reader used to keep it, so after a decode nothing was unnamed, and that only shows
+when an id changes underneath. Two places it did: re-lettering a cylinder's seal (decision S9) left
+the joint reading as its old interior name `A2` while its id was `E`. And adding a tracer point
+renamed link `AB` to `ABE` in a drawing made in the session but not in one opened from a template, a
+shared link, a reload or an undo (#317). `ownName` in `mechanism-builder.ts` now reads a name equal
+to the id back as empty. The URL is unchanged, because the getter still writes the id. The cost is
+that a reader cannot type a name equal to the id and have it stick, which is the automatic name
+anyway.
 
 ### Three shipped templates carry an interior-named seal, and are not regenerated from anything
 

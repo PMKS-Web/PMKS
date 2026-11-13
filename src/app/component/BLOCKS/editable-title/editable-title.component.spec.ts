@@ -75,6 +75,24 @@ describe('EditableTitleComponent names', () => {
     expect(field()).not.toBeNull();
   });
 
+  it('takes an empty name as no name, which gives the part back its automatic one', () => {
+    // #317: a part is named after its id until someone names it, and clearing
+    // the name is how a reader goes back -- the same rule a machine's name has.
+    expect(rename('')).toBe('');
+    expect(field()).toBeNull();
+    expect(selected.name).toBe('');
+  });
+
+  it('saves nothing when the name cleared was already the automatic one', () => {
+    selected.name = 'A';
+    const mechanism = TestBed.inject(MechanismService) as unknown as {
+      updateMechanism: ReturnType<typeof vi.fn>;
+    };
+    mechanism.updateMechanism.mockClear();
+    expect(rename('')).toBe('');
+    expect(mechanism.updateMechanism).not.toHaveBeenCalled();
+  });
+
   it('rejects a case-insensitive duplicate across all object types', () => {
     expect(rename('output')).toContain('already in use');
     expect(rename('COUPLER')).toContain('already in use');

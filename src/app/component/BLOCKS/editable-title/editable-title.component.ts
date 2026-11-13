@@ -121,12 +121,10 @@ export class EditableTitleComponent {
   // Check whether new id name is valid
   // Return empty string if valid, or error message if not
   private validateNewID(newID: string): string {
-    // An own-named thing can go back to having no name; a part cannot.
-    if (newID === '' && this.renameTo()) return '';
-    // If the new ID only contains spaces, don't save it
-    if (newID === '') {
-      return 'The name cannot be empty.';
-    }
+    // An empty name is no name: a machine goes back to `Mechanism 2`, and a
+    // part to the name it is given automatically, its id -- which for a link is
+    // its joints' letters, and follows them when a joint is added (#317).
+    if (newID === '') return '';
 
     // Display names may be descriptive phrases; IDs remain separate.
     if (!this.hasValidNameCharacters(newID)) {
@@ -188,6 +186,8 @@ export class EditableTitleComponent {
     // typed would have written that visible name down as a real name, turning
     // a no-op into an edit with an undo entry behind it.
     if (activeObj.name === newID || (this.displayName() ?? activeObj.name) === newID) return;
+    // Clearing a name that was already the automatic one changes nothing.
+    if (newID === '' && activeObj.name === activeObj.id) return;
     activeObj.name = newID;
     // A name is carried in the URL like everything else, so a rename is an edit
     // and belongs in the history. Without this it was the one change to the
