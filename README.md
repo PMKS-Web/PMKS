@@ -1,8 +1,8 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/logo-dark.png">
-  <img alt="PMKS" src="docs/images/readme/logo-light.png" width="300">
+  <source media="(prefers-color-scheme: dark)" srcset="src/assets/brand/pmks-logo-dark.png">
+  <img alt="PMKS" src="src/assets/brand/pmks-logo.png" width="300">
 </picture>
 
 ### Serious linkage analysis. Zero setup.

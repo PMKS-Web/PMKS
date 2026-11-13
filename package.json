@@ -17,7 +17,8 @@
     "oracle": "PMKS_WRITE_ORACLE_PROBLEMS=1 ng test --watch=false --include=src/tests/verification/oracle-problems.spec.ts && npm run oracle:solve",
     "oracle:solve": "cd oracle && uv run python -m pmks_oracle.run --prune ../src/test-data/oracle/problems/*.problem.json --out ../src/test-data/oracle/references && uv run python -m pmks_oracle.run --prune ../src/test-data/oracle/matlab/*.problem.json --out ../src/test-data/oracle/matlab",
     "storybook": "ng run PMKSWeb:storybook",
-    "build-storybook": "ng run PMKSWeb:build-storybook"
+    "build-storybook": "ng run PMKSWeb:build-storybook",
+    "brand": "uv run --project brand python brand/build.py && node brand/rasterize.mjs"
   },
   "private": true,
   "dependencies": {

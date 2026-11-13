@@ -107,8 +107,43 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="PMKS" />
     <meta name="theme-color" content="#ffffff" />
-    <link rel="apple-touch-icon" href="assets/app-icon/icon-180.png" />
-    <!--    <link rel='icon' type='image/x-icon' href='favicon.ico' />-->
+    <link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png" />
+
+    <!--
+      The tab icon. The SVG is the one every current browser takes, and the only
+      kind that can follow a dark browser theme, which it does by itself. The .ico
+      is for the rest; `sizes` on it is what stops Chrome choosing it over the SVG.
+      It is also served at /favicon.ico, the address a browser or crawler asks for
+      when a page names no icon at all.
+
+      Drawn by `npm run brand`, like every file in assets/brand, and the landing
+      page links to these same files rather than keeping copies. docs/brand.md.
+    -->
+    <link rel="icon" href="favicon.ico" sizes="32x32" />
+    <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml" />
+
+    <!--
+      What a link to the app unfurls into when it is pasted into a chat, a forum
+      or a course page -- which is how most of its links travel, a mechanism being
+      an address. `noindex` above keeps the app out of search results; it does not
+      stop a preview, which is a different reader.
+
+      Every link gets the same card. The mechanism is in the address, and the
+      crawler that fetches a preview does not run the app to draw it. The image is
+      an absolute address because those crawlers do not resolve a relative one.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="PMKS" />
+    <meta property="og:title" content="PMKS — Linkage Simulator" />
+    <meta
+      property="og:description"
+      content="Draw, simulate and analyze planar linkages. Free, in your browser."
+    />
+    <meta property="og:image" content="https://app.pmksplus.com/assets/brand/social-card.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="PMKS: serious linkage analysis, zero setup" />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.gstatic.com" />
     <link
       href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap"
@@ -128,7 +163,10 @@
       PMKS rather than being blank white.
 
       Inline for the same reason. A stylesheet is a request, and the point of
-      this is to be up before anything has been asked for.
+      this is to be up before anything has been asked for. The logo is the one
+      request it does make: 7 KB, asked for alongside the bundle and back long
+      before the bundle is, and its `width` and `height` hold its room so the
+      bar under it does not jump when it lands.
     -->
     <style>
       #bootSplash {
@@ -146,10 +184,9 @@
         font-family: Roboto, 'Helvetica Neue', Arial, sans-serif;
       }
       #bootSplash .bootMark {
-        font-size: 26px;
-        font-weight: 500;
-        letter-spacing: 0.5px;
-        color: #3f51b5;
+        display: block;
+        height: 44px;
+        width: auto;
       }
       #bootSplash .bootBar {
         width: 168px;
@@ -205,7 +242,7 @@
       would come down at exactly the moment the freeze begins.
     -->
     <div id="bootSplash">
-      <div class="bootMark">PMKS</div>
+      <img class="bootMark" src="assets/brand/pmks-logo.svg" alt="PMKS" width="115" height="44" />
       <div class="bootBar"></div>
       <div class="bootWord">Starting up</div>
     </div>
