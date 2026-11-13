@@ -115,6 +115,11 @@ async function served(request, path) {
   page.on('pageerror', (error) => errors.push(String(error)));
   await page.goto(`${BASE}/?${payloads['4-Bar']}`, { waitUntil: 'domcontentloaded' });
   await waitForReady(page);
+  // The app can be ready before the image is: wait for the request to settle
+  // either way, so a slow load is not read as a missing logo.
+  await page
+    .locator('app-top-bar img.logo')
+    .evaluate((img) => (img.complete ? null : img.decode().catch(() => null)));
   const logo = await page.locator('app-top-bar img.logo').evaluate((img) => {
     const box = img.getBoundingClientRect();
     return {
