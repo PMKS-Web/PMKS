@@ -402,23 +402,43 @@
             (closed)="sectionExpanded['JDistToJ'] = false"
           >
             @for (joint of listOfOtherJoints; track joint; let i = $index) {
-              <div>
-                <!-- The repeated alias template -->
-                <dual-input-block
-                  label1="D"
-                  label2="⊾"
-                  tooltip="How far this joint is from that one, and in what direction. Editing either moves that joint."
-                  [formGroup]="jointForm"
-                  formSubGroup="otherJoints"
-                  [formControl1]="(i * 2).toString()"
-                  [formControl2]="(i * 2 + 1).toString()"
-                  (field1Entry)="setShowLinkLengthOverlay($event)"
-                  (field2Entry)="setShowLinkAngleOverlay($event)"
-                  [emitterOutputID]="i"
-                >
-                  Joint {{ joint!.name }}</dual-input-block
-                >
-              </div>
+              <!-- A neighbor at the other end of a welded bar: that bar's
+                   length and angle, with the Link panel's own fields and
+                   padlocks. Only the two ends of one bar are offered a hold,
+                   so the padlock always means "this bar keeps its length". -->
+              @if (distanceRows[i]?.bar && distanceBarForms[i]) {
+                <div class="distance-bar" [attr.data-distance-bar]="distanceRows[i].bar!.id">
+                  <div class="row">
+                    <span class="label">Joint {{ joint!.name }}</span>
+                  </div>
+                  <hold-field-block
+                    [formGroup]="distanceBarForms[i]!"
+                    [link]="distanceRows[i].bar!"
+                    [lengthHelp]="distanceBarHelp(distanceRows[i])"
+                    [angleHelp]="distanceBarAngleHelp(distanceRows[i])"
+                    (lengthEntry)="setShowLinkLengthOverlay($event === -1 ? i : $event)"
+                    (angleEntry)="setShowLinkAngleOverlay($event === -1 ? i : $event)"
+                  ></hold-field-block>
+                </div>
+              } @else {
+                <div>
+                  <!-- The repeated alias template -->
+                  <dual-input-block
+                    label1="D"
+                    label2="⊾"
+                    tooltip="How far this joint is from that one, and in what direction. Editing either moves that joint."
+                    [formGroup]="jointForm"
+                    formSubGroup="otherJoints"
+                    [formControl1]="(i * 2).toString()"
+                    [formControl2]="(i * 2 + 1).toString()"
+                    (field1Entry)="setShowLinkLengthOverlay($event)"
+                    (field2Entry)="setShowLinkAngleOverlay($event)"
+                    [emitterOutputID]="i"
+                  >
+                    Joint {{ joint!.name }}</dual-input-block
+                  >
+                </div>
+              }
             }
           </collapsible-subsection>
         }

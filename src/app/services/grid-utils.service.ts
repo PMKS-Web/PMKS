@@ -1833,7 +1833,13 @@ export class GridUtilsService {
       return skeleton !== '';
     };
     const pick = (inside: (leaf: RealLink) => boolean) =>
-      pickLink(this.mechanismSrv.links, link, selected, inside);
+      pickLink(
+        this.mechanismSrv.links,
+        link,
+        selected,
+        inside,
+        (leaf) => this.mechanismSrv.cylinderOfBar(leaf) !== undefined
+      );
     try {
       const picked = pick((leaf) =>
         drawn(leaf) ? hit.isPointInStroke(at()) : hit.isPointInFill(at())

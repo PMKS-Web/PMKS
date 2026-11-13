@@ -3188,3 +3188,15 @@ and the property pass writes each member's share onto `member.mass` on every reb
 member's mass by hand does nothing that lasts: the next pass overwrites it, and `assignBodyMass`
 refuses it outright. Set the compound's mass instead. A spec that builds a compound by hand and
 wants a particular member to weigh more has to make that member longer.
+
+### A welded link is edited from its joints, not by a second click (#279)
+
+A click on a welded body used to select the body, and a second click the link under the pointer.
+Once a body had one density there was nothing on a link worth selecting it for except its length
+and angle, and its Fixed Length did nothing: `heldBars` was handed the top-level links and never
+saw a leaf. So the second click went (a cylinder's barrel and rod keep it, their lengths not being
+a distance between two joints), the joint panel's Distance to Joints draws each welded bar's far
+end with padlocks, and a body's menu has **Delete Link CD** for the link under the pointer. That
+row reads `lastSelectedSublink`, which the canvas sets on every press of a compound, not on
+selection. Distance to Joints lists neighbors only -- the far end of each bar, the rest of a plate
+-- so a chain of bars never offers a padlock between its two far ends.
