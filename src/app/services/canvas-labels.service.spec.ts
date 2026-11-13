@@ -1,5 +1,10 @@
 import { TestBed } from '@angular/core/testing';
-import { CanvasLabelsService, MAX_LABEL_PX, MIN_LABEL_PX } from './canvas-labels.service';
+import {
+  CanvasLabelsService,
+  MAX_LABEL_PX,
+  MIN_LABEL_PX,
+  PreferredLabel,
+} from './canvas-labels.service';
 import { MechanismService } from './mechanism.service';
 import { ObjectDisplayService } from './object-display.service';
 import { SettingsService } from './settings.service';
@@ -68,5 +73,73 @@ describe('canvas typography', () => {
   it('includes unsolved parts beside a solved mechanism', () => {
     model.visibleJoints = () => [a, b, new RevJoint('C', 325, 0)];
     expect(labels.modelFontSize()).toBe(325 / 55);
+  });
+});
+
+describe('laying out every body name for one redraw', () => {
+  const joints = ['A', 'B', 'C', 'D'].map((id, i) => new RevJoint(id, i * 40, (i % 2) * 15));
+  const links = [0, 1, 2].map(
+    (i) => new RealLink(joints[i].id + joints[i + 1].id, [joints[i], joints[i + 1]])
+  );
+  let nameLookups = 0;
+  let labels: CanvasLabelsService;
+  const preferred: PreferredLabel = (link, fontSize) => ({
+    x: (link.joints[0].x + link.joints[1].x) / 2,
+    y: (link.joints[0].y + link.joints[1].y) / 2,
+    name: link.id,
+    angle: 0,
+    ink: 'black',
+    opacity: 1,
+    fontSize,
+  });
+  beforeEach(() => {
+    nameLookups = 0;
+    const model = {
+      solveRevision: 1,
+      mechanisms: [{ joints: [joints] }],
+      forces: [],
+      visibleJoints: () => joints,
+      getLinks: () => links,
+      visibleBodyName: (link: RealLink) => (nameLookups++, link.id),
+      isPartInert: () => false,
+      cylinderOfBar: () => undefined,
+    };
+    const flag = (value: boolean) => ({ value });
+    const settings = {
+      forceScale: 1,
+      drawingZoom: 4,
+      drawingScale: 1,
+      isSchematic: false,
+      drawingStyle: flag(false),
+      isShowCOM: flag(false),
+      isShowID: flag(false),
+    };
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: MechanismService, useValue: model },
+        { provide: SettingsService, useValue: settings },
+        { provide: ObjectDisplayService, useValue: {} },
+      ],
+    });
+    labels = TestBed.inject(CanvasLabelsService);
+  });
+
+  it('gives every body the label it would get asked alone', () => {
+    const together = labels.forLinks(preferred, []);
+    expect(together.map((one) => one.link)).toEqual(links);
+    for (const { link, tag } of together) expect(tag).toEqual(labels.forLink(link, preferred, []));
+  });
+
+  it('builds the layout key once per pass, not once per body', () => {
+    const arrange = vi.spyOn(labels as unknown as { arrange: () => void }, 'arrange');
+    labels.forLinks(preferred, []);
+    const firstPass = nameLookups;
+    nameLookups = 0;
+    labels.forLinks(preferred, []);
+    expect(arrange).toHaveBeenCalledTimes(1);
+    // One lookup a body for the key and one for each placed label: linear in
+    // the bodies, where a key built per body cost one lookup per pair.
+    expect(nameLookups).toBe(2 * links.length);
+    expect(firstPass).toBeLessThan(links.length * links.length + 3 * links.length);
   });
 });

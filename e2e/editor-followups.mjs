@@ -177,9 +177,17 @@ try {
       const l = g.mechanismSrv.links.find((l) => l.name === 'Luffing crank');
       const a = g.linkLabelStyle(l),
         [p, q] = l.joints;
-      window.labelSides.push(
-        (a.x - (p.x + q.x) / 2) * (q.x - p.x) + (a.y - (p.y + q.y) / 2) * (q.y - p.y)
-      );
+      // The name in the bar's own frame, as fractions of its length from the
+      // middle: along the bar, and across it.
+      const dx = q.x - p.x,
+        dy = q.y - p.y,
+        rx = a.x - (p.x + q.x) / 2,
+        ry = a.y - (p.y + q.y) / 2,
+        lengthSquared = dx * dx + dy * dy;
+      window.labelSides.push({
+        along: (rx * dx + ry * dy) / lengthSquared,
+        across: (dx * ry - dy * rx) / lengthSquared,
+      });
     }, 20);
   });
   const film = filmstrip(page, `${OUT}/luffing`);
@@ -192,10 +200,17 @@ try {
     clearInterval(window.labelTimer);
     return window.labelSides;
   });
+  // The name is placed once and carried by its body, so its place in the
+  // bar's frame holds through the cycle. Since names are laid out against the
+  // whole drawing (#273) this one sits at the middle of its bar, where the sign
+  // of \`along\` is solver noise; a name jumping to the other end, or across the
+  // bar, moves it by a large fraction of the length.
+  const spread = (key) =>
+    Math.max(...sides.map((s) => s[key])) - Math.min(...sides.map((s) => s[key]));
   check(
-    'animated label stays attached to the same end',
-    sides.length > 20 && (sides.every((x) => x > 0) || sides.every((x) => x < 0)),
-    { min: Math.min(...sides), max: Math.max(...sides) }
+    'animated label stays attached to the same place on its body',
+    sides.length > 20 && spread('along') < 0.01 && spread('across') < 0.01,
+    { samples: sides.length, along: spread('along'), across: spread('across') }
   );
   await contactSheet(`${OUT}/luffing/*.png`, `${OUT}/luffing.png`, 5, 0.3);
 
