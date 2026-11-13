@@ -129,6 +129,10 @@ const TEMPLATE_PARTS: Partial<Record<LibraryTemplateID, TemplateParts>> = {
     ],
     fixed: { ABM: 2, KN: 4, BCTUVWX: 3 },
   },
+  // As the drawing was finished in the app: the crank navy, the rod the pale
+  // indigo, and the bar the dark teal, so the bar the ellipse comes from is
+  // the boldest part of the picture.
+  Elliptical_Trammel: { fixed: { OC: 2, CM: 0, ABMP: 5 } },
   // The three coupled wheels are one part made three times, and so are the two
   // coupling rods, which meet on the driving wheel's crank pin and should match.
   Steam_Locomotive: {

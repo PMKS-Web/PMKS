@@ -422,7 +422,7 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
     name: 'Elliptical Trammel',
     category: 'paths',
     description:
-      'Two blocks slide on crossed guides and swing a bar between them, so the traced point on the bar runs along an ellipse.',
+      'A crank and rod turn a bar whose ends slide on crossed guides, so the traced point on the bar goes all the way round an ellipse.',
     thumbnail: 'assets/gifs/elliptical-trammel.png',
     animation: 'assets/gifs/elliptical-trammel.gif',
   },
