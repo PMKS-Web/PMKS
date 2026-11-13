@@ -445,7 +445,10 @@ Three things follow. A carried cycle no longer comes home over the ground it wen
 arriving back at the starting travel on the other branch is not `cycle-never-closes`, and a drawing
 less than a step from a dead center closes there, the wrap to the first frame being the turn
 through it. If a carried walk still never closes, the drawing is walked again retracing, so nothing
-that ran stops running. And a carried crank sweeps poses a retracing one never reached, such as a
+that ran stops running. That walk (`carryRefused`) keeps its motion history across a reversal as
+every prismatic walk now does, which on its own picks the continuing branch wherever the samples
+fall, so it puts every covered step back on the visited pose by name rather than through the
+retrace test. And a carried crank sweeps poses a retracing one never reached, such as a
 parallelogram's change point, where its two roots stand closer than a step and a straight-line
 prediction picked the anti-parallelogram for one frame: `solutionNearestCurrent` follows the curve
 of the last three positions wherever the roots are closer together than one step.

@@ -10,6 +10,7 @@ import {
   SQUARE_ROD_OFFSET,
 } from '../../test-utils/verification/slot-fixtures';
 import { buildMechanismFixture } from '../fixtures/mechanism-fixtures';
+import { Mechanism } from '../../app/model/mechanism/mechanism';
 
 // A slider driving a crank through a rod reverses at each end of its stroke,
 // where crank and rod lie in one line, and the crank turns on through that dead
@@ -146,6 +147,41 @@ describe('a piston drawn beside a dead center', () => {
         piston(SQUARE_ROD_OFFSET, SQUARE_ROD_CRANK, 3, (startDeg * Math.PI) / 180)
       );
       expect(mechanism.isMechanismValid()).toBe(true);
+    });
+  }
+});
+
+describe('a walk told not to carry', () => {
+  // The second walk a drawing gets when a carried one never closes must
+  // retrace at every dead center. Its motion history is still kept across the
+  // reversal, so on its own it would pick the continuing branch wherever the
+  // samples happened to fall, and a covered step was kept there unless it was
+  // ruled out by name. Every walk here starts out told not to carry.
+  beforeEach(() => {
+    const walk = Mechanism.prototype as unknown as {
+      findFullMovementPos: (...args: unknown[]) => void;
+    };
+    const original = walk.findFullMovementPos;
+    vi.spyOn(walk, 'findFullMovementPos').mockImplementation(function (
+      this: { carryRefused: boolean },
+      ...args: unknown[]
+    ) {
+      this.carryRefused = true;
+      return original.apply(this, args);
+    });
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  for (const [offset, crank, startDeg] of [
+    [0, 1, 0],
+    [0, 1, 180],
+    [SQUARE_ROD_OFFSET, SQUARE_ROD_CRANK, 97.5],
+  ]) {
+    it(`runs and comes back the way it went, ${offset} off its guide at ${startDeg} degrees`, () => {
+      const mechanism = solve(piston(offset, crank, 3, (startDeg * Math.PI) / 180));
+      expect(mechanism.isMechanismValid()).toBe(true);
+      expect(crankTravel(mechanism.joints).turns).toBeCloseTo(0, 2);
     });
   }
 });

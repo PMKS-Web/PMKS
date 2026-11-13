@@ -1024,8 +1024,10 @@ export class Mechanism {
             steppedFrom || carriedLeg
               ? Math.max(jumpLimit, Mechanism.CARRY_REACH * this.stepInto(currentTimeStamp))
               : jumpLimit;
+          // A walk told not to carry retraces at every dead center, whatever
+          // its kept motion history found on the way back.
           const carriedThrough: boolean =
-            !retraced && this.solvedJump(currentTimeStamp) <= continuous;
+            !this.carryRefused && !retraced && this.solvedJump(currentTimeStamp) <= continuous;
           if (steppedFrom) carriedLeg = carriedThrough;
           if (carriedLeg) carriedOnce = this.carriedADeadCenter = true;
           if (!carriedThrough) this.reinstatePose(covered);
