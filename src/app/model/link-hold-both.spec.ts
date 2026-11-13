@@ -60,7 +60,7 @@ describe('a hold on both values', () => {
     expect(movedB.y).toBeCloseTo(2, 6);
   });
 
-  it('leaves a bar with one grounded end no freedom at all, unlike one hold alone', () => {
+  it('leaves a bar with one locked end no freedom at all, unlike one hold alone', () => {
     const both = bar('both', true);
     const pinned = holdJoints([both.a, both.b], (joint) => joint.ground);
     const stuck = settleHolds(pinned, heldBars([both.ab]), [{ id: 'B', x: 3, y: 3 }]);
@@ -69,6 +69,34 @@ describe('a hold on both values', () => {
     const one = bar('length', true);
     const free = holdJoints([one.a, one.b], (joint) => joint.ground);
     expect(settleHolds(free, heldBars([one.ab]), [{ id: 'B', x: 3, y: 3 }]).immovable).toEqual([]);
+  });
+
+  it('carries a grounded end along, since ground is a tiebreaker and not a lock', () => {
+    const both = bar('both', true);
+    const grounded = holdJoints(
+      [both.a, both.b],
+      () => false,
+      (joint) => joint.ground
+    );
+    const out = settleHolds(grounded, heldBars([both.ab]), [{ id: 'B', x: 6, y: 3 }]);
+    expect(out.immovable).toEqual([]);
+    expect(out.satisfied).toBe(true);
+    // The whole bar translates: B where it was asked, A the bar's length behind.
+    expect(out.positions.get('B')!.x).toBeCloseTo(6, 6);
+    expect(out.positions.get('B')!.y).toBeCloseTo(3, 6);
+    expect(out.positions.get('A')!.x).toBeCloseTo(2, 6);
+    expect(out.positions.get('A')!.y).toBeCloseTo(3, 6);
+  });
+
+  it('keeps a grounded end still while the dragged end has a freedom of its own', () => {
+    const one = bar('length', true);
+    const grounded = holdJoints(
+      [one.a, one.b],
+      () => false,
+      (joint) => joint.ground
+    );
+    const out = settleHolds(grounded, heldBars([one.ab]), [{ id: 'B', x: 3, y: 3 }]);
+    expect(out.positions.has('A')).toBe(false);
   });
 
   it('wears a chip for each value', () => {

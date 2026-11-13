@@ -322,6 +322,36 @@ record(
   await page.evaluate(() => /fixed length and angle/.test(document.body.textContent))
 );
 await page.screenshot({ path: `${OUT}/04-hold-both.png` });
+
+// Ground is a tiebreaker, not a lock: with AB holding both, B has no freedom
+// while A stays put, so A gives way and the whole crank moves with the hand.
+const [aBoth, bBoth] = [await jointModel('A'), await jointModel('B')];
+await dragBy(await jointOnScreen('B'), 60, -40, async () => {
+  await film.shot('both-held-ground-yields');
+});
+const [aCarried, bCarried] = [await jointModel('A'), await jointModel('B')];
+record(
+  'dragging B on a crank holding both carries the ground pin A along',
+  dist(bBoth, bCarried) > 0.05 &&
+    Math.abs(aCarried.x - aBoth.x - (bCarried.x - bBoth.x)) < 1e-3 &&
+    Math.abs(aCarried.y - aBoth.y - (bCarried.y - bBoth.y)) < 1e-3,
+  { aBoth, aCarried, bBoth, bCarried }
+);
+record(
+  'and nothing was refused',
+  await page.evaluate(() => {
+    const c = ng.getComponent(document.querySelector('app-new-grid'));
+    return !c.notify.live.some((n) => n.id === 'hold.joint') && !c.holdRing;
+  })
+);
+await page.screenshot({ path: `${OUT}/04b-both-held-ground-yields.png` });
+await page.keyboard.press('Control+z');
+await page.waitForTimeout(400);
+record('undo puts the crank back', dist(await jointModel('A'), aBoth) < 1e-2);
+// The drag selected B; the padlocks below are the bar's.
+const abBack = await linkOnScreen('AB');
+await page.mouse.click(abBack.x, abBack.y);
+await page.waitForTimeout(300);
 await page.click('[data-hold-toggle="angle"]');
 await page.waitForTimeout(300);
 record('releasing the angle leaves the length held', (await holdOf('AB')) === 'length');
@@ -367,10 +397,12 @@ const bcOn = await linkOnScreen('BC');
 await page.mouse.click(bcOn.x, bcOn.y, { button: 'right' });
 await page.waitForTimeout(350);
 await clickRow('Fixed Length');
-// Lock C so BC's far end is fixed: B is then between two held lengths from two
-// fixed points, a rigid triangle.
+// Lock A and C: B is then between two held lengths from two fixed points, a
+// rigid triangle. A grounded is not enough -- ground gives way when nothing
+// else can.
 await inAngular(page, () => {
   const c = ng.getComponent(document.querySelector('app-new-grid'));
+  c.mechanismSrv.toggleLock(c.mechanismSrv.joints.find((j) => j.id === 'A'));
   c.mechanismSrv.toggleLock(c.mechanismSrv.joints.find((j) => j.id === 'C'));
 });
 await page.waitForTimeout(200);
@@ -418,11 +450,13 @@ await page.waitForTimeout(150);
 await inAngular(page, () => {
   const c = ng.getComponent(document.querySelector('app-new-grid'));
   c.mechanismSrv.toggleLock(c.mechanismSrv.joints.find((j) => j.id === 'C'));
+  c.mechanismSrv.toggleLock(c.mechanismSrv.joints.find((j) => j.id === 'A'));
 });
 await page.waitForTimeout(200);
 record('BC still holds its length before the undo', (await holdOf('BC')) === 'length');
-// Three edits since the hold: the lock on C, its release, and the hold itself.
-for (let step = 0; step < 3; step++) {
+// Five edits since the hold: the locks on A and C, their releases, and the
+// hold itself.
+for (let step = 0; step < 5; step++) {
   await page.keyboard.press('Control+z');
   await page.waitForTimeout(400);
 }
@@ -639,6 +673,11 @@ record(
 
 await contactSheet(`${OUT}/*mid-drag*.png`, `${OUT}/sheet-mid-drag.png`, 2);
 await contactSheet(`${OUT}/*both-held-slide*.png`, `${OUT}/sheet-both-held-slide.png`, 4);
+await contactSheet(
+  `${OUT}/*both-held-ground-yields*.png`,
+  `${OUT}/sheet-both-held-ground-yields.png`,
+  4
+);
 await browser.close();
 
 if (errors.length) console.log('page errors:', errors.slice(0, 5));

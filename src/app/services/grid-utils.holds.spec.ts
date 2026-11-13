@@ -96,6 +96,8 @@ describe('dragging against a held bar', () => {
     const parts = fourBar(service);
     parts.ab.hold = 'length';
     parts.bc.hold = 'length';
+    // Locked, not just grounded: a ground pin gives way when nothing else can.
+    parts.a.locked = true;
     parts.c.locked = true;
     const bWas = { x: parts.b.x, y: parts.b.y };
     expect(grid.holdsImmobilizing(parts.b).map((bar) => bar.id)).toEqual(['AB', 'BC']);
@@ -103,6 +105,37 @@ describe('dragging against a held bar', () => {
     expect(parts.b.x).toBeCloseTo(bWas.x, 3);
     expect(parts.b.y).toBeCloseTo(bWas.y, 3);
     expect(grid.lastHoldRefusal?.immovable.map((joint) => joint.id)).toEqual(['B']);
+  });
+
+  it('lets a ground pin give way when it is all that would hold the dragged joint', () => {
+    // A only grounded: B has no freedom with A still, so A yields and B
+    // swings about the locked C, carrying A at the held length.
+    const parts = fourBar(service);
+    parts.ab.hold = 'length';
+    parts.bc.hold = 'length';
+    parts.c.locked = true;
+    const ab = dist(parts.a, parts.b);
+    const bc = dist(parts.b, parts.c);
+    const cWas = { x: parts.c.x, y: parts.c.y };
+    expect(grid.holdsImmobilizing(parts.b)).toEqual([]);
+    grid.dragJoint(parts.b, new Coord(2 * S, 2 * S));
+    expect(grid.lastHoldRefusal).toBeUndefined();
+    expect(dist(parts.a, parts.b)).toBeCloseTo(ab, 3);
+    expect(dist(parts.b, parts.c)).toBeCloseTo(bc, 3);
+    expect(parts.c).toMatchObject(cWas);
+    expect(parts.a.ground).toBe(true);
+  });
+
+  it('drags a crank holding its length and angle whole, ground pin and all', () => {
+    const parts = fourBar(service);
+    parts.ab.hold = 'both';
+    const offset = { x: parts.b.x - parts.a.x, y: parts.b.y - parts.a.y };
+    expect(grid.holdsImmobilizing(parts.b)).toEqual([]);
+    grid.dragJoint(parts.b, new Coord(parts.b.x + S, parts.b.y + S));
+    expect(grid.lastHoldRefusal).toBeUndefined();
+    expect(parts.b.x - parts.a.x).toBeCloseTo(offset.x, 3);
+    expect(parts.b.y - parts.a.y).toBeCloseTo(offset.y, 3);
+    expect(parts.a.x).toBeCloseTo(S, 3);
   });
 
   it('moves a whole body through the holds when one of its joints is held', () => {
@@ -118,6 +151,7 @@ describe('dragging against a held bar', () => {
     const parts = fourBar(service);
     parts.ab.hold = 'length';
     parts.bc.hold = 'length';
+    parts.a.locked = true;
     parts.c.locked = true;
     grid.dragJoint(parts.b, new Coord(2 * S, 2 * S));
     expect(grid.lastHoldRefusal).toBeDefined();
@@ -125,6 +159,7 @@ describe('dragging against a held bar', () => {
     // reported as the limit it no longer is.
     parts.ab.hold = undefined;
     parts.bc.hold = undefined;
+    parts.a.locked = false;
     parts.c.locked = false;
     grid.dragJoint(parts.b, new Coord(1 * S, 2 * S));
     expect(parts.b.x).toBeCloseTo(1 * S, 6);

@@ -12,8 +12,13 @@
  * -- dragging the free end of a held bar whose other end is grounded slides it
  * on the arc. Every other joint on a held bar moves as little as it has to:
  * dragging the end of a held bar whose other end is free tows that end along.
- * Grounded and locked joints are fixed and never move; nothing the edit did
- * not ask for is moved unless a hold requires it.
+ * Locked joints are fixed and never move. A grounded joint is a tiebreaker,
+ * not a lock: it stays where it is whenever the asked-for joint has any
+ * freedom without it -- so the free end of a held crank still slides on its
+ * arc -- and gives way only when it is the one thing standing between the
+ * ask and any motion at all, as a crank holding both its length and its
+ * angle does: dragging its far end then carries the ground pin along.
+ * Nothing the edit did not ask for is moved unless a hold requires it.
  *
  * Solved by weighted projection (the position-based method): each hold is
  * satisfied in turn by moving its two joints in proportion to their weights,
@@ -34,6 +39,12 @@ export interface HoldJoint {
   x: number;
   y: number;
   fixed: boolean;
+  /**
+   * A grounded joint: held still like a fixed one, unless an asked-for joint
+   * could not move at all without it, in which case it moves, after the
+   * floating joints and before the asked-for ones.
+   */
+  yields?: boolean;
 }
 
 /** A two-joint bar with a hold, and the value it is holding. */
@@ -75,6 +86,8 @@ const REST = 1e-9;
 const HOLD_TOLERANCE = 1e-6;
 /** The weight of an asked-for joint: last to move, but not never. */
 const GOAL_WEIGHT = 1e-4;
+/** The weight of a grounded joint that has had to give way: after the floating ones. */
+const YIELD_WEIGHT = 1e-2;
 
 /**
  * The bars and joints an edit can reach: the connected component of the goal
@@ -135,12 +148,18 @@ export function settleHolds(
   // is, as a fixed joint would. Asking anyway sent the sweep off from the
   // target toward whichever of the two rigid assemblies lay nearer to it --
   // the mirror one, half the time -- which is a jump, not a refusal.
-  const immovable = goals
-    .filter((goal) => {
-      const joint = byId.get(goal.id);
-      return joint && !joint.fixed && !canMove(goal.id, joints, reach.bars);
-    })
-    .map((goal) => goal.id);
+  //
+  // Asked first with every grounded joint held, so a joint with any freedom
+  // of its own keeps the ground where it is; then, for a goal that has none,
+  // again with the ground let go. If that frees it, the ground yields.
+  const anchored = joints.map((joint) => ({ ...joint, fixed: joint.fixed || !!joint.yields }));
+  const stuck = goals.filter((goal) => {
+    const joint = byId.get(goal.id);
+    return joint && !joint.fixed && !canMove(goal.id, anchored, reach.bars);
+  });
+  const freedByGround = stuck.filter((goal) => canMove(goal.id, joints, reach.bars));
+  const groundYields = freedByGround.length > 0;
+  const immovable = stuck.filter((goal) => !freedByGround.includes(goal)).map((goal) => goal.id);
 
   // Working positions and weights, for the joints the holds reach.
   const pos = new Map<string, { x: number; y: number }>();
@@ -149,9 +168,10 @@ export function settleHolds(
     const joint = byId.get(id);
     if (!joint) continue;
     const goal = goalById.get(id);
-    const still = joint.fixed || (holdStill && immovable.includes(id));
+    const held = joint.yields && !goal && !groundYields;
+    const still = joint.fixed || held || (holdStill && immovable.includes(id));
     pos.set(id, still || !goal ? { x: joint.x, y: joint.y } : { x: goal.x, y: goal.y });
-    weight.set(id, still ? 0 : goal ? GOAL_WEIGHT : 1);
+    weight.set(id, still ? 0 : goal ? GOAL_WEIGHT : joint.yields ? YIELD_WEIGHT : 1);
   }
 
   sweep(reach.bars, pos, weight);

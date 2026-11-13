@@ -2,7 +2,7 @@ import { linkArtwork, schematicLink } from '../model/link-artwork';
 import { cylinderJoints } from '../model/cylinder';
 import { pickLink } from '../model/link-pick';
 import { Injectable, Injector, inject } from '@angular/core';
-import { HoldBar, HoldGoal, reachedByHolds, settleHolds } from '../model/hold-solver';
+import { HoldBar, HoldGoal, HoldJoint, reachedByHolds, settleHolds } from '../model/hold-solver';
 import {
   heldBars,
   heldBarsReaching,
@@ -374,13 +374,9 @@ export class GridUtilsService {
       bars
     ).joints;
     if (!reached.size || !bars.some((bar) => reached.has(bar.a))) return undefined;
-    const frozen = this.frozenJointIds();
     // A grounded joint anchors the others, not itself: in Edit a ground pin
     // is dragged like any other, and the bar it is on follows.
-    const moving = new Set(goals.map((goal) => goal.id));
-    const joints = holdJoints(this.mechanismSrv.joints, (joint) =>
-      this.holdAnchor(joint, frozen, moving)
-    );
+    const joints = this.dragHoldJoints(new Set(goals.map((goal) => goal.id)));
     const solved = settleHolds(joints, bars, goals);
     // An ask no configuration satisfies is refused whole: the half-settled
     // positions the sweep stopped in have a hold or two false in them, and
@@ -565,10 +561,7 @@ export class GridUtilsService {
     const cylinders = this.mechanismSrv.sealedStructures();
     const bars = heldBars(links, cylinders);
     if (bars.length === 0 || heldBarsReaching(joint, links, cylinders).length === 0) return [];
-    const frozen = this.frozenJointIds();
-    const joints = holdJoints(this.mechanismSrv.joints, (j) =>
-      this.holdAnchor(j, frozen, new Set([joint.id]))
-    );
+    const joints = this.dragHoldJoints(new Set([joint.id]));
     const solved = settleHolds(joints, bars, [{ id: joint.id, x: joint.x, y: joint.y }]);
     return solved.immovable.includes(joint.id) ? heldBarsReaching(joint, links, cylinders) : [];
   }
@@ -592,9 +585,29 @@ export class GridUtilsService {
     return this.holdAnchor(joint, this.frozenJointIds());
   }
 
-  private holdAnchor(joint: RealJoint, frozen: Set<string>, moving = new Set<string>()): boolean {
+  /**
+   * The joints as a drag's hold solve sees them. A ground pin is a tiebreaker
+   * there, not an anchor: it holds while the dragged joint has any freedom
+   * without it, and yields when it is all that stands in the way -- a crank
+   * holding both its length and its angle from a ground pin is dragged whole.
+   * Only a lock, a slider and a cylinder's interior are truly fixed.
+   */
+  private dragHoldJoints(moving: Set<string>): HoldJoint[] {
+    const frozen = this.frozenJointIds();
+    const fixed = (joint: RealJoint) => this.holdAnchor(joint, frozen, moving, false);
+    return holdJoints(this.mechanismSrv.joints, fixed, (joint) => {
+      return joint.ground && !moving.has(joint.id) && !fixed(joint);
+    });
+  }
+
+  private holdAnchor(
+    joint: RealJoint,
+    frozen: Set<string>,
+    moving = new Set<string>(),
+    groundAnchors = true
+  ): boolean {
     return (
-      (joint.ground && !moving.has(joint.id)) ||
+      (groundAnchors && joint.ground && !moving.has(joint.id)) ||
       frozen.has(joint.id) ||
       joint instanceof PrisJoint ||
       this.mechanismSrv.cylindersAt(joint).some((cylinder) => isInsideCylinder(cylinder, joint))
