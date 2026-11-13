@@ -156,7 +156,10 @@
         <!-- Two columns: the name, then its job and its size in tabular
              figures, so the lengths line up. By position, not by name: two
              bodies can share a name once a welded body stops being called
-             after the joint buried inside it. -->
+             after the joint buried inside it. The job (crank, coupler) is
+             about how the machine moves, so only the analysis modes say it:
+             in Edit it is not what the reader is working on, and in the
+             narrow card it wrapped every row in two (issue #276). -->
         <div class="linkList">
           @for (link of overview.links(index); track $index) {
             <span class="linkName"
@@ -165,7 +168,9 @@
             <!-- The job and the size share a line when they fit, and the size
                  wraps under the job, still flush right, only when they do not. -->
             <span class="linkRest">
-              <span class="linkRole">{{ link.role }}</span>
+              @if (!editable()) {
+                <span class="linkRole">{{ link.role }}</span>
+              }
               <span class="linkLength">{{ link.length }}</span>
             </span>
           }

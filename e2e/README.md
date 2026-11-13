@@ -179,6 +179,10 @@ Not suites — import them from one.
 
 ### Editing, undo and paused poses
 
+- `constrained-link-drag.mjs` — #259: dragging BC beside a fixed length or angle on AB
+  preserves BC’s shape, does not creep at a stationary pointer, and costs one undo step.
+  Reports and drag filmstrips in `artifacts/constrained-link-drag/`.
+
 - `edit-playback.mjs` — Gate 1 of `docs/edit-mode-playback-plan.md`: the transport is chrome
   (present and inert over an empty grid), the Edit panel stays while the mechanism moves, every
   gate gives one answer, and the mode-switch table edge by edge.
