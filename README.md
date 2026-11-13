@@ -47,6 +47,7 @@ server.
 - [Development](#development)
 - [Contributing](#contributing)
 - [License and contact](#license-and-contact)
+- [Supporting PMKS](#supporting-pmks)
 - [Acknowledgements](#acknowledgements)
 
 ---
@@ -646,6 +647,18 @@ MIT. The full text is in [LICENSE](LICENSE) at the root of this repository.
 
 Questions, bug reports and course-adoption enquiries: **help@pmksplus.com**, or the feedback form
 inside the app (Help / Feedback in the project menu).
+
+---
+
+## Supporting PMKS
+
+PMKS is free and will stay free: no account, no paid tier, nothing held back. If it has been
+useful to you or your class, you can chip in at **[ko-fi.com/pmksapp](https://ko-fi.com/pmksapp)**.
+100% of donations, after the payment processor's fee, go toward funding PMKS: hosting,
+development, outreach and the like.
+
+Donations are received by the project's maintainer, not by Worcester Polytechnic Institute. They
+are not tax-deductible, and they buy nothing: every donor and non-donor gets the same app.
 
 ---
 

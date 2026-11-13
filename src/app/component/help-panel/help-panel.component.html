@@ -2,12 +2,6 @@
   <panel-section>
     <title-block>Help</title-block>
 
-    <collapsible-subsection titleLabel="Learn PMKS" [expanded]="true">
-      <button-block icon="help_center" [click]="gotoHelpSite">Tutorial Videos</button-block>
-      <subtitle-block>PMKS is open source! Do you want to help us develop it?</subtitle-block>
-      <button-block customIcon="github" [click]="gotoGithub">GitHub Repository</button-block>
-    </collapsible-subsection>
-
     <collapsible-subsection titleLabel="Glossary" [expanded]="false">
       <dl class="glossaryList">
         @for (entry of glossary; track entry.term) {
@@ -36,6 +30,8 @@
     </collapsible-subsection>
 
     <collapsible-subsection titleLabel="Send Feedback" [expanded]="true">
+      <p class="sectionNote">Found a bug? See whether someone has already reported it.</p>
+      <button-block customIcon="github" [click]="gotoIssues">Reported Issues</button-block>
       <p class="sectionNote">
         Do you want to attach a file? Send us an email at help&#64;pmksplus.com
       </p>
@@ -84,6 +80,18 @@
           Send Message
         </button-block>
       </form>
+    </collapsible-subsection>
+
+    <!-- Kept last and quiet on purpose: a link someone can find, never a
+         prompt. Nothing else in the app mentions it. -->
+    <collapsible-subsection titleLabel="Donate" [expanded]="true">
+      <p class="sectionNote">
+        PMKS is free and stays free. If it has helped you, a small donation helps pay for hosting.
+      </p>
+      <button-block icon="coffee" [click]="gotoDonate">Donate on Ko-fi</button-block>
+      <p class="sectionNote">
+        Donations go to the maintainer, not to WPI, are not tax-deductible, and unlock nothing.
+      </p>
     </collapsible-subsection>
   </panel-section>
 </div>
