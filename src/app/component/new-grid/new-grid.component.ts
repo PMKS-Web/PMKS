@@ -2226,10 +2226,10 @@ export class NewGridComponent implements OnDestroy {
           // on its corner for ever.
           const reference = this.activeObjService.selectedLink.joints[0];
           const landed = this.placeDraggedBody(reference, mousePosInSvg, $event.altKey);
-          this.gridUtils.dragLink(
+          this.gridUtils.dragLinkTo(
             this.activeObjService.selectedLink,
-            landed.x - reference.x,
-            landed.y - reference.y
+            landed,
+            this.beforeDrag!.joints
           );
           this.linkDragAnchor = mousePosInSvg;
           this.dragState.noteMechanismModified();
