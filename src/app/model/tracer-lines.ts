@@ -25,6 +25,25 @@ export function tracerLines(joint: Joint, isCylinderMember: (link: Link) => bool
 }
 
 /**
+ * The lines a new tracer point may land on when added to the selected link:
+ * through each pair of the joints of the one bar it will grow (#307).
+ *
+ * A welded compound's own `joints` gather every member's, so the bar is the
+ * member the right-click landed on (`lastSelectedSublink`), as `graftJoint`
+ * grows it. A compound whose member is unknown, and a cylinder's member, get
+ * no lines, as with a dragged tracer.
+ */
+export function placementLines(
+  selected: Link | undefined,
+  isCylinderMember: (link: Link) => boolean
+): SnapLine[] {
+  if (!(selected instanceof RealLink)) return [];
+  const body = selected.lastSelectedSublink ?? selected;
+  if (!(body instanceof RealLink) || body.subset.length || isCylinderMember(body)) return [];
+  return linesThrough(body.joints);
+}
+
+/**
  * What a dragged tracer may snap to: its bar's lines, and every other pin
  * whose axis may square it up along them. A slider is not a pin to square
  * against, as in the axis snap.

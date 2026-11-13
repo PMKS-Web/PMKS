@@ -124,12 +124,19 @@ await page.keyboard.down('Alt');
 await page.mouse.move(nearAgain.point.x, nearAgain.point.y, { steps: 10 });
 await page.waitForTimeout(150);
 const suspended = await geometry(0.6, 0, tracer);
-await page.mouse.up();
 await page.keyboard.up('Alt');
+await page.waitForTimeout(150);
+const resumed = await geometry(0.6, 0, tracer);
+await page.mouse.up();
 record(
   'with Option held it goes where the hand is, off the line',
-  Math.abs(suspended.tracerOff) > 3,
+  Math.abs(suspended.tracerOff) > 3 && suspended.guides === 0,
   suspended
+);
+record(
+  'letting go of Option without moving puts it back on the line',
+  Math.abs(resumed.tracerOff) < 0.05 && resumed.guides >= 1,
+  resumed
 );
 
 record('no page errors', errors.length === 0, errors.slice(0, 3));
