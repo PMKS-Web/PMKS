@@ -179,6 +179,7 @@ describe('dragging against a held bar', () => {
   it('carries a load direction and custom center with the solved body motion', () => {
     const parts = fourBar(service);
     parts.ab.hold = 'length';
+    parts.a.locked = true;
     parts.bc.CoM = new Coord(S, (7 / 3) * S);
     parts.bc.comIsCustom = true;
     const force = new Force(
@@ -196,6 +197,7 @@ describe('dragging against a held bar', () => {
     const radius = dist(parts.b, parts.bc.CoM);
     grid.dragLink(parts.bc, S, -S / 2);
     const turn = Math.atan2(parts.c.y - parts.b.y, parts.c.x - parts.b.x) - oldAngle;
+    expect(Math.abs(turn)).toBeGreaterThan(1e-3);
     expect(dist(parts.b, parts.bc.CoM)).toBeCloseTo(radius, 3);
     expect(force.startCoord.x).toBeCloseTo(parts.bc.CoM.x, 3);
     expect(force.startCoord.y).toBeCloseTo(parts.bc.CoM.y, 3);
