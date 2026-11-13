@@ -43,6 +43,7 @@ import { SaveHistoryService } from '../../services/save-history.service';
 import { PrisJoint, RealJoint } from '../../model/joint';
 import { inputSetFor, NO_INPUT_SET } from '../../model/mechanism/readiness';
 import { StartMoveRefusal } from '../../model/start-move-refusal';
+import { snapsToStart } from '../../model/scrub-snap';
 import { CdkConnectedOverlay, CdkOverlayOrigin, ConnectedPosition } from '@angular/cdk/overlay';
 
 /** What the stylesheet is asked for, and what to assume if it has not loaded. */
@@ -246,6 +247,13 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
   private positionSub?: Subscription;
   private wasAnimating = false;
   private wasRowAnimating = false;
+  /**
+   * A pointer pressed a handle and has not yet committed a value, so the next
+   * `change` is a release that may snap to the start. A key press clears it: a
+   * click that moved nothing commits nothing, and must not make the next arrow
+   * key's step look like a release.
+   */
+  protected scrubPointerHeld = false;
 
   ngOnInit(): void {
     // The rows are rebuilt from the service on every change detection, and the
@@ -1089,6 +1097,44 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
       return;
     }
     this.mechanism.seekMechanismTo(row.index, along);
+    this.publishMotion();
+  }
+
+  /**
+   * A pointer let go of a row's handle: if it came to rest a few pixels from
+   * the seat, it means the start.
+   *
+   * Only a pointer. An arrow key moves one step from the seat, which is inside
+   * the snap band, so snapping keyboard steps would hold the handle in the seat
+   * for good. `change` rather than `pointerup` because a range commits on
+   * release wherever the pointer is, mouse or finger, and the press may have
+   * left the track by then.
+   */
+  settleScrub(row: PlaybackRow, event: Event): void {
+    if (!this.scrubPointerHeld) return;
+    this.scrubPointerHeld = false;
+    const input = event.target as HTMLInputElement;
+    if (snapsToStart(Number(input.value), row.anchorAt, input.getBoundingClientRect().width)) {
+      this.seekRowToStart(row, input);
+    }
+  }
+
+  /**
+   * Land exactly on the start pose, because the handle came within a few
+   * pixels of its seat.
+   *
+   * By time rather than by position: the start is t = 0 by construction, and
+   * an input that turns back passes its seat twice a cycle, only once of which
+   * is the start. The handle is put in the seat too, because the binding will
+   * not move it -- the row's value may well not have changed.
+   */
+  private seekRowToStart(row: PlaybackRow, input: HTMLInputElement): void {
+    input.value = String(row.anchorAt ?? 0);
+    if (row.index === -1) {
+      this.mechanism.seekAllAlong(row.leader, 0);
+      return;
+    }
+    this.mechanism.seekMechanism(row.index, 0);
     this.publishMotion();
   }
 
