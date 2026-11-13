@@ -82,7 +82,9 @@ const dragBackTo = async (n, offset) => {
 
 // --- the shared row ---------------------------------------------------------
 await openMechanism(page, `${BASE}/?${TEMPLATE_LINKAGES['4-Bar']}`);
-for (const offset of [3, -2, 5]) {
+// 5.5px sits just inside the six-pixel band, which is measured over the
+// thumb's travel (the input less one thumb), not the input's whole width.
+for (const offset of [3, -2, 5, 5.5, -5.5]) {
   const { away, back } = await dragBackTo(0, offset);
   record(
     `shared row: carried away and let go ${offset}px from the seat lands on the start`,
