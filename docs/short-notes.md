@@ -1116,7 +1116,9 @@ slot or a ram at its stop reads the same however finely it is approached, and re
 creeps up on a wall, spending six extra solves and a sample to land 1/64 of a degree nearer it.
 Retrying every refusal costs ten fixtures their cycle -- `adaptive-sampling`, `reversed-cycle`,
 `template-url` and the force fixtures all fail -- which `near-toggle-continuation.spec.ts` now
-states directly. `refusalKind` is `'travel'` for these.
+states directly. `refusalKind` is `'travel'` for these: `ridersAreInTheirSlots` says so through
+`refuseTravel`, where a bare `false` used to read as `'unsolved'` and let a slider-driven crank try
+to carry on through a slot's end as if it were a dead center.
 
 **`'unsolved'` is the third kind, and it is a weaker claim than either.** An iteration that came
 away with nothing says this seed and this step found no pose, not that none exists. It is treated

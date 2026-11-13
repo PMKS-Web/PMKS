@@ -987,15 +987,21 @@ export class Mechanism {
             PositionSolver.carryPast = new Map(
               this._joints[covered].map((joint) => [joint.id, [joint.x, joint.y]])
             );
-            const onward = this.solveLookingAhead(
-              currentTimeStamp,
-              inputAngVelDirection,
-              revoluteStep,
-              jumpLimit,
-              canSubdivide,
-              room
-            );
-            PositionSolver.carryPast = undefined;
+            // Cleared however the retry ends: the solver's statics outlive
+            // this walk, and a stray carry would pick a root at any fold.
+            let onward: typeof attempt;
+            try {
+              onward = this.solveLookingAhead(
+                currentTimeStamp,
+                inputAngVelDirection,
+                revoluteStep,
+                jumpLimit,
+                canSubdivide,
+                room
+              );
+            } finally {
+              PositionSolver.carryPast = undefined;
+            }
             retraced =
               !onward.solved ||
               onward.fraction !== attempt.fraction ||

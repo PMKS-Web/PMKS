@@ -65,9 +65,10 @@ describe('a gripper whose ram runs to a limit and comes back', () => {
     // that jaw's hanger carries on through the dead center while the ram runs
     // back. A ram is not cut finer near a dead center, so the step through it
     // is several times the step into it -- up to about 5.8 times, by the
-    // square root the hanger moves as there. The fault this guards against
-    // was a change of assembly mode: 123 against a step into it of 20, and
-    // nowhere near either the steps around it.
+    // square root the hanger moves as there, and 4.5 times (54 after 12) in
+    // this drawing. The fault this guards against was a change of assembly
+    // mode: 123 against a step into it of 20, over 6 times, so the ceiling
+    // sits between the two.
     const frames = mechanism.mechanisms[0].joints;
     for (let sample = 2; sample < frames.length; sample++) {
       for (let index = 0; index < frames[sample].length; index++) {
@@ -77,7 +78,7 @@ describe('a gripper whose ram runs to a limit and comes back', () => {
         expect(Number.isFinite(now.x) && Number.isFinite(now.y)).toBe(true);
         const into = Math.hypot(was.x - before.x, was.y - before.y);
         const step = Math.hypot(now.x - was.x, now.y - was.y);
-        expect(step, `${now.id} at sample ${sample}`).toBeLessThanOrEqual(Math.max(8 * into, 1));
+        expect(step, `${now.id} at sample ${sample}`).toBeLessThanOrEqual(Math.max(6 * into, 1));
       }
     }
   });

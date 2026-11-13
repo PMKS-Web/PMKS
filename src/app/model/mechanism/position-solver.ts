@@ -570,6 +570,7 @@ export class PositionSolver {
     this.priorJointPositions = new Map<string, Array<number>>();
     this.earlierJointPositions = new Map<string, Array<number>>();
     this.refusalKind = 'none';
+    this.carryPast = undefined;
     this.coupledRoute = false;
     this.sliderAngleMap = new Map<string, number>();
     this.desiredJointGroundIndexMap = new Map<string, number>();
@@ -3790,7 +3791,7 @@ export class PositionSolver {
       const midY = (from[1] + to[1]) / 2;
       const along = ((at[0] - midX) * dx + (at[1] - midY) * dy) / separation;
       if (Math.abs(along) > slotReach(separation) + SLOT_END_TOLERANCE * separation) {
-        return false;
+        return this.refuseTravel();
       }
     }
     return true;
