@@ -808,3 +808,98 @@ describe('MechanismService undo entries on a drawing large enough to defer solvi
     expect(harness.saveCount()).toBe(1);
   });
 });
+
+/**
+ * Issue #138: a force sits on one body, so it never stays on a joint where a
+ * second body meets its link. The edit that put it there stands, and the
+ * rebuild moves the force a short way along its link and says so.
+ */
+describe('MechanismService keeping forces off joints that refuse them', () => {
+  function forceAt(service: MechanismService, link: RealLink, x: number, y: number): Force {
+    const force = new Force('F1', link, new Coord(x, y), new Coord(x, y + 1), false, true, 10);
+    link.forces.push(force);
+    service.forces.push(force);
+    return force;
+  }
+
+  function said(service: MechanismService): string[] {
+    const notify = (service as unknown as { notify: NotificationService }).notify;
+    return notify.live
+      .filter((one) => one.id.startsWith('force.moved-off-joint'))
+      .map((one) => one.text);
+  }
+
+  it('moves a tracer point’s force off the joint the tracer is merged onto', () => {
+    const scene = createOpenFourBar();
+    const de = scene.service.links.find((link) => link.id === 'DE') as RealLink;
+    const force = forceAt(scene.service, de, scene.e.x, scene.e.y);
+    scene.service.updateMechanism();
+    // On a tracer point it may stay.
+    expect(force.startCoord.x).toBeCloseTo(4.05, 9);
+    expect(said(scene.service)).toEqual([]);
+
+    expect(scene.service.mergeJoints(scene.e, scene.c)).toBeUndefined();
+
+    const margin = 0.3 * scene.settings.objectScale;
+    const gap = Math.hypot(force.startCoord.x - scene.c.x, force.startCoord.y - scene.c.y);
+    expect(gap).toBeCloseTo(Math.min(margin, Math.hypot(1, 2) / 2), 6);
+    // Still on the bar from D to C.
+    const cross =
+      (scene.c.x - scene.d.x) * (force.startCoord.y - scene.d.y) -
+      (scene.c.y - scene.d.y) * (force.startCoord.x - scene.d.x);
+    expect(cross).toBeCloseTo(0, 9);
+    expect(said(scene.service)).toEqual([
+      `Force F1 moved off joint C onto link CD: 2 links meet there, so the force would not say which one carries it.`,
+    ]);
+  });
+
+  it('moves a force off a tracer point that is then grounded', () => {
+    const harness = createChain(2);
+    const [a, b] = harness.joints;
+    const force = forceAt(harness.service, harness.links[0], b.x, b.y);
+    harness.active.updateSelectedObj(b);
+
+    harness.service.toggleGround();
+
+    expect(b.ground).toBe(true);
+    expect(Math.hypot(force.startCoord.x - b.x, force.startCoord.y - b.y)).toBeGreaterThan(0);
+    expect(force.startCoord.x).toBeGreaterThan(a.x);
+    expect(force.startCoord.x).toBeLessThan(b.x);
+    expect(said(harness.service)[0]).toContain('the joint is grounded');
+  });
+
+  it('opens a drawing with a load on a grounded pin with the load moved off it', () => {
+    const harness = createChain(2);
+    const [a] = harness.joints;
+    a.ground = true;
+    const force = forceAt(harness.service, harness.links[0], a.x, a.y);
+
+    harness.service.updateMechanism();
+
+    expect(force.startCoord.x).toBeGreaterThan(0);
+    expect(force.startCoord.y).toBeCloseTo(0, 12);
+    // The arrow keeps its direction and its length: the whole arrow moves.
+    expect(force.endCoord.x - force.startCoord.x).toBeCloseTo(0, 12);
+    expect(force.endCoord.y - force.startCoord.y).toBeCloseTo(1, 12);
+  });
+
+  it('makes a new force beside a grounded pin rather than on it, without a word', () => {
+    const harness = createChain(2);
+    const [a] = harness.joints;
+    a.ground = true;
+
+    const force = harness.service.createForce(new Coord(0, 0), new Coord(0, 1), harness.links[0])!;
+
+    expect(force.startCoord.x).toBeGreaterThan(0);
+    expect(said(harness.service)).toEqual([]);
+  });
+
+  it('leaves a force on a tracer point where it is', () => {
+    const harness = createChain(2);
+    const [, b] = harness.joints;
+    const force = forceAt(harness.service, harness.links[0], b.x, b.y);
+    harness.service.updateMechanism();
+    expect(force.startCoord.x).toBe(b.x);
+    expect(said(harness.service)).toEqual([]);
+  });
+});

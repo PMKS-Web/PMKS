@@ -63,6 +63,7 @@ import { EditPermissionService } from './edit-permission.service';
 import { canDrive } from '../model/actuator';
 import { Lockable, frozenJointIds, locksHolding } from '../model/lock-set';
 import { Coord } from '../model/coord';
+import { refuseForceOnJoint } from '../model/force-on-joint';
 import { constrainForceAnchor } from '../model/force-anchor';
 import { PositionSolver } from '../model/mechanism/position-solver';
 import { Force } from '../model/force';
@@ -1667,12 +1668,13 @@ export class GridUtilsService {
   /**
    * Where a force's anchor may sit on its link, given where the pointer is.
    *
-   * Two joints are two different answers. A pin shared by more than one link is
-   * refused outright: a force applied *there* does not say which of the bodies
-   * meeting there it acts on, and every answer the force solver could pick is a
-   * guess the user never made — the same rule a driven joint follows. A joint on
-   * exactly one link has no such ambiguity, so the anchor snaps onto it, which
-   * is how a load is put on a tracer point at the end of a boom.
+   * Two joints are two different answers. A joint where a second body meets the
+   * link -- another link, the ground, a slider's slot -- is refused outright: a
+   * force applied *there* does not say which of the bodies it acts on, and
+   * every answer the force solver could pick is a guess the user never made.
+   * A joint on exactly one link and nothing else has no such ambiguity, so the
+   * anchor snaps onto it, which is how a load is put on a tracer point at the
+   * end of a boom.
    *
    * `undefined` means the anchor may not go there at all. The caller keeps its
    * own "inside the bar" test, because that one needs the drawn path.
@@ -1695,10 +1697,11 @@ export class GridUtilsService {
       }
     }
     if (nearest && nearestGap <= snapRadius) {
-      // A pin several links meet at is not a place for a force -- it would
-      // not say which body it acts on -- but it is not a wall either. The
-      // caller keeps the force on the link, short of the pin.
-      if (nearest.links.length > 1) return { at: point, shared: nearest };
+      // A joint where a second body meets the link -- another link, the
+      // ground, a slider's slot -- is not a place for a force: it would not
+      // say which body it acts on. Nor is it a wall. The caller keeps the
+      // force on the link, short of the joint (`model/force-on-joint.ts`).
+      if (refuseForceOnJoint(nearest)) return { at: point, shared: nearest };
       return { at: new Coord(nearest.x, nearest.y), snappedTo: nearest };
     }
     return { at: point };

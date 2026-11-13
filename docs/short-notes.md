@@ -348,21 +348,45 @@ together at the same length.
 
 ### A force anchor refuses a shared pin out loud
 
-Dragging a force's anchor onto a pin several links meet at still holds it short of the pin along
-its bar (`heldOffJoint`), and now says so: `forceRefusedJoint` rings the pin in the same red
-`.snapRefused` circle a refused joint drop wears, and `notify.refusal('force.shared-joint', ...)`
-names the pin and the bar it is held on. Said on every pointer move, deliberately: the
-notification service holds a repeat while the same id is on screen and for its cooldown after,
-so the sentence does not stack. The ring is cleared on `mouseUp`, which is where every force drag
-ends -- `letGoOfEverything` is not on that path.
+A force may sit on a joint only where its link is the one body there: a tracer point. A pin
+another link meets at, a grounded pin (the ground is the second body, issue #138) and a slider
+(its slot is) all refuse one, and `model/force-on-joint.ts` is the one rule -- `refuseForceOnJoint`
+for the joint menu's grayed Force row, the anchor drag and the snap in `forceAnchorAt`, and
+`forceOffRefusedJoint` for creation and the rebuild.
+
+Dragging a force's anchor onto such a joint holds it short along its link (`holdOffJoint`), and
+says so: `forceRefusedJoint` rings the joint in the same red `.snapRefused` circle a refused joint
+drop wears, and `notify.refusal` names the joint, why, and the link it is held on. Said on every
+pointer move, deliberately: the notification service holds a repeat while the same id is on screen
+and for its cooldown after, so the sentence does not stack. The id is per joint
+(`force.refused-joint.O`) and the last one is taken down when another replaces it: with one id for
+every joint, a hand that passed C on its way to the grounded foot O was told about C only. The
+ring is cleared on `mouseUp`, which is where every force drag ends -- `letGoOfEverything` is not on
+that path.
 
 The hold is by distance from the pin, not by whether the pointer is over it. `forceAnchorAt` only
-reports a shared pin within its snap radius, so a hand pushed hard past the pin -- along the bar
+reports a refused pin within its snap radius, so a hand pushed hard past the pin -- along the bar
 and beyond its end, where `constrainForceAnchor` clamps the anchor to the segment's end, which
 *is* the pin -- left the anchor standing exactly on the pin with nothing said. `moveForceAnchor`
-now looks for any shared joint of the link within the margin of where the anchor came to rest, and
-holds off from that one. `e2e/force-edit.mjs` pushes three pin-lengths past C and requires the
+now looks for any refused joint of the link within the margin of where the anchor came to rest,
+and holds off from that one. `e2e/force-edit.mjs` pushes three pin-lengths past C and requires the
 anchor to stop short.
+
+Which way off the pin is not "toward the link's middle": the derrick crane's C is halfway along
+its boom, where the middle *is* the pin, and the first cut of `holdOffJoint` left the anchor on C.
+It tries each way into the piece -- toward each other joint, and on a plate toward its middle
+first -- and keeps the one landing nearest the hand, never more than halfway along that way.
+
+A force that was legal when placed stops being legal when the joint changes under it: a tracer
+point carrying a load is merged onto another joint, a link is attached there, it is grounded. The
+edit stands. `keepForcesOnTheirLinks`, in the rebuild every edit ends in, moves the load off the
+joint and says where it went (`force.moved-off-joint.F1`), which is also what a URL or a library
+drawing arriving with a load on a pin gets. "On" is the pin's radius in object scales (0.075, a
+joint being 0.15 across), capped at a quarter of the way to the pin's furthest neighbor so a short
+bar keeps most of its length; the load goes 0.3 object scales off, or half the way to the
+neighbor. `template-loads.spec.ts` reads every template's *published* payload, before the rebuild
+could hide one, and the punch press and slotted tool drive fixtures had to move their loads off
+their sliders for it. `e2e/force-on-joint.mjs` guards the gestures.
 
 ### A force chip that would draw nothing is gray, and says so
 

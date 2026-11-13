@@ -81,11 +81,20 @@ export function reciprocatingSawFixture(): MechanismFixture {
  */
 const TOOL_LOAD_ALONG = 1.35;
 
+/**
+ * How far along the output arm the hanging weight acts, as a share of the way
+ * from its ground pin E to F. Short of F, because F slides in the carrier's
+ * slot, and a load there would not say whether the arm or the slot carries it
+ * (issue #138).
+ */
+const WEIGHT_ALONG = 0.85;
+
 /** A slotted coupler carries a tool-normal load while the output arm carries a hanging weight. */
 export function slottedToolDriveFixture(): MechanismFixture {
   const fixture = slottedCouplerFixture();
   const c = fixture.joints.find((j) => j.id === 'C')!;
   const b = fixture.joints.find((j) => j.id === 'B')!;
+  const e = fixture.joints.find((j) => j.id === 'E')!;
   const f = fixture.joints.find((j) => j.id === 'F')!;
   const span = Math.hypot(c.x - b.x, c.y - b.y);
   const tool: [number, number] = [
@@ -102,7 +111,11 @@ export function slottedToolDriveFixture(): MechanismFixture {
       vector: [(-(c.y - b.y) * 60) / span, ((c.x - b.x) * 60) / span],
       local: true,
     },
-    { onLink: 'EF', at: [f.x, f.y], vector: [0, -100] },
+    {
+      onLink: 'EF',
+      at: [e.x + (f.x - e.x) * WEIGHT_ALONG, e.y + (f.y - e.y) * WEIGHT_ALONG],
+      vector: [0, -100],
+    },
   ];
   fixture.gravity = false;
   return fixture;
