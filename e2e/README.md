@@ -391,6 +391,8 @@ Not suites — import them from one.
   (from a row, the setup drawer's name), the others fading, the drawer folding to it and opening
   on arrival when a machine cannot run, part links keeping either analysis mode and playback, with the setup drawer staying open, and a
   rename riding the URL.
+- `tracer-line-snap.mjs` — a tracer point placed or dragged within a few pixels of a slanted bar's
+  line lands on it with the dotted guide showing (#307), and Option turns that off.
 - `two-mechanisms.mjs` — two machines in one drawing: a row each in the transport, a section each
   in the setup drawer, and a sync toggle that decouples them.
 

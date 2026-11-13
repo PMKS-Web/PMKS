@@ -104,6 +104,7 @@ import {
   motorBodyPath,
   motorBodyAt,
   Segment,
+  endTicks,
 } from '../../model/joint-marks';
 import {
   JointDropCandidate,
@@ -122,7 +123,9 @@ import { CylinderPreview, cylinderPreviewOf } from '../../model/cylinder-preview
 import { Cylinder, cylinderSizeOf, cylinderSpanRange, cylinderJoints } from '../../model/cylinder';
 import { accentOutlineClass, CylinderRole, hiddenByCylinder } from '../../model/cylinder-skin';
 import { memberIsFused, PaintStep } from '../../model/cylinder-paint-order';
-import { SnapGuide, snapToAxes } from '../../model/axis-snap';
+import { SnapGuide, SnapPoint, snapToAxes } from '../../model/axis-snap';
+import { SnapLine, snapToLines } from '../../model/line-snap';
+import { placementLines, tracerSnapTargets } from '../../model/tracer-lines';
 import { drawDepths } from '../../model/draw-order';
 import { MODEL_SCALE } from '../../model/render-scale';
 import { uniformBodyOf } from '../../model/uniform-body';
@@ -1692,7 +1695,15 @@ export class NewGridComponent implements OnDestroy {
       this.lastRightClickCoord.y
     );
 
-    this.mechanismSrv.addJointAt(this.svgGrid.snapToGrid(coord, this.snapSuspendedAtRightClick));
+    // On the bar's line if nearly on it: just off it makes a plate (#307).
+    const lines = placementLines(this.activeObjService.selectedLink, (link) =>
+      this.isCylinderMemberLink(link)
+    );
+    const lined = this.lineSnap(coord, lines, [], this.snapSuspendedAtRightClick);
+    this.axisSnapGuides = [];
+    this.mechanismSrv.addJointAt(
+      lined ?? this.svgGrid.snapToGrid(coord, this.snapSuspendedAtRightClick)
+    );
   }
 
   /**
@@ -2147,26 +2158,13 @@ export class NewGridComponent implements OnDestroy {
           break;
         }
         this.updateDropCandidate(mousePosInSvg, $event.altKey);
-        // A capture has a target of its own, so any axis the last move squared
-        // itself against is no longer what decides where the joint goes.
-        this.axisSnapGuides = [];
         // Captured: the joint sits exactly on the target instead of trailing the
         // cursor, so what is on screen is what a release would produce.
         // A slot capture pulls the joint onto the slot line the same way, so a
         // drop-on-link is as unsurprising as a drop-on-joint (§4.3).
         this.activeObjService.selectedJoint = this.gridUtils.dragJoint(
           this.activeObjService.selectedJoint,
-          this.snapTargetJoint
-            ? new Coord(this.snapTargetJoint.x, this.snapTargetJoint.y)
-            : this.slotCandidate
-              ? new Coord(this.slotCandidate.x, this.slotCandidate.y)
-              : this.alongItsSlot(
-                  this.activeObjService.selectedJoint,
-                  // Last, and only here: a capture is a target the reader
-                  // picked, and a joint on a slot has a line to stay on. The
-                  // grid gets the position nothing else has a claim on.
-                  this.svgGrid.snapToGrid(mousePosInSvg, $event.altKey)
-                )
+          this.dragLanding(this.activeObjService.selectedJoint, mousePosInSvg, $event.altKey)
         );
         this.afterHoldMove(this.activeObjService.selectedJoint);
         this.dragState.noteMechanismModified();
@@ -3083,8 +3081,44 @@ export class NewGridComponent implements OnDestroy {
   private snapSuspendedAtRightClick = false;
 
   /** Is the app allowed to square this drag up with anything? */
-  private alignmentAllowed(): boolean {
-    return this.settings.isSnapToAlignment.value && !this.snapSuspended;
+  private alignmentAllowed(suspended = this.snapSuspended): boolean {
+    return this.settings.isSnapToAlignment.value && !suspended;
+  }
+
+  /**
+   * Where a dragged joint lands for a cursor at `wanted`: a captured joint or
+   * slot, else its bar's line, else its own slot, else the grid. Called by the
+   * move and by an Alt press or release, which must land it the same way.
+   */
+  private dragLanding(joint: Joint, wanted: Coord, altKey: boolean): Coord {
+    // Any axis the last landing squared itself against is no longer in play.
+    this.axisSnapGuides = [];
+    const captured = this.snapTargetJoint ?? this.slotCandidate;
+    if (captured) return new Coord(captured.x, captured.y);
+    return (
+      this.tracerLineSnap(joint, wanted) ??
+      // Last, and only here: a capture is a target the reader picked, and a
+      // joint on a slot has a line to stay on. The grid gets the position
+      // nothing else has a claim on.
+      this.alongItsSlot(joint, this.svgGrid.snapToGrid(wanted, altKey))
+    );
+  }
+
+  /** A dragged tracer on its bar's line when nearly there, tried before the grid (#307). */
+  private tracerLineSnap(joint: Joint, wanted: Coord): Coord | undefined {
+    const pins = this.mechanismSrv.getJoints();
+    const { lines, others } = tracerSnapTargets(joint, pins, (link) =>
+      this.isCylinderMemberLink(link)
+    );
+    return this.lineSnap(wanted, lines, others, this.snapSuspended);
+  }
+
+  /** On one of `lines` if `wanted` is within the axis snap's reach of it. */
+  private lineSnap(wanted: Coord, lines: SnapLine[], others: SnapPoint[], suspended: boolean) {
+    if (!lines.length || !this.alignmentAllowed(suspended)) return undefined;
+    const snapped = snapToLines(wanted, lines, others, this.svgGrid.scaleWithZoom(8));
+    if (snapped) this.axisSnapGuides = snapped.guides;
+    return snapped && new Coord(snapped.point.x, snapped.point.y);
   }
 
   /**
@@ -5109,18 +5143,7 @@ export class NewGridComponent implements OnDestroy {
 
   /** End ticks across the travel line, so its two ends read as limits. */
   cylinderRangeCaps(range: { from: Coord; to: Coord }): Segment[] {
-    const dx = range.to.x - range.from.x;
-    const dy = range.to.y - range.from.y;
-    const length = Math.hypot(dx, dy) || 1;
-    const half = 0.12 * this.settings.drawingScale;
-    const nx = (-dy / length) * half;
-    const ny = (dx / length) * half;
-    return [range.from, range.to].map((end) => ({
-      x1: end.x - nx,
-      y1: end.y - ny,
-      x2: end.x + nx,
-      y2: end.y + ny,
-    }));
+    return endTicks(range, 0.12 * this.settings.drawingScale);
   }
 
   /** The label sits clear of the line, on the side away from the barrel. */
@@ -6092,11 +6115,11 @@ export class NewGridComponent implements OnDestroy {
     if ($event.key !== 'Alt') return;
     if (this.dragState.joint !== jointStates.dragging) return;
 
+    this.snapSuspended = held;
     this.updateDropCandidate(this.mouseLocation, held);
-    const restingOn = this.snapTargetJoint ?? this.mouseLocation;
     this.activeObjService.selectedJoint = this.gridUtils.dragJoint(
       this.activeObjService.selectedJoint,
-      new Coord(restingOn.x, restingOn.y)
+      this.dragLanding(this.activeObjService.selectedJoint, this.mouseLocation, held)
     );
     this.activeObjService.updateSelectedObj(this.activeObjService.selectedJoint);
   }
