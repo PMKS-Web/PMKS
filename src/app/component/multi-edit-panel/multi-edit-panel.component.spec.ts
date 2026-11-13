@@ -101,7 +101,7 @@ describe('MultiEditPanelComponent', () => {
     expect(headerDelete(element)).not.toBeNull();
     const x = element.querySelector('[data-field="x"]') as HTMLInputElement;
     const y = element.querySelector('[data-field="y"]') as HTMLInputElement;
-    expect(element.textContent).toContain('2 joints selected');
+    expect(element.textContent.replace(/\u00a0/g, ' ')).toContain('2 Joints Selected');
     expect(x.value).toBe('');
     expect(x.placeholder).toBe('Mixed');
     expect(y.value).not.toBe('');
@@ -173,7 +173,7 @@ describe('MultiEditPanelComponent', () => {
     );
 
     const element = render();
-    expect(element.textContent).toContain('1 joint · 1 link selected');
+    expect(element.textContent.replace(/\u00a0/g, ' ')).toContain('1 Joint and 1 Link Selected');
     expect(element.querySelector('[data-field="x"]')).toBeNull();
     expect(element.querySelector('[data-field="length"]')).toBeNull();
     expect(element.querySelector('[data-action="duplicate"]')).not.toBeNull();

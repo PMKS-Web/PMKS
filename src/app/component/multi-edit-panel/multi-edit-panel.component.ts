@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { FormControl, FormGroup } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { selectionCount } from '../../model/selection-count';
 import { Force } from '../../model/force';
 import { RealJoint } from '../../model/joint';
 import { LinkHold, RealLink } from '../../model/link';
@@ -291,15 +292,7 @@ export class MultiEditPanelComponent implements OnInit, DoCheck {
   }
 
   get selectionLabel(): string {
-    const counted = [
-      [this.joints.length, 'joint', 'joints'],
-      [this.links.length, 'link', 'links'],
-      [this.forces.length, 'force', 'forces'],
-    ] as const;
-    const said = counted
-      .filter(([count]) => count > 0)
-      .map(([count, one, many]) => `${count} ${count === 1 ? one : many}`);
-    return `${said.join(' · ')} selected`;
+    return `${selectionCount(this.active.selectedParts, 'title')} Selected`;
   }
 
   private common<T>(values: readonly T[], equals: (left: T, right: T) => boolean = Object.is) {

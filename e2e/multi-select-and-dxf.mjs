@@ -159,10 +159,9 @@ check(
 );
 check(
   'a mixed joint/link selection exposes shared actions without geometry fields',
-  // The note names the situation rather than the two kinds, because a force
-  // can be in the mix too.
+  // The note says what a mixed group can do, for any mix of kinds.
   (await page.locator('app-multi-edit-panel').innerText()).includes(
-    'A selection of more than one kind of object'
+    'A field shows only when every part has it.'
   ) &&
     (await page.locator('app-multi-edit-panel [data-field="x"]').count()) === 0 &&
     (await page.locator('app-multi-edit-panel [data-field="length"]').count()) === 0
@@ -551,6 +550,9 @@ await page.waitForTimeout(300);
       );
       grid.mechanismSrv.createForceAtCOM();
     }
+    // A poke from outside the zone repaints nothing until the next real input,
+    // so without this pass the arrows were never drawn and `#F1` never appeared.
+    ng.applyChanges(document.querySelector('app-new-grid'));
   });
   await page.waitForTimeout(700);
   const forces = () =>
@@ -572,6 +574,23 @@ await page.waitForTimeout(300);
       (await page.locator('app-multi-edit-panel input[data-field="magnitude"]').count()) === 1 &&
       (await page.locator('app-multi-edit-panel input[data-field="forceAngle"]').count()) === 1,
     JSON.stringify(await selection())
+  );
+
+  // Every member wears the selected mark, not only the last one picked; and a
+  // group of nothing but forces gets no box, because nothing in it can move.
+  const marked = await page.evaluate(() =>
+    ['F1', 'F2'].map(
+      (id) => !!document.getElementById(id)?.parentElement?.querySelector('.forceSelectedLine')
+    )
+  );
+  check(
+    'every force in the group is drawn selected',
+    marked.every(Boolean),
+    JSON.stringify(marked)
+  );
+  check(
+    'and forces alone draw no move-and-scale box',
+    (await page.locator('.selectionBounds').count()) === 0
   );
 
   const magnitude = page.locator('app-multi-edit-panel input[data-field="magnitude"]');
@@ -600,7 +619,10 @@ await page.waitForTimeout(300);
     JSON.stringify(await forces())
   );
 
-  const atForce = await center('#F1');
+  // On the arrow's own line. A selected force also draws its dashed frame
+  // datum inside `#F1`, which widens the group's box, so the box's center can
+  // land on the link beside the arrow rather than on the arrow.
+  const atForce = await center('#F1 .forceLine');
   await page.mouse.click(atForce.x, atForce.y, { button: 'right' });
   await page.waitForTimeout(450);
   const forceRows = await page.evaluate(() =>

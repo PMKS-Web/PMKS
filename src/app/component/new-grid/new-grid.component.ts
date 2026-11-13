@@ -1481,6 +1481,10 @@ export class NewGridComponent implements OnDestroy {
     if (!gesture) return false;
     if (!this.canEditNow() || !this.pastDragThreshold(event)) return true;
     gesture.attempted = true;
+    // A group of nothing but forces carries no geometry to move: each force
+    // goes where its body goes. Applying the empty transform reported success
+    // and saved an undo entry for a drag that changed nothing.
+    if (gesture.snapshot.jointIds.size === 0) return true;
 
     let transform: SelectionAffineTransform;
     if (gesture.mode === 'translate') {
@@ -1583,7 +1587,9 @@ export class NewGridComponent implements OnDestroy {
   private nudgeSelection(dx: number, dy: number, coarse: boolean): void {
     if (!this.canEditNow()) return;
     const selected = this.activeObjService.selectedParts;
-    if (selected.length === 0) return;
+    // Nothing but forces is nothing to move (see `moveSelectionGesture`), and
+    // an empty nudge would still have saved an undo entry.
+    if (selected.every((part) => part instanceof Force)) return;
     const step = coarse ? this.svgGrid.majorCellSize : this.svgGrid.minorCellSize;
     if (!(step > 0)) return;
     // Before anything moves. Staging is where a selection spanning two machines
@@ -1840,7 +1846,13 @@ export class NewGridComponent implements OnDestroy {
     // The arrow itself was grabbed, so neither handle is: a press on the
     // base or the head leaves that end selected, and a body grab that kept
     // it dragged that one end to the pointer instead of the whole arrow.
-    this.activeObjService.updateSelectedObj(force);
+    //
+    // Only the marks are cleared. Which forces are selected is
+    // `setLastLeftClick`'s to decide, on the same press: replacing the
+    // selection here first left a Cmd/Ctrl-click nothing to add to, so forces
+    // could not join a group.
+    force.isStartSelected = false;
+    force.isEndSelected = false;
     const at = this.svgGrid.screenToModelFromXY(event.clientX, event.clientY);
     this.forceGrabOffset = new Coord(at.x - force.startCoord.x, at.y - force.startCoord.y);
   }
@@ -5424,11 +5436,23 @@ export class NewGridComponent implements OnDestroy {
 
   forceInkOf(force: Force): string | null {
     if (this.mechanismSrv.isPartInert(force.link)) return null;
-    return forceInk(
-      force,
-      this.activeObjService.objType === 'Force' && this.activeObjService.selectedForce === force,
-      this.mechanismSrv.isPlaying
-    );
+    return forceInk(force, this.forceIsSelected(force), this.mechanismSrv.isPlaying);
+  }
+
+  /**
+   * Whether this force wears the selected mark: the one selected force, or any
+   * force in a group.
+   *
+   * A lone force is held in `selectedForce` and not in the part selection,
+   * while a group holds every member there, so both have to be asked. Asking
+   * only `selectedForce` marked one arrow of a group and left the rest looking
+   * unselected, which is the rule joints and links already follow through
+   * `containsPart`.
+   */
+  forceIsSelected(force: Force): boolean {
+    const active = this.activeObjService;
+    if (active.objType === 'Force') return active.selectedForce === force;
+    return active.objType === 'MultiSelection' && active.containsPart(force);
   }
 
   /**

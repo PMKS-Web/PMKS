@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { RevJoint } from '../../model/joint';
 import { RealLink } from '../../model/link';
+import { Force } from '../../model/force';
 import { ActiveObjService } from '../../services/active-obj.service';
 import { DragStateService } from '../../services/drag-state.service';
 import { GridUtilsService } from '../../services/grid-utils.service';
@@ -781,6 +782,94 @@ describe('NewGridComponent typed multi-selection', () => {
     }
   });
 
+  it('Meta-click on a force body adds it to the selection instead of replacing it (#290)', () => {
+    const { component, active, mechanism, link } = setUpSelection();
+    const force = (id: string, x: number) =>
+      new Force(id, link, new Coord(x, 0), new Coord(x, MODEL_SCALE));
+    const f1 = force('F1', 0.5 * MODEL_SCALE);
+    const f2 = force('F2', 1.5 * MODEL_SCALE);
+    mechanism.forces = [f1, f2];
+    // The template's order: the body grab runs first, then the click.
+    const press = (target: Force, init: MouseEventInit) => {
+      const event = new MouseEvent('pointerdown', { button: 0, ...init }) as PointerEvent;
+      component.beginDraggingForceBody(target, event);
+      component.setLastLeftClick(target, event);
+    };
+    const oldPlatform = navigator.platform;
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' });
+    try {
+      press(f1, {});
+      press(f2, { metaKey: true });
+      expect(active.selectedPartRefs).toEqual([
+        { kind: 'force', id: 'F1' },
+        { kind: 'force', id: 'F2' },
+      ]);
+
+      press(f1, { metaKey: true });
+      expect(active.selectedPartRefs).toEqual([{ kind: 'force', id: 'F2' }]);
+    } finally {
+      Object.defineProperty(navigator, 'platform', { configurable: true, value: oldPlatform });
+    }
+  });
+
+  it('marks every force in a group as selected, and draws no box round forces alone', () => {
+    const { fixture, component, active, mechanism, link } = setUpSelection();
+    const f1 = new Force('F1', link, new Coord(0, 0), new Coord(0, MODEL_SCALE));
+    const f2 = new Force(
+      'F2',
+      link,
+      new Coord(MODEL_SCALE, 0),
+      new Coord(MODEL_SCALE, MODEL_SCALE)
+    );
+    const f3 = new Force('F3', link, new Coord(MODEL_SCALE, 0), new Coord(0, MODEL_SCALE));
+    mechanism.forces = [f1, f2, f3];
+
+    active.updateSelectedObj(f1);
+    expect([f1, f2, f3].map((force) => component.forceIsSelected(force))).toEqual([
+      true,
+      false,
+      false,
+    ]);
+
+    active.replacePartSelection(f1);
+    active.togglePartSelection(f2);
+    fixture.detectChanges();
+    // Every member, not only the last one picked -- which is all
+    // `selectedForce` can name.
+    expect([f1, f2, f3].map((force) => component.forceIsSelected(force))).toEqual([
+      true,
+      true,
+      false,
+    ]);
+    const picked = (id: string) =>
+      fixture.nativeElement
+        .querySelector(`#${id}`)
+        ?.parentElement?.querySelector('.forceSelectedLine');
+    expect(picked('F1')).not.toBeNull();
+    expect(picked('F2')).not.toBeNull();
+    expect(picked('F3')).toBeNull();
+    // Forces move with their bodies, so a group of nothing but forces has no
+    // handles to offer: a box would promise a move the drag refuses.
+    expect(component.selectionBounds()).toBeUndefined();
+    expect(fixture.nativeElement.querySelector('.selectionBounds')).toBeNull();
+  });
+
+  it('a body press clears a force handle mark left from an earlier grab', () => {
+    const { component, active, mechanism, link } = setUpSelection();
+    const f1 = new Force('F1', link, new Coord(0, 0), new Coord(0, MODEL_SCALE));
+    mechanism.forces = [f1];
+    active.updateSelectedObj(f1.endCoord, f1);
+    expect(f1.isEndSelected).toBe(true);
+
+    const event = new MouseEvent('pointerdown', { button: 0 }) as PointerEvent;
+    component.beginDraggingForceBody(f1, event);
+    component.setLastLeftClick(f1, event);
+
+    expect(f1.isEndSelected).toBe(false);
+    expect(active.selectedForce).toBe(f1);
+    expect(active.objType).toBe('Force');
+  });
+
   it('preserves an existing multi-selection for an inside right-click and replaces it outside', () => {
     const { component, active, a, b, link } = setUpSelection();
     active.replacePartSelection(a);
@@ -943,6 +1032,32 @@ describe('NewGridComponent typed multi-selection', () => {
     expect(a.y).toBeCloseTo(0);
     expect(b.x).toBeGreaterThan(2 * MODEL_SCALE);
     expect(b.y).toBeCloseTo(MODEL_SCALE);
+  });
+
+  it('neither drags nor nudges a group of nothing but forces into an undo entry', () => {
+    const { component, active, mechanism, link } = setUpSelection();
+    const f1 = new Force('F1', link, new Coord(0, 0), new Coord(0, MODEL_SCALE));
+    const f2 = new Force(
+      'F2',
+      link,
+      new Coord(MODEL_SCALE, 0),
+      new Coord(MODEL_SCALE, MODEL_SCALE)
+    );
+    mechanism.forces = [f1, f2];
+    active.replacePartSelection(f1);
+    active.togglePartSelection(f2);
+    const save = vi.spyOn(mechanism, 'save').mockImplementation(() => {});
+
+    component.setLastLeftClick(f1, new MouseEvent('pointerdown'));
+    component.mouseDown(new MouseEvent('mousedown', { button: 0, clientX: 0, clientY: 0 }));
+    component['timeMouseDown'] = 0;
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 30, clientY: 20 }));
+    component.mouseUp(new MouseEvent('mouseup', { button: 0, clientX: 30, clientY: 20 }));
+    component['nudgeSelection'](1, 0, false);
+
+    expect([f1.startCoord.x, f1.startCoord.y]).toEqual([0, 0]);
+    expect(active.selectedPartRefs).toHaveLength(2);
+    expect(save).not.toHaveBeenCalled();
   });
 
   it('refuses the whole transform when one canonical member is locked', () => {

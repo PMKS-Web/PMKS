@@ -186,11 +186,14 @@
 
   @if (!homogeneousJoints && !homogeneousLinks && !homogeneousForces) {
     <collapsible-subsection titleLabel="Selected Objects" [expanded]="true">
-      <p class="multiNote">
-        A selection of more than one kind of object. Drag it, or use its canvas handles to move,
-        rotate or scale it together; the fields for a value appear when every selected part has that
-        value. A force in the selection moves with the link it acts on.
-      </p>
+      <!-- Three separate facts, so three lines a reader can scan rather than
+           one paragraph. The title already counts what is selected, so the
+           note does not say it again. -->
+      <ul class="multiNote">
+        <li>Drag the selection, or its handles, to move, rotate or scale it.</li>
+        <li>A field shows only when every part has it.</li>
+        <li>Forces move with their links.</li>
+      </ul>
     </collapsible-subsection>
   }
 
