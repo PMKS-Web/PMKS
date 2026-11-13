@@ -98,6 +98,9 @@ describe('MechanismPanelComponent', () => {
       'Input joint',
       'Input speed',
     ]);
+    // Nor a link's job (#276): only its size, each link on one row.
+    expect(fixture.nativeElement.querySelector('.linkRole')).toBeNull();
+    expect(text(fixture, '.linkLength').length).toBeGreaterThan(0);
     fixture.destroy();
   });
 
