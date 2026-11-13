@@ -590,7 +590,8 @@ export class GridUtilsService {
    * there, not an anchor: it holds while the dragged joint has any freedom
    * without it, and yields when it is all that stands in the way -- a crank
    * holding both its length and its angle from a ground pin is dragged whole.
-   * Only a lock, a slider and a cylinder's interior are truly fixed.
+   * Only a lock, a slider on a moving slot and a cylinder's interior are
+   * truly fixed; a grounded slider yields like a ground pin, rail and all.
    */
   private dragHoldJoints(moving: Set<string>): HoldJoint[] {
     const frozen = this.frozenJointIds();
@@ -609,7 +610,10 @@ export class GridUtilsService {
     return (
       (groundAnchors && joint.ground && !moving.has(joint.id)) ||
       frozen.has(joint.id) ||
-      joint instanceof PrisJoint ||
+      // A slot the solver does not know. A grounded slider's slot is the
+      // frame, though, and in a drag it is ground like any other: a
+      // tiebreaker that carries its rail along when it gives way.
+      (joint instanceof PrisJoint && (groundAnchors || !joint.ground)) ||
       this.mechanismSrv.cylindersAt(joint).some((cylinder) => isInsideCylinder(cylinder, joint))
     );
   }

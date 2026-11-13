@@ -1,6 +1,6 @@
 import '../model/joint';
 import { Coord } from '../model/coord';
-import { RevJoint } from '../model/joint';
+import { PrisJoint, RevJoint } from '../model/joint';
 import { RealLink } from '../model/link';
 import { MODEL_SCALE } from '../model/render-scale';
 import { createMechanismHarness, wireGraph } from '../../test-utils/mechanism-harness';
@@ -136,6 +136,26 @@ describe('dragging against a held bar', () => {
     expect(parts.b.x - parts.a.x).toBeCloseTo(offset.x, 3);
     expect(parts.b.y - parts.a.y).toBeCloseTo(offset.y, 3);
     expect(parts.a.x).toBeCloseTo(S, 3);
+  });
+
+  it('drags a bar holding both from a grounded slider whole, rail and all', () => {
+    const b = new RevJoint('B', -3 * S, 2 * S);
+    const c = new PrisJoint('C', 2 * S, 1 * S, false, true);
+    const bc = new RealLink('BC', [b, c], 1, 1);
+    service.joints = [b, c];
+    service.links = [bc];
+    service.forces = [];
+    wireGraph(service);
+    service.updateMechanism();
+    bc.hold = 'both';
+    expect(grid.holdsImmobilizing(b)).toEqual([]);
+    grid.dragJoint(b, new Coord(-2 * S, 3 * S));
+    expect(grid.lastHoldRefusal).toBeUndefined();
+    expect(b.x).toBeCloseTo(-2 * S, 3);
+    expect(b.y).toBeCloseTo(3 * S, 3);
+    expect(c.x).toBeCloseTo(3 * S, 3);
+    expect(c.y).toBeCloseTo(2 * S, 3);
+    expect(c.ground).toBe(true);
   });
 
   it('moves a whole body through the holds when one of its joints is held', () => {

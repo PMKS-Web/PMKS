@@ -478,11 +478,12 @@ for a padlock they had never pressed. `hold` stays the code's name for it.
 The rules are the CAD ones, and they live in one place, `model/hold-solver.ts`: the joint that was
 asked for reaches its ask when the holds allow and lands on the nearest allowed place when they do
 not; every other joint on a held bar moves as little as it must (drag the free end of a held bar and
-its far end is towed; drag it when the far end is grounded and it rides the arc); locked, slider
-and cylinder joints never move. **A grounded joint is a tiebreaker, not an anchor**: it holds while
-the dragged joint has any freedom without it, and gives way only when it is all that would stop the
-drag -- so a crank holding both its length and its angle from a ground pin is dragged whole, ground
-pin and all, where it used to be refused (`HoldJoint.yields`). A joint the holds have fully
+its far end is towed; drag it when the far end is grounded and it rides the arc); locked joints, a
+slider on a moving slot and a cylinder's interior never move. **A grounded joint is a tiebreaker,
+not an anchor**: it holds while the dragged joint has any freedom without it, and gives way only
+when it is all that would stop the drag -- so a crank holding both its length and its angle from a
+ground pin is dragged whole, ground pin and all, where it used to be refused (`HoldJoint.yields`).
+A grounded slider is ground in this sense too, and carries its rail with it when it gives way. A joint the holds have fully
 determined -- between two held lengths from two locked points -- is refused at the grab, naming the
 holds, exactly as a locked joint is; an ask no configuration satisfies (a four-bar dragged past where its coupler can follow) is
 refused *whole* -- the half-settled positions the sweep stopped in have a hold false in them, and
