@@ -2943,3 +2943,12 @@ what decides which pull requests get a preview: Netlify builds one only for a PR
 production branch or a branch-deploy branch. So a PR into `staging` gets
 `deploy-preview-NNN--pmksprod.netlify.app`, and a stacked PR into another feature branch gets none.
 Adding a branch to the branch-deploy list turns on both its own deploy and previews of PRs into it.
+
+### Option turns snapping off for a drag and on for a placement
+
+Held during a drag, Option suspends every snap: the grid, the alignment guides, a merge on drop,
+the 15-degree steps of a group's or a background image's rotation. Held while placing a new link,
+cylinder or force, it does the opposite for the direction, which steps in 15 degrees only while it
+is down (`placementBearing`). Both are listed under Modifier Keys in Help, from
+`KeyboardShortcutsService.modifiers` (#316). Nothing dispatches those rows. The canvas reads
+`altKey` off the pointer event, so a change to what a held key does needs its row changed by hand.

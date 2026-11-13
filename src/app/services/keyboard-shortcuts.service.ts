@@ -1,4 +1,4 @@
-import { Injectable, NgZone, inject } from '@angular/core';
+import { DestroyRef, Injectable, NgZone, inject } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { Observable, Subject, map } from 'rxjs';
 
@@ -54,6 +54,22 @@ export interface Shortcut {
    * reader, so three of the four hide behind the row that names all of them.
    */
   hidden?: boolean;
+}
+
+/**
+ * A key that changes what a gesture does while it is held, rather than doing
+ * something by itself.
+ *
+ * Not a `Shortcut`: nothing is dispatched for it. The canvas and the fields
+ * read the key off the pointer event they are already handling, so the table
+ * only says what holding it does, for the list that teaches the keys.
+ */
+export interface ModifierKey {
+  id: string;
+  /** What the gesture does with the key held, in the words of the control. */
+  label: string;
+  /** The key and the gesture, as a reader should see them. */
+  keys: string;
 }
 
 /** A shortcut, with the keystroke that asked for it. */
@@ -223,7 +239,7 @@ export class KeyboardShortcutsService {
     {
       id: 'edit.nudgeLeft',
       section: 'Editing',
-      label: `Nudge what is selected (${this.alt} for a coarser step)`,
+      label: 'Nudge what is selected',
       keys: '← → ↑ ↓',
       match: ['arrowleft'],
     },
@@ -267,14 +283,52 @@ export class KeyboardShortcutsService {
     },
   ];
 
+  /**
+   * The keys that change a gesture while held.
+   *
+   * Each row is read where the gesture is handled -- `altKey` in the canvas's
+   * pointer handlers, `shiftKey` in `NumberDragDirective`, the platform's
+   * additive key in `isAdditiveSelectionGesture` -- so a change to one of
+   * those is a change to its row here.
+   */
+  readonly modifiers: ModifierKey[] = [
+    {
+      id: 'select.add',
+      label: 'Add to or remove from the selection',
+      keys: `${this.mod} + click`,
+    },
+    {
+      id: 'drag.free',
+      label: 'Drag without snapping to the grid or guides, or merging on drop',
+      keys: `${this.alt} + drag`,
+    },
+    {
+      id: 'place.bearing',
+      label: 'Point a new link, cylinder or force in 15° steps',
+      keys: `${this.alt} + click`,
+    },
+    {
+      id: 'nudge.coarse',
+      label: 'Nudge in larger steps',
+      keys: `${this.alt} + arrows`,
+    },
+    {
+      id: 'field.fine',
+      label: 'Drag a number’s label in steps ten times finer',
+      keys: 'Shift + drag',
+    },
+  ];
+
   constructor() {
     if (typeof window === 'undefined') return;
     // Outside Angular, then back in only when a key actually matches: this
     // listener sees every keystroke in the app, and a change-detection pass
     // per keystroke is a pass per character typed into every field.
-    this.zone.runOutsideAngular(() =>
-      window.addEventListener('keydown', (event) => this.onKeyDown(event))
-    );
+    const listener = (event: KeyboardEvent) => this.onKeyDown(event);
+    this.zone.runOutsideAngular(() => window.addEventListener('keydown', listener));
+    // The app builds this once, but a spec builds one per test, and a listener
+    // left behind answers the next test's keystrokes with the last one's state.
+    inject(DestroyRef).onDestroy(() => window.removeEventListener('keydown', listener));
   }
 
   /**
