@@ -5436,11 +5436,23 @@ export class NewGridComponent implements OnDestroy {
 
   forceInkOf(force: Force): string | null {
     if (this.mechanismSrv.isPartInert(force.link)) return null;
-    return forceInk(
-      force,
-      this.activeObjService.objType === 'Force' && this.activeObjService.selectedForce === force,
-      this.mechanismSrv.isPlaying
-    );
+    return forceInk(force, this.forceIsSelected(force), this.mechanismSrv.isPlaying);
+  }
+
+  /**
+   * Whether this force wears the selected mark: the one selected force, or any
+   * force in a group.
+   *
+   * A lone force is held in `selectedForce` and not in the part selection,
+   * while a group holds every member there, so both have to be asked. Asking
+   * only `selectedForce` marked one arrow of a group and left the rest looking
+   * unselected, which is the rule joints and links already follow through
+   * `containsPart`.
+   */
+  forceIsSelected(force: Force): boolean {
+    const active = this.activeObjService;
+    if (active.objType === 'Force') return active.selectedForce === force;
+    return active.objType === 'MultiSelection' && active.containsPart(force);
   }
 
   /**

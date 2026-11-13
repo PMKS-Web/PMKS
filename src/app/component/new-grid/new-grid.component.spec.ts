@@ -812,6 +812,48 @@ describe('NewGridComponent typed multi-selection', () => {
     }
   });
 
+  it('marks every force in a group as selected, and draws no box round forces alone', () => {
+    const { fixture, component, active, mechanism, link } = setUpSelection();
+    const f1 = new Force('F1', link, new Coord(0, 0), new Coord(0, MODEL_SCALE));
+    const f2 = new Force(
+      'F2',
+      link,
+      new Coord(MODEL_SCALE, 0),
+      new Coord(MODEL_SCALE, MODEL_SCALE)
+    );
+    const f3 = new Force('F3', link, new Coord(MODEL_SCALE, 0), new Coord(0, MODEL_SCALE));
+    mechanism.forces = [f1, f2, f3];
+
+    active.updateSelectedObj(f1);
+    expect([f1, f2, f3].map((force) => component.forceIsSelected(force))).toEqual([
+      true,
+      false,
+      false,
+    ]);
+
+    active.replacePartSelection(f1);
+    active.togglePartSelection(f2);
+    fixture.detectChanges();
+    // Every member, not only the last one picked -- which is all
+    // `selectedForce` can name.
+    expect([f1, f2, f3].map((force) => component.forceIsSelected(force))).toEqual([
+      true,
+      true,
+      false,
+    ]);
+    const picked = (id: string) =>
+      fixture.nativeElement
+        .querySelector(`#${id}`)
+        ?.parentElement?.querySelector('.forceSelectedLine');
+    expect(picked('F1')).not.toBeNull();
+    expect(picked('F2')).not.toBeNull();
+    expect(picked('F3')).toBeNull();
+    // Forces move with their bodies, so a group of nothing but forces has no
+    // handles to offer: a box would promise a move the drag refuses.
+    expect(component.selectionBounds()).toBeUndefined();
+    expect(fixture.nativeElement.querySelector('.selectionBounds')).toBeNull();
+  });
+
   it('a body press clears a force handle mark left from an earlier grab', () => {
     const { component, active, mechanism, link } = setUpSelection();
     const f1 = new Force('F1', link, new Coord(0, 0), new Coord(0, MODEL_SCALE));

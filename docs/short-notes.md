@@ -337,14 +337,26 @@ rails; it was the wrong motion -- the residual barely moved -- and the diagnosis
 right one was the left null vector, labeled by body row. When a drawing refuses force analysis
 everywhere with a large residual, look for the motion, not for a bad pose.
 
-### A body grab selects the force, or the last-pressed handle drags instead
+### A body grab clears the force's handle marks, or the last-pressed handle drags instead
 
-`beginDraggingForceBody` now calls `updateSelectedObj(force)` before recording the grab offset. A
-press on the base or the head leaves that end selected (`isStartSelected` / `isEndSelected`), and
-the body's pointerdown never re-selected the force, so the drag state machine at the press saw a
-selected handle and dragged that one end to the pointer instead of carrying the arrow whole.
-`e2e/force-edit.mjs` presses the base, then grabs the arrow, and requires both ends to move
-together at the same length.
+A press on a force's base or head leaves that end selected (`isStartSelected` /
+`isEndSelected`). If a later grab on the arrow's body kept the mark, the drag state machine saw a
+selected handle and dragged that one end to the pointer instead of carrying the arrow whole, so
+`beginDraggingForceBody` clears both marks before recording the grab offset. It clears only the
+marks: it used to call `updateSelectedObj(force)`, which also replaced the selection before
+`setLastLeftClick` ran on the same press, so a Cmd/Ctrl-click on a force had nothing to add to and
+forces could not join a group (#290). `e2e/force-edit.mjs` presses the base, then grabs the arrow,
+and requires both ends to move together at the same length.
+
+### A lone selected force is `selectedForce`; a group's forces are in the part selection
+
+`updateSelectedObj(force)` sets `objType = 'Force'` and `selectedForce`, and empties the part
+selection. A group (`MultiSelection`) holds every member in the part selection, and
+`selectedForce` names only the last one. So asking `selectedForce === force` marked one arrow of a
+group and left the rest looking unselected. `NewGridComponent.forceIsSelected` asks both, the way
+joints and links ask `containsPart`. A selected force also draws its dashed frame datum inside its
+own `#F<n>` group, which widens that group's box: an e2e suite that clicks the center of `#F1`
+can land on the link beside the arrow, so aim at `#F1 .forceLine`.
 
 ### A force anchor refuses a shared pin out loud
 
@@ -2935,3 +2947,10 @@ what decides which pull requests get a preview: Netlify builds one only for a PR
 production branch or a branch-deploy branch. So a PR into `staging` gets
 `deploy-preview-NNN--pmksprod.netlify.app`, and a stacked PR into another feature branch gets none.
 Adding a branch to the branch-deploy list turns on both its own deploy and previews of PRs into it.
+
+### `text-wrap: pretty` leaves a ragged right edge in Safari
+
+Chromium applies `pretty` to the last few lines of a paragraph. Safari evens out every line, so in
+a narrow box such as a 200px panel note it breaks lines early and leaves a wide gap down the right:
+measured in Playwright's WebKit, every line of the old note stopped near 160px of 200, while
+Chromium laid it out exactly as without `pretty`. The multi-selection note dropped it. Check a panel paragraph in Safari before adding it again.
