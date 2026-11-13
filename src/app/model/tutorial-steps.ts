@@ -262,7 +262,7 @@ export function copyFor(progress: TutorialProgress, chrome: TutorialChrome = {})
         // as "drag and release" had readers holding the button down through a
         // move that does not want it held.
         body: `${g.Open} the empty grid and choose Link, under Add. One end is placed where you started and the other follows ${g.pointer} — move to where you want it and ${g.set} to set it.`,
-        hint: `That is how everything is added in PMKS+: ${g.open} whatever you want to add to. ${panel} edits whatever you then select.`,
+        hint: `That is how everything is added in PMKS: ${g.open} whatever you want to add to. ${panel} edits whatever you then select.`,
         hintGlyph: g.glyph,
       };
     case 2:

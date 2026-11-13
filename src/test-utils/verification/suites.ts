@@ -16,9 +16,9 @@ import { DynamicsTrace, KinematicsTrace, solveDynamics, solveKinematics } from '
 export interface KinematicsSuiteOptions {
   inputJointId?: string;
   crankTipId?: string;
-  /** Maps dataset point keys to PMKS+ joint ids (e.g. coincident sensor E -> B). */
+  /** Maps dataset point keys to PMKS joint ids (e.g. coincident sensor E -> B). */
   jointIdOf?: Record<string, string>;
-  /** Maps dataset link keys to PMKS+ link ids when they differ (e.g. BCE -> BC). */
+  /** Maps dataset link keys to PMKS link ids when they differ (e.g. BCE -> BC). */
   linkIdOf?: Record<string, string>;
   tolerances?: Partial<Record<KinematicsQuantity, Tolerance>>;
   /** MATLAB rows explicitly omitted because the solvers reverse at different toggle samples. */
@@ -27,7 +27,7 @@ export interface KinematicsSuiteOptions {
 
 /**
  * Registers one `it` per kinematic quantity, comparing every joint/link
- * series in the dataset against the PMKS+ solvers over all aligned timesteps.
+ * series in the dataset against the PMKS solvers over all aligned timesteps.
  */
 export function registerKinematicsSuite(
   dataset: VerificationDataset,

@@ -2,7 +2,7 @@
  * What one stored number means in SI, for each length system a drawing can be in.
  *
  * Written out here rather than imported from `unit-conversions.ts`, because the
- * exporter is the one place a PMKS+ convention becomes physics for the oracle,
+ * exporter is the one place a PMKS convention becomes physics for the oracle,
  * and a wrong factor shared by both sides would agree with itself. A spec holds
  * this table against the app's, so a change to either is a visible decision.
  *

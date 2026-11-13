@@ -4,7 +4,7 @@
 >
 > **Narrowed since:** [editing-rules.md](editing-rules.md) is now the rule. A paused pose keeps drags and the safe properties (mass, name, color, lock, holds); structure, typed geometry and new tracer points and forces wait for the start. The anchor machinery below is unchanged and still carries every posed drag.
 
-**Purpose:** decide how PMKS+ can allow playback inside Edit mode, and later allow edits at any
+**Purpose:** decide how PMKS can allow playback inside Edit mode, and later allow edits at any
 paused pose, without corrupting the saved design, the undo history, or shared URLs.
 
 This began as a planning document and is kept as the
@@ -65,7 +65,7 @@ later phase tears out.
 
 ## 1. The problem
 
-PMKS+'s best property is its feedback loop. Drag a joint and the traced path re-solves under
+PMKS's best property is its feedback loop. Drag a joint and the traced path re-solves under
 your hand, sixty times a second — the whole cycle, not a sketch of it.
 
 That loop stops at a wall. To *watch* the mechanism move, you must leave Edit for an analysis

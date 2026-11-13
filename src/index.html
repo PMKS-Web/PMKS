@@ -15,13 +15,13 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>PMKS+ Web</title>
+    <title>PMKS Web</title>
     <base href="/" />
 
     <!--
       Keep the app out of search results, and let the landing page have them.
 
-      pmksplus.com is the page written to be found -- it explains what PMKS+ is
+      pmksplus.com is the page written to be found -- it explains what PMKS is
       to somebody who has not heard of it. This is the app itself, and the two
       were competing for the same searches while only one of them is an answer
       to them.
@@ -37,7 +37,7 @@
 
     <!--
       Without this a phone lays the page out at 980px and scales the result down
-      to fit, which is why PMKS+ has always arrived on a phone as a legible
+      to fit, which is why PMKS has always arrived on a phone as a legible
       screenshot of itself rather than an app: every control was drawn at about
       two fifths of its size, putting the mode tabs at roughly 18pt against a
       44pt minimum.
@@ -105,7 +105,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="PMKS+" />
+    <meta name="apple-mobile-web-app-title" content="PMKS" />
     <meta name="theme-color" content="#ffffff" />
     <link rel="apple-touch-icon" href="assets/app-icon/icon-180.png" />
     <!--    <link rel='icon' type='image/x-icon' href='favicon.ico' />-->
@@ -125,7 +125,7 @@
       solving. So this is painted by the browser out of the HTML, before a line
       of the bundle has run, and taken down by `AppComponent` once the app has
       drawn. In between, the window is frozen -- and the frozen thing says
-      PMKS+ rather than being blank white.
+      PMKS rather than being blank white.
 
       Inline for the same reason. A stylesheet is a request, and the point of
       this is to be up before anything has been asked for.
@@ -205,7 +205,7 @@
       would come down at exactly the moment the freeze begins.
     -->
     <div id="bootSplash">
-      <div class="bootMark">PMKS+</div>
+      <div class="bootMark">PMKS</div>
       <div class="bootBar"></div>
       <div class="bootWord">Starting up</div>
     </div>

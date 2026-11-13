@@ -95,11 +95,11 @@ mid-cycle are different code paths here.
 - Run only the suites that cover the change: the whole batch takes about an hour.
   `e2e/README.md` says what each suite covers and which ones rewrite tracked
   files.
-- Add generally useful PMKS+ workflows to `e2e/`; keep one-off external-site or
+- Add generally useful PMKS workflows to `e2e/`; keep one-off external-site or
   authenticated helpers out of the repo.
 - Prefer a suite that asserts and exits non-zero over one that only takes
   screenshots: the point is to fail, not to look.
 
-The PMKS+ canvas places joints from tracked mouse movement rather than click
+The PMKS canvas places joints from tracked mouse movement rather than click
 coordinates. Move to the target before the finalizing click, and prefer the
 Edit panel's HTML controls over drifting SVG context-menu hitboxes.

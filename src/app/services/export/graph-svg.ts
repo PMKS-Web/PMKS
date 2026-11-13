@@ -8,7 +8,7 @@ export interface PlotSvgOptions {
   /** Whether the picture carries its own title and legend, or a page does. */
   standalone: boolean;
   /**
-   * The PMKS+ mark, as a data URI.
+   * The PMKS mark, as a data URI.
    *
    * Embedded rather than linked: a graph leaves here as a file of its own and
    * lands in a report or a slide deck with nothing around it to say what drew

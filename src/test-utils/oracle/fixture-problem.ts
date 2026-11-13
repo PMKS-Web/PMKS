@@ -6,13 +6,13 @@ import { STANDARD_GRAVITY } from './si-units';
  * A MATLAB verification fixture as an oracle problem, read straight from its
  * declarative description and nothing else.
  *
- * The published cases go through PMKS+'s model classes and URL codec on their
+ * The published cases go through PMKS's model classes and URL codec on their
  * way to the oracle; these must not, because they are what checks that path.
  * The five fixtures in `verification/fixtures.ts` transcribe the MATLAB models
  * in PMKS-Web/PMKS_Verification, in meters, kilograms and kg·m², and this
  * reads only their joint coordinates, link joint lists, mass properties,
  * slider and load. So the comparison of this problem's reference with the
- * MATLAB tables shares no code with PMKS+ at all.
+ * MATLAB tables shares no code with PMKS at all.
  *
  * Only what those five use is supported: grounded pins, pins between bars, one
  * grounded slider, global loads. Anything else throws.

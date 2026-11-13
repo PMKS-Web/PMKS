@@ -378,7 +378,7 @@ function issueForFailure(
         severity: 'blocker',
         title: `Only ${MOST_MACHINES} mechanisms run at once`,
         summary: prose`Mechanism ${partition.id.replace(/^M/, '')} comes after the first ${MOST_MACHINES}, so it isn't simulated.`,
-        explain: `PMKS+ simulates up to ${MOST_MACHINES} mechanisms in one drawing, in the order of their joint letters. The rest are drawn but not simulated.`,
+        explain: `PMKS simulates up to ${MOST_MACHINES} mechanisms in one drawing, in the order of their joint letters. The rest are drawn but not simulated.`,
         fixes: [
           prose`Delete Mechanism ${partition.id.replace(/^M/, '')} if it's a leftover`,
           prose`Attach Link from it to another mechanism`,

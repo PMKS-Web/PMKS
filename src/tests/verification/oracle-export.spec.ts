@@ -132,7 +132,7 @@ describe('the oracle exporter', () => {
     const length = Math.hypot(d[0] - c[0], d[1] - c[1]);
     close(slot.axis, [(d[0] - c[0]) / length, (d[1] - c[1]) / length]);
     // The channel's ends, symmetric about its midpoint and no longer than the
-    // carrier between its joints plus PMKS+'s refusal tolerance at each end.
+    // carrier between its joints plus PMKS's refusal tolerance at each end.
     const [lo, hi] = slot.limits!;
     const along = (d[0] - c[0]) * slot.axis[0] + (d[1] - c[1]) * slot.axis[1];
     expect((lo + hi) / 2).toBeCloseTo(along / 2, 12);

@@ -1,5 +1,5 @@
 /** The repository the gallery documents, and the branch the docs are written on. */
-export const REPO_URL = 'https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator';
+export const REPO_URL = 'https://github.com/PMKS-Web/PMKS';
 export const REPO_BRANCH = 'staging';
 
 /**

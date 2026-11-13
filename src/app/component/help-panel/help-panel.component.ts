@@ -70,7 +70,7 @@ export class HelpPanelComponent {
   readonly glossary = [
     {
       term: 'Mechanism',
-      meaning: 'A connected assembly PMKS+ solves as one motion with one driven input.',
+      meaning: 'A connected assembly PMKS solves as one motion with one driven input.',
     },
     {
       term: 'Linkage',
@@ -87,7 +87,7 @@ export class HelpPanelComponent {
     {
       term: 'Degrees of freedom',
       meaning:
-        'The independent motions available. PMKS+ solves one degree of freedom per mechanism.',
+        'The independent motions available. PMKS solves one degree of freedom per mechanism.',
     },
     {
       term: 'Tracer point',
@@ -148,7 +148,7 @@ export class HelpPanelComponent {
   };
 
   readonly gotoGithub = (): void => {
-    window.open('https://github.com/PMKS-Web/PMKSWeb', '_blank');
+    window.open('https://github.com/PMKS-Web/PMKS', '_blank');
     this.analytics.logEvent('goto_github');
   };
 

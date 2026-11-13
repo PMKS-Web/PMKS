@@ -407,7 +407,7 @@ function distinctNames(files: ExportFile[]): ExportFile[] {
 }
 
 /**
- * The PMKS+ mark as a data URI, for a picture that has to stand on its own.
+ * The PMKS mark as a data URI, for a picture that has to stand on its own.
  *
  * Read once per export and given to every graph in it. A failure here is not
  * worth refusing an export over: the graph goes out without the mark.

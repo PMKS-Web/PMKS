@@ -1,7 +1,7 @@
 /**
  * The localStorage a check should arrive with when it is not about the door.
  *
- * PMKS+ greets a reader on arrival -- the tutorial for somebody new, the
+ * PMKS greets a reader on arrival -- the tutorial for somebody new, the
  * release notes for somebody returning -- and both of them land on top of the
  * app. A suite about the export panel does not want either, so it says it has
  * read them.

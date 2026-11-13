@@ -86,7 +86,7 @@ export class MechanismPanelComponent {
 
   /**
    * Under a row's name, what the mode is about: in Edit how free it is, in an
-   * analysis what PMKS+ recognized it as. No code: a machine is its name, and
+   * analysis what PMKS recognized it as. No code: a machine is its name, and
    * "Mechanism 2" where it has none.
    */
   protected subtitle(index: number): string | undefined {

@@ -8,7 +8,7 @@ import { ellipticalCrankFixture } from '../../test-utils/verification/slot-fixtu
 
 // The MotionGen library's "Elliptical Crank": an entirely ordinary six-bar with
 // a grounded crank and one fixed guide. Nothing about it is exotic -- it is the
-// kind of thing a user will draw -- and for a long time PMKS+ would not animate
+// kind of thing a user will draw -- and for a long time PMKS would not animate
 // it, for two reasons worth keeping written down beside the mechanism itself.
 //
 // No joint in it is locatable from two already-known ones. The crank pin swings

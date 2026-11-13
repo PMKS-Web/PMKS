@@ -9,9 +9,9 @@ import {
 } from '../../test-utils/oracle/compare-oracle-forces';
 import { publishedMachine } from '../../test-utils/oracle/published-machine';
 
-// The force comparison reports what PMKS+ did not, and compares a machine that
+// The force comparison reports what PMKS did not, and compares a machine that
 // carries no force at all, so that neither can pass oracle.spec.ts unexamined.
-// Each case edits PMKS+'s own force analysis of a verified machine.
+// Each case edits PMKS's own force analysis of a verified machine.
 
 /** `mechanism`, with every frame of its force analysis passed through `edit`. */
 function editedForces(
@@ -27,7 +27,7 @@ function editedForces(
 }
 
 describe('the oracle force comparison', () => {
-  it('reports a Slide couple and an input effort PMKS+ leaves out', () => {
+  it('reports a Slide couple and an input effort PMKS leaves out', () => {
     const { problem, reference, mechanism, samples } = publishedMachine(
       'gallery.guided-rod-pushed-by-a-link.m1'
     );
@@ -67,7 +67,7 @@ describe('the oracle force comparison', () => {
     expect(Math.min(...reactions.map((d) => d.error))).toBeGreaterThan(FORCE_BUDGETS.static);
   });
 
-  it('fails a machine that carries no force when PMKS+ does not solve it', () => {
+  it('fails a machine that carries no force when PMKS does not solve it', () => {
     const { problem, reference, mechanism, samples } = publishedMachine('template.4-bar.m1');
     const refused = editedForces(mechanism, (frame) => ({ ...frame, status: 'singular' }));
     const comparison = compareForces(problem, reference, refused, samples, 'static');

@@ -932,7 +932,7 @@ export class TopBarComponent implements AfterViewInit, AfterViewChecked, OnDestr
     if (link.download === undefined) return;
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `PMKS+_${new Date().toISOString()}.pmks`);
+    link.setAttribute('download', `PMKS_${new Date().toISOString()}.pmks`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
