@@ -119,20 +119,35 @@ describe('an elliptical trammel driven by a crank and rod', () => {
   });
 
   it('carries its point around the whole ellipse, not half of it', () => {
-    const { mechanism } = buildMechanism(crankedTrammelFixture(S), 'adaptive');
+    const fixture = crankedTrammelFixture(S);
+    const { mechanism } = buildMechanism(fixture, 'adaptive');
+    // Where P sits on the bar, read once off the drawing: ‘along’ from A
+    // towards B and ‘aside’ square to it. With the ends at A = (L cos t, 0)
+    // and B = (0, L sin t), that puts P at
+    //   x = (L - along) cos t + aside sin t,  y = aside cos t + along sin t,
+    // an ellipse about the crossing fixed by the drawing alone. Each frame's P
+    // is checked against it, not against a point rebuilt from that frame's ends.
+    const drawn = (id: string) => fixture.joints.find((joint) => joint.id === id)!;
+    const [a, p] = [drawn('A'), drawn('P')];
+    const angle = Math.atan2(drawn('B').y, a.x);
+    const along = (p.x - a.x) * -Math.cos(angle) + (p.y - a.y) * Math.sin(angle);
+    const aside = (p.x - a.x) * Math.sin(angle) + (p.y - a.y) * Math.cos(angle);
+    // The inverse of [[bar - along, aside], [aside, along]] takes P back to
+    // (cos t, sin t), which is on the unit circle exactly when P is on its ellipse.
+    const [m11, m12, m21, m22] = [bar - along / S, aside / S, aside / S, along / S];
+    const det = m11 * m22 - m12 * m21;
     for (const frame of mechanism.joints) {
       const at = (id: string): Joint => frame.find((joint) => joint.id === id)!;
       // The trammel itself: each end on its own guide, the bar its own length.
       expect(Math.abs(at('A').y / S)).toBeLessThan(1e-6);
       expect(Math.abs(at('B').x / S)).toBeLessThan(1e-6);
       expect(Math.hypot(at('A').x - at('B').x, at('A').y - at('B').y) / S).toBeCloseTo(bar, 4);
-      // A point a third of the way along the bar, read off the ends, is on the
-      // ellipse the driven trammel draws: the curve is the trammel's, whoever
-      // drives it.
-      const x = (at('A').x + (at('B').x - at('A').x) / 3) / S;
-      const y = (at('A').y + (at('B').y - at('A').y) / 3) / S;
-      const onEllipse = (x * x) / ((2 / 3) * bar) ** 2 + (y * y) / (bar / 3) ** 2;
-      expect(Math.abs(onEllipse - 1)).toBeLessThan(1e-6);
+      // The traced point itself, where the solver put it.
+      const x = at('P').x / S;
+      const y = at('P').y / S;
+      const cos = (m22 * x - m12 * y) / det;
+      const sin = (m11 * y - m21 * x) / det;
+      expect(Math.abs(Math.hypot(cos, sin) - 1)).toBeLessThan(1e-6);
     }
     // The traced point goes once round the crossing: the whole curve, where a
     // driven block covers half of it, out and back.
