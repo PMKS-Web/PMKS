@@ -45,7 +45,7 @@ export interface MechanismFixture {
    * `joints` is the concatenated joint letters (also the link id). List links
    * in the MATLAB free-body-chain order (input crank first): each shared
    * joint's first link then matches the MATLAB reaction-force sign convention.
-   * `com` defaults to the mean of the link's joints, which is both PMKS+'s
+   * `com` defaults to the mean of the link's joints, which is both PMKS's
    * geometric center and the MATLAB Utils.determineCoM default.
    */
   links: FixtureLink[];

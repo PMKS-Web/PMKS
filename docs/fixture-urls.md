@@ -28,7 +28,7 @@ and only *solves* on a build that includes Phase 3. For a pull request, regenera
 its deploy preview:
 
 ```bash
-PMKS_FIXTURE_BASE_URL=https://deploy-preview-NNN--pmksnew.netlify.app npm run fixture-urls
+PMKS_FIXTURE_BASE_URL=https://deploy-preview-NNN--pmksprod.netlify.app npm run fixture-urls
 ```
 
 | Mechanism | What it is for | Floating slot | Slide | Asserted in |

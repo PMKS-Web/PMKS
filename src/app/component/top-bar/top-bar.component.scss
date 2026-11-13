@@ -45,8 +45,10 @@
     // tall in an 8px-padded card, so the blue behind them sat at two different
     // heights and never at the same distance from the edge as it was from the
     // top.
+    // No gap: the menu button's own padding already spaces the logo, and a gap
+    // on top of it left more room left of the mark than right of it.
     .brandCard {
-      gap: 6px;
+      gap: 0;
       padding: 0 6px;
       flex: 0 0 auto;
       white-space: nowrap;

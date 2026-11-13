@@ -2,16 +2,16 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/logo-dark.png">
-  <img alt="PMKS+" src="docs/images/readme/logo-light.png" width="300">
+  <img alt="PMKS" src="docs/images/readme/logo-light.png" width="300">
 </picture>
 
 ### Serious linkage analysis. Zero setup.
 
-**PMKS+** is an open-source simulator for planar linkages, written for the kinematics and
+**PMKS** is an open-source simulator for planar linkages, written for the kinematics and
 machine-dynamics classroom. It runs in any browser, needs no account, and stores nothing on a
 server.
 
-[**Open PMKS+**](https://pmksplus.com) &nbsp;·&nbsp; [Mechanism library](#mechanism-library) &nbsp;·&nbsp; [Verification](#verification) &nbsp;·&nbsp; [Contributing](#contributing)
+[**Open PMKS**](https://pmksplus.com) &nbsp;·&nbsp; [Mechanism library](#mechanism-library) &nbsp;·&nbsp; [Verification](#verification) &nbsp;·&nbsp; [Contributing](#contributing)
 
 ![License MIT](https://img.shields.io/badge/license-MIT-blue) ![Angular 22](https://img.shields.io/badge/Angular-22-dd0031) ![Node 22.22.3+](https://img.shields.io/badge/Node-22.22.3%20%C2%B7%2024.15%2B-5fa04e) ![No account needed](https://img.shields.io/badge/account-not%20required-brightgreen) ![Verified against MATLAB](https://img.shields.io/badge/solvers-verified%20against%20MATLAB-8a2be2)
 
@@ -26,7 +26,7 @@ server.
 
 **Using it**
 
-- [What PMKS+ is](#what-pmks-is)
+- [What PMKS is](#what-pmks-is)
 - [The interface](#the-interface)
 - [What you can build](#what-you-can-build)
 - [What you can measure](#what-you-can-measure)
@@ -51,18 +51,18 @@ server.
 
 ---
 
-## What PMKS+ is
+## What PMKS is
 
 A **four-bar linkage** is the first machine most mechanical engineering students meet, and the
-first one whose behavior is genuinely hard to picture. PMKS+ exists for that moment: draw the
+first one whose behavior is genuinely hard to picture. PMKS exists for that moment: draw the
 bars, ground two joints, turn one of them, and the coupler curve appears.
 
 It is a single-page web app. Nothing to install, no account, and no server holding your work. The
 whole mechanism packs into a link, so "share this with my TA" is a copy-and-paste.
 
-PMKS+ is the successor to **PMKS**, written by Prof. Matthew I. Campbell at Oregon State
-University, and is developed at **Worcester Polytechnic Institute** by undergraduate and graduate
-project teams.
+This version of PMKS succeeds the **original PMKS**, written by Prof. Matthew I. Campbell at
+Oregon State University, and is developed at **Worcester Polytechnic Institute** by undergraduate
+and graduate project teams.
 
 | | |
 | --- | --- |
@@ -77,7 +77,7 @@ project teams.
 
 The canvas is full-bleed and everything else floats over it, in cards.
 
-![The seven regions of the PMKS+ interface, labeled on a running four-bar](docs/images/readme/interface-map.png)
+![The seven regions of the PMKS interface, labeled on a running four-bar](docs/images/readme/interface-map.png)
 
 | | Region | Holds |
 | :-: | --- | --- |
@@ -138,9 +138,9 @@ because a weld is precisely the statement that two bodies do *not* move relative
 | **Lock** | A mark that holds a joint (or a whole link) still against dragging, so a shared linkage can only be adjusted where its author intended |
 | **Background image** | A photograph or drawing pinned behind the grid, scaled and rotated, to build a linkage on top of a real machine. Never uploaded anywhere |
 
-![The Edit panel open on a joint of a welded loader bucket](docs/images/readme/edit-panel.png)
+![The Edit panel open on a joint of a welded excavator bucket](docs/images/readme/edit-panel.png)
 
-![A backhoe bucket driven by a hydraulic cylinder, with the boom's angular kinematics graphed](docs/images/readme/cylinders.png)
+![An excavator bucket driven by a hydraulic cylinder, with the bucket's angular kinematics graphed](docs/images/readme/cylinders.png)
 
 A driven cylinder is a *linear* input, and the app knows it. The transport row reads
 **`Opening · Reverses`** and a distance rather than an angle; the scrub handle runs across the
@@ -175,7 +175,7 @@ Two modes, chosen in the panel:
   link.
 
 Forces are reported **per body at a joint**. The reaction on link *AB* and the reaction on link *BC*
-are two different answers to two different free-body diagrams, and PMKS+ gives you both rather than
+are two different answers to two different free-body diagrams, and PMKS gives you both rather than
 one merged number. It also reports the **input effort**: the torque a crank needs, or the force a
 ram needs.
 
@@ -219,7 +219,7 @@ instead of hunting for them on the canvas.
 
 ![Three independent mechanisms on one grid, with the scrub card split into a row each](docs/images/readme/multi-machine.png)
 
-A drawing is not assumed to be one machine. PMKS+ **partitions** it into independently solvable
+A drawing is not assumed to be one machine. PMKS **partitions** it into independently solvable
 mechanisms (`M1`, `M2`, `M3`), each with its own input, speed and direction. By default they share a
 clock and the scrub card shows a single **`All`** row; the toggle on the card splits it into one row
 per machine that solves, each with its own handle, angle and time readout.
@@ -233,7 +233,7 @@ with three machines needs three speeds.
 
 ![Motion synthesis: three coupler positions, a solved four-bar, and the Insert control](docs/images/readme/synthesis.png)
 
-Give PMKS+ three positions and orientations of a coupler and it searches for four-bars that pass
+Give PMKS three positions and orientations of a coupler and it searches for four-bars that pass
 through all three, offering up to eight distinct candidates. You steer that search by what you care
 about:
 
@@ -275,7 +275,7 @@ Numbers can be written to 2, 4 or 6 decimals, or at full solver precision.
 | Menu item | What it does |
 | --- | --- |
 | **New Project** | A blank grid, in a new tab, so what you have open is never taken away |
-| **Open** | Load a saved PMKS+ file from disk |
+| **Open** | Load a saved PMKS file from disk |
 | **Templates** | The mechanism library |
 | **Save** | Download the current mechanism as a `.pmks` file |
 | **Share Project** | Copy a link that reopens exactly what you are looking at |
@@ -429,7 +429,7 @@ The solvers are not trusted because they look right.
 
 **Against MATLAB.** Five mechanism configurations from the reviewed reference contract in
 [PMKS-Web/PMKS_Verification](https://github.com/PMKS-Web/PMKS_Verification), namely a slider-crank
-with a tracer, Stephenson III, Watt I and two teaching-lab cases, are rebuilt with the PMKS+ model
+with a tracer, Stephenson III, Watt I and two teaching-lab cases, are rebuilt with the PMKS model
 classes and compared row by row against MATLAB output at **one-degree increments of the input
 crank**. Joint and angular kinematics are covered in all five; center-of-mass kinematics in three;
 full dynamics in two. The data is generated from a pinned commit and committed, so CI needs no
@@ -488,7 +488,7 @@ rather than silently misreading it, and every codec change is defended by round-
 
 ### 2. Say what is wrong, and say the way out
 
-A grayed-out button that will not explain itself is a dead end for a student. So a refusal in PMKS+
+A grayed-out button that will not explain itself is a dead end for a student. So a refusal in PMKS
 carries its reason in the same row. Wherever a rule is enforced somewhere real, the row quotes that
 code (`describeActuatorRefusal`, `weldRefusal`, `locksHolding`) rather than restating it, so the
 menu and the model cannot drift apart.
@@ -566,8 +566,8 @@ A fuller map of the codebase, and the conventions it is held to, is in
 Requires **Node 22.22.3+, 24.15+ or 26+**, the range the Angular 22 toolchain declares.
 
 ```bash
-git clone https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator.git
-cd Planar-Mechanism-Kinematic-Simulator
+git clone https://github.com/PMKS-Web/PMKS.git
+cd PMKS
 npm ci
 npm start          # http://localhost:4200
 ```
@@ -602,7 +602,9 @@ The rest of what is worth knowing before you start is in
   [app.pmksplus.com](https://app.pmksplus.com).
 - **Automatic publishing to production is paused in Netlify.** Nothing reaches app.pmksplus.com
   until someone publishes it by hand, so being on `main` does not mean being live.
-- Every other branch publishes to `https://[BRANCHNAME]--pmksnew.netlify.app`.
+- A pull request into `staging` or `main` gets a preview at
+  `https://deploy-preview-NNN--pmksprod.netlify.app`, and `staging` publishes to
+  `https://staging--pmksprod.netlify.app`. Other branches are not deployed.
 - CI runs ESLint, stylelint, a Prettier check, the unit suite, the production build, the gallery
   build and `git diff --check` on every pull request, and a pull request into `staging` or `main`
   cannot merge until it passes.
@@ -649,7 +651,7 @@ inside the app (Help / Feedback in the project menu).
 
 ## Acknowledgements
 
-PMKS+ is based on **PMKS**, developed by **Prof. Matthew I. Campbell**, Professor of Mechanical
+PMKS is based on the **original PMKS**, developed by **Prof. Matthew I. Campbell**, Professor of Mechanical
 Engineering, Oregon State University.
 
 ### Faculty
@@ -676,6 +678,6 @@ Engineering, Oregon State University.
 
 <div align="center">
 
-**[Open PMKS+ →](https://pmksplus.com)**
+**[Open PMKS →](https://pmksplus.com)**
 
 </div>

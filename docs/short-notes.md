@@ -13,6 +13,15 @@ whose title covers it, and leave a heading here only if someone would still sear
 
 ---
 
+### `.gitattributes` keeps every text file LF, because specs compare checked-in bytes
+
+`fixture-gallery.spec.ts` compares `docs/fixture-urls.md` with freshly generated text, and
+`oracle.spec.ts` hashes the bytes of `oracle/pmks_oracle/*.py`. A Windows clone with Git's default
+`core.autocrlf` used to check those files out with CRLF endings, so both failed on a clean
+checkout. `* text=auto eol=lf` in `.gitattributes` now checks out LF everywhere. A clone made
+before that rule keeps its CRLF files until they are checked out again:
+`git rm -r --cached -q . && git reset --hard` (this discards uncommitted changes).
+
 ### `__dirname` in a shared test helper points somewhere else in the full run
 
 A spec file can resolve paths from its own `__dirname`, as `fixture-gallery.spec.ts` does. A
@@ -24,7 +33,7 @@ says so.
 
 ### `Mechanism`'s frame 0 is the drawing as decoded, not as solved
 
-PMKS+ stores the drawing it was handed as frame 0, and the cycle's closing frame copies it; only
+PMKS stores the drawing it was handed as frame 0, and the cycle's closing frame copies it; only
 frames 1 onward are solved. A cylinder saved a hair off its line is therefore straightened from
 frame 1, and frame 0 keeps the misalignment. `solvedDrawing` in
 `src/test-utils/machine-facts/drawing.ts` decodes a URL and solves it at once, without the
@@ -2479,7 +2488,7 @@ Number adjustment now starts on the field label, preserving the value's native t
 
 Vector paths were rebuilding all cycle samples on every drag move. In a four-bar drag with velocity and acceleration on B and C, this cost 30 rebuilds / 254ms and 143,144 sample reads. Reusing the cycle paths during the gesture and refreshing on release reduced this to one rebuild / 7ms and 20,032 reads; the current-pose arrows continue updating. The measured frame p90 fell from 17ms to 9ms on this machine (`e2e/vector-drag-profile.mjs`). Ask `DragStateService.isDragging`, not `onMechUpdateState`: a solve emits state 2 during the drag, so that observable alone cannot guard the expensive work.
 
-Shared reproductions: [Luffing crank label](https://deploy-preview-32--pmksnew.netlify.app/?2v.Ay,1E8.A,1V.1011.4O,O,0,0,0.0C,C,Qv,cP,0.0T,T,rn,1Co,0.6G,G,YO,09O,0.1K,K,Fs,Me,0,OCT,O,T..ARGK,Luffing%20crank,mr0,1T,P7,6e,303e9f,G,K,,.MROCT,Boom,4a_0,S7,LX,Uk,0d125a,O,C,T,,..1F1,OCT,F1,rn,1Co,sg,1X7,d4..N_P*2IoWB5), [HI beside orphan G](https://deploy-preview-32--pmksnew.netlify.app/?2v.EK,1E8.A,0.1011.6G,G,YO,09O,0.9H,H,1C4,0F2,0.0I,I,1TR,051,0..ARHI,HI,0,0,1Km,0A2,303e9f,H,I,,...N_d*1yshxG), [Standalone input A](https://deploy-preview-32--pmksnew.netlify.app/?2v.Ay,1E8.A,0.1011.6A,A,0d1,8J,0,,,,02SG....N_k*418cfy).
+Shared reproductions: [Luffing crank label](https://staging--pmksprod.netlify.app/?2v.Ay,1E8.A,1V.1011.4O,O,0,0,0.0C,C,Qv,cP,0.0T,T,rn,1Co,0.6G,G,YO,09O,0.1K,K,Fs,Me,0,OCT,O,T..ARGK,Luffing%20crank,mr0,1T,P7,6e,303e9f,G,K,,.MROCT,Boom,4a_0,S7,LX,Uk,0d125a,O,C,T,,..1F1,OCT,F1,rn,1Co,sg,1X7,d4..N_P*2IoWB5), [HI beside orphan G](https://staging--pmksprod.netlify.app/?2v.EK,1E8.A,0.1011.6G,G,YO,09O,0.9H,H,1C4,0F2,0.0I,I,1TR,051,0..ARHI,HI,0,0,1Km,0A2,303e9f,H,I,,...N_d*1yshxG), [Standalone input A](https://staging--pmksprod.netlify.app/?2v.Ay,1E8.A,0.1011.6A,A,0d1,8J,0,,,,02SG....N_k*418cfy).
 
 
 ### A tracer selected through a compound primitive still belongs to the root
@@ -2488,7 +2497,7 @@ The second click on a compound now selects a primitive object, not the root with
 
 The designer’s “Force rendering and frame visualization-2.zip” final card 2a replaces the older force weld-plus grammar: a disc and ring/keyway stay at the application point, independent of arrow sense. The inward tip stops one shaft width before the anchor. The lock badge is offset beside the disc so the frame stays legible. The panel Angle and its hover/focus guide both measure from the owning body for Local, and from +x for Grid; stored `angleRad` continues to be the physical world direction.
 
-[Compound tracer reproduction on PR32](https://deploy-preview-32--pmksnew.netlify.app/?2v.9x,1E8.A,0.1011.0H,H,ve,0Cg,0.8I,I,11m,He,0.0J,J,1YS,01G,0..ARHIJ,HIJ,0,0,17v,5L,303e9f,H,I,J,,HI,IJ.aRHI,HI,0,0,zi,2V,303e9f,H,I,,.aRIJ,IJ,0,0,1I6,8C,0d125a,I,J,,...N_l*2yNYpD).
+[Compound tracer reproduction on PR32](https://staging--pmksprod.netlify.app/?2v.9x,1E8.A,0.1011.0H,H,ve,0Cg,0.8I,I,11m,He,0.0J,J,1YS,01G,0..ARHIJ,HIJ,0,0,17v,5L,303e9f,H,I,J,,HI,IJ.aRHI,HI,0,0,zi,2V,303e9f,H,I,,.aRIJ,IJ,0,0,1I6,8C,0d125a,I,J,,...N_l*2yNYpD).
 
 
 ### Force marks need one geometry scale, and inward shafts end at the head’s base
@@ -2924,3 +2933,32 @@ and the property pass writes each member's share onto `member.mass` on every reb
 member's mass by hand does nothing that lasts: the next pass overwrites it, and `assignBodyMass`
 refuses it outright. Set the compound's mass instead. A spec that builds a compound by hand and
 wants a particular member to weigh more has to make that member longer.
+
+### A neighboring hold used to stretch a whole-link drag (#259)
+
+`moveLinkRigidly` gave each endpoint an independent goal. With AB holding its length or angle, B followed that constraint and C followed its own translated goal, changing BC's length. Because the canvas calculated each new translation from B's already constrained position, C accumulated the shortfall on every pointer event. A four-bar drag of 120px right and 80px down shortened BC by 17.4% beside a fixed length, or lengthened it by 139.2% beside a fixed angle. Solve temporary body distances with the real holds, use targets from `beforeDrag.joints`, and commit the whole placement through the existing edit plan. That also preserves the carried body's load direction and custom center. The new `constrained-link-drag` suite captures both failures and repeated pointer events at the same location.
+
+### A ground pin is a soft anchor for typed numbers only (#261)
+
+The hold solver used to treat every ground pin as fixed. With AB at a fixed length and A grounded, dragging BC stopped at AB's arc, which reads as a Lock that was never set. A canvas drag (`DragStateService` in joint or link dragging) now treats ground pins as ordinary joints. A typed number solves with ground pins fixed first, and solves again with them free only when the first answer falls short (`granted`/`goesFurther` in `grid-utils.service.ts`; `setBarValue` and `setBarValues` retry only when unsatisfied). `holdsImmobilizing` is asked at the grab, before the drag state is set, so it always counts grounds as free. A spec that needs an end to stay put must lock it; grounding it is no longer enough.
+
+### `readme-shots` once photographed whatever opened, so look at every picture it writes
+
+`e2e/readme-shots.mjs` always writes a picture, even when a step fails. A template renamed in the
+library (`Backhoe_Bucket` to `Excavator_Bucket`) was opened as if its old name were a URL, and the
+README showed a "could not be opened" toast over an empty grid for a release. A link id that no
+longer existed (`DGH`) selected nothing, and `expandGraphs` closed the Position row, which an
+analysis panel now opens on its own. The script now stops on an unknown template and on a
+missing joint or link, keeps the old picture when any step fails, exits non-zero, and opens only
+rows that are closed. The library picture also waits for every thumbnail it shows: served by
+`python3 -m http.server`, a few cards drew a broken-image icon now and then. The hover GIFs are left
+out of that wait, because they sit at opacity 0 and Chrome may never fetch them. A picture can
+still be wrong with every step passing, so look at each one.
+
+### Netlify previews a PR only into a branch that deploys
+
+`pmksprod` deploys `main` and `staging` and nothing else, to save build minutes, and that is also
+what decides which pull requests get a preview: Netlify builds one only for a PR whose base is the
+production branch or a branch-deploy branch. So a PR into `staging` gets
+`deploy-preview-NNN--pmksprod.netlify.app`, and a stacked PR into another feature branch gets none.
+Adding a branch to the branch-deploy list turns on both its own deploy and previews of PRs into it.

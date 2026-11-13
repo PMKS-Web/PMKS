@@ -6,7 +6,7 @@
 //   mousectl wheel X Y TICKS           vertical wheel (positive = up/zoom-in w/ ctrl)
 //   mousectl click X Y                 move, then press and release
 //   mousectl rclick X Y                right-click; every creation gesture in
-//                                      PMKS+ starts with one
+//                                      PMKS starts with one
 //   mousectl drag X1 Y1 X2 Y2 STEPS DELAY_US   full press-drag-release, streaming moves
 //
 // Build:  swiftc -O e2e/tools/mousectl.swift -o <somewhere outside the repo>

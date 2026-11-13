@@ -880,7 +880,7 @@ export class MechanismService {
     const dof = this.mobilityNear(near);
     const why =
       dof !== undefined && dof > 1
-        ? ` PMKS+ can only simulate one-degree-of-freedom mechanisms, and this one has ${dof} degrees of freedom.` +
+        ? ` PMKS can only simulate one-degree-of-freedom mechanisms, and this one has ${dof} degrees of freedom.` +
           ' Add a constraint, or build the parts as separate mechanisms.'
         : '';
     this.notify.news(

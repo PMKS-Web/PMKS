@@ -69,7 +69,7 @@ const SHOTS = [
   },
   {
     name: 'edit-panel',
-    template: 'Backhoe_Bucket',
+    template: 'Excavator_Bucket',
     steps: [
       ['tab', 'Edit'],
       ['selectJoint', 'B'],
@@ -116,7 +116,7 @@ const SHOTS = [
       ['wait', 1200],
       ['clickText', 'Start Here'],
       ['park'],
-      ['wait', 900],
+      ['imagesLoaded'],
     ],
   },
   {
@@ -157,11 +157,11 @@ const SHOTS = [
   },
   {
     name: 'cylinders',
-    template: 'Backhoe_Bucket',
+    template: 'Excavator_Bucket',
     steps: [
       ['tab', 'Kinematic'],
       ['play', 1800],
-      ['selectLink', 'DGH'],
+      ['selectLink', 'BEIJK'],
       ['expandGraphs', 1],
       ['resetView'],
       ['park'],
@@ -289,11 +289,15 @@ for (const shot of SHOTS) {
   // The tutorial card is offered to a first-time reader and would otherwise sit
   // over the panel in every picture.
   await startQuiet(context);
-  const page = await context.newPage();
-  const payload = payloads[shot.template] ?? (shot.template === 'empty' ? '' : shot.template);
-  if (shot.template !== 'empty' && !payloads[shot.template] && !payload) {
-    failures.push(`${shot.name}: no payload named ${shot.template}`);
+  // A renamed template must stop the shot, not open its old name as a URL: that
+  // used to photograph the "could not be opened" toast over an empty grid.
+  if (shot.template !== 'empty' && !payloads[shot.template]) {
+    failures.push(`${shot.name}: no template named ${shot.template}; picture not retaken`);
+    await context.close();
+    continue;
   }
+  const page = await context.newPage();
+  const payload = payloads[shot.template] ?? '';
   await page.goto(`${BASE}/${payload ? '?' + payload : ''}`, { waitUntil: 'domcontentloaded' });
   await waitForReady(page).catch(() => undefined);
   await page.waitForTimeout(700);
@@ -312,6 +316,35 @@ for (const shot of SHOTS) {
           grid.mechanismSrv.joints.forEach((joint) => (joint.showCurve = true));
         });
       else if (verb === 'park') await page.mouse.move(10, 700);
+      // A card whose thumbnail failed to load draws a broken-image icon, and a
+      // picture of that is worse than the old one: wait, and fail if any did.
+      // Only images the picture can show count: a card's hover GIF sits at
+      // opacity 0, and Chrome may never fetch it.
+      else if (verb === 'imagesLoaded')
+        await page
+          .waitForFunction(
+            () =>
+              [...document.images]
+                .filter(
+                  (image) =>
+                    image.getClientRects().length && getComputedStyle(image).opacity !== '0'
+                )
+                .every((image) => image.complete && image.naturalWidth > 0),
+            null,
+            { timeout: 15000 }
+          )
+          .catch(async () => {
+            const broken = await page.evaluate(() =>
+              [...document.images]
+                .filter(
+                  (image) =>
+                    image.getClientRects().length && getComputedStyle(image).opacity !== '0'
+                )
+                .filter((image) => !(image.complete && image.naturalWidth > 0))
+                .map((image) => image.getAttribute('src'))
+            );
+            throw new Error(`images did not load: ${broken.join(', ')}`);
+          });
       else if (verb === 'annotate') await annotate(page);
       else if (verb === 'generate') {
         await page.locator('#synthesisPanel .cta').click({ force: true });
@@ -343,8 +376,12 @@ for (const shot of SHOTS) {
       else if (verb === 'expandGraphs') {
         const headers = page.locator('.graphHeader');
         const count = Math.min(await headers.count(), Number(argument) || 3);
-        for (let index = 0; index < count; index += 1)
-          await headers.nth(index).click({ force: true });
+        // The first row may already be open, and a click would close it again.
+        for (let index = 0; index < count; index += 1) {
+          const header = headers.nth(index);
+          if ((await header.getAttribute('aria-expanded')) !== 'true')
+            await header.click({ force: true });
+        }
       } else if (verb === 'resetView')
         await page.locator('app-view-controls button').last().click({ force: true });
       else if (verb === 'scrub')
@@ -357,13 +394,15 @@ for (const shot of SHOTS) {
         await page.evaluate((id) => {
           const grid = window.ng.getComponent(document.querySelector('app-new-grid'));
           const link = grid.mechanismSrv.links.find((candidate) => candidate.id === id);
-          if (link) grid.activeObjService.updateSelectedObj(link);
+          if (!link) throw new Error(`no link named ${id}`);
+          grid.activeObjService.updateSelectedObj(link);
         }, argument);
       else if (verb === 'selectJoint')
         await page.evaluate((id) => {
           const grid = window.ng.getComponent(document.querySelector('app-new-grid'));
           const joint = grid.mechanismSrv.joints.find((candidate) => candidate.id === id);
-          if (joint) grid.activeObjService.updateSelectedObj(joint);
+          if (!joint) throw new Error(`no joint named ${id}`);
+          grid.activeObjService.updateSelectedObj(joint);
         }, argument);
       else if (verb === 'play') {
         await page.locator('.playButton').first().click({ force: true });
@@ -377,7 +416,11 @@ for (const shot of SHOTS) {
       await page.waitForTimeout(400);
     }
   } catch (error) {
-    failures.push(`${shot.name}: ${String(error).split('\n')[0]}`);
+    // A shot whose steps did not all run would replace a good picture with a
+    // wrong one, so the old picture stays.
+    failures.push(`${shot.name}: ${String(error).split('\n')[0]}; picture not retaken`);
+    await context.close();
+    continue;
   }
 
   await page.screenshot({ path: `${OUT}/${shot.name}.png` });
@@ -389,4 +432,5 @@ await browser.close();
 if (failures.length) {
   console.log('\nsteps that did not run:');
   for (const failure of failures) console.log('  ' + failure);
+  process.exitCode = 1;
 }

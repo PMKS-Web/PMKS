@@ -4,7 +4,7 @@
 > the intended cross-engine check, not yet built (see [Phase 0 results](#phase-0-results)). Of 202 published machines, **154
 > are verified** against the oracle in their motion and forces (eight of them in part; many carry
 > no force, and are checked to come out zero) and **43 agree they do not run**; **5 are
-> excluded** whole by the manifest, and none is left unsupported by the exporter. PMKS+'s mobility
+> excluded** whole by the manifest, and none is left unsupported by the exporter. PMKS's mobility
 > agrees with the oracle's, at first and second order, on all 202 (see [Phase 4
 > results](#phase-4-results)). Of the **6 disagreements** found, each with an issue, **#78 and
 > #81 are fixed** and 4 remain open (see [Disagreements fixed](#disagreements-fixed) and [Phase 3
@@ -13,9 +13,9 @@
 
 ## The problem
 
-PMKS+ checks its solvers in three ways today, and only one of them is independent:
+PMKS checks its solvers in three ways today, and only one of them is independent:
 
-| What | Where | Covers | Independent of PMKS+? |
+| What | Where | Covers | Independent of PMKS? |
 | --- | --- | --- | --- |
 | MATLAB reference traces | `src/test-data/verification/` | 5 cases: four-bar, slider-crank, tracer, Watt I, Stephenson III | Partly. The MATLAB comes from a fork of the original PMKS, written by the same research group. |
 | Self-snapshots | `template-baseline.ts` and similar | The templates | No. They catch *change*, not *error*. |
@@ -30,7 +30,7 @@ transmits moment, would pass every test we have.
 ## The goal
 
 **Every library template and every gallery fixture is solved a second time by an established
-multibody solver that shares no code or formulation with PMKS+. Every quantity the physics
+multibody solver that shares no code or formulation with PMKS. Every quantity the physics
 determines uniquely is compared in CI.** A quantity the oracle cannot express, or that the physics
 does not determine, is listed with its reason, never left out silently.
 
@@ -44,14 +44,14 @@ written down.
 
 **Why it is right**
 
-- PMKS+ solves by finding loops and walking dyads (`loop-solver`, `position-solver`), and by
+- PMKS solves by finding loops and walking dyads (`loop-solver`, `position-solver`), and by
   Newton–Raphson only where that walk fails (`simultaneous-solver`). The textbook alternative
   formulates the whole mechanism as one constraint set in body coordinates, Φ(q, t) = 0, and
   solves that (E. J. Haug, *Computer Aided Kinematics and Dynamics of Mechanical Systems*, 1989;
   P. E. Nikravesh, *Planar Multibody Dynamics*, 2nd ed., 2018). A loop-closure bug and a
   body-coordinate bug are unlikely to produce the same wrong number.
 - Inverse dynamics (joint reactions and input effort under prescribed motion) is where a
-  formulation difference earns the most. The force solver is the least checked part of PMKS+:
+  formulation difference earns the most. The force solver is the least checked part of PMKS:
   only two of the five MATLAB cases carry dynamics.
 - Reference data generated once and committed keeps `npm test` free of Python and the network.
   The existing MATLAB data already works this way.
@@ -62,12 +62,12 @@ written down.
   *which* mechanism exists. They are design rules, not physics.
 - **Readiness and wording.** Setup issues, refusals and family names stay with the existing specs.
 - **Which assembly branch a reader meant.** The oracle starts from the drawn pose and checks that
-  PMKS+ stays on that branch. It cannot say what the reader intended.
-- **Reactions the physics leaves undetermined.** Where supports are redundant (PMKS+ records this
+  PMKS stays on that branch. It cannot say what the reader intended.
+- **Reactions the physics leaves undetermined.** Where supports are redundant (PMKS records this
   as `sharedSupport` in `force-solver.ts` and splits the load evenly), any solver's split is a
   choice, not a measurement. Only the resultant and the equilibrium are compared there.
-- **Semantic independence of the translation.** Converting a PMKS+ mechanism into the oracle's
-  input is new code that reads PMKS+'s own data structures. Reading only start-pose data keeps the
+- **Semantic independence of the translation.** Converting a PMKS mechanism into the oracle's
+  input is new code that reads PMKS's own data structures. Reading only start-pose data keeps the
   *computation* separate. It does not stop a shared *interpretation*, such as where a default
   center of mass sits or what a weld means, from leaking into both sides. Phase 1 tests the
   translation against independently specified cases for exactly that reason.
@@ -82,7 +82,7 @@ Two problem sources, kept apart:
 
 - **Raw benchmark cases.** Textbook worked examples, the MATLAB v1 cases and closed-form
   mechanisms. Each is written once in the neutral schema by hand from its source, never exported
-  from PMKS+. These test the translation layer and the oracle together.
+  from PMKS. These test the translation layer and the oracle together.
 - **Published cases.** Every gallery fixture and library template, exported from what the URL
   decoder produces. These test what a student actually opens.
 
@@ -116,15 +116,15 @@ That is why mobility classification moves from the old Phase 4 into Phase 0.
 - The oracle **brackets and refines** each geometric singularity and each travel limit (slot end,
   cylinder stroke) independently. A Newton step that fails to converge is reported as a solver
   failure, never as a toggle.
-- The oracle continues **past a reversal** onto the return segment, so PMKS+'s return sweep is
+- The oracle continues **past a reversal** onto the return segment, so PMKS's return sweep is
   checked too. Smooth segments are compared on their own. Reversal samples are named and treated
   as `undefined` for acceleration.
-- PMKS+'s reversal must fall within one sample of the oracle's refined toggle. That makes a
+- PMKS's reversal must fall within one sample of the oracle's refined toggle. That makes a
   toggle disagreement a test failure instead of an exclusion.
 
 ### 4. Tolerances justified by method
 
-PMKS+ produces some numbers analytically and some by differencing. `finite-difference-kinematics.ts`
+PMKS produces some numbers analytically and some by differencing. `finite-difference-kinematics.ts`
 fills rates the analytic solver leaves blank, using a central difference over 1° samples, and
 differences again for acceleration. For a sinusoid that alone is about 5×10⁻⁵ relative error, so
 one global 1e-6 tolerance cannot hold. (The 4-decimal rounding in `mechanism.ts` affects only
@@ -251,8 +251,8 @@ mass, local versus global loads, and every unit and speed conversion.
   reports verified coverage and excluded coverage separately, and this document's status line
   carries both counts.
 - **Triage of a disagreement**: first the exporter's equivalence rule, then the oracle model, then
-  PMKS+'s solver. Never loosen a budget for one case.
-- **Changing a PMKS+ solver** never regenerates oracle data. If the spec goes red, either the
+  PMKS's solver. Never loosen a budget for one case.
+- **Changing a PMKS solver** never regenerates oracle data. If the spec goes red, either the
   solver change is wrong, or it fixed something the manifest excluded, in which case delete that
   exclusion.
 - **Upgrading the oracle library** is its own pull request: bump the lock, regenerate, and attach
@@ -277,18 +277,18 @@ mass, local versus global loads, and every unit and speed conversion.
 
 ## Disagreements fixed
 
-Each fix changes PMKS+, never the oracle or a budget, and deletes the manifest entries its issue
+Each fix changes PMKS, never the oracle or a budget, and deletes the manifest entries its issue
 held out.
 
-- **[#81][i81], a floating pin's motor torque** (2026-11-07). `force-solver.ts` now takes the
+- **[#252][i81], a floating pin's motor torque** (2026-11-07). `force-solver.ts` now takes the
   driven and reference bodies from `resolveActuator`, as the position solve does, and writes
   +τ into the driven body's moment row and −τ into the reference body's. The four machines it
   held out are compared in full: the coupler-rocker four-bar, the oscillating fan and the
   walking-beam pumping unit are verified, and the leg on a bicycle crank is verified but for
-  [#82][i82]'s one sample. 159,086 force samples now pass, and none fails.
+  [#253][i82]'s one sample. 159,086 force samples now pass, and none fails.
   `floating-pin-forces.spec.ts` checks the physics without the oracle: the frame's reactions
   and the load alone balance the whole machine, in force and in moment.
-- **[#78][i78], a second input's rates** (2026-11-07). `kinematic-solver.ts` gave no unknown to
+- **[#251][i78], a second input's rates** (2026-11-07). `kinematic-solver.ts` gave no unknown to
   any link touching a joint flagged as an input, while it put only the first input's link on the
   known side, so a link a second, ignored flag touched got neither. It now asks for the one input
   the solve uses, for links, slot carriers and guide ends alike. The four-bar with two inputs is
@@ -298,7 +298,7 @@ held out.
 
 ## Phase 4 results
 
-Measured on 2026-11-06. `oracle-mobility.spec.ts` compares PMKS+'s mobility
+Measured on 2026-11-06. `oracle-mobility.spec.ts` compares PMKS's mobility
 (`model/mechanism/mobility.ts`) with the oracle's for every published machine, 202 of them, at
 the drawn pose, and **they agree on every one**, at first order and at second. No manifest entry
 leaves a machine's mobility out.
@@ -338,7 +338,7 @@ walked), Norton's four-bar (one at both, nothing redundant), and the flat parall
 | Machine | First order | Second order | Effect |
 | --- | --- | --- | --- |
 | MotionGen gripper | 2 | 1 | Each jaw rides two parallel slots at one height, so carriage and jaws can turn together to first order and not to second. Both solvers now agree it has one freedom. The oracle still does not walk it, an oracle limitation: a pose is held along the dead turn only to about 10⁻⁵ of the machine's size, and an attempt to walk it produced a reference that Linux did not reproduce. Every rate would be past the conditioning limit in any case |
-| Slotted lever with a rod that cannot tilt | 1 | 0 | Rigid. The oracle used to walk it and stop at a solver failure; it now agrees with PMKS+ that it does not move |
+| Slotted lever with a rod that cannot tilt | 1 | 0 | Rigid. The oracle used to walk it and stop at a solver failure; it now agrees with PMKS that it does not move |
 | Crank-rocker driven from the rocker at its limit | 1 | 1 | Unchanged: with the driver held, the one first-order flex dies at second order, which is what a dead point is. It stays an oracle limitation: which branch to leave a dead point by is not the oracle's to choose |
 
 ### Where Gruebler's count is wrong
@@ -374,15 +374,15 @@ Each rule is in `src/test-utils/oracle/export-problem.ts`, beside the ones in [E
 
 - **An input that turns one link against another.** A floating pin input drives the two bodies
   `resolveActuator` names, the reference and the driven one; a grounded one drives its link against
-  the ground. PMKS+'s driver coordinate is read the same way, as the driven body's turn less the
+  the ground. PMKS's driver coordinate is read the same way, as the driven body's turn less the
   reference body's (`driverCoordinate` in `pmks-samples.ts`).
 - **A floating slot's ends.** The block may travel the channel between the slot's end joints, from
-  its midpoint out to half their separation less the inset the slot mark draws, plus PMKS+'s own
+  its midpoint out to half their separation less the inset the slot mark draws, plus PMKS's own
   tolerance of 0.2% of the separation (`ridersAreInTheirSlots` in `position-solver.ts`). The
-  constants are restated rather than imported, as the units table is, so a change to PMKS+'s rule
+  constants are restated rather than imported, as the units table is, so a change to PMKS's rule
   shows up as a disagreement.
 - **A cylinder.** Its seal slides along the line from one end joint to the other. The stroke is the
-  part's own geometry (`cylinderStrokeAlong`), plus PMKS+'s tolerance of 10⁻³ model units. The
+  part's own geometry (`cylinderStrokeAlong`), plus PMKS's tolerance of 10⁻³ model units. The
   hidden end N and the seal S are derived, not read: N a barrel length along the line from end A,
   S a rod length back from end B. A driven cylinder is sampled 180 times a stroke
   (`SAMPLES_PER_STROKE`), and its driver coordinate is the change in the span between its ends.
@@ -411,21 +411,21 @@ refusal of slot limits that Phase 0 added is gone.
 
 ### In the comparison
 
-- **The frames PMKS+ solved.** PMKS+'s frame 0, and the closing copy of it, are the decoded
+- **The frames PMKS solved.** PMKS's frame 0, and the closing copy of it, are the decoded
   drawing. Every other frame is solved, and a cylinder stored a hair off its line is straightened
   there. Where frame 0 does not match the exported problem to 10⁻⁹ of the machine's size, its
-  poses are not compared (`solvedFrames` in `compare-oracle.ts`). How far PMKS+ travels is still
+  poses are not compared (`solvedFrames` in `compare-oracle.ts`). How far PMKS travels is still
   read off every frame.
-- **Inertia from differenced accelerations.** A force PMKS+ balances against differenced
+- **Inertia from differenced accelerations.** A force PMKS balances against differenced
   accelerations can be no better than they are, so it is held to the differenced acceleration
   budget, 10⁻², instead of 10⁻⁸ (`DIFFERENCED_INERTIA_BUDGET`). It is `undefined` within a sample
   of a reversal, where the difference reaches across the turn. The worst measured is 4.8×10⁻⁵, on
   the telescoping strut.
-- **A cycle's first and last frames.** PMKS+ differences them one-sided, to first order, although
+- **A cycle's first and last frames.** PMKS differences them one-sided, to first order, although
   the last frame repeats the first and a central difference across it is available. On the
   hydraulic cylinder that put an angular acceleration 9.9×10⁻³ off at frame 0, where the same pose
   differenced centrally mid-sweep is 1.0×10⁻⁴ off. A differenced rate there, and any force resting
-  on one, is `undefined`, and the gap is filed as [#84][i84]: 80 kinematic and 58 force samples.
+  on one, is `undefined`, and the gap is filed as [#255][i84]: 80 kinematic and 58 force samples.
   The manifest records it in `ORACLE_FRAME_EXCLUSIONS`, which `oneSided` reads, since it leaves
   out frames of every machine rather than one. Compared anyway, those samples fall inside their
   budgets today, but the hydraulic cylinder's frame-0 acceleration is 9.92×10⁻³ against 10⁻², less
@@ -453,10 +453,10 @@ open question.
 
 ### Return sweeps
 
-A rocking pin input reverses at its toggle and PMKS+ retraces, so one stored state per k serves
+A rocking pin input reverses at its toggle and PMKS retraces, so one stored state per k serves
 both directions (see [The sweep](#the-sweep)), and every return frame is compared pose by pose.
 That holds for every published machine. A slider input that reverses at a crank's dead center can
-instead carry on: PMKS+ keeps its motion history across that reversal to choose the continuing
+instead carry on: PMKS keeps its motion history across that reversal to choose the continuing
 branch (`mechanism.ts`; `piston-driven-wheels.spec.ts` is its guard). No published machine does
 so: the piston-driven wheels are a spec fixture, not a gallery entry. A machine that did would fail
 on its return poses rather than pass, because the oracle stops at the turning point. Storing the
@@ -464,18 +464,18 @@ continuing branch as a second segment is not built, and is an open question.
 
 ### Disagreements and exclusions
 
-Four new issues, and no PMKS+ solver changed:
+Four new issues, and no PMKS solver changed:
 
 | Machine | Kind | What | Issue |
 | --- | --- | --- | --- |
-| Four-bar driven at its coupler-rocker pin, oscillating fan, walking-beam pumping unit, leg on a bicycle crank | disagreement, **fixed** | A floating pin's motor torque is applied to one body only, so the frame supplies the reaction couple: every reaction and the effort differ. The body totals agree. Fixed since (see [Disagreements fixed](#disagreements-fixed)) | [#81][i81] |
-| Leg on a bicycle crank, and the pedaling-leg template | disagreement | One pose, k = −39, is solved twenty times looser than its neighbors, and at a condition of 557 the angular velocity of BP is 1.3×10⁻⁷ off | [#82][i82] |
-| Hood hinge, aircraft landing gear (templates), cylinder riding a slot | disagreement | A cylinder stored a hair off its line: PMKS+ straightens it from frame 1 but carries the members' centers of mass rigidly from the unstraightened frame 0, and on the slot-riding one every analytic rate comes out a uniform 10⁻⁷ high | [#83][i83] |
-| Every machine with differenced rates | disagreement | One-sided differences at the first and last frames | [#84][i84] |
-| Scotch yoke on two guides | by design | Two guides hold one yoke, a redundant support; PMKS+ refuses its forces | — |
+| Four-bar driven at its coupler-rocker pin, oscillating fan, walking-beam pumping unit, leg on a bicycle crank | disagreement, **fixed** | A floating pin's motor torque is applied to one body only, so the frame supplies the reaction couple: every reaction and the effort differ. The body totals agree. Fixed since (see [Disagreements fixed](#disagreements-fixed)) | [#252][i81] |
+| Leg on a bicycle crank, and the pedaling-leg template | disagreement | One pose, k = −39, is solved twenty times looser than its neighbors, and at a condition of 557 the angular velocity of BP is 1.3×10⁻⁷ off | [#253][i82] |
+| Hood hinge, aircraft landing gear (templates), cylinder riding a slot | disagreement | A cylinder stored a hair off its line: PMKS straightens it from frame 1 but carries the members' centers of mass rigidly from the unstraightened frame 0, and on the slot-riding one every analytic rate comes out a uniform 10⁻⁷ high | [#254][i83] |
+| Every machine with differenced rates | disagreement | One-sided differences at the first and last frames | [#255][i84] |
+| Scotch yoke on two guides | by design | Two guides hold one yoke, a redundant support; PMKS refuses its forces | — |
 | Cylinder-driven gripper | oracle limitation | Drawn within 10⁻⁵ m of a dead point of its drive; the oracle's projection onto the constraints slides along the nearly free direction | — |
 
-[#83][i83] may describe the test harness rather than the app: `solvedDrawing` decodes a URL and
+[#254][i83] may describe the test harness rather than the app: `solvedDrawing` decodes a URL and
 solves it directly, without the rebuild that `planDerivedInteriors` and `commitEditPlan` run in
 the app, which may straighten the cylinder before frame 0 is stored.
 
@@ -488,7 +488,7 @@ published machine in it a second time is a phase of its own.
 ## Phase 2 results
 
 Measured on 2026-11-04. The references already carried the oracle's inverse dynamics from Phase 0;
-Phase 2 compares them (`compare-oracle-forces.ts`, called from `oracle.spec.ts`) in both of PMKS+'s
+Phase 2 compares them (`compare-oracle-forces.ts`, called from `oracle.spec.ts`) in both of PMKS's
 force modes: `static`, the loads and gravity alone, and `dynamic`, with the inertia of the motion.
 
 ### What is compared, and how
@@ -501,11 +501,11 @@ force modes: `static`, the loads and gravity alone, and `dynamic`, with the iner
   support is compared by: the resultant, not its split.
 - **A Slide's guide couple** is compared on its one rider, and **the input effort** (a torque for a
   pin, a force for a slider) at every frame. A Pin-in-slot's rider turns freely on its block, so the
-  couple on it is zero by construction and PMKS+ reports none.
-- **Nothing passes by being left out.** A reaction, couple or effort the oracle fixes and PMKS+
+  couple on it is zero by construction and PMKS reports none.
+- **Nothing passes by being left out.** A reaction, couple or effort the oracle fixes and PMKS
   does not report fails the machine, as a blank rate does (`oracle-compare-forces.spec.ts` strips
   each and sees it reported).
-- **The frame.** A bar pinned to the ground at two or more joints cannot move, and PMKS+ folds it
+- **The frame.** A bar pinned to the ground at two or more joints cannot move, and PMKS folds it
   into the frame and reports nothing on it; the oracle's numbers for it are the ground's, and are
   not compared.
 - **Scale.** A force error is divided by the largest force anywhere in the machine's cycle, a
@@ -513,7 +513,7 @@ force modes: `static`, the loads and gravity alone, and `dynamic`, with the iner
   compared all the same, on a scale of 1 N: its forces must come out zero to 10⁻⁸ N, and its
   solve must succeed. Above the conditioning limit of 10³ forces are not compared, for the
   reason rates are not.
-- **A frame PMKS+ cannot solve** fails the machine unless the oracle's condition there is above the
+- **A frame PMKS cannot solve** fails the machine unless the oracle's condition there is above the
   limit: a toggle is a reason to have no answer, a regular pose is not.
 
 ### The budgets, from the measurement
@@ -537,7 +537,7 @@ from the 85; five more the manifest leaves out entirely and are not counted as c
   would each break it.
 - **MATLAB dynamics.** `oracle-matlab.spec.ts` compares the oracle's joint forces and input torque
   with gravity to the Watt I and Stephenson III dynamics tables, at the tolerance the MATLAB
-  dynamics specs give PMKS+. The worst error is 1.2×10⁻³ of it, and the residual is the gravity
+  dynamics specs give PMKS. The worst error is 1.2×10⁻³ of it, and the residual is the gravity
   constant: the oracle uses 9.80665 m/s², the tables 9.81.
 
 ### Disagreements and exclusions
@@ -546,11 +546,11 @@ No new disagreement. Three manifest entries changed:
 
 | Machine | Kind | What | Issue |
 | --- | --- | --- | --- |
-| Four-bar with two inputs | disagreement, **fixed** | Its reactions, body totals and effort are left out in the dynamic mode, which needs the wrong rates; its static forces agree. Fixed since (see [Disagreements fixed](#disagreements-fixed)) | [#78][i78] |
-| Parallelogram with a third parallel crank | by design | PMKS+ refuses its forces (`unsupported-topology`): three parallel cranks leave the reactions indeterminate. Its motion is verified | — |
+| Four-bar with two inputs | disagreement, **fixed** | Its reactions, body totals and effort are left out in the dynamic mode, which needs the wrong rates; its static forces agree. Fixed since (see [Disagreements fixed](#disagreements-fixed)) | [#251][i78] |
+| Parallelogram with a third parallel crank | by design | PMKS refuses its forces (`unsupported-topology`): three parallel cranks leave the reactions indeterminate. Its motion is verified | — |
 | Locomotive drive wheels | by design | The same refusal: one side rod couples three wheels. It carries no force, and was not solved until unloaded machines were compared | — |
 
-Whether PMKS+ should report the resultants of a redundant support instead of refusing is an open
+Whether PMKS should report the resultants of a redundant support instead of refusing is an open
 question, not a disagreement: the oracle can only say what equilibrium fixes.
 
 ## Phase 1 results
@@ -565,10 +565,10 @@ and the comparison about 10.
   every template as the library dialog stores it: 167 drawings (122 gallery entries and 45
   templates), 202 machines. Each machine is exported from its decoded URL by
   `src/test-utils/oracle/export-problem.ts`, which reads the start pose only. Units come from its own table (`si-units.ts`), not the app's.
-- **PMKS+ is sampled at whole degrees** (`'degree'`), and each frame is placed on the oracle's grid
+- **PMKS is sampled at whole degrees** (`'degree'`), and each frame is placed on the oracle's grid
   by its driver coordinate. Adaptive sampling adds frames between grid points and agrees with
   `'degree'` on which machines run, for all 202.
-- **Whether it runs.** PMKS+ must run exactly the machines the oracle can walk. A full rotation must
+- **Whether it runs.** PMKS must run exactly the machines the oracle can walk. A full rotation must
   close after the same number of turns. A rocker must reverse at the same grid samples the oracle's
   refined toggles bound, which every rocker does.
 - **Scale.** Every error is divided by the machine's own size L, by L·Ω or by L·Ω², so one budget
@@ -577,11 +577,11 @@ and the comparison about 10.
   a rate there is the pose's error amplified once or twice by the conditioning. The oracle's own
   acceleration at such a pose was checked by differencing its velocities, which converges to it as
   δ².
-- **Differenced rates** (what PMKS+ fills by `fillRatesByDifference`) are `undefined` at the last
+- **Differenced rates** (what PMKS fills by `fillRatesByDifference`) are `undefined` at the last
   sample before a reversal, where the difference reaches across the turn.
-- **Nothing passes by not being compared.** Every stored oracle sample must be reached by a PMKS+
+- **Nothing passes by not being compared.** Every stored oracle sample must be reached by a PMKS
   frame, every joint and body the oracle reports must be reported back, and every quantity the
-  oracle has at a sample PMKS+ must have too, unless the manifest leaves it out. A part PMKS+
+  oracle has at a sample PMKS must have too, unless the manifest leaves it out. A part PMKS
   reports at some samples and not others is missing at each sample it skips, every quantity of
   it; one it never reports is said once (`oracle-compare.spec.ts` removes each in turn and sees
   the comparison say so).
@@ -602,7 +602,7 @@ difference over 1° is about 5×10⁻⁵ of a sinusoid's speed); the machines th
 ### The MATLAB cases, three ways
 
 The five MATLAB v1 cases are problems read straight from their fixtures by
-`fixture-problem.ts`, with no PMKS+ model class or codec in between, and `oracle-matlab.spec.ts`
+`fixture-problem.ts`, with no PMKS model class or codec in between, and `oracle-matlab.spec.ts`
 compares the oracle to each table at the precision the table claims for itself. The worst error is
 2×10⁻⁵ of that tolerance. With the existing MATLAB specs and the published versions of the same
 fixtures in `oracle.spec.ts`, the three agree three ways.
@@ -616,9 +616,9 @@ first Linux run rewrote every reference that way. Two changes followed:
 
 - **A regeneration keeps what it reproduces.** `pmks_oracle/agree.py` compares a new solve with the
   committed reference: the grid, the limits, the mobility counts, which reactions are
-  identifiable, and which parts, columns and force modes it holds must be equal, and every number must agree to one hundredth of the budget PMKS+ is
+  identifiable, and which parts, columns and force modes it holds must be equal, and every number must agree to one hundredth of the budget PMKS is
   held to for it, on the same scales, plus a unit in its last stored digit. Rates and forces past
-  the conditioning limit are not compared, as PMKS+'s are not. Because a condition number decides
+  the conditioning limit are not compared, as PMKS's are not. Because a condition number decides
   that, it must itself reproduce to a thousandth of its size and fall on the same side of the
   limit, so a changed one cannot excuse the rates it would hide; two poses past 10¹⁰ are both
   singular and agree. `run.py` rewrites a reference only when that check fails or its problem or
@@ -634,9 +634,9 @@ In `src/test-data/oracle/manifest.ts`:
 
 | Machine | Kind | What | Issue |
 | --- | --- | --- | --- |
-| Slider-crank whose rod comes square to the guide | disagreement | PMKS+ refuses the published URL (`cycle-never-closes`); the oracle and the directly built fixture both close it after two turns | [#77][i77] |
-| Four-bar with two inputs | disagreement, **fixed** | The coupler's analytic angular velocity is wrong (0.1625 rad/s where PMKS+'s own joint velocities and the oracle give 0.1745), and the blank joint rates are differenced outside budget. Fixed since (see [Disagreements fixed](#disagreements-fixed)) | [#78][i78] |
-| Four-bar with a second crank on its input | by design | PMKS+ refuses three bodies at a driven pin; the physics runs | — |
+| Slider-crank whose rod comes square to the guide | disagreement | PMKS refuses the published URL (`cycle-never-closes`); the oracle and the directly built fixture both close it after two turns | [#250][i77] |
+| Four-bar with two inputs | disagreement, **fixed** | The coupler's analytic angular velocity is wrong (0.1625 rad/s where PMKS's own joint velocities and the oracle give 0.1745), and the blank joint rates are differenced outside budget. Fixed since (see [Disagreements fixed](#disagreements-fixed)) | [#251][i78] |
+| Four-bar with a second crank on its input | by design | PMKS refuses three bodies at a driven pin; the physics runs | — |
 | MotionGen gripper | oracle limitation | A first-order freedom that dies at second order; the oracle's rank test is first order | Phase 4 |
 | Crank-rocker driven from the rocker at its limit | oracle limitation | The drawn pose is the driver's dead point | — |
 
@@ -704,12 +704,12 @@ short steps from their own tangents: a chord across the whole bracket left Newto
 the excavator's curve bends, and it converged in time on Linux and not on macOS. A singular Jacobian and a solver
 failure are reported as such and never as a toggle. Grid samples sit at d₀ + k·step, keyed by k.
 A rotary cycle closes when the drawing returns to its start after at most three turns. A rocking
-pin input reverses at its last solvable sample and PMKS+ retraces the same branch, so for it one
+pin input reverses at its last solvable sample and PMKS retraces the same branch, so for it one
 stored state per k serves both directions: velocities change sign on the return and accelerations
 and forces do not.
 
 **One state per k does not cover every reversal.** A slider input that reverses at a crank's dead
-center may carry on, in PMKS+, onto the other branch (the crank turning through on its momentum,
+center may carry on, in PMKS, onto the other branch (the crank turning through on its momentum,
 `mechanism.ts` keeps the motion history for exactly that), and the return then passes through
 different poses at the same k. The oracle stops at the turning point and cannot represent that
 return. Such a machine fails on its positions rather than passing; none of the verified ones does,
@@ -773,8 +773,8 @@ and proves the guard can fail by expecting some from `buildMechanism`.
 
 ### Left to later phases
 
-- **Tolerance budgets.** PMKS+ samples at whole degrees and cannot easily be run at ½° or ¼°, so
-  the step-refinement experiment moved to Phase 1, where PMKS+ was measured against the oracle per
+- **Tolerance budgets.** PMKS samples at whole degrees and cannot easily be run at ½° or ¼°, so
+  the step-refinement experiment moved to Phase 1, where PMKS was measured against the oracle per
   method (see [Phase 1 results](#phase-1-results)).
 - **Determinism on pinned Linux and the cold CI install time** are measured by the `oracle` CI job
   that Phase 1 adds. There is no Linux machine in this trial.
@@ -788,9 +788,9 @@ transcription error cannot become a reference. "Confirmed" means a published num
 re-derivation agree. "Derived" means only the re-derivation exists, and the case is labeled that
 way.
 
-| Case | Source of givens | Confirmed | Derived only | Can PMKS+ run it directly? |
+| Case | Source of givens | Confirmed | Derived only | Can PMKS run it directly? |
 | --- | --- | --- | --- | --- |
-| **Norton four-bar.** a=40, b=120, c=80, d=100 mm, θ₂=40°, ω₂=25 rad/s, α₂=15 rad/s² | Norton, *Design of Machinery*, Ex. 4-1 givens; reproduced in the MIET2510 [Week 2 tutorial][miet] and a MENG450 slide set | θ₃=20.30° and θ₄=57.32° (open circuit); crossed θ₄=−98.01°; ω₃=−4.121 and ω₄=7.00 rad/s | α₃=296.089, α₄=470.134 rad/s² | Position and velocity, yes. Acceleration no: PMKS+ drives at constant speed, so α₂=15 reaches PMKS+ only through the oracle. |
+| **Norton four-bar.** a=40, b=120, c=80, d=100 mm, θ₂=40°, ω₂=25 rad/s, α₂=15 rad/s² | Norton, *Design of Machinery*, Ex. 4-1 givens; reproduced in the MIET2510 [Week 2 tutorial][miet] and a MENG450 slide set | θ₃=20.30° and θ₄=57.32° (open circuit); crossed θ₄=−98.01°; ω₃=−4.121 and ω₄=7.00 rad/s | α₃=296.089, α₄=470.134 rad/s² | Position and velocity, yes. Acceleration no: PMKS drives at constant speed, so α₂=15 reaches PMKS only through the oracle. |
 | **Norton offset slider-crank.** a=35, b=110 mm, offset c=−15 mm, θ₂=50°, ω₂=20 rad/s, α₂=12 rad/s² | MIET2510 [Week 2 tutorial][miet] (Norton's convention) | θ₃=157.66°, d=124.24 mm, ω₃=−4.42 rad/s | ḋ=−721.138 mm/s, α₃=94.718 rad/s², d̈=−7350.341 mm/s² | Position and velocity, yes. Acceleration only through the oracle. |
 | **TTU four-bar dynamics.** r₁=0.50, r₂=0.15, r₃=0.5, r₄=0.1778 m; masses, inertias and CG offsets on the page; θ₂=150°, ω₂=5, α₂=−5; load torque 5 N·m on link 4 | [TTU Dynamics of Machinery II wiki][ttu] | All pin forces and the driving torque on **both** circuits, to 3 decimals: T₁₂=−5.183 N·m (circuit 1) and 0.195 N·m (circuit 2) | — | Only through the oracle (α₂≠0). **The page uses gravity at 9.81 m/s² without saying so**; without it nothing matches. |
 | **METU double slider.** Rod AB=500 mm, 5 kg, uniform; A driven along x at a constant 2 m/s; B on a perpendicular guide; x=200 mm; no gravity | [METU OCW ME 301, §6.4][metu] | θ=113.578°, y=458.258 mm, ẏ=−872.872 mm/s, ω=4.364, α=8.312 rad/s², \|F₂₃\|=27.04 N at −73.78°, F₄₃=7.555 N | — | Yes, as a slider driven at constant speed. The page rounds intermediate values, so its forces agree to about 0.05%. Compare at printed precision. |
@@ -838,12 +838,12 @@ Settled with the team on 2026-11-03:
 
 [miet]: https://bamason2.github.io/miet2510-module/tutorials/Week+2+Tutorial.html "MIET2510 Week 2 tutorial"
 [ttu]: http://ttu-dom.wikidot.com/example-item-1 "TTU Dynamics of Machinery II: Force Analysis - 4 Bar"
-[i77]: https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator/issues/77 "Issue 77"
-[i78]: https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator/issues/78 "Issue 78"
-[i81]: https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator/issues/81 "Issue 81"
-[i82]: https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator/issues/82 "Issue 82"
-[i83]: https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator/issues/83 "Issue 83"
-[i84]: https://github.com/PMKS-Web/Planar-Mechanism-Kinematic-Simulator/issues/84 "Issue 84"
+[i77]: https://github.com/PMKS-Web/PMKS/issues/250 "Issue 250"
+[i78]: https://github.com/PMKS-Web/PMKS/issues/251 "Issue 251"
+[i81]: https://github.com/PMKS-Web/PMKS/issues/252 "Issue 252"
+[i82]: https://github.com/PMKS-Web/PMKS/issues/253 "Issue 253"
+[i83]: https://github.com/PMKS-Web/PMKS/issues/254 "Issue 254"
+[i84]: https://github.com/PMKS-Web/PMKS/issues/255 "Issue 255"
 [metu]: https://ocw.metu.edu.tr/pluginfile.php/6467/mod_resource/content/6/ch6/6-5.htm "METU OCW ME 301, 6.4 Dynamic force analysis of machinery"
 [exudyn]: https://exudyn.readthedocs.io/ "Exudyn documentation"
 [simbody]: https://simbody.github.io/ "Simbody"

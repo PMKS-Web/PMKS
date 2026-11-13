@@ -15,7 +15,7 @@ const MAIL_SERVICE = 'service_pg2k647';
  * round it is the same whatever the reader was writing.
  */
 export const NO_MAIL_KEY =
-  'This build of PMKS+ has no key for the mail service, so the form cannot send. ' +
+  'This build of PMKS has no key for the mail service, so the form cannot send. ' +
   `Write to ${HELP_ADDRESS} instead.`;
 
 /**

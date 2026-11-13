@@ -11,7 +11,7 @@ import { RelationContext } from './relations';
 import { inputSeries, LinkJob, linkJobs } from './roles';
 
 /**
- * What PMKS+ recognizes in one machine it has solved: the named family its
+ * What PMKS recognizes in one machine it has solved: the named family its
  * lengths, joints and motion match, and each link's job -- which is the crank,
  * which the coupler, which rocks.
  *
@@ -22,7 +22,7 @@ import { inputSeries, LinkJob, linkJobs } from './roles';
  * shows.
  */
 export interface MachineFacts {
-  /** What PMKS+ matched, most specific first. Empty when nothing in its catalog did. */
+  /** What PMKS matched, most specific first. Empty when nothing in its catalog did. */
   family: FamilyMatch[];
   /** Each link's job, for the panel's Links rows. */
   jobs: LinkJob[];
@@ -74,7 +74,7 @@ export function machineFacts(
   };
 }
 
-/** What the Family row says: a family PMKS+ matched, a count, or that it has neither. */
+/** What the Family row says: a family PMKS matched, a count, or that it has neither. */
 export interface FamilyReading {
   name: string;
   /** Why, in a sentence. */
@@ -97,7 +97,7 @@ const COUNTED_NAMES: Record<number, string> = {
  * from one machine to the next, and a reader could not tell "not a known type"
  * from "not worked out yet".
  *
- * A family PMKS+ matched comes first. Failing that, a linkage of pins alone
+ * A family PMKS matched comes first. Failing that, a linkage of pins alone
  * with four to eight bodies is named by its count -- always true, and it
  * teaches the count the mobility is built from. Anything else (a slider or a
  * cylinder in it, more bodies than that, no freedom at all) says it was not
@@ -131,7 +131,7 @@ export function familyReading(
   }
   return {
     name: 'Not recognized',
-    basis: 'PMKS+ couldn’t match this mechanism to a known type or name it by its links.',
+    basis: 'PMKS couldn’t match this mechanism to a known type or name it by its links.',
     kind: 'none',
   };
 }

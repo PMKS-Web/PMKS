@@ -397,17 +397,19 @@ the answer should be cannot be invalidated by a palette or a template.
   repository ruleset makes that `test` check required on `staging` and `main`, blocks direct and
   force pushes to both, and lets only a repository admin override. No e2e suite runs there,
   `e2e/ui-copy.mjs` included: those are run by hand.
-- **There are two Netlify sites, and branch builds come from `pmksnew`.** Branch previews are
-  `https://[BRANCHNAME]--pmksnew.netlify.app`. The older `--pmks.netlify.app` pattern 404s, which is
-  at least honest; `[BRANCH]--pmksprod.netlify.app` is the trap, because it still answers **200 with
-  a months-stale bundle**. Measured on the day this was written: `staging--pmksprod` served a build
-  with none of the last several commits in it while `staging--pmksnew` served the current one, and
-  `app.pmksplus.com` matched `pmksprod.netlify.app`. So production may still be the old site while
-  branches are on the new one — check rather than assume.
+- **One Netlify site, `pmksprod`, builds the app**, from `PMKS-Web/PMKS`:
+  - production, [app.pmksplus.com](https://app.pmksplus.com), from `main`, published by hand;
+  - `https://staging--pmksprod.netlify.app`, from every push to `staging`;
+  - `https://deploy-preview-NNN--pmksprod.netlify.app`, for every PR into `staging` or `main`.
+
+  Nothing else builds: a branch with no PR, or a PR into another branch, gets no deploy. That keeps
+  the team inside Netlify's free build minutes. The gallery's site, `pmksdocs`, builds only
+  `staging`, for docs.pmksplus.com. The `pmksnew` and `pmks` sites were deleted on 2026-11-07, so
+  `--pmksnew.netlify.app` links, in old PR comments included, are dead.
 - **Never confirm a deploy by loading the page.** Ask for something only the new commit has:
 
   ```bash
-  curl -s https://staging--pmksnew.netlify.app/ | grep -o 'main-[A-Z0-9]*\.js'
+  curl -s https://staging--pmksprod.netlify.app/ | grep -o 'main-[A-Z0-9]*\.js'
   ```
 
   A changed bundle hash is proof; a 200 is not. This is also how to tell "Netlify has not built yet"
@@ -426,7 +428,7 @@ the answer should be cannot be invalidated by a palette or a template.
   mechanism that uses a feature which has not shipped:
 
   ```bash
-  PMKS_FIXTURE_BASE_URL=https://deploy-preview-NNN--pmksnew.netlify.app npm run fixture-urls
+  PMKS_FIXTURE_BASE_URL=https://deploy-preview-NNN--pmksprod.netlify.app npm run fixture-urls
   ```
 
 - **The mechanism library's payloads are generated** by `npm run template-payloads` from the

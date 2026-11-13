@@ -7,7 +7,7 @@ import { CloseButtonComponent } from '../../BLOCKS/close-button/close-button.com
 /**
  * What changed, for somebody who was here before.
  *
- * A list rather than a tour: the reader already knows what PMKS+ is for, and
+ * A list rather than a tour: the reader already knows what PMKS is for, and
  * what they need is the shortest thing that will stop them looking for the
  * toolbar that used to be along the top. The notes themselves live in
  * `model/whats-new.ts`, so adding one is a row rather than a block of markup.

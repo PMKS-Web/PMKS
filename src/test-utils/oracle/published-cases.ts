@@ -11,7 +11,7 @@ import { FIXTURE_GALLERY, fixturePayload } from '../verification/fixture-gallery
  * gallery fixture as `npm run fixture-urls` links it, and each template as the
  * library dialog stores it. These are the oracle's *published* cases; the raw
  * benchmark cases live in oracle/benchmarks/cases and never pass through
- * PMKS+.
+ * PMKS.
  */
 export interface PublishedCase {
   /** File-safe and stable: `gallery.<slug>` or `template.<id>`. */

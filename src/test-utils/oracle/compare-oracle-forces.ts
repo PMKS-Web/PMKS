@@ -22,8 +22,8 @@ export interface ForceDeviation {
   mode: ForceAnalysisMode;
   quantity: ForceQuantity;
   /**
-   * How PMKS+ got the accelerations this frame's inertia rests on: in the
-   * dynamic mode, a frame whose rates PMKS+ filled by differences is judged
+   * How PMKS got the accelerations this frame's inertia rests on: in the
+   * dynamic mode, a frame whose rates PMKS filled by differences is judged
    * by the differenced budget, as the rates themselves are.
    */
   inertia: 'analytic' | 'differenced' | 'none';
@@ -31,16 +31,16 @@ export interface ForceDeviation {
   part: string;
   k: number;
   frame: number;
-  /** |PMKS+ − oracle| over the machine's force scale (or force × length for a moment). */
+  /** |PMKS − oracle| over the machine's force scale (or force × length for a moment). */
   error: number;
   condition: number;
 }
 
 export interface ForceComparison {
   deviations: ForceDeviation[];
-  /** Frames where PMKS+'s force solve did not succeed, with the oracle's condition there. */
+  /** Frames where PMKS's force solve did not succeed, with the oracle's condition there. */
   unsolved: { status: string; k: number; condition: number }[];
-  /** Reactions, couples and efforts the oracle fixes and PMKS+ does not report. */
+  /** Reactions, couples and efforts the oracle fixes and PMKS does not report. */
   missing: { quantity: ForceQuantity; part: string }[];
   /** The largest force the oracle finds anywhere in this machine; 0 when it carries none. */
   forceScale: number;
@@ -50,7 +50,7 @@ export interface ForceComparison {
 
 /**
  * The scale a machine that carries no force is compared on, in newtons. Its
- * forces are zero in the oracle, so PMKS+'s must be zero to the budget times
+ * forces are zero in the oracle, so PMKS's must be zero to the budget times
  * this: a meganewton machine is held to the same fraction of its load, and an
  * unloaded one to 1e-8 N, which is still far above the rounding of a solve
  * whose right-hand side is zero.
@@ -73,7 +73,7 @@ function largestForce(forces: OracleForces): number {
 }
 
 /**
- * PMKS+'s force analysis against the oracle's inverse dynamics, at every PMKS+
+ * PMKS's force analysis against the oracle's inverse dynamics, at every PMKS
  * frame that lands on a stored oracle state, in both modes: `static` (loads
  * and gravity only) and `dynamic` (with the inertia of the motion).
  */
@@ -136,7 +136,7 @@ export function compareForces(
       });
     };
 
-    // Body totals: PMKS+'s reactions on a body, summed over the joints it meets.
+    // Body totals: PMKS's reactions on a body, summed over the joints it meets.
     const totals = new Map<string, Vec>();
     for (const [, byBody] of frame.jointReactionsByLink) {
       for (const [body, force] of byBody) totals.set(body, add(totals.get(body) ?? [0, 0], force));
@@ -196,7 +196,7 @@ export function compareForces(
 }
 
 /**
- * Bodies PMKS+ folds into the frame: a bar pinned to the ground at two or more
+ * Bodies PMKS folds into the frame: a bar pinned to the ground at two or more
  * of its joints cannot move, so the force solver gives it no rows and reports
  * no reactions on it (`frameBodies` in force-solver.ts). The oracle models it
  * as a body held still; its loads are the ground's, and are not compared.
@@ -213,7 +213,7 @@ export function frameBodies(problem: OracleProblem): Set<string> {
 /**
  * The rider a Slide's guide couple acts on: the slider's one rider. A
  * Pin-in-slot's rider turns freely on its block, so the couple on it is zero
- * by construction and PMKS+ reports none; only a Slide has one to compare. A
+ * by construction and PMKS reports none; only a Slide has one to compare. A
  * frozen cylinder's seal joins one body to itself (decision S25), so its couple
  * is internal to that body and is not solved for.
  */
@@ -240,7 +240,7 @@ export const FORCE_BUDGETS: Record<ForceAnalysisMode, number> = {
 };
 
 /**
- * The dynamic budget where PMKS+'s accelerations were differenced. A force is
+ * The dynamic budget where PMKS's accelerations were differenced. A force is
  * linear in the accelerations it balances, and at most the whole force is
  * inertia, so it can be no better than they are: the differenced acceleration
  * budget (BUDGETS in compare-oracle.ts), as a fraction of the largest force.
