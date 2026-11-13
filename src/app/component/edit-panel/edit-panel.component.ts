@@ -159,6 +159,19 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
   /** The one place that says whether an edit may happen, and in what words. */
   /** Read from the template too: the CoM frame selector is not a form control. */
   readonly permission = inject(EditPermissionService);
+
+  protected readonly addTracerAtCOM = () => {
+    if (!this.permission.linkAttachmentRefusal(this.activeSrv.selectedLink)) {
+      this.mechanismService.addJointAtCOM();
+    }
+  };
+
+  protected readonly addForceAtCOM = () => {
+    if (!this.permission.linkAttachmentRefusal(this.activeSrv.selectedLink)) {
+      this.mechanismService.createForceAtCOM();
+    }
+  };
+
   gridUtils = inject(GridUtilsService);
   bgImage = inject(BackgroundImageService);
   private notify = inject(NotificationService);
@@ -229,32 +242,54 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
   }
 
   /**
-   * The same question for the handlers behind the controls the freeze leaves
-   * live away from the start -- Grounded, Driven Input, Slider, Weld, Trace,
-   * the masses. Those are identity-addressed or staged, so a paused pose
-   * allows them; only playing, an analysis mode or Synthesis refuse. They used
-   * to ask `editingRefused`, which is the *placement* question, so away from
-   * the start every one of them returned without writing while its switch
-   * still flipped on screen -- a control lying about state, and a reader
-   * concluding the app had broken.
+   * Whether the mechanism's structure may not change right now: Delete,
+   * Grounded, Joint Type, Add Input, Split Joint.
+   *
+   * Paused away from the start these wait for the start, exactly as the
+   * context menu's rows of the same names do (`docs/editing-rules.md`). The
+   * panel and the menu ask one question so the two can never disagree.
    */
   structureRefused(): boolean {
     return !this.permission.may('structure');
   }
 
+  /** Why a structural control is grayed, in the menu's own words. */
+  structureReason(): string | undefined {
+    return this.permission.refusal('structure')?.long;
+  }
+
   /**
    * Whether the panel as a whole is out of reach.
    *
-   * Coarser than the banner, and deliberately so. Playing or in an analysis
-   * mode, nothing here may be touched. Merely *paused* away from the start,
-   * Phase 2 allows the structural half -- Grounded, Driven Input, Joint Type,
-   * Rename, Lock, Delete are addressed by identity and apply to the design
-   * without needing the pose -- while the numbers below stay frozen,
-   * because each of those needs a written transform back to t = 0 that does
-   * not exist yet.
+   * Coarser than the banner, and deliberately so. Playing, or in Synthesis,
+   * nothing here may be touched. Merely *paused* away from the start, the safe
+   * properties stay live -- mass, name, color, Lock, the holds, Trace Path --
+   * because none of them is read off the pose or can stop the mechanism
+   * running; structure and typed geometry are grayed control by control.
    */
   panelIsFrozen(): boolean {
-    return !this.permission.may('structure');
+    return this.permission.menuRefusal('safe') !== null;
+  }
+
+  /** Why the selected joint's Delete is grayed: a tracer point is an annotation. */
+  jointDeleteRefused(): boolean {
+    const joint = this.activeSrv.selectedJoint;
+    return !!joint && this.permission.deleteJointRefusal(joint) !== null;
+  }
+
+  /** Why the selected force's Delete is grayed: a force is an annotation. */
+  forceDeleteRefused(): boolean {
+    return this.permission.menuRefusal('annotation') !== null;
+  }
+
+  /** A force's direction and frame are typed geometry. */
+  forceGeometryRefused(): boolean {
+    return !this.permission.may('properties');
+  }
+
+  /** A force's size and Flip Force are the load, the same at every pose. */
+  forceLoadRefused(): boolean {
+    return !this.permission.may('load');
   }
 
   /**
@@ -304,6 +339,9 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
       'cylinderStart',
       'inputSpeed',
       'inputSpeedUnit',
+      // Structure, not placement -- but refused in exactly the same states
+      // wherever this panel shows, so one freeze holds both.
+      'ground',
     ]);
     this.otherJoints.controls.forEach((control) => {
       if (control.disabled) return;
@@ -311,7 +349,9 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
       this.frozenByPose.add(control);
     });
     freeze(this.linkForm, ['length', 'angle', 'comX', 'comY']);
-    freeze(this.forceForm, ['magnitude', 'angle', 'xComp', 'yComp', 'isGlobal']);
+    // Not the magnitude: it is the load, not a place, and `editForcesAtPose`
+    // carries it back to the start the way Flip Force is carried.
+    freeze(this.forceForm, ['angle', 'xComp', 'yComp', 'isGlobal']);
   }
 
   /** The controls this freeze disabled, so unfreezing gives back only those. */
@@ -347,6 +387,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
       });
     freeze(this.jointForm, ['sliderMass']);
     freeze(this.linkForm, ['mass', 'massMoI']);
+    freeze(this.forceForm, ['magnitude']);
   }
 
   private frozenByPlay = new Set<AbstractControl>();
@@ -506,8 +547,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
 
   flipForce(): void {
     const force = this.activeSrv.selectedForce;
-    if (this.panelIsFrozen() || force.locked || !this.mechanismService.canAttachAtPose(force.link))
-      return;
+    if (this.forceLoadRefused() || force.locked) return;
     this.mechanismService.changeForceDirection();
     this.activeSrv.fakeUpdateSelectedObj();
   }
@@ -1105,8 +1145,25 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
    */
   get jointTypeChoice(): JointTypeChoice | undefined {
     const joint = this.activeSrv.selectedJoint;
-    return joint instanceof RealJoint ? this.jointTypes.choiceFor(joint) : undefined;
+    if (!(joint instanceof RealJoint)) return undefined;
+    const choice = this.jointTypes.choiceFor(joint);
+    const why = this.structureReason();
+    if (!why) return choice;
+    // Every other value grayed with the menu's reason, held so the control is
+    // handed the same arrays on every pass rather than measuring again.
+    if (this.refusedChoice?.from !== choice || this.refusedChoice.why !== why) {
+      const reasons = choice.reasons.map((reason, index) =>
+        index === choice.chosen ? reason : why
+      );
+      const disabledAt = choice.labels.flatMap((_, index) =>
+        index === choice.chosen ? [] : [index]
+      );
+      this.refusedChoice = { from: choice, why, choice: { ...choice, reasons, disabledAt } };
+    }
+    return this.refusedChoice.choice;
   }
+
+  private refusedChoice?: { from: JointTypeChoice; why: string; choice: JointTypeChoice };
 
   /**
    * Make the selected joint the type chosen: one press, one edit, whatever the
@@ -1232,7 +1289,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
 
     this.onDestroySubscriptions.push(
       this.jointForm.controls['sliderMass'].valueChanges.subscribe((val) => {
-        if (this.structureRefused()) return;
+        if (this.panelIsFrozen()) return;
         this.commitSliderMass(val ?? '');
       })
     );
@@ -1512,7 +1569,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
 
     this.onDestroySubscriptions.push(
       this.jointForm.controls['curve'].valueChanges.subscribe((val) => {
-        if (this.structureRefused()) {
+        if (this.permission.menuRefusal('view')) {
           return;
         }
         this.gridUtils.toggleCurve(this.activeSrv.selectedJoint);
@@ -1711,9 +1768,12 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
             { emitEvent: false }
           );
         } else {
-          this.activeSrv.selectedForce.setMagnitude(value);
-          this.mechanismService.updateMechanism(true);
-          this.mechanismService.onMechUpdateState.next(2);
+          const force = this.activeSrv.selectedForce;
+          if (!this.mechanismService.editForcesAtPose([force], () => force.setMagnitude(value))) {
+            force.setMagnitude(value);
+            this.mechanismService.updateMechanism(true);
+            this.mechanismService.onMechUpdateState.next(2);
+          }
           this.forceForm.patchValue(
             {
               magnitude: this.forceText(this.activeSrv.selectedForce.mag),
@@ -2434,16 +2494,19 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
   }
 
   deleteJoint() {
+    if (this.jointDeleteRefused()) return;
     this.activeSrv.updateSelectedObj(undefined);
     this.mechanismService.deleteJoint();
   }
 
   deleteLink() {
+    if (this.structureRefused()) return;
     this.activeSrv.updateSelectedObj(undefined);
     this.mechanismService.deleteLink();
   }
 
   deleteForce() {
+    if (this.forceDeleteRefused()) return;
     this.activeSrv.updateSelectedObj(undefined);
     this.mechanismService.deleteForce();
   }
@@ -2464,6 +2527,8 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
    */
   inputRefusal(): string | undefined {
     const joint = this.activeSrv.selectedJoint;
+    const pose = this.structureReason();
+    if (pose) return pose;
     if (!joint || this.canToggleInput(joint)) return undefined;
     return describeActuatorRefusal(joint)?.long ?? 'This joint cannot be driven.';
   }

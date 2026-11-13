@@ -276,10 +276,10 @@ export class SettingsPanelComponent implements OnDestroy {
     // Global Units, Angle Units and Gravity stayed live while every other
     // surface in the app said the drawing was read-only.
     //
-    // `properties` rather than `structure`: a unit change rescales every length
-    // in the drawing, which is exactly the class of thing whose transform back
-    // to t = 0 the plan has not written yet.
-    return this.permission.may('properties');
+    // `settings`, its own row of docs/editing-rules.md: a unit change rescales
+    // every length in the drawing, so it waits for the start, but it belongs to
+    // the whole document rather than to Edit, so an analysis mode keeps it.
+    return this.permission.may('settings');
   }
 
   /**
@@ -303,7 +303,7 @@ export class SettingsPanelComponent implements OnDestroy {
    * on and stopped.
    */
   lockedRefusal(): EditRefusal | null {
-    const why = this.permission.refusal('properties');
+    const why = this.permission.refusal('settings');
     if (!why) return null;
     return why.actionKind === 'toEdit' ? why : SETTINGS_AT_START_ONLY;
   }

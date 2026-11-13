@@ -198,8 +198,10 @@ Not suites — import them from one.
 - `posed-drag-fuzz.mjs` — seeded random drags at random poses; the ghost, the design's sample 0
   and the transport's "from start" must agree. `SEED=` replays, `ONLY=` picks trial numbers. Slow:
   about ten minutes.
-- `posed-menu.mjs` — paused context-menu attachments and property edits keep the authored start
-  pose. `PMKS_ONLY=<case>` runs one case.
+- `posed-menu.mjs` — the context menu follows `docs/editing-rules.md` at a paused pose: in an
+  analysis mode tracer points and forces wait for the start and everything else is Edit's; in
+  Edit, mid-cycle, the disc, holds and lock stay live and keep the authored start pose.
+  `PMKS_ONLY=<case>` runs one case.
 - `ghost-is-the-start.mjs` — one invariant checked after every gesture: wherever a ghost is drawn,
   it is the pose stop-to-start produces and the design the URL saves. The named scenes are the
   shrunk reproductions of the four causes in
@@ -263,7 +265,9 @@ Not suites — import them from one.
 
 - `link-mass-fields.mjs` — a link's Mass Settings: `CoM measured from` with its help mark after
   "from", choices that name a point, picking a joint re-describing rather than moving the point,
-  and `Inertia` on one line.
+  and `Inertia` on one line. CoM drags at the start and paused mid-cycle in Edit and both
+  analysis modes, through all three reference frames, preserve joint poses, survive playback,
+  and undo/redo in one step; typed CoM fields remain start-only. Writes drag filmstrips.
 - `link-holds.mjs` — holding a bar's length or angle: the menu rows, the chip, the padlocks, the
   joint riding its arc, a joint two holds pin down refusing with a Release button, and undo
   taking the hold off. The same for a cylinder's mounts.
@@ -540,7 +544,7 @@ Not suites — import them from one.
 - `editor-followups.mjs` — shared-URL regressions for orphan deletion/attachment, stable animation labels, primitive outlines, compact delete menus and collision-aware Edit panel clearance.
 - `vector-drag-profile.mjs` — profiles a repeatable four-bar analysis drag with velocity and acceleration arrows, reporting cycle rebuilds, sample reads and frame timing.
 
-`force-frame.mjs` checks compound-primitive tracer ownership and primitive deletion (keyboard/panel) through undo/redo, the force-panel Flip Force action, fixed application marks, local frame angle editing and hover guides, playback suppression, and locked force behavior. It writes tracer, flip, and playback filmstrips to `artifacts/force-frame/`.
+`force-frame.mjs` checks panel/menu attachment refusal parity, stationary force anchors during tracer reshaping, force transport through held whole-body drags, compound-primitive tracer ownership and primitive deletion (keyboard/panel) through undo/redo, the force-panel Flip Force action, fixed application marks, local frame angle editing and hover guides, playback suppression, and locked force behavior. It writes tracer, flip, and playback filmstrips to `artifacts/force-frame/`.
 
 `force-precision.mjs` compares the actual rendered force against the designer’s selected and entering SVGs, checks resting/hover/selected/entering states for all six force colors, and records a real hover/selection filmstrip. Comparison images and the palette matrix go to `artifacts/force-precision/`; original reference drawings live in `e2e/reference/force/`.
 

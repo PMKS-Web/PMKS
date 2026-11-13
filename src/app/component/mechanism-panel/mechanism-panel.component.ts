@@ -52,6 +52,8 @@ export class MechanismPanelComponent {
    * selection, which playback never refuses.
    */
   readonly frozen = input(false);
+  /** Delete is structure: it waits for the start where Rename does not. */
+  readonly structureFrozen = input(false);
 
   protected readonly mostMachines = MOST_MACHINES;
 

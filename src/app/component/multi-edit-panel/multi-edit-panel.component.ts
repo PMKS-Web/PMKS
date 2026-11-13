@@ -69,11 +69,11 @@ export class MultiEditPanelComponent implements OnInit, DoCheck {
   private permission = inject(EditPermissionService);
 
   panelIsFrozen(): boolean {
-    return this.permission.menuRefusal('preserve') !== null;
+    return this.permission.menuRefusal('safe') !== null;
   }
 
   structureIsFrozen(): boolean {
-    return this.permission.menuRefusal('start') !== null;
+    return this.permission.menuRefusal('design') !== null;
   }
 
   /**
@@ -85,14 +85,14 @@ export class MultiEditPanelComponent implements OnInit, DoCheck {
    * angle are pose-bound, and each writes through `valueChanges`.
    *
    * Locks, holds, mass and traces change the authored drawing without moving
-   * it. Forces are mapped back through the body they are attached to.
+   * it. A force's size, direction and frame are typed geometry, so they wait
+   * for the start like X and Y (`docs/editing-rules.md`).
    */
   ngDoCheck(): void {
     const placementFrozen = !this.permission.may('placement');
     const safeFrozen = this.panelIsFrozen();
     const structureFrozen = this.structureIsFrozen();
-    const forceFrozen =
-      safeFrozen || this.forces.some((force) => !this.mechanism.canAttachAtPose(force.link));
+    const forceFrozen = !this.permission.may('properties');
     Object.entries(this.form.controls).forEach(([name, control]) => {
       // A Lock on a force holds which way it points, which is what its drag
       // handles edit; how big it is stays typeable, the same rule the one-force
@@ -506,7 +506,7 @@ export class MultiEditPanelComponent implements OnInit, DoCheck {
   }
 
   private refuseStructuralAction(): boolean {
-    const refusal = this.permission.menuRefusal('start');
+    const refusal = this.permission.menuRefusal('design');
     if (!refusal) return false;
     this.notify.refusal('selection.start-pose', refusal.long);
     return true;

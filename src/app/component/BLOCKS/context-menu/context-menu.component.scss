@@ -167,6 +167,12 @@
       }
 
       // Grayed, with its reason on hover: nothing is printed under the grid.
+      // The chosen value when nothing else may be chosen: still the pill, but
+      // no longer something to press.
+      .cm-choice__cell--settled {
+        cursor: default;
+      }
+
       .cm-choice__cell--off {
         color: var(--text-disabled);
         cursor: default;

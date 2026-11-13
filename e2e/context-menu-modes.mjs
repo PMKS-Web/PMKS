@@ -1,4 +1,8 @@
-/** Shared menu availability and original-start preservation across modes. */
+/**
+ * One menu in every mode, answering docs/editing-rules.md: the same rows,
+ * Edit's structure live only at its start, an analysis mode's only the
+ * annotations and traces, and nothing a paused pose cannot map back.
+ */
 const { chromium } = await import(
   (process.env.PMKS_PLAYWRIGHT_DIR ?? '/tmp/pmks-playwright') + '/node_modules/playwright/index.mjs'
 );
@@ -111,16 +115,22 @@ for (const mode of ['Edit', 'Kinematic Analysis', 'Force Analysis']) {
   );
   const startChoice = await choice();
   if (!editChoice) editChoice = startChoice;
+  // Joint Type and deleting a joint that holds the mechanism together are
+  // structure: live in Edit at its start, and Edit's alone.
+  const analysis = mode !== 'Edit';
   check(
-    `${mode}: identical Joint Type choice, and live at the start`,
-    JSON.stringify(startChoice) === JSON.stringify(editChoice) &&
-      startChoice.length === 4 &&
-      startChoice.some((one) => !one.disabled),
+    `${mode}: Joint Type choice ${analysis ? 'grayed, structure being Edit’s' : 'live at the start'}`,
+    startChoice.length === 4 &&
+      JSON.stringify(startChoice.map((one) => one.label)) ===
+        JSON.stringify(editChoice.map((one) => one.label)) &&
+      (analysis
+        ? startChoice.every((one) => one.chosen || one.disabled)
+        : startChoice.some((one) => !one.chosen && !one.disabled)),
     startChoice
   );
   check(
-    `${mode}: deletion available at start`,
-    !startRows.find((r) => r.label.startsWith('Delete Joint')).disabled
+    `${mode}: deletion ${analysis ? 'left to Edit' : 'available at start'}`,
+    startRows.find((r) => r.label.startsWith('Delete Joint')).disabled === analysis
   );
   await page.keyboard.press('Escape');
   // Exact seek is fixture setup; the actual menu actions below are pointer clicks.
@@ -143,19 +153,15 @@ for (const mode of ['Edit', 'Kinematic Analysis', 'Force Analysis']) {
     !pausedRows.find((r) => r.label === 'Trace Path').disabled
   );
   // Joint Type answers here exactly what it answers in the Edit panel, because
-  // it is the same named control: `JointTypeService.set` stages through
-  // `capturingPose`, so a paused *Edit* pose re-anchors and the choice stays
-  // live. An analysis mode away from the start is where a topology change is
-  // refused, and there every value but the chosen one grays -- the chosen one
-  // never does, since choosing it changes nothing.
+  // it is the same named control. It is structure, so away from the start
+  // every value but the chosen one grays in every mode -- the chosen one never
+  // does, since choosing it changes nothing.
   const pausedChoice = await choice();
   check(
     `${mode}: the Joint Type choice answers as the Edit panel does at a paused pose`,
     pausedChoice.length === 4 &&
-      (mode === 'Edit'
-        ? pausedChoice.every((one) => !one.disabled)
-        : pausedChoice.every((one) => one.chosen || one.disabled) &&
-          pausedChoice.some((one) => one.disabled)),
+      pausedChoice.every((one) => one.chosen || one.disabled) &&
+      pausedChoice.some((one) => one.disabled),
     pausedChoice
   );
   await page.screenshot({ path: `${OUT}/${mode.split(' ')[0]}-paused-menu.png` });

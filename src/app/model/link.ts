@@ -31,6 +31,14 @@ export enum Shape {
   customShape = 'customShape',
 }
 
+/** A snapshot of a link's center of mass, taken and restored by `RealLink`. */
+export interface RealLinkComState {
+  at: Coord;
+  custom: boolean;
+  offset?: { along: number; across: number; frame: [string, string] };
+  anchorOffset?: { dx: number; dy: number };
+}
+
 /**
  * What a hand-placed center of mass is held against. See RealLink.comAnchor.
  */
@@ -421,6 +429,29 @@ export class RealLink extends Link {
     this.comIsCustom = true;
     this._CoM = new Coord(point.x, point.y);
     this.captureComOffset();
+    this.updateCoMDs();
+  }
+
+  /** Everything a placed center of mass is made of, for `restoreComState` to put back. */
+  comState(): RealLinkComState {
+    return {
+      at: new Coord(this._CoM.x, this._CoM.y),
+      custom: this.comIsCustom,
+      offset: this.comOffset && { ...this.comOffset },
+      anchorOffset: this.comAnchorOffset && { ...this.comAnchorOffset },
+    };
+  }
+
+  /**
+   * Put a center of mass back exactly as `comState` found it. Not by placing
+   * the point again: that marks an automatic center custom, and at a paused
+   * pose captures a grid or joint anchor's offset in the displayed frame.
+   */
+  restoreComState(state: RealLinkComState): void {
+    this.comIsCustom = state.custom;
+    this.comOffset = state.offset && { ...state.offset };
+    this.comAnchorOffset = state.anchorOffset && { ...state.anchorOffset };
+    this._CoM = new Coord(state.at.x, state.at.y);
     this.updateCoMDs();
   }
 

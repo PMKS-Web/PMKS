@@ -4,13 +4,12 @@
        clears it. The words come from the permission model, so the banner, the
        grayed menu rows and the canvas cannot describe the same rule
        differently. -->
-  <!-- Two levels, because the answers differ. Playing or in an analysis mode
-       nothing here may be touched, and `inert` takes the whole subtree out of
-       pointer, keyboard and focus reach in one attribute. Merely paused away
-       from the start, the structural half is live -- Grounded, Driven Input,
-       Joint Type, Rename, Delete apply to the design without needing the pose -- and
-       only the pose-bound fields are frozen, which the component does on the
-       controls themselves. The numbers stay readable either way: watching a
+  <!-- Two levels, because the answers differ. Playing nothing here may be
+       touched, and `inert` takes the whole subtree out of pointer, keyboard and
+       focus reach in one attribute. Merely paused away from the start, the safe
+       properties stay live -- mass, name, color, Lock, the holds -- while
+       structure and typed geometry are grayed control by control, with the
+       context menu's reasons (docs/editing-rules.md). The numbers stay readable either way: watching a
        joint's coordinates tick is the reason the panel stays at all. -->
   <div class="editBody" [class.frozen]="panelIsFrozen()">
     @if (this.activeSrv.objType == 'MultiSelection') {
@@ -30,7 +29,11 @@
         <!-- Not inert as a whole while the mechanism plays: picking a machine
              or going back to the list is selection, not an edit. Only what
              edits is frozen, inside the panel. -->
-        <app-mechanism-panel [editable]="true" [frozen]="panelIsFrozen()">
+        <app-mechanism-panel
+          [editable]="true"
+          [frozen]="panelIsFrozen()"
+          [structureFrozen]="structureRefused()"
+        >
           <ng-container *ngTemplateOutlet="buildHints" />
         </app-mechanism-panel>
       } @else {
@@ -178,7 +181,10 @@
     <!--  JOINT PANEL-->
     @if (this.activeSrv.objType == 'Joint') {
       <panel-section [frozen]="panelIsFrozen()">
-        <editable-title-block [deleteAction]="deleteJoint.bind(this)">
+        <editable-title-block
+          [deleteAction]="deleteJoint.bind(this)"
+          [deleteDisabled]="jointDeleteRefused()"
+        >
           Edit Joint
         </editable-title-block>
         <app-edit-banner panelAttached />
@@ -297,13 +303,15 @@
               gridUtils.isVisuallyInput(activeSrv.selectedJoint) ? 'Remove Input' : 'Add Input'
             "
             but1WidthText="Remove Input"
-            [btn1Disabled]="!canToggleInput(activeSrv.selectedJoint)"
+            [btn1Disabled]="structureRefused() || !canToggleInput(activeSrv.selectedJoint)"
             [btn1Tooltip]="inputRefusal()"
             [but1Action]="mechanismService.adjustInput.bind(mechanismService)"
             but2Icon="joint_split"
             but2Text="Split Joint"
-            [btn2Disabled]="!!splitJoints.choiceFor(activeSrv.selectedJoint).refusal"
-            [btn2Tooltip]="splitJoints.choiceFor(activeSrv.selectedJoint).long"
+            [btn2Disabled]="
+              structureRefused() || !!splitJoints.choiceFor(activeSrv.selectedJoint).refusal
+            "
+            [btn2Tooltip]="structureReason() ?? splitJoints.choiceFor(activeSrv.selectedJoint).long"
             [but2Action]="splitJoints.split.bind(splitJoints, activeSrv.selectedJoint)"
           ></dual-button>
         </collapsible-subsection>
@@ -437,6 +445,7 @@
              the icon cannot say on its own, so the hover says it. -->
         <editable-title-block
           [deleteAction]="deleteLink.bind(this)"
+          [deleteDisabled]="structureRefused()"
           [displayName]="bodyName"
           [deleteHint]="selectedCylinder ? 'Delete Cylinder' : undefined"
         >
@@ -466,13 +475,18 @@
             (angleEntry)="setShowLinkAngleOverlay($event)"
           ></hold-field-block>
           @if (!selectedCylinder) {
+            @let attachmentRefusal = permission.linkAttachmentRefusal(activeSrv.selectedLink);
             <dual-button
               but1Text="Add Tracer Point"
               but1Icon="add_tracer"
               but2Text="Add Force"
               but2Icon="add_force"
-              [but1Action]="mechanismService.addJointAtCOM.bind(mechanismService)"
-              [but2Action]="mechanismService.createForceAtCOM.bind(mechanismService)"
+              [btn1Disabled]="!!attachmentRefusal"
+              [btn2Disabled]="!!attachmentRefusal"
+              [btn1Tooltip]="attachmentRefusal?.long"
+              [btn2Tooltip]="attachmentRefusal?.long"
+              [but1Action]="addTracerAtCOM"
+              [but2Action]="addForceAtCOM"
             >
             </dual-button>
           }
@@ -696,7 +710,9 @@
 
     @if (this.activeSrv.objType == 'Force') {
       <panel-section [frozen]="panelIsFrozen()">
-        <editable-title-block [deleteAction]="deleteForce.bind(this)"
+        <editable-title-block
+          [deleteAction]="deleteForce.bind(this)"
+          [deleteDisabled]="forceDeleteRefused()"
           >Edit Force</editable-title-block
         >
         <app-edit-banner panelAttached />
@@ -720,10 +736,7 @@
           </dual-input-block>
           <button-block
             customIcon="switch_force_dir"
-            [disabled]="
-              activeSrv.selectedForce.locked ||
-              !mechanismService.canAttachAtPose(activeSrv.selectedForce.link)
-            "
+            [disabled]="activeSrv.selectedForce.locked || forceLoadRefused()"
             (pressed)="flipForce()"
             tooltip="Reverse the force at the same endpoints, keeping its application point in place."
             >Flip Force</button-block

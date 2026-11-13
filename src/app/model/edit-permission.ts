@@ -12,7 +12,9 @@
  *
  * The model is deliberately pure: it takes a described state and returns a
  * verdict. Nothing here reaches for a service, so the whole matrix in
- * `docs/edit-mode-playback-plan.md` §7 is testable as a table.
+ * The rule it encodes is `docs/editing-rules.md`: every control is one of six
+ * kinds, and one table says in which mode and at which pose each kind is
+ * offered. A new control picks its kind there; it never asks the pose itself.
  */
 
 /** Which mode the reader is in, in the only three flavors that change an answer. */
@@ -28,22 +30,33 @@ export type EditMode = 'synthesis' | 'edit' | 'analysis';
  * plumbing later.
  */
 export type EditAction =
-  /** Selecting, inspecting, panning, zooming -- never refused anywhere. */
+  /** View: selecting, inspecting, panning, zooming -- never refused anywhere. */
   | 'inspect'
-  /** Dragging a joint or link: geometry, by gesture. */
+  /** Gesture: dragging a joint, a link, a force or a center of mass. */
   | 'drag'
-  /** Adding a link, welding: geometry that captures the pose it is made at. */
+  /** Annotation: adding or deleting a tracer point or a force. */
+  | 'annotate'
+  /** Safe property: mass, name, color, lock, hold, display shape. */
+  | 'safeProperty'
+  /** Structure: adding a link, welding -- geometry that captures its pose. */
   | 'build'
-  /** New links or cylinders belong to Edit mode. */
+  /** Structure: new links or cylinders, which belong to Edit mode. */
   | 'create'
-  /** Delete, ground, set-input: addressed by identity, not by pose. */
+  /** Structure: delete, ground, set-input, joint type, split. */
   | 'structure'
-  /** Joint X/Y and link angle typed as numbers -- pose coordinates. */
+  /** Typed geometry: joint X/Y, link length and angle, an arrow-key nudge. */
   | 'placement'
-  /** Mass, CoM, force, cylinder, name, color: the panel's other fields. */
+  /** Typed geometry: a typed center of mass, a force's direction and place. */
   | 'properties'
-  /** Input speed and direction, which move the visible pose. */
+  /**
+   * Load: a force's magnitude and Flip Force. Neither places nor turns
+   * anything, so neither is read off the pose on screen.
+   */
+  | 'load'
+  /** Typed geometry: input speed and direction, which move the visible pose. */
   | 'drive'
+  /** Units, gravity and the other document-wide settings. */
+  | 'settings'
   /** Play, scrub, stop. */
   | 'transport'
   /** Undo and redo. */
@@ -53,12 +66,16 @@ export type EditAction =
 export const EDIT_ACTIONS: readonly EditAction[] = [
   'inspect',
   'drag',
+  'annotate',
+  'safeProperty',
   'build',
   'create',
   'structure',
   'placement',
   'properties',
+  'load',
   'drive',
+  'settings',
   'transport',
   'history',
 ];
@@ -168,6 +185,30 @@ const CREATE_IN_EDIT: EditRefusal = refusal({
   actionKind: 'toEdit',
 });
 
+/**
+ * The analysis modes read the motion. Everything but a drag, a tracer point, a
+ * force and the view is Edit's, so a reader there cannot change the mechanism
+ * into one that no longer runs and be left with nothing that works.
+ */
+const EDIT_MODE_ONLY: EditRefusal = refusal({
+  short: 'Edit mode only',
+  glyph: 'edit',
+  lead: 'Analysis adds tracer points and forces.',
+  action: 'Switch to Edit',
+  tail: 'to change anything else.',
+  actionKind: 'toEdit',
+});
+
+/** What an analysis mode refuses whatever the pose. */
+const EDIT_ONLY_ACTIONS: ReadonlySet<EditAction> = new Set<EditAction>([
+  'safeProperty',
+  'build',
+  'structure',
+  'placement',
+  'properties',
+  'drive',
+]);
+
 const PLAYING: EditRefusal = refusal({
   short: 'animation running',
   glyph: 'play_circle',
@@ -245,9 +286,9 @@ function displacedUnsynced(name: string | undefined): EditRefusal {
 const DISPLACED_TYPING: EditRefusal = refusal({
   short: 'shown at pose',
   glyph: 'motion_photos_paused',
-  lead: 'Values at this pose. Drag to edit, or',
+  lead: 'Values at this pose. Drag to move parts, or',
   action: 'return to the start',
-  tail: 'to type.',
+  tail: 'to change anything else.',
   actionKind: 'backToStart',
   backToStartHelps: true,
 });
@@ -270,11 +311,7 @@ const DEFERRED_DISPLACED: EditRefusal = refusal({
 });
 
 /**
- * The verdict for one action.
- *
- * Phase 2 of the plan changes what this function returns; it does not change
- * who calls it. That ordering is the whole reason the model exists before the
- * rules it will eventually relax.
+ * The verdict for one action: the table in `docs/editing-rules.md`, as code.
  */
 export function refusalFor(action: EditAction, state: EditState): EditRefusal | null {
   if (action === 'inspect') return null;
@@ -287,33 +324,34 @@ export function refusalFor(action: EditAction, state: EditState): EditRefusal | 
   // Playing is read-only whatever the action. A reader reaching for a joint
   // that is moving is a fight nothing here can win.
   if (state.playing) return PLAYING;
-  if (action === 'create' && state.mode === 'analysis') return CREATE_IN_EDIT;
+  // How hard a force pushes is a question an analysis exists to ask, and the
+  // answer is the same at every pose: `editForcesAtPose` carries it home.
+  if (action === 'load') return state.solveDeferred && !state.atStart ? DEFERRED_DISPLACED : null;
+  if (state.mode === 'analysis') {
+    if (action === 'create') return CREATE_IN_EDIT;
+    if (EDIT_ONLY_ACTIONS.has(action)) return EDIT_MODE_ONLY;
+  }
   if (state.atStart) return null;
 
-  // Analysis can change the drawing at its start. Posed drags and undo have
-  // an anchor-preserving path; restructuring from a graph's pose does not.
-  if (state.mode === 'analysis' && (action === 'build' || action === 'structure')) {
-    return displacementRefusal(state);
-  }
-
-  // Paused, and away from the start. This is where Phase 2 changed the answers
-  // and nothing else: the surfaces that ask are the same ones, asking the same
-  // way.
+  // Paused, and away from the start: the reader is looking, not designing.
   switch (action) {
+    case 'safeProperty':
+      // Nothing here is read off the pose or can stop the mechanism running.
+      return null;
     case 'drag':
-    case 'create':
-    case 'build':
-    case 'structure':
     case 'history':
+      // A posed drag is put back on the machine's anchor, in every mode.
       return state.solveDeferred ? DEFERRED_DISPLACED : null;
+    case 'annotate':
+    case 'build':
+    case 'create':
+    case 'structure':
+      return displacementRefusal(state);
     default:
-      // Joint X/Y, link angle, masses, forces, cylinders, input speed. Each
-      // waits for its own canonicalization transform (§5.5 of the plan).
-      //
-      // Which sentence depends on whether the transport agrees it is displaced.
-      // "Not at the start" over a scrubber reading 0:00 sends a reader to a
-      // control that looks parked; unsynced, the machine that is actually away
-      // is named instead.
+      // Typed geometry and settings. Which sentence depends on whether the
+      // transport agrees it is displaced: "not at the start" over a scrubber
+      // reading 0:00 sends a reader to a control that looks parked, so
+      // unsynced, the machine that is actually away is named instead.
       return state.sharedStepZero ? displacedUnsynced(state.awayMachine) : DISPLACED_TYPING;
   }
 }
@@ -359,24 +397,29 @@ export function displacementRefusal(state: EditState): EditRefusal | null {
   return state.sharedStepZero ? displacedUnsynced(state.awayMachine) : DISPLACED;
 }
 
-/** What an action needs in order to preserve the authored start. */
-export type MenuPosePolicy = 'start' | 'structure' | 'preserve' | 'attachment' | 'create' | 'view';
+/**
+ * The kind of control a context-menu row is, in the table's words.
+ *
+ * `design` covers both Structure and Typed geometry: the two rows of the table
+ * have the same answer in every column, and a menu row never types a number.
+ */
+export type MenuPosePolicy = 'view' | 'annotation' | 'safe' | 'load' | 'design' | 'create';
 
-/** A paused pose allows edits with a defined mapping back to the authored drawing. */
+const MENU_ACTION: Record<Exclude<MenuPosePolicy, 'view'>, EditAction> = {
+  annotation: 'annotate',
+  safe: 'safeProperty',
+  load: 'load',
+  design: 'structure',
+  create: 'create',
+};
+
+/** A menu row's answer: the same table, plus no document change while playing. */
 export function menuRefusal(
   state: EditState,
-  policy: MenuPosePolicy = 'start'
+  policy: MenuPosePolicy = 'design'
 ): EditRefusal | null {
+  // View rows (traces) are document state too, so they wait for a pause.
   if (state.playing) return PLAYING;
   if (policy === 'view') return null;
-  if (policy === 'create') return refusalFor('create', state) ?? displacementRefusal(state);
-  if (state.mode === 'synthesis') return IN_SYNTHESIS;
-  if (state.atStart || policy === 'preserve') return null;
-  // A control the Edit panel offers under the same name asks the panel's own
-  // question, so the two cannot answer differently about one named thing. Not
-  // `'preserve'`: that would also offer it in an analysis mode away from the
-  // start, where `structure` is refused and topology changes stay closed.
-  if (policy === 'structure') return refusalFor('structure', state);
-  if (policy === 'attachment') return state.solveDeferred ? DEFERRED_DISPLACED : null;
-  return displacementRefusal(state);
+  return refusalFor(MENU_ACTION[policy], state);
 }

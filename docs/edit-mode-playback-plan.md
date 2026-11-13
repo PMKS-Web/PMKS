@@ -1,6 +1,8 @@
 # Playback in Edit mode — softening the wall between editing and watching
 
 > **Status:** Built — all three phases shipped (`model/edit-permission.ts`, `model/mechanism/anchor.ts`). Gates checked by `e2e/edit-playback.mjs` and `e2e/posed-editing.mjs`.
+>
+> **Narrowed since:** [editing-rules.md](editing-rules.md) is now the rule. A paused pose keeps drags and the safe properties (mass, name, color, lock, holds); structure, typed geometry and new tracer points and forces wait for the start. The anchor machinery below is unchanged and still carries every posed drag.
 
 **Purpose:** decide how PMKS can allow playback inside Edit mode, and later allow edits at any
 paused pose, without corrupting the saved design, the undo history, or shared URLs.

@@ -367,16 +367,22 @@ await scene('play, pause, edit, undo leaves it there too', async () => {
   await displace(0, 0.3);
 });
 
-// ---- 2. an edit that really does move the start says so --------------------
+// ---- 2. a structural edit off the start waits for it -----------------------
 
 {
-  // The other half: a menu row that cannot re-anchor has to narrate it, the
-  // way a drag's release does. `capturingPose` read only whether the settle
-  // re-anchored and threw the rest away, so the one edit a reader could not
-  // undo by eye was the one nothing said a word about.
+  // This scene used to retype a grounded pin as Prismatic while the machine
+  // was parked mid-cycle, and check that the start it moved was narrated.
+  // `docs/editing-rules.md` (#262) makes Joint Type a Structure control, which
+  // waits for the start pose, so no menu row can move a start from mid-cycle
+  // any more. What stays true is checked here: the row is offered, refused
+  // with the start pose as its way out, and refusing it leaves the start
+  // where it was. The narration itself, which a capturing edit still owes the
+  // reader whenever one does lose an anchor, is held by
+  // `posed-editing.spec.ts` ("says so when a capturing edit moves a start").
   await fresh('Cylinder_Boom');
   await displace();
-  const said = await inAngular(page, () => {
+  const before = await look();
+  const offered = await inAngular(page, () => {
     const grid = window.ng.getComponent(document.querySelector('app-new-grid'));
     const srv = grid.mechanismSrv;
     const joint = srv.joints.find((j) => j.id === 'G');
@@ -385,20 +391,25 @@ await scene('play, pause, edit, undo leaves it there too', async () => {
     grid.lastRightClickCoord.x = at.x;
     grid.lastRightClickCoord.y = at.y;
     const option = (grid.cMenu.choice?.options ?? []).find((o) => o.label === 'Prismatic');
-    if (!option || option.refusal) return 'no such choice';
-    option.action?.();
-    return null;
+    return option
+      ? { refused: !!option.refusal, why: option.refusal?.long ?? option.refusal?.short ?? '' }
+      : null;
   });
-  await page.waitForTimeout(800);
+  record(
+    'a structural menu row off the start waits for the start',
+    offered !== null && offered.refused && /start/i.test(offered.why),
+    offered
+  );
+  await page.waitForTimeout(400);
   const after = await look();
   const chip = await page.evaluate(
     () => window.ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv.startMovedOn
   );
-  record('a menu edit that moves a start says which machine moved', !said && chip !== null, {
-    said,
-    chip,
+  record('and nothing says a start moved', chip === null, { chip });
+  record('and the ghost is still the start afterwards', breaks(after).length === 0, {
+    before: breaks(before),
+    after: breaks(after),
   });
-  record('and the ghost is still the start afterwards', breaks(after).length === 0, breaks(after));
 }
 
 // ---- 3. the drawing this was reported on -----------------------------------

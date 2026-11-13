@@ -148,6 +148,21 @@ record('Escape lets it go', (await state()).selected === 'Grid', await state());
 
 const jointsBefore = (await state()).joints;
 await clickJoint('B');
+// Stepped off the start above. Deleting a joint is structure, which waits
+// for the start (docs/editing-rules.md), so the key refuses here...
+await press('Backspace');
+record('Backspace leaves a joint alone mid-cycle', (await state()).joints === jointsBefore, {
+  jointsBefore,
+  now: (await state()).joints,
+});
+// ...and R, Stop and go back to the start, is the way out.
+await press('r');
+await page.waitForFunction(
+  () => ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv.isAtStartPose(),
+  undefined,
+  { timeout: 5000 }
+);
+await clickJoint('B');
 // Backspace, not Delete: the key a MacBook actually has.
 await press('Backspace');
 record('Backspace deletes the selected joint', (await state()).joints === jointsBefore - 1, {
@@ -178,10 +193,9 @@ record('and K again lets it go', (await state()).lockedJoints === 0, await state
 await press(',');
 record('a comma opens Settings', (await state()).drawer === 1, await state());
 
-// --- A key that changes the drawing is an Edit key ---------------------------
-// An analysis mode is a reading of a finished mechanism: it hides the lock
-// marks, grays the panels, and takes Undo away. A key that edits anyway leaves
-// a change there is no way back from without leaving the mode.
+// --- A key that changes the drawing asks what the menu asks ------------------
+// An analysis mode reads the motion: it deletes a tracer point or a force, and
+// leaves the rest to Edit. A key answers as the menu row of the same name.
 await clickJoint('B');
 const beforeAnalysis = await state();
 await press('3');
@@ -198,11 +212,10 @@ record(
   afterDelete.joints === beforeAnalysis.joints && saidWhy,
   { beforeAnalysis, afterDelete, saidWhy }
 );
-// A lock is a mark on the drawing rather than a change to it, like a trace,
-// and the analysis menus offer it; so does the key.
+// A lock is a safe property, and safe properties are Edit's
+// (docs/editing-rules.md): the analysis menus gray Locked, so the key does too.
 await press('k');
-record('Lock still works there', (await state()).lockedJoints === 1, await state());
-await press('k');
+record('Lock does nothing there either', (await state()).lockedJoints === 0, await state());
 await press('2');
 await clickJoint('B');
 await press('k');

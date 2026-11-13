@@ -108,6 +108,16 @@
         fill: var(--mat-warning-color);
       }
     }
+
+    // A refused Delete has to look refused: drawn in warning red it read as
+    // live while the panel grayed every control beside it.
+    &.red:disabled {
+      border-color: var(--border-divider);
+
+      svg > path {
+        fill: var(--text-disabled);
+      }
+    }
   }
 }
 
