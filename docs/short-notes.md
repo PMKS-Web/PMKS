@@ -208,6 +208,35 @@ in those strings too: the first two characters are the packed bool settings in t
 base-64 alphabet, and the checksum on the end is a function of the length alone, so a flipped
 bit needs no other change.
 
+### `LIBRARY_TEMPLATE_SIZES` draws a template larger than the fixture it comes from
+
+A library template that names a real machine is published at that machine's size (#308), so the
+pumpjack opens six meters long rather than six centimeters, while the fixture a spec asserts on
+keeps the numbers MATLAB checked. The table in `template-fixtures.ts` gives each one a unit and a
+factor, and `fixturePayload` multiplies every length by the factor: joints, centers of mass,
+forces, a slider's drive speed, the default linear speed, Object Size, and a kept moment of
+inertia by its square. Masses and loads keep their numbers and are read in the new unit's
+system, so a force study moved from centimeters to meters reads kilograms rather than grams and
+needs its loads raised a thousandfold to keep the same share of the weight (`Crane_Two_Loads`).
+A gallery link and a template card are therefore the same mechanism at different sizes.
+`template-sizes.spec.ts` holds the template to its fixture times the factor, and
+`legacy-payloads.spec.ts` divides the factor back out before comparing an old payload.
+
+Two sizes were not free to choose, and both are the solver's doing rather than the machine's. A
+bare slider driven in place of a crank steps a fixed 0.1 user units a sample, so whether the
+radial engine's piston drive gets past dead center depends on how large it is drawn: it runs at
+one, two and twelve times its fixture and not at four to ten. And the numerical oracle's rate
+budget is missed near a toggle by the hatch drawn as 1.1 m and by the excavator drawn more than a
+few times larger, so the hatch is published as 110 cm and the excavator was left as traced.
+
+A third surprise was the browser's. The Flywheel Engine at ten times its fixture, opened in
+Schematic, froze Playwright's headless Chromium most times: the compositor stuck activating a
+frame, no `requestAnimationFrame`, every click timing out (`drawing-styles.mjs`). The trigger was
+the slider block's entrance animation, a `transform: scale` on an SVG child; headed Chrome
+recovered, and the staging-sized flywheel never tripped it. The slider entrances in
+`new-grid.component.scss` are opacity alone now. A suite that suddenly cannot click anything on a
+large drawing is worth checking for a transform animation before blaming the drawing.
+
 ### A context menu is one menu per kind of thing
 
 A row on the right-click menu never comes and goes with the situation. It is there on every joint

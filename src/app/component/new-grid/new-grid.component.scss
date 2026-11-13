@@ -808,13 +808,16 @@
 // The per-frame redraw path stays stateless either way, which is what keeps the
 // glyphs cheap across ~360 timesteps.
 //
-// Every displacement is a scale or an opacity against the element's own box. A
-// px offset would grow with the canvas transform, which has already shipped one
-// animation bug here.
+// Every entrance is an opacity alone. A px offset grows with the canvas
+// transform, which shipped one animation bug here; a scale against the element's
+// own box shipped another. On a drawing thousands of units across seen at a
+// small zoom -- the Flywheel Engine at its real size, in Schematic -- that scale
+// froze headless Chromium (software compositing, as in CI): the compositor
+// stuck activating a frame, no requestAnimationFrame, nothing clickable. Headed
+// Chrome recovered, but the scale bought nothing worth the risk, and an opacity
+// animation does not trip it.
 .slider-mark {
   .slider-block {
-    transform-box: fill-box;
-    transform-origin: center;
     animation: blockIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
@@ -824,11 +827,9 @@
     animation: plateIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  // Entrances slide out from under the marker; exits are quiet, so there is no
+  // Entrances fade in over the marker; exits are quiet, so there is no
   // matching outward animation to leave with.
   .slider-arrows {
-    transform-box: fill-box;
-    transform-origin: center;
     animation: arrowsIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 }
@@ -842,11 +843,9 @@
 @keyframes blockIn {
   from {
     opacity: 0;
-    transform: scale(0.86);
   }
   to {
     opacity: 1;
-    transform: scale(1);
   }
 }
 
@@ -865,11 +864,9 @@
 @keyframes arrowsIn {
   from {
     opacity: 0;
-    transform: scaleX(0.72);
   }
   to {
     opacity: 1;
-    transform: scaleX(1);
   }
 }
 
