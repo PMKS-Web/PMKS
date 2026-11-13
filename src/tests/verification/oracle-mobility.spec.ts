@@ -7,7 +7,7 @@ import { REFERENCES_DIR } from '../../test-utils/oracle/published-problems';
 import { readReference, REPOSITORY_ROOT } from '../../test-utils/oracle/reference';
 import { ORACLE_EXCLUSIONS } from '../../test-data/oracle/manifest';
 
-// Phase 4 of docs/numerical-oracle-plan.md: PMKS+'s mobility (model/mechanism/
+// Phase 4 of docs/numerical-oracle-plan.md: PMKS's mobility (model/mechanism/
 // mobility.ts) against the oracle's rank analysis, for every published
 // machine, at the drawn pose. Both the first-order count (the constraint
 // Jacobian's rank) and the second-order one (what survives a step along each
@@ -34,7 +34,7 @@ const leftOut = (id: string): boolean =>
     (e) => e.problem === id && e.what !== 'runs' && e.what.quantities.includes('mobility')
   );
 
-describe('PMKS+ mobility against the oracle', () => {
+describe('PMKS mobility against the oracle', () => {
   const all = rows();
 
   it('reads every published machine, and settles the second order on each', () => {
@@ -53,7 +53,7 @@ describe('PMKS+ mobility against the oracle', () => {
       }
       expect(
         { first: row.pmks.firstOrder, second: row.pmks.secondOrder },
-        `PMKS+ against the oracle (Gruebler counted ${row.pmks.counted})`
+        `PMKS against the oracle (Gruebler counted ${row.pmks.counted})`
       ).toEqual({
         first: row.oracle.firstOrder,
         second: row.oracle.settled ? row.oracle.secondOrder : row.pmks.secondOrder,

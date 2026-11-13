@@ -421,7 +421,7 @@ export function familyCheck(ctx: RelationContext): FamilyCheck {
   add(cylinderLever(ctx));
 
   const lines = [
-    '### Family check (PMKS+ compares lengths, joints and motion with a short catalog)',
+    '### Family check (PMKS compares lengths, joints and motion with a short catalog)',
   ];
   lines.push(`- Structure: ${structure}.`);
   if (matches.length) {

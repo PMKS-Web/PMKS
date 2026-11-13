@@ -1,4 +1,4 @@
-# PMKS+ — Analysis-mode editing: visual brief
+# PMKS — Analysis-mode editing: visual brief
 
 > **Status:** Built — §1 describes the analysis panel as shipped (`component/analysis-panel/`). Guarded by `e2e/analysis-editing.mjs`.
 
@@ -11,7 +11,7 @@ back and was built, and §3 lists where each of the original questions landed.
 
 ## What the feature is
 
-PMKS+ is a linkage simulator. Historically the two analysis modes (Kinematic, Force) were read-only:
+PMKS is a linkage simulator. Historically the two analysis modes (Kinematic, Force) were read-only:
 you built a mechanism in Edit, switched to analysis, and looked at graphs of position, velocity,
 acceleration and reaction force over one cycle of the machine.
 

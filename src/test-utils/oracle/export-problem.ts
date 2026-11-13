@@ -17,7 +17,7 @@ import { drivenLink, GROUND_BODY, resolveActuator } from '../../app/model/actuat
 import { siFactors, SiFactors, STANDARD_GRAVITY } from './si-units';
 
 /**
- * A PMKS+ machine as a problem for the numerical oracle: schema
+ * A PMKS machine as a problem for the numerical oracle: schema
  * `pmks-oracle-problem/1`, in SI units, read from the drawn pose only.
  *
  * Nothing here calls a solver. It reads the joints, links and forces as the URL
@@ -96,7 +96,7 @@ export function solverUnit(settings: SettingsService): 'cm' | 'in' | 'm' {
   return unit === LengthUnit.INCH ? 'in' : unit === LengthUnit.METER ? 'm' : 'cm';
 }
 
-/** The signed drive speed PMKS+ runs this input at: rpm for a pin, user units/s for a slider. */
+/** The signed drive speed PMKS runs this input at: rpm for a pin, user units/s for a slider. */
 export function commandedSpeed(input: RealJoint, settings: SettingsService): number {
   if (input.driveSpeed !== 0) return input.driveSpeed;
   const sign = settings.isInputCW.value ? -1 : 1;
@@ -118,7 +118,7 @@ export function inputOf(partition: MechanismPartition): RealJoint | undefined {
  * input torque on (`drivenLink` in actuator.ts).
  */
 export function drivenLinkAt(input: RealJoint): RealLink | undefined {
-  // drivenLink falls back to the first link where PMKS+ refuses the input.
+  // drivenLink falls back to the first link where PMKS refuses the input.
   const link = drivenLink(input);
   return link instanceof RealLink ? link : undefined;
 }
@@ -245,13 +245,13 @@ function exportSlider(
 }
 
 /**
- * Where PMKS+ puts each cylinder's hidden inner end N and its seal S: on the
+ * Where PMKS puts each cylinder's hidden inner end N and its seal S: on the
  * line from mount A to mount B, N one barrel length from A and S one rod length
  * back from B, both lengths measured at the drawn pose. The position solve
  * derives them so at every sample, the first included (`sealedCylinderInterior`
  * in position-solver.ts), and a URL stores them only to its own grain, which
  * leaves the four points a micrometer off a line. Written where they are
- * derived, the problem is the pose PMKS+ starts from, with the mounts where
+ * derived, the problem is the pose PMKS starts from, with the mounts where
  * they were drawn.
  */
 function cylinderInteriors(joints: readonly Joint[]): Map<string, [number, number]> {
@@ -300,12 +300,12 @@ function strokeOf(seal: PrisJoint): { min: number; max: number } | undefined {
 
 /**
  * How far a slot cut into a link may carry its block: a channel between the
- * two joints that define it, with round ends. PMKS+ refuses a pose whose pin
+ * two joints that define it, with round ends. PMKS refuses a pose whose pin
  * lies further than `slotReach` from the channel's midpoint by more than
  * SLOT_END_TOLERANCE of the channel's length (`ridersAreInTheirSlots` in
  * position-solver.ts), so that bound is the slot's end here, as travel from
  * joint a along the slot's axis. The constants are restated, as the units table
- * is, so a change to PMKS+'s rule shows up as a disagreement, not a silent
+ * is, so a change to PMKS's rule shows up as a disagreement, not a silent
  * re-export.
  */
 const SLOT_END_TOLERANCE = 2e-3;
@@ -338,8 +338,8 @@ function exportDriver(
   // The actuator record says which body turns against which: the frame and a
   // crank at a grounded pivot, or two links at a floating one, where the drive
   // prescribes the angle between them (PinDrive in position-solver.ts). Where
-  // PMKS+ refuses the input there is no record, and the oracle still drives
-  // the first bar at a grounded pivot: the physics runs whether PMKS+ does or not.
+  // PMKS refuses the input there is no record, and the oracle still drives
+  // the first bar at a grounded pivot: the physics runs whether PMKS does or not.
   if (input.ground) {
     const driven = root(drivenLinkAt(input));
     if (!driven) return null;
@@ -380,8 +380,8 @@ function exportLoad(
 }
 
 /**
- * The spacing PMKS+ samples its input at, which the oracle's grid copies so
- * every PMKS+ sample has an oracle state at the same driver coordinate: a
+ * The spacing PMKS samples its input at, which the oracle's grid copies so
+ * every PMKS sample has an oracle state at the same driver coordinate: a
  * degree for a pin, a 180th of the stroke for a cylinder, PRISMATIC_INPUT_STEP
  * for any other slider.
  */
@@ -419,7 +419,7 @@ export function serializeProblem(problem: OracleProblem): string {
   return `${JSON.stringify(problem, null, 1)}\n`;
 }
 
-/** Joints PMKS+ draws for this machine, by id: the points a comparison reads. */
+/** Joints PMKS draws for this machine, by id: the points a comparison reads. */
 export function jointById(joints: readonly Joint[]): Map<string, Joint> {
   return new Map(joints.map((joint) => [joint.id, joint]));
 }

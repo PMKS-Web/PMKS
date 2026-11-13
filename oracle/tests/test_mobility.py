@@ -40,7 +40,7 @@ def test_a_redundant_support_that_holds_along_the_motion_survives():
         ("gallery.motiongen-gripper.m1", 2, 1),
         # The rod is welded to the block that rides the lever's slanted slot
         # (offsetPivotLeverWeldedRodFixture): rank leaves one freedom, which
-        # the second order removes, and PMKS+ reports nothing can move.
+        # the second order removes, and PMKS reports nothing can move.
         ("gallery.slotted-lever-with-a-rod-that-cannot-tilt.m1", 1, 0),
     ],
 )

@@ -34,7 +34,7 @@ const TRACES_OF_A_PREVIOUS_VISIT = [
  * Whether to tell this reader what changed while they were away.
  *
  * Two readers, two different needs, and the difference matters more than it
- * looks. Somebody opening PMKS+ for the first time has nothing to compare it
+ * looks. Somebody opening PMKS for the first time has nothing to compare it
  * to: a list of what is new is a list of things they have never missed, and it
  * stands between them and an empty grid they do not yet know how to use. They
  * get the tutorial instead. Somebody who was here in July gets the notes,
@@ -56,7 +56,7 @@ export class WhatsNewService {
     return this.hasBeenHereBefore();
   }
 
-  /** Whether anything at all says this reader has opened PMKS+ before. */
+  /** Whether anything at all says this reader has opened PMKS before. */
   hasBeenHereBefore(): boolean {
     if (!local_storage_available()) return false;
     return TRACES_OF_A_PREVIOUS_VISIT.some((key) => localStorage.getItem(key) !== null);

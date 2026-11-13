@@ -213,7 +213,7 @@ With nothing selected, the left panel is about the machines on the grid.
 | Several machines, none picked | `All mechanisms`, `Select one to see its details.` in Edit, then one row each: its name, its chip, a chevron, and under the name how free it is in Edit (`1 degree of freedom`) or its family in an analysis mode (`Not running` where it cannot run) |
 | One picked, or the only one | its name as the title (`Edit Mechanism 2` in Edit), `All mechanisms` with a back arrow above it when there are others; no chip. In Edit, a machine with something to fix gets `Can’t run yet. 2 things to fix before analysis. Open Setup` -- never with nothing to fix: a large drawing waiting for Play says `This drawing's motion is worked out when you press Play.` in its Overview instead |
 | Sections | `Mechanism Overview`, a label-and-value list -- in Edit `Degrees of freedom`, `Links` (`4 (including ground)`: the ground is a link, as Gruebler counts it), `Joints`, `Input joint`, `Input speed`; in an analysis mode the same after the Family, then `Cycle time` (and `Motion` where no named family says it). `Input joint` is a part link to the driven joint, and `Input speed` is read-only: click to edit, so the speed and direction change in that joint's own panel. `Links` gives each link's name, its job (`Input crank`, `Coupler`, `Rocker`) and its length, or `3 joints` for a plate. Folded sections stay folded across modes for the session. Lengths are not repeated in a tooltip: tooltips say how to use a control |
-| The Family | a name PMKS+ matched (`Crank-rocker four-bar`); else `Six-bar linkage`, `Named by its 6 bodies, ground included. Not matched to a named type.`; else `Not recognized` |
+| The Family | a name PMKS matched (`Crank-rocker four-bar`); else `Six-bar linkage`, `Named by its 6 bodies, ground included. Not matched to a named type.`; else `Not recognized` |
 | A shut mode tab | tooltip `Force Analysis opens once a mechanism runs.` |
 | The first Play in Edit | a card under the Kinematic Analysis tab: `Your mechanism runs`, `Kinematic Analysis graphs the position, velocity and acceleration of any joint or link as it moves.`, `Not Now` / `Open Kinematic Analysis` |
 | Past the fourth | `Only 4 mechanisms run at once`; the list adds `Only the first 4 mechanisms are simulated.` |
@@ -222,7 +222,7 @@ With nothing selected, the left panel is about the machines on the grid.
   pressing it opens the drawer.
 - **A family keeps its name.** `Chebyshev straight-line linkage` and `Jansen linkage` are what those
   mechanisms are called, so the Family row says so; the ban on *linkage* is on the word standing in
-  for *mechanism*. The row is left out where nothing in PMKS+'s catalog matched: a family is a
+  for *mechanism*. The row is left out where nothing in PMKS's catalog matched: a family is a
   finding, and a guess is worse than nothing.
 
 ### A machine's name

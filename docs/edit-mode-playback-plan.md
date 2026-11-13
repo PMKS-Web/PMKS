@@ -2,7 +2,7 @@
 
 > **Status:** Built — all three phases shipped (`model/edit-permission.ts`, `model/mechanism/anchor.ts`). Gates checked by `e2e/edit-playback.mjs` and `e2e/posed-editing.mjs`.
 
-**Purpose:** decide how PMKS+ can allow playback inside Edit mode, and later allow edits at any
+**Purpose:** decide how PMKS can allow playback inside Edit mode, and later allow edits at any
 paused pose, without corrupting the saved design, the undo history, or shared URLs.
 
 This began as a planning document and is kept as the
@@ -63,7 +63,7 @@ later phase tears out.
 
 ## 1. The problem
 
-PMKS+'s best property is its feedback loop. Drag a joint and the traced path re-solves under
+PMKS's best property is its feedback loop. Drag a joint and the traced path re-solves under
 your hand, sixty times a second — the whole cycle, not a sketch of it.
 
 That loop stops at a wall. To *watch* the mechanism move, you must leave Edit for an analysis

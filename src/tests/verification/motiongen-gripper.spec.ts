@@ -46,7 +46,7 @@ function motionGenPoses(): Pose[] {
   });
 }
 
-// MotionGen's ids are J1.. in capture order; PMKS+ assigns letters. Same joints.
+// MotionGen's ids are J1.. in capture order; PMKS assigns letters. Same joints.
 const AS_PMKS: Record<string, string> = {
   J1: 'A',
   J2: 'B',
@@ -61,7 +61,7 @@ const AS_PMKS: Record<string, string> = {
   J11: 'K',
 };
 
-describe('the MotionGen gripper, rebuilt in PMKS+', () => {
+describe('the MotionGen gripper, rebuilt in PMKS', () => {
   // objectScale is a process-wide static and a driven slider's step is measured
   // against it, so pin it: otherwise the travel depends on spec file order.
   const { mechanism, joints: built } = buildMechanismAtScale(

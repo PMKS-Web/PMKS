@@ -13,7 +13,7 @@ rather than twice; both have since shipped.
 
 ## What this screen is for
 
-Someone has drawn a linkage in PMKS+ and now wants it in SolidWorks, Fusion or NX — not as a
+Someone has drawn a linkage in PMKS and now wants it in SolidWorks, Fusion or NX — not as a
 picture, but as the **starting geometry of a real model**. They will make a part per link, put
 holes where the joints are, assemble the parts with mates, and drive the assembly to check it moves
 and clears. Everything on this screen exists to make that first hour easier.

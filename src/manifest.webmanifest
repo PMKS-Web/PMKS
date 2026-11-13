@@ -1,6 +1,6 @@
 {
-  "name": "PMKS+ — Planar Mechanism Kinematic Simulator",
-  "short_name": "PMKS+",
+  "name": "PMKS — Planar Mechanism Kinematic Simulator",
+  "short_name": "PMKS",
   "description": "Draw, simulate and analyze planar linkages.",
   "display": "standalone",
   "orientation": "any",

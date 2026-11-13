@@ -142,7 +142,7 @@ export class MechanismOverviewService {
   }
 
   /**
-   * The Family row: what PMKS+ matched the machine as, or failing that its
+   * The Family row: what PMKS matched the machine as, or failing that its
    * body count, or that it could not say (`familyReading`). Never nothing, so
    * the panel keeps its shape from one machine to the next.
    */
@@ -157,7 +157,7 @@ export class MechanismOverviewService {
   /**
    * Every link in the machine, with its job.
    *
-   * The job is the one PMKS+ recognizes off the solved cycle
+   * The job is the one PMKS recognizes off the solved cycle
    * (`model/machine-facts/roles.ts`): which body the input drives, which are
    * pinned to the ground, which turn all the way round. A machine that does
    * not run has no cycle, so its links are named by how they are held instead.

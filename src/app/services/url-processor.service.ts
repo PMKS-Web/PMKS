@@ -184,7 +184,7 @@ export class UrlProcessorService {
     setTimeout(() => {
       this.notify.failure(
         'url.undecodable',
-        'That shared link could not be opened — it may be from an older version of PMKS+.'
+        'That shared link could not be opened — it may be from an older version of PMKS.'
       );
     });
   }

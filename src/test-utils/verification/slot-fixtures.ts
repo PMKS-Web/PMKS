@@ -901,7 +901,7 @@ export function pivotingGripperFixture(scale: number = 1): MechanismFixture {
  * MotionGen carries the guide as a grounded *bar* with the slot cut into it,
  * and both of the bar's ends are members of the ground link. A grounded guide
  * at that angle is the same constraint with two fewer joints, which is how
- * PMKS+ spells it.
+ * PMKS spells it.
  */
 export function ellipticalCrankFixture(scale: number = 1): MechanismFixture {
   const at = (x: number, y: number) => ({ x: x * scale, y: y * scale });
@@ -1084,7 +1084,7 @@ export function chebyshevStraightLineFixture(): MechanismFixture {
  * the per-timestep cloning at a width nothing else reaches.
  *
  * Joint ids run A-Z and then a-s, because a mechanism this size does not fit
- * the alphabet. That is a fixture's privilege rather than the app's: PMKS+
+ * the alphabet. That is a fixture's privilege rather than the app's: PMKS
  * names joints with `String.fromCharCode(last + 1)`, which walks into
  * punctuation after Z, so the editor cannot currently name a linkage this big
  * even though the solver can hold one.

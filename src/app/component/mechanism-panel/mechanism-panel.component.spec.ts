@@ -53,12 +53,12 @@ const text = (fixture: ComponentFixture<unknown>, selector: string): string[] =>
 describe('MechanismPanelComponent', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it('lists every machine, with what PMKS+ recognized, when none is picked', async () => {
+  it('lists every machine, with what PMKS recognized, when none is picked', async () => {
     const { fixture } = await createPanel(TEMPLATE_LINKAGES['Straight_Line_Pair']);
     expect(text(fixture, '.mechTitle')).toEqual(['All mechanisms']);
     const rows = text(fixture, '.machineRow');
     expect(rows).toHaveLength(2);
-    // By the name the library gives it; the family PMKS+ recognized beside it.
+    // By the name the library gives it; the family PMKS recognized beside it.
     expect(rows[0]).toContain('Chebyshev (approximate)');
     expect(rows[0]).toContain('Chebyshev straight-line linkage');
     expect(rows[1]).toContain('Peaucellier-Lipkin straight-line linkage');
@@ -98,6 +98,9 @@ describe('MechanismPanelComponent', () => {
       'Input joint',
       'Input speed',
     ]);
+    // Nor a link's job (#276): only its size, each link on one row.
+    expect(fixture.nativeElement.querySelector('.linkRole')).toBeNull();
+    expect(text(fixture, '.linkLength').length).toBeGreaterThan(0);
     fixture.destroy();
   });
 
