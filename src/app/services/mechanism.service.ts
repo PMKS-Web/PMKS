@@ -5,7 +5,7 @@ import { pruneUnlinkedJoints } from '../model/prune-unlinked-joints';
 import { selectableLinks } from '../model/selection';
 import { LinkTraceService } from './link-trace.service';
 import { Injectable, Injector, inject } from '@angular/core';
-import { LinkHold } from '../model/link';
+import { HeldValue, holdWith, LinkHold } from '../model/link';
 import {
   cylinderMemberLinks,
   holdOf,
@@ -2292,48 +2292,48 @@ export class MechanismService {
   }
 
   /**
-   * Hold one of a bar's two numbers against edits, or let it go.
+   * Fix or release one of a bar's two numbers, leaving the other as it was.
    *
-   * One or the other, never both: a bar holding its length and its angle can
-   * only translate, and that is what a Lock on its joints already means. So
-   * asking for the second moves the hold, and says so, with the way back on
-   * the message. A hold is an edit like a lock is -- it rides the URL, so it
+   * What a padlock and a menu row press: each is about one value. A bar may
+   * hold both, keeping its length and its direction while it can still slide
+   * sideways -- which a Lock does not allow (#309). A cylinder's member goes to
+   * `setMemberHold`, whose table knows the part has one angle between two
+   * members. A hold is an edit like a lock is -- it rides the URL, so it
    * survives undo and travels in a shared link.
    */
+  setBarHold(link: Link, which: HeldValue, on: boolean): void {
+    if (this.cylinderOfBar(link)) {
+      this.setMemberHold(link, which, on);
+      return;
+    }
+    if (holdableBar(link)) this.setHold(link, holdWith(link.hold, which, on));
+  }
+
+  /**
+   * Put a bar under exactly this hold, or none. One undo entry.
+   *
+   * For a caller that has the whole value: an undo action, a release. On a
+   * cylinder's member a bare `undefined` is ambiguous -- a member can read held
+   * on two rows, its own length and the part's angle carried by the other --
+   * and the angle wins, because that is the hold both rows show and the one a
+   * reader pressing Release on either member means.
+   */
   setHold(link: Link, hold: LinkHold): void {
-    // A cylinder's member has two rows that can read held at once -- its own
-    // length, and the part's angle carried by the other member -- so a bare
-    // `undefined` is ambiguous here in a way it never is on a bar. The angle
-    // wins, because that is the hold both rows show and the one a reader
-    // pressing Release on either member means. `setMemberHold` is the door for
-    // a row that knows which value it is about.
     const sealed = this.cylinderOfBar(link);
     if (sealed) {
       const which =
-        hold ?? (memberHoldReads(sealed, link, 'angle') ? 'angle' : ('length' as const));
+        hold === 'both' || hold === undefined
+          ? memberHoldReads(sealed, link, 'angle')
+            ? 'angle'
+            : 'length'
+          : hold;
       this.setMemberHold(link, which, hold !== undefined);
       return;
     }
-    if (!holdableBar(link)) return;
-    const was = link.hold;
-    if (was === hold) return;
+    if (!holdableBar(link) || link.hold === hold) return;
     link.hold = hold;
     this.updateMechanism(true);
     this.activeObjService.fakeUpdateSelectedObj();
-    if (hold !== undefined && was !== undefined) {
-      const name = (which: LinkHold) => (which === 'angle' ? 'angle' : 'length');
-      // Through the one name a reader is shown. Only a plain bar reaches here --
-      // a cylinder's member left by the door above -- so no id on this road can
-      // hold a hidden joint today; asking anyway is what keeps that true of the
-      // sentence rather than of the road to it.
-      const who = this.visibleBodyName(link);
-      this.notify.news(
-        'hold.moved',
-        'A link can keep either its length or its angle fixed. ' +
-          `${who} now has a fixed ${name(hold)}.`,
-        { actions: [{ label: `Fix ${name(was)} instead`, run: () => this.setHold(link, was) }] }
-      );
-    }
   }
 
   /**

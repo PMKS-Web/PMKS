@@ -45,7 +45,7 @@ import {
   ContextMenuBuilderService,
   MenuHandlers,
 } from '../../services/context-menu-builder.service';
-import { Link, RealLink } from '../../model/link';
+import { holdsValue, Link, RealLink } from '../../model/link';
 import { Lockable } from '../../model/lock-set';
 import { Joint, PrisJoint, RealJoint, RevJoint } from '../../model/joint';
 import { Coord } from '../../model/coord';
@@ -2491,8 +2491,8 @@ export class NewGridComponent implements OnDestroy {
    * angle's wedge for an angle. Sized in screen pixels, so it reads the same
    * at any zoom.
    */
-  heldChips(): { id: string; x: number; y: number; text: string; w: number }[] {
-    const chips: { id: string; x: number; y: number; text: string; w: number }[] = [];
+  heldChips(): { id: string; hold: string; x: number; y: number; text: string; w: number }[] {
+    const chips: { id: string; hold: string; x: number; y: number; text: string; w: number }[] = [];
     // What reads as held, which is not what the solver is fed: a member's
     // fixed length is honored by the layout rather than by the solver, and a
     // list taken from the solver's bars left the reader's own padlock
@@ -2531,7 +2531,7 @@ export class NewGridComponent implements OnDestroy {
         at.x = placed.x;
         at.y = placed.y;
       }
-      chips.push({ id, x: at.x, y: at.y, text, w });
+      chips.push({ id, hold, x: at.x, y: at.y, text, w });
     }
     return chips;
   }
@@ -5604,7 +5604,10 @@ export class NewGridComponent implements OnDestroy {
    */
   private holdReads(link: Link, which: 'length' | 'angle'): boolean {
     if (this.mechanismSrv.isLockedTarget(link)) return false;
-    return this.mechanismSrv.holdOf(link) === which || this.mechanismSrv.memberHoldOf(link, which);
+    return (
+      holdsValue(this.mechanismSrv.holdOf(link), which) ||
+      this.mechanismSrv.memberHoldOf(link, which)
+    );
   }
 
   /** How far from the center anything must sit to clear the center-of-mass mark. */

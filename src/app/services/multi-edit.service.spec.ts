@@ -258,8 +258,8 @@ describe('MultiEditService', () => {
     const operations = [
       () => service.setLocked(selection, true),
       () => service.setLocked(selection, false),
-      () => service.setHold(selection, 'length'),
-      () => service.setHold(selection, 'angle'),
+      () => service.setHold(selection, 'length', true),
+      () => service.setHold(selection, 'angle', true),
       () => service.assignLinkMass(selection, 3.5),
     ];
     for (const operation of operations) {
@@ -279,7 +279,7 @@ describe('MultiEditService', () => {
         });
       });
     }
-    expect([ab.hold, bc.hold]).toEqual(['angle', 'angle']);
+    expect([ab.hold, bc.hold]).toEqual(['both', 'both']);
     expect([ab.mass, bc.mass]).toEqual([3.5, 3.5]);
   });
 
@@ -351,20 +351,31 @@ describe('MultiEditService', () => {
     expect([a, b, c].some((joint) => joint.isWelded)).toBe(false);
   });
 
-  it('holds one value on every selected bar, and lets go of the other', () => {
+  it('holds one value on every selected bar, leaving the other as each had it', () => {
     const { ab, cd } = twoBars();
     const save = historyWrites();
+    const both = refs('link:AB', 'link:CD');
 
-    expect(service.setHold(refs('link:AB', 'link:CD'), 'length').ok).toBe(true);
+    expect(service.setHold(both, 'length', true).ok).toBe(true);
     expect([ab.hold, cd.hold]).toEqual(['length', 'length']);
     expect(save).toHaveBeenCalledTimes(1);
 
-    // A bar holds its length or its angle, never both.
-    expect(service.setHold(refs('link:AB', 'link:CD'), 'angle').ok).toBe(true);
+    // Fixing the angle adds to the length rather than replacing it (#309).
+    expect(service.setHold(both, 'angle', true).ok).toBe(true);
+    expect([ab.hold, cd.hold]).toEqual(['both', 'both']);
+
+    expect(service.setHold(both, 'length', false).ok).toBe(true);
     expect([ab.hold, cd.hold]).toEqual(['angle', 'angle']);
 
-    expect(service.setHold(refs('link:AB', 'link:CD'), undefined).ok).toBe(true);
+    expect(service.setHold(both, 'angle', false).ok).toBe(true);
     expect([ab.hold, cd.hold]).toEqual([undefined, undefined]);
+  });
+
+  it('fixes a value on a mixed selection without touching what each holds besides', () => {
+    const { ab, cd } = twoBars();
+    ab.hold = 'angle';
+    expect(service.setHold(refs('link:AB', 'link:CD'), 'length', true).ok).toBe(true);
+    expect([ab.hold, cd.hold]).toEqual(['both', 'length']);
   });
 
   it('refuses a held value on anything but an ordinary two-joint bar', () => {
@@ -373,7 +384,7 @@ describe('MultiEditService', () => {
     mechanism.links = [triangle];
     wireGraph(mechanism);
 
-    const result = service.setHold(refs('link:ABC'), 'length');
+    const result = service.setHold(refs('link:ABC'), 'length', true);
     expect(result.ok).toBe(false);
     expect(result.ok ? '' : result.refusal.code).toBe('selection.binary-links-only');
     expect(triangle.hold).toBeUndefined();

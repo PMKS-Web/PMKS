@@ -2943,3 +2943,13 @@ what decides which pull requests get a preview: Netlify builds one only for a PR
 production branch or a branch-deploy branch. So a PR into `staging` gets
 `deploy-preview-NNN--pmksprod.netlify.app`, and a stacked PR into another feature branch gets none.
 Adding a branch to the branch-deploy list turns on both its own deploy and previews of PRs into it.
+
+### `LinkHold` has a `'both'`, so ask `holdsLength` / `holdsAngle`, never `hold === 'length'`
+
+Since #309 a bar may hold its length and its angle at once, and `RealLink.hold` is then `'both'`.
+An equality test against `'length'` or `'angle'` silently reads a bar holding both as holding
+neither. Ask `holdsLength`, `holdsAngle` or `holdsValue` (`model/link.ts`), and change a hold with
+`holdWith` so the other value is left alone. `HoldBar.hold` is still one value: `heldBars` gives the
+solver one entry per held value, so a bar holding both is two entries with the same id, and the URL
+writes it as two `H` entries the same way. A sentence names it through `holdWords`
+("fixed length and angle AB"), never by interpolating the flag.

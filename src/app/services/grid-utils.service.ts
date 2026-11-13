@@ -19,7 +19,7 @@ import {
   roundNumber,
   point_on_line_segment_closest_to_point,
 } from '../model/utils';
-import { Link, RealLink } from '../model/link';
+import { holdsLength, Link, RealLink } from '../model/link';
 import {
   JointOperationContext,
   OperationRefusal,
@@ -644,7 +644,8 @@ export class GridUtilsService {
    * Which joints the hold solver may never move: grounded pins are bolted to
    * the frame -- unless the pin is the one being moved, since in Edit a ground
    * pin drags like any other -- locked ones are held by a mark, and a slider's
-   * joints live on a line of their own that the solver does not know.
+   * joints live on a line of their own that the solver does not know, unless
+   * the slider is grounded, when its line is the frame and it is ground.
    *
    * A cylinder's *interior* is the same kind of thing: the barrel's buried
    * end, the welded pin and the block are placed by the layout and re-derived
@@ -668,7 +669,10 @@ export class GridUtilsService {
     return (
       (holdGrounds && joint.ground && !moving.has(joint.id)) ||
       frozen.has(joint.id) ||
-      joint instanceof PrisJoint ||
+      // A slot the solver does not know. A grounded slider's slot is the
+      // frame, though, so it is ground like any other: free under the
+      // pointer, and carrying its rail along when it moves.
+      (joint instanceof PrisJoint && (holdGrounds || !joint.ground)) ||
       this.mechanismSrv.cylindersAt(joint).some((cylinder) => isInsideCylinder(cylinder, joint))
     );
   }
@@ -1111,8 +1115,8 @@ export class GridUtilsService {
    */
   private cylinderLengthHolds(sealed: Cylinder): CylinderHolds {
     return {
-      barrel: sealed.barrel instanceof RealLink && sealed.barrel.hold === 'length',
-      rod: sealed.rod.hold === 'length',
+      barrel: sealed.barrel instanceof RealLink && holdsLength(sealed.barrel.hold),
+      rod: holdsLength(sealed.rod.hold),
     };
   }
 
@@ -1471,7 +1475,7 @@ export class GridUtilsService {
       // neither of them.
       heldBy: (cylinder) => {
         const holding = [cylinder.barrel, cylinder.rod].filter(
-          (member): member is RealLink => member instanceof RealLink && member.hold === 'length'
+          (member): member is RealLink => member instanceof RealLink && holdsLength(member.hold)
         );
         return holding.length > 0
           ? heldBySentence(holding, undefined, (bar) => this.mechanismSrv.visibleBodyName(bar))

@@ -1,6 +1,6 @@
 import { Joint, PrisJoint, RealJoint, RevJoint } from 'src/app/model/joint';
 import { MechanismService } from '../mechanism.service';
-import { Link, RealLink } from 'src/app/model/link';
+import { holdWith, Link, RealLink } from 'src/app/model/link';
 import { Force } from 'src/app/model/force';
 import { Coord } from 'src/app/model/coord';
 import { cylinderAtSeal, cylindersIn } from 'src/app/model/cylinder';
@@ -549,7 +549,10 @@ export class MechanismBuilder {
     // refused a hold on anything but a two-joint bar.
     this.transcoder.getHolds().forEach((entry) => {
       const link = this.getLinkByID(links, entry.substring(2));
-      if (link instanceof RealLink) link.hold = entry.charAt(1) === 'l' ? 'length' : 'angle';
+      // Merged, not overwritten: a bar holding both arrives as two entries.
+      if (link instanceof RealLink) {
+        link.hold = holdWith(link.hold, entry.charAt(1) === 'l' ? 'length' : 'angle', true);
+      }
     });
 
     // Put the chosen colors back. Undo and redo replay URLs, so this is what

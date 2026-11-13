@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Coord } from '../model/coord';
 import { Force } from '../model/force';
 import { RealJoint } from '../model/joint';
-import { Link, LinkHold, RealLink } from '../model/link';
+import { HeldValue, holdsValue, holdWith, Link, RealLink } from '../model/link';
 import { holdableBar } from '../model/link-holds';
 import { SelectedPartRef, partRefKey, resolveSelectedParts } from '../model/selection';
 import { JOINT_TYPE_LABEL, JointType, JointTypeChoice, jointTypeChoice } from '../model/joint-type';
@@ -349,9 +349,8 @@ export class MultiEditService {
   /**
    * Hold, or stop holding, one value on every selected bar.
    *
-   * A bar holds its length or its angle, never both, so this assigns the one
-   * the reader asked for -- which is what the single bar's padlocks do when
-   * the other one is already down.
+   * Each value is its own toggle, as on a single bar's padlocks: fixing the
+   * angle on a bar that holds its length leaves it holding both (#309).
    */
   holdRefusal(refs: readonly SelectedPartRef[]): MultiEditRefusal | undefined {
     const links = this.links(refs);
@@ -372,13 +371,14 @@ export class MultiEditService {
     return undefined;
   }
 
-  setHold(refs: readonly SelectedPartRef[], hold: LinkHold): MultiEditResult {
+  /** Fix or release one value on every selected bar, leaving the other as each had it. */
+  setHold(refs: readonly SelectedPartRef[], which: HeldValue, on: boolean): MultiEditResult {
     const refused = this.holdRefusal(refs);
     if (refused) return { ok: false, refusal: refused };
     const links = this.links(refs)!;
-    if (links.every((link) => link.hold === hold)) return OK;
+    if (links.every((link) => holdsValue(link.hold, which) === on)) return OK;
     this.mechanism.editingAtStartPose(() => {
-      links.forEach((link) => (link.hold = hold));
+      links.forEach((link) => (link.hold = holdWith(link.hold, which, on)));
       this.mechanism.updateMechanism(true);
     });
     this.active.fakeUpdateSelectedObj();
