@@ -21,6 +21,7 @@ import { SaveHistoryService } from '../../services/save-history.service';
 import { LONGEST_ARROW_FRACTION } from '../../model/vector-trace';
 import { CYLINDER, MARK, slideMarkPath } from '../../model/joint-marks';
 import { ColorService } from '../../services/color.service';
+import { CanvasLabelsService } from '../../services/canvas-labels.service';
 
 /**
  * NewGridComponent renders through svg-pan-zoom, which needs real SVG layout;
@@ -83,6 +84,16 @@ async function configureGridTestBed() {
     providers: [provideAnimations()],
   })
     .overrideProvider(SvgGridService, { useValue: svgGridStub })
+    // Packing uses real Canvas paths, just as framing uses real SVG layout.
+    // These drag tests keep the preferred model anchors; the browser library
+    // audit checks their final rendered clearance and contrast.
+    .overrideProvider(CanvasLabelsService, {
+      useFactory: () => {
+        const labels = new CanvasLabelsService();
+        vi.spyOn(labels, 'forLink').mockImplementation((link, preferred) => preferred(link, 1));
+        return labels;
+      },
+    })
     .compileComponents();
 }
 
@@ -233,10 +244,11 @@ describe('NewGridComponent cylinder selectables', () => {
     const clear = -anchor.y - cylinder.seal.y;
     expect(clear).toBeGreaterThan(CYLINDER.barrelHalf * 0.15 * SettingsService.objectScale);
 
-    // An ordinary joint keeps the offset every joint has always had.
+    // An ordinary joint's letter clears the pin and its connected bar.
     const plain = component.jointTagAnchor(cylinder.mountA);
-    expect(plain.x).toBeCloseTo(cylinder.mountA.x - SettingsService.objectScale * 0.3, 6);
-    expect(plain.y).toBeCloseTo(-cylinder.mountA.y - SettingsService.objectScale * 0.5, 6);
+    expect(Math.hypot(plain.x - cylinder.mountA.x, plain.y + cylinder.mountA.y)).toBeGreaterThan(
+      0.15 * SettingsService.objectScale
+    );
   });
 });
 

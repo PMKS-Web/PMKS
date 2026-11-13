@@ -8,6 +8,7 @@ import { MechanismService } from '../../../services/mechanism.service';
 import { MatIcon } from '@angular/material/icon';
 import { MatTooltip } from '@angular/material/tooltip';
 import { INK_FLIPS_AT, luminanceOf } from '../../../model/contrast';
+import { paintOf } from '../../../model/joint-colors';
 
 @Component({
   selector: 'color-picker',
@@ -185,6 +186,9 @@ export class ColorPickerComponent implements OnChanges {
    * It used to be white on every swatch, which was invisible on the pale end of
    * the link palette and on the first of the joint ones.
    */
+  /** A swatch shows the color the canvas paints, not the value on file. */
+  protected readonly painted = (color: string): string => paintOf(color);
+
   protected tickInk(color: string): string {
     // Against the middle of the swatch, which is what the tick is drawn over --
     // not the ring around it, which is a different color on every joint family

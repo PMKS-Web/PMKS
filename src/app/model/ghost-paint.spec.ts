@@ -1,4 +1,5 @@
 import './joint';
+import { paintOf } from './joint-colors';
 import { RealLink } from './link';
 import { ram, weldBracketOnto } from '../../test-utils/cylinder-graph';
 import { Cylinder, cylindersIn } from './cylinder';
@@ -58,8 +59,8 @@ describe('the ink the ghost paints a body in', () => {
     // What the record says, and what is on the canvas. The ghost used to answer
     // with the first of these.
     expect(rod.fill).toBe(TEAL);
-    expect(ghostInkOf(rod, parts.rod, [cylinder])).toBe(NAVY);
-    expect(ghostInkOf(ghostOf(parts.barrel), parts.barrel, [cylinder])).toBe(NAVY);
+    expect(ghostInkOf(rod, parts.rod, [cylinder])).toBe(paintOf(NAVY));
+    expect(ghostInkOf(ghostOf(parts.barrel), parts.barrel, [cylinder])).toBe(paintOf(NAVY));
   });
 
   it('draws a rod that has chosen one in its own', () => {

@@ -23,6 +23,28 @@ export const PART_COLORS = [
 ] as const;
 
 /**
+ * What a stored part color is painted as.
+ *
+ * Every name on the canvas is black, so the two navies are drawn a step
+ * lighter than the value on file: at the darkest, a black name on the 70%
+ * fill read at about 3:1. The stored hex is what every URL already carries
+ * and what the picker matches on, so it does not change; only the paint does.
+ * The indigo ramp keeps three distinct steps (100, 400, 600), and black reads
+ * on each at better than 5:1.
+ */
+const PAINTED_AS: Readonly<Record<string, string>> = {
+  '#303e9f': '#5c6bc0',
+  '#0d125a': '#3949ab',
+};
+
+/** The color a stored part color is drawn in on the canvas and in the picker. */
+export function paintOf(color: string): string;
+export function paintOf(color: string | undefined): string | undefined;
+export function paintOf(color: string | undefined): string | undefined {
+  return color === undefined ? undefined : (PAINTED_AS[color.toLowerCase()] ?? color);
+}
+
+/**
  * The color a force is drawn in until somebody chooses another.
  *
  * The darkest of the six rather than a seventh color of its own, so the picker

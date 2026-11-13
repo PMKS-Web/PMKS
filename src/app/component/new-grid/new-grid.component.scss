@@ -104,6 +104,14 @@
     stroke: rgba(0, 0, 0, 0.1);
   }
 
+  #jointTagHolder text,
+  #linkTagHolder text,
+  #forceTagHolder text {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-weight: 600;
+    dominant-baseline: central;
+  }
+
   // A joint's name lands wherever its joint is, which is often on top of a
   // link, another joint's name, or a ground hatch. The same white halo the
   // grid's own numbers wear, so it reads over whatever it has landed on.
@@ -897,8 +905,7 @@
 
 // Schematic is a whole-drawing view: the structural symbols remain recognizable,
 // but no body retains its filled silhouette or shadow among the connections.
-// A body is a 3px line: twice the axes and three times the grid, so a bar
-// lying along a grid line is never mistaken for it.
+// Lines and outlines have model widths, so the camera scales the entire symbol.
 #canvas.schematic {
   #linkHolder > path:not([stroke='transparent']),
   .schematicRider,
@@ -906,10 +913,9 @@
   .cylinder-rod,
   .ghostBody,
   .synthBar {
-    stroke-width: 3px;
+    stroke-width: calc(var(--drawing-scale) * 0.06px);
     stroke-linecap: round;
     stroke-linejoin: round;
-    vector-effect: non-scaling-stroke;
     filter: none;
   }
 
@@ -931,7 +937,7 @@
   // The barrel a little heavier than the rod, so the two members of a
   // cylinder read as two bodies even when both wear one color.
   .cylinder-barrel {
-    stroke-width: 4.5px;
+    stroke-width: calc(var(--drawing-scale) * 0.09px);
   }
 
   // Every joint wears the pin's language: the cream fill it has in every
@@ -939,8 +945,7 @@
   .joint_circles,
   #jointHolder .slideMark {
     stroke: var(--canvas-ink);
-    stroke-width: 1px;
-    vector-effect: non-scaling-stroke;
+    stroke-width: calc(var(--drawing-scale) * 0.02px);
     filter: none;
   }
 
@@ -954,8 +959,7 @@
   .slider-block > path {
     fill: var(--canvas-halo) !important;
     stroke: var(--canvas-ink);
-    stroke-width: 1.5px;
-    vector-effect: non-scaling-stroke;
+    stroke-width: calc(var(--drawing-scale) * 0.03px);
     filter: none;
   }
 
@@ -977,8 +981,7 @@
   .cylinder-preview .preview-joint {
     fill: var(--accent-tint);
     stroke: var(--canvas-ink);
-    stroke-width: 1px;
-    vector-effect: non-scaling-stroke;
+    stroke-width: calc(var(--drawing-scale) * 0.02px);
   }
 
   // The ghost is the schematic too: the lines, in their colors, and pins as
@@ -999,8 +1002,7 @@
     .ghostPin {
       fill: var(--accent-tint);
       stroke: var(--canvas-ink);
-      stroke-width: 1px;
-      vector-effect: non-scaling-stroke;
+      stroke-width: calc(var(--drawing-scale) * 0.02px);
     }
   }
 }
@@ -1009,16 +1011,14 @@
   #linkHolder > path:not([stroke='transparent']),
   .cylinder-barrel,
   .cylinder-rod {
-    stroke-width: 2px;
-    vector-effect: non-scaling-stroke;
+    stroke-width: calc(var(--drawing-scale) * 0.04px);
   }
 }
 
 #canvas[data-drawing-style='fine'] {
   path.link-selected,
   path.link-pointed {
-    stroke-width: 3px;
-    vector-effect: non-scaling-stroke;
+    stroke-width: calc(var(--drawing-scale) * 0.06px);
   }
 }
 

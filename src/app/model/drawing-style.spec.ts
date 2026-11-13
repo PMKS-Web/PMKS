@@ -1,20 +1,13 @@
 import { DRAWING_STYLES, drawingScale, readDrawingStyle, storeDrawingStyle } from './drawing-style';
 
 describe('drawing styles', () => {
-  it('grows with geometry between the screen limits instead of fixing every zoom to one size', () => {
-    expect(drawingScale(60, 1, 'standard')).toBe(60);
-    expect(drawingScale(60, 1.25, 'standard')).toBe(60);
-    expect(drawingScale(60, 2, 'standard') * 2).toBe(90);
-    expect(drawingScale(60, 0.1, 'standard') * 0.1).toBe(40);
-  });
-
-  it('bounds every style at extreme metric and imperial drawing scales', () => {
-    for (const base of [0.0001, 1, 140, 100000]) {
-      for (const zoom of [0.0001, 0.01, 1, 100, 10000]) {
-        const pixels = DRAWING_STYLES.map((style) => drawingScale(base, zoom, style) * zoom);
-        expect(pixels.every((p) => p >= 20 && p <= 90)).toBe(true);
-        expect(pixels[0]).toBeGreaterThan(pixels[1]);
-        expect(pixels[1]).toBeGreaterThan(pixels[2]);
+  it('keeps model proportions at every zoom, including extreme metric and imperial scales', () => {
+    for (const base of [0.0001, 1, 60, 140, 100000]) {
+      for (const style of DRAWING_STYLES) {
+        const size = drawingScale(base, 1, style);
+        for (const zoom of [0.0001, 0.1, 1, 10, 10000]) {
+          expect(drawingScale(base, zoom, style)).toBe(size);
+        }
       }
     }
   });

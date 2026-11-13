@@ -2,6 +2,7 @@ import { Joint, PrisJoint, RealJoint } from '../../model/joint';
 import { Link, RealLink } from '../../model/link';
 import { cylinderOfBarIn, cylindersIn } from '../../model/cylinder';
 import { fillShownOn } from '../../model/cylinder-skin';
+import { paintOf } from '../../model/joint-colors';
 import { escapeXml } from './xml';
 
 /**
@@ -62,7 +63,7 @@ export function mechanismSvg(
       // off the link painted page one's rod mint beside a navy barrel, a pair
       // nobody has ever seen on the drawing. `fillShownOn` is the one rule.
       return `<${shape} points="${points}" fill="none" stroke="${
-        fillShownOn(link, cylinderOfBarIn(cylinders, link)) || '#5c6bc0'
+        paintOf(fillShownOn(link, cylinderOfBarIn(cylinders, link))) || '#5c6bc0'
       }" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>`;
     })
     .join('');

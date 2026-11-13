@@ -1,6 +1,7 @@
 <svg
   id="canvas"
   [class.schematic]="settings.isSchematic"
+  [style.--drawing-scale]="settings.drawingScale"
   [attr.data-drawing-style]="settings.drawingStyle.value"
   display="block"
   width="100%"
@@ -15,7 +16,41 @@
   (pointerdown)="mouseDown($event)"
   (wheel)="onCanvasWheel($event)"
 >
+  @let labelTags = linkTags();
   <defs>
+    <!-- A gap in the lines under each body's name, the way a drawing breaks a
+         line around a dimension: the rails in every style, and the bodies' own
+         lines in Schematic. Black is cut. Written in the drawing's own
+         coordinates, because the groups it masks wear modelFrame. -->
+    @let gapRegion = labelGapRegion();
+    <mask
+      id="labelGaps"
+      maskUnits="userSpaceOnUse"
+      [attr.x]="gapRegion.x"
+      [attr.y]="gapRegion.y"
+      [attr.width]="gapRegion.width"
+      [attr.height]="gapRegion.height"
+    >
+      <rect
+        [attr.x]="gapRegion.x"
+        [attr.y]="gapRegion.y"
+        [attr.width]="gapRegion.width"
+        [attr.height]="gapRegion.height"
+        fill="white"
+      />
+      @for (item of labelTags; track item.link) {
+        @if (item.tag.width && item.tag.height) {
+          <rect
+            [attr.x]="-item.tag.width / 2"
+            [attr.y]="-item.tag.height / 2"
+            [attr.width]="item.tag.width"
+            [attr.height]="item.tag.height"
+            [attr.transform]="labelGapTransform(item.tag)"
+            fill="black"
+          />
+        }
+      }
+    </mask>
     <filter id="elevation-1" x="-50%" y="-50%" width="200%" height="200%">
       <feGaussianBlur in="SourceAlpha" [attr.stdDeviation]="0.008 * settings.drawingScale" />
       <feOffset
@@ -387,7 +422,7 @@
        of it and no gap has to track the rod — the links simply draw over it at
        whatever angle they happen to point. Hatching never rotates with the rod;
        the rails do, because they are the guide itself. -->
-  <g id="railHolder" modelFrame style="pointer-events: none">
+  <g id="railHolder" modelFrame mask="url(#labelGaps)" style="pointer-events: none">
     @for (mark of sliderMarkList; track mark.id) {
       @if (mark.rails) {
         <!-- The guide's own frame, not the block's: it is fixed in the world and
@@ -586,7 +621,28 @@
       }
     </g>
   }
-  <g id="linkHolder" modelFrame>
+  @if (!settings.isSchematic) {
+    <g id="linkGrabHolder" modelFrame>
+      @for (link of mechanismSrv.getLinks(); track link) {
+        @if (gridUtils.typeOfLink(link) == 'R' && !bodyDrawnByACylinder(link)) {
+          <path
+            (pointerover)="link.showHighlight = true"
+            (pointerout)="link.showHighlight = false"
+            (pointerdown)="setLastLeftClick(link, $event)"
+            (contextmenu)="setLastRightClick(link, $event)"
+            [attr.cursor]="mechanismSrv.isLinkLockedVisual(link) ? 'not-allowed' : null"
+            [attr.d]="objectDisplay.skeleton(link)"
+            [attr.id]="link.id + '__wideHit'"
+            stroke="transparent"
+            [attr.stroke-width]="svgGrid.scaleWithZoom(12)"
+            fill="none"
+            pointer-events="stroke"
+          />
+        }
+      }
+    </g>
+  }
+  <g id="linkHolder" modelFrame [attr.mask]="settings.isSchematic ? 'url(#labelGaps)' : null">
     @for (link of mechanismSrv.getLinks(); track link) {
       <ng-container>
         <!-- A body welded to a cylinder mount is drawn by that cylinder's own
@@ -614,7 +670,7 @@
             [attr.fill-opacity]="0.7"
             [attr.stroke]="mechanismSrv.getLinkProp(link, 'fill')"
             [style.stroke]="settings.isSchematic ? mechanismSrv.getLinkProp(link, 'fill') : null"
-            [attr.stroke-width]="svgGrid.scaleWithZoom(3)"
+            [attr.stroke-width]="settings.drawingScale * 0.06"
             [class]="mechanismSrv.getLinkCSSClass(link)"
           ></path>
           <!-- The slot is a real hole in the bar, and a hole catches no pointer:
@@ -676,7 +732,7 @@
        why a random palette can never break the cue. Arrows sit above the plate
        so nothing can tint them: they are always white, and that is only safe
        because what is underneath is always black. -->
-  <g id="sliderHolder" modelFrame>
+  <g id="sliderHolder" modelFrame [attr.mask]="settings.isSchematic ? 'url(#labelGaps)' : null">
     <!-- Ordered by how deep in the stack each body sits, not grouped by
          assembly: a block is above the carrier it slides in, and a link is
          above the block it is pinned to, and no assignment of the two to fixed
@@ -1585,7 +1641,7 @@
                   selectionRingOn(joint)
                     ? selectionRingWidth()
                     : settings.isSchematic
-                      ? svgGrid.scaleWithZoom(1)
+                      ? settings.drawingScale * 0.02
                       : null
                 "
               ></path>
@@ -2441,9 +2497,10 @@
 
   <g id="jointTagHolder" style="pointer-events: none">
     @for (joint of mechanismSrv.getJoints(); track joint) {
+      @let anchor = jointTagAnchor(joint);
       <svg
-        [attr.x]="jointTagAnchor(joint).x"
-        [attr.y]="jointTagAnchor(joint).y"
+        [attr.x]="anchor.x"
+        [attr.y]="anchor.y"
         [attr.height]="10"
         [attr.width]="10"
         style="overflow: visible; text-anchor: middle"
@@ -2556,7 +2613,7 @@
                   stroke="black"
                   stroke-opacity="0.45"
                   stroke-linejoin="round"
-                  [attr.stroke-width]="svgGrid.scaleWithZoom(1)"
+                  [attr.stroke-width]="settings.drawingScale * 0.02"
                 ></path>
               }
             </g>
@@ -2607,9 +2664,10 @@
   }
   <g id="linkTagHolder" style="pointer-events: none">
     <!-- One call, not four: this walks the link's joints, and the horse has
-         forty-five of them across twenty-seven links on every redraw. -->
-    @for (link of mechanismSrv.getLinks(); track link) {
-      @if (linkLabelStyle(link); as tag) {
+         forty-five of them across twenty-seven links on every redraw. The same
+         list cuts the gaps in the lines under the names (#labelGaps). -->
+    @for (item of labelTags; track item.link) {
+      @if (item.tag; as tag) {
         <svg
           [attr.x]="tag.x"
           [attr.y]="-tag.y"
@@ -2635,8 +2693,7 @@
               [attr.fill]="tag.ink"
               [attr.fill-opacity]="tag.opacity"
               [attr.transform]="tag.angle ? 'rotate(' + tag.angle + ')' : null"
-              [attr.dy]="linkLabelLift(link)"
-              [style.font-size.px]="tagFontSize"
+              [style.font-size.px]="tag.fontSize ?? tagFontSize"
               style="text-anchor: middle"
             >
               {{ tag.name }}
@@ -2668,7 +2725,7 @@
           ) {
             <text
               class="forceLabel"
-              [style.font-size.px]="Math.max(settings.drawingScale / 6, svgGrid.scaleWithZoom(11))"
+              [style.font-size.px]="tagFontSize"
               [attr.y]="0.1 * settings.drawingScale"
               [attr.stroke-width]="(3.5 / 90) * settings.drawingScale"
               style="text-anchor: middle; dominant-baseline: middle"
