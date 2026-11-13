@@ -3351,6 +3351,8 @@ export class NewGridComponent implements OnDestroy {
   private letGoOfEverything(revert = false): void {
     // The red ring a force drag put on a pin goes with the drag.
     this.forceRefusedJoint = undefined;
+    // So does the refusal it remembers: the next drag starts with none said.
+    this.forceRefusalSaid = undefined;
     // The preview is rendered independently of the drag state, so canceling
     // that state alone leaves a frozen arrow behind after another right-click.
     this.forceGhost = undefined;
@@ -3527,6 +3529,8 @@ export class NewGridComponent implements OnDestroy {
     this.holdGuide = undefined;
     // The red ring a force drag put on a pin goes with the drag.
     this.forceRefusedJoint = undefined;
+    // So does the refusal it remembers: the next drag starts with none said.
+    this.forceRefusalSaid = undefined;
     // The last move of a drag lands before the release is read, so the part
     // ends where the hand was, not one frame short of it.
     this.applyPendingDragMove();
