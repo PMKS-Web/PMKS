@@ -2943,3 +2943,8 @@ what decides which pull requests get a preview: Netlify builds one only for a PR
 production branch or a branch-deploy branch. So a PR into `staging` gets
 `deploy-preview-NNN--pmksprod.netlify.app`, and a stacked PR into another feature branch gets none.
 Adding a branch to the branch-deploy list turns on both its own deploy and previews of PRs into it.
+
+`waitForReady` settles whatever was on the page when it was called. A suite that loads an empty
+grid, waits, and then builds its part with a poke has waited for nothing: the new part still has to
+be drawn and framed. `cylinder-members` pressed on a barrel that was not there yet, once in about
+sixty gate runs, and the drag moved nothing. Wait again after the poke, before aiming a press.
