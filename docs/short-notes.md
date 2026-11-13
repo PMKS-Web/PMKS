@@ -2919,6 +2919,14 @@ entries in place. This is a metadata operation separate from rebasing the branch
 the groups does not replace the code checks. The [Stacks API](https://docs.github.com/en/rest/pulls/stacks)
 describes the endpoints.
 
+### A neighboring hold used to stretch a whole-link drag (#259)
+
+`moveLinkRigidly` gave each endpoint an independent goal. With AB holding its length or angle, B followed that constraint and C followed its own translated goal, changing BC's length. Because the canvas calculated each new translation from B's already constrained position, C accumulated the shortfall on every pointer event. A four-bar drag of 120px right and 80px down shortened BC by 17.4% beside a fixed length, or lengthened it by 139.2% beside a fixed angle. Solve temporary body distances with the real holds, use targets from `beforeDrag.joints`, and commit the whole placement through the existing edit plan. That also preserves the carried body's load direction and custom center. The new `constrained-link-drag` suite captures both failures and repeated pointer events at the same location.
+
+### A ground pin is a soft anchor for typed numbers only (#261)
+
+The hold solver used to treat every ground pin as fixed. With AB at a fixed length and A grounded, dragging BC stopped at AB's arc, which reads as a Lock that was never set. A canvas drag (`DragStateService` in joint or link dragging) now treats ground pins as ordinary joints. A typed number solves with ground pins fixed first, and solves again with them free only when the first answer falls short (`granted`/`goesFurther` in `grid-utils.service.ts`; `setBarValue` and `setBarValues` retry only when unsatisfied). `holdsImmobilizing` is asked at the grab, before the drag state is set, so it always counts grounds as free. A spec that needs an end to stay put must lock it; grounding it is no longer enough.
+
 ### `readme-shots` once photographed whatever opened, so look at every picture it writes
 
 `e2e/readme-shots.mjs` always writes a picture, even when a step fails. A template renamed in the
