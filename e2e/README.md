@@ -270,6 +270,9 @@ Not suites — import them from one.
   turns a link drag into a swing, undo removes a lock, the marks stand down outside Edit.
 - `link-labels.mjs` — a link's name is readable against its body and lands on it, welded shapes
   included.
+- `link-auto-names.mjs` — a link nobody has named follows its joints: the four-bar template's
+  crank `AB` becomes `ABE` when a tracer point is added, and after an undo and a redo a second
+  tracer point renames it again (#317).
 
 ### Slots, slides and cylinders
 

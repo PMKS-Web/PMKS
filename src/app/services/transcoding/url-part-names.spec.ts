@@ -78,6 +78,13 @@ describe('A part’s automatic name, after the URL', () => {
     expect(link.name).toBe('Crank');
   });
 
+  it('keeps a joint’s typed name through the URL too', () => {
+    const first = open(TEMPLATE_LINKAGES['4-Bar']);
+    first.service.joints.find((joint) => joint.id === 'A')!.name = 'Pivot';
+    const harness = open(urlGeneratorFor(first.service, first.settings).generateUrlQuery());
+    expect(harness.service.joints.map((joint) => joint.name)).toEqual(['Pivot', 'B', 'C', 'D']);
+  });
+
   it('still shows the id, and writes it, so no URL already shared changes', () => {
     const harness = open(TEMPLATE_LINKAGES['4-Bar']);
     expect(harness.service.links.map((link) => link.name)).toEqual(['AB', 'BC', 'CD']);

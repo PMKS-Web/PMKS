@@ -124,25 +124,30 @@ export class EditableTitleComponent {
     // An empty name is no name: a machine goes back to `Mechanism 2`, and a
     // part to the name it is given automatically, its id -- which for a link is
     // its joints' letters, and follows them when a joint is added (#317).
-    if (newID === '') return '';
+    if (newID === '' && this.renameTo()) return '';
 
     // Display names may be descriptive phrases; IDs remain separate.
-    if (!this.hasValidNameCharacters(newID)) {
+    if (newID !== '' && !this.hasValidNameCharacters(newID)) {
       return 'Use letters and numbers; spaces, hyphens, underscores, apostrophes, and parentheses are also allowed.';
     }
 
     // Names appear together in selections, graphs, and exported files. Treat
     // case as presentation rather than identity so `Crank` and `crank` cannot
     // silently describe two different objects in the same drawing.
-    const normalized = newID.toLowerCase();
     // Before the selection is asked for: a machine is renamed with nothing
     // selected, and asking then throws.
     if (this.renameTo()) {
+      const normalized = newID.toLowerCase();
       return this.takenNames().some((name) => name.trim().toLowerCase() === normalized)
         ? `The name ${newID} is already in use. Use a unique name.`
         : '';
     }
     const active = this.activeObjService.getSelectedObj();
+    // A part with no name is called by its id, so clearing a name has to find
+    // the id free: otherwise joint A, renamed Pivot, could lend `A` to another
+    // part and take it back when its own name is cleared.
+    const shown = newID === '' ? String(active.id) : newID;
+    const normalized = shown.toLowerCase();
     const taken = [
       ...this.mechanismService.joints,
       ...this.mechanismService.links,
@@ -155,7 +160,7 @@ export class EditableTitleComponent {
           .toLowerCase() === normalized
     );
     if (taken) {
-      return `The name ${newID} is already in use. Use a unique name.`;
+      return `The name ${shown} is already in use. Use a unique name.`;
     }
 
     return '';
@@ -185,10 +190,21 @@ export class EditableTitleComponent {
     // see is not the stored one -- so Rename followed by Save with nothing
     // typed would have written that visible name down as a real name, turning
     // a no-op into an edit with an undo entry behind it.
-    if (activeObj.name === newID || (this.displayName() ?? activeObj.name) === newID) return;
-    // Clearing a name that was already the automatic one changes nothing.
-    if (newID === '' && activeObj.name === activeObj.id) return;
-    activeObj.name = newID;
+    // The id is the automatic name, so typing it is the same as clearing the
+    // name: written down, `AB` would stay `AB` after a tracer point made the
+    // link `ABE`, and the next trip through the URL would forget it anyway.
+    const own = newID === activeObj.id ? '' : newID;
+    const unchanged =
+      activeObj.name === newID ||
+      (this.displayName() ?? activeObj.name) === newID ||
+      (own === '' && activeObj.name === activeObj.id);
+    if (unchanged) {
+      // Nothing a reader sees changes, so nothing is saved -- but an id that
+      // was written down as a name is let go of, or it would outlive the id.
+      if (own === '') activeObj.name = '';
+      return;
+    }
+    activeObj.name = own;
     // A name is carried in the URL like everything else, so a rename is an edit
     // and belongs in the history. Without this it was the one change to the
     // drawing that Undo could not take back.
