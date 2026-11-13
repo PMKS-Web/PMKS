@@ -120,6 +120,7 @@ export const SUITES = [
     lanes: NIGHTLY,
     note: 'Launches whatever Chrome the machine has, by path, rather than the Chromium Playwright pins — so on a runner it drives whatever was installed that morning. On the first Linux run its own checks passed and `page.screenshot` then hung for thirty seconds. The gate installs Chromium only; this is why.',
   },
+  { name: 'link-auto-names', seconds: 8, lanes: NIGHTLY },
   { name: 'link-holds', seconds: 21, lanes: BOTH },
   { name: 'link-holds-angles', seconds: 6, lanes: BOTH },
   { name: 'link-labels', seconds: 35, lanes: BOTH },
