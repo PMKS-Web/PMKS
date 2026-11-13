@@ -106,7 +106,46 @@ describe('KeyboardShortcutsService', () => {
     const nudges = editing.shortcuts.filter((one) => one.id.startsWith('edit.nudge'));
     expect(nudges).toHaveLength(1);
     expect(nudges[0].keys).toBe('← → ↑ ↓');
-    // Option on a Mac, Alt everywhere else -- named the way this keyboard does.
-    expect(nudges[0].label).toMatch(/\((Option|Alt) for a coarser step\)/);
+    // The coarser step is the modifier list's to say, not a bracket here.
+    expect(nudges[0].label).toBe('Nudge what is selected');
+  });
+
+  describe('the modifier keys', () => {
+    const onPlatform = (platform: string) => {
+      vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);
+      return setup().service.modifiers;
+    };
+    afterEach(() => vi.restoreAllMocks());
+
+    it('names them the way a Mac keyboard does', () => {
+      const keys = onPlatform('MacIntel').map((one) => one.keys);
+      expect(keys).toEqual([
+        '⌘ + click',
+        'Option + drag',
+        'Option + click',
+        'Option + arrows',
+        'Shift + drag',
+      ]);
+    });
+
+    it('and the way every other keyboard does', () => {
+      const keys = onPlatform('Win32').map((one) => one.keys);
+      expect(keys).toEqual([
+        'Ctrl + click',
+        'Alt + drag',
+        'Alt + click',
+        'Alt + arrows',
+        'Shift + drag',
+      ]);
+    });
+
+    it('fires nothing: holding one is not a shortcut', () => {
+      const { heard } = setup();
+      for (const key of ['Alt', 'Shift', 'Meta', 'Control']) {
+        const event = press(key, { altKey: key === 'Alt', shiftKey: key === 'Shift' });
+        expect(event.defaultPrevented, key).toBe(false);
+      }
+      expect(heard).toEqual([]);
+    });
   });
 });

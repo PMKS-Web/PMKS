@@ -56,6 +56,22 @@ export interface Shortcut {
   hidden?: boolean;
 }
 
+/**
+ * A key that changes what a gesture does while it is held, rather than doing
+ * something by itself.
+ *
+ * Not a `Shortcut`: nothing is dispatched for it. The canvas and the fields
+ * read the key off the pointer event they are already handling, so the table
+ * only says what holding it does, for the list that teaches the keys.
+ */
+export interface ModifierKey {
+  id: string;
+  /** What the gesture does with the key held, in the words of the control. */
+  label: string;
+  /** The key and the gesture, as a reader should see them. */
+  keys: string;
+}
+
 /** A shortcut, with the keystroke that asked for it. */
 export interface ShortcutPress {
   id: ShortcutId;
@@ -223,7 +239,7 @@ export class KeyboardShortcutsService {
     {
       id: 'edit.nudgeLeft',
       section: 'Editing',
-      label: `Nudge what is selected (${this.alt} for a coarser step)`,
+      label: 'Nudge what is selected',
       keys: '← → ↑ ↓',
       match: ['arrowleft'],
     },
@@ -264,6 +280,42 @@ export class KeyboardShortcutsService {
       // modifiers produce a question mark is a matter of layout, and asking
       // for Shift and the US layout's slash left it unreachable on the rest.
       match: ['?'],
+    },
+  ];
+
+  /**
+   * The keys that change a gesture while held.
+   *
+   * Each row is read where the gesture is handled -- `altKey` in the canvas's
+   * pointer handlers, `shiftKey` in `NumberDragDirective`, the platform's
+   * additive key in `isAdditiveSelectionGesture` -- so a change to one of
+   * those is a change to its row here.
+   */
+  readonly modifiers: ModifierKey[] = [
+    {
+      id: 'select.add',
+      label: 'Add to or remove from the selection',
+      keys: `${this.mod} + click`,
+    },
+    {
+      id: 'drag.free',
+      label: 'Drag without snapping to the grid or guides, or merging on drop',
+      keys: `${this.alt} + drag`,
+    },
+    {
+      id: 'place.bearing',
+      label: 'Point a new link, cylinder or force in 15° steps',
+      keys: `${this.alt} + click`,
+    },
+    {
+      id: 'nudge.coarse',
+      label: 'Nudge in larger steps',
+      keys: `${this.alt} + arrows`,
+    },
+    {
+      id: 'field.fine',
+      label: 'Drag a number’s label in steps ten times finer',
+      keys: 'Shift + drag',
     },
   ];
 
