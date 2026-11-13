@@ -2949,7 +2949,9 @@ Adding a branch to the branch-deploy list turns on both its own deploy and previ
 The `.rowScrubber` range counts in thousandths, and one thousandth of a 300-pixel track is a third of
 a pixel, so a hand dragging back to the left end used to stop a sample short (79° / 0.01 s) and the
 editor stayed shut. `snapsToStart` (`model/scrub-snap.ts`) treats a value within `SCRUB_SNAP_PX`
-screen pixels of the row's `anchorAt` as the start, and `PlaybackBarComponent.scrubRow` then seeks by
-*time* to 0 rather than by position, because an input that turns back passes its seat twice a cycle
+screen pixels of the row's `anchorAt` as the start, and `PlaybackBarComponent.settleScrub` then seeks
+by *time* to 0 rather than by position, because an input that turns back passes its seat twice a cycle
 and only one of those is the start. It writes the handle's DOM value itself: the `[value]` binding
-does not move a handle whose row value has not changed.
+does not move a handle whose row value has not changed. The snap runs only on a pointer's release
+(`change` after a `pointerdown`), never on `input`: an arrow key steps one unit, which is inside the
+snap band, so snapping every value change held the handle in the seat against the keyboard.

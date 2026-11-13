@@ -37,48 +37,101 @@ async function createBar(template: TemplateID, synced = true) {
   return { fixture, bar: fixture.componentInstance, service: harness.service };
 }
 
-/** Let go of a row's handle at a value on its 0-1000 track. */
-function releaseAt(bar: PlaybackBarComponent, row: PlaybackRow, value: number): void {
-  const input = document.createElement('input');
-  input.type = 'range';
-  input.min = '0';
-  input.max = '1000';
-  input.value = String(value);
-  bar.scrubRow(row, { target: input } as unknown as Event);
+/** A row's own handle, as rendered. */
+function handleOf(
+  fixture: ComponentFixture<PlaybackBarComponent>,
+  row: PlaybackRow
+): HTMLInputElement {
+  const label = fixture.componentInstance.scrubLabel(row);
+  const handles = Array.from(
+    (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLInputElement>('input.rowScrubber')
+  );
+  const handle = handles.find((candidate) => candidate.getAttribute('aria-label') === label);
+  if (!handle) throw new Error(`no handle labelled ${label}`);
+  return handle;
+}
+
+/** Press a row's handle, move it to a value on its 0-1000 track, and let go. */
+function releaseAt(
+  fixture: ComponentFixture<PlaybackBarComponent>,
+  row: PlaybackRow,
+  value: number
+): void {
+  const handle = handleOf(fixture, row);
+  handle.dispatchEvent(new Event('pointerdown'));
+  handle.value = String(value);
+  handle.dispatchEvent(new Event('input'));
+  handle.dispatchEvent(new Event('change'));
+}
+
+/** Step a row's handle with the keyboard: a key press, then the value it commits. */
+function stepTo(
+  fixture: ComponentFixture<PlaybackBarComponent>,
+  row: PlaybackRow,
+  value: number
+): void {
+  const handle = handleOf(fixture, row);
+  handle.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+  handle.value = String(value);
+  handle.dispatchEvent(new Event('input'));
+  handle.dispatchEvent(new Event('change'));
 }
 
 describe('PlaybackBarComponent scrubbing back to the start', () => {
   afterEach(() => TestBed.resetTestingModule());
 
   it('lands the shared row exactly on the start from a sample short of it', async () => {
-    const { bar, service } = await createBar('4-Bar');
+    const { fixture, bar, service } = await createBar('4-Bar');
     const row = bar.rows.find((candidate) => candidate.master)!;
 
-    releaseAt(bar, row, 400);
+    releaseAt(fixture, row, 400);
     expect(service.isAtStartPose()).toBe(false);
 
-    releaseAt(bar, row, (row.anchorAt ?? 0) + 3);
+    releaseAt(fixture, row, (row.anchorAt ?? 0) + 3);
     expect(service.isAtStartPose()).toBe(true);
   });
 
   it('lands an unsynced machine on its own start, wherever its seat is', async () => {
-    const { bar, service } = await createBar('Straight_Line_Pair', false);
+    const { fixture, bar, service } = await createBar('Straight_Line_Pair', false);
     const rows = bar.rows.filter((candidate) => candidate.isMechanism);
     expect(rows.length).toBe(2);
     const second = rows[1];
 
-    releaseAt(bar, second, ((second.anchorAt ?? 0) + 500) % 1000);
+    releaseAt(fixture, second, ((second.anchorAt ?? 0) + 500) % 1000);
     expect(service.isAtStartPose()).toBe(false);
 
-    releaseAt(bar, second, (second.anchorAt ?? 0) + 3);
+    releaseAt(fixture, second, (second.anchorAt ?? 0) + 3);
     expect(service.isAtStartPose()).toBe(true);
   });
 
   it('leaves a handle well clear of the seat where it was put', async () => {
-    const { bar, service } = await createBar('4-Bar');
+    const { fixture, bar, service } = await createBar('4-Bar');
     const row = bar.rows.find((candidate) => candidate.master)!;
 
-    releaseAt(bar, row, (row.anchorAt ?? 0) + 60);
+    releaseAt(fixture, row, (row.anchorAt ?? 0) + 60);
+    expect(service.isAtStartPose()).toBe(false);
+  });
+
+  it('lets an arrow key step the handle off the seat', async () => {
+    const { fixture, bar, service } = await createBar('4-Bar');
+    const row = bar.rows.find((candidate) => candidate.master)!;
+    const seat = row.anchorAt ?? 0;
+
+    releaseAt(fixture, row, seat + 3);
+    expect(service.isAtStartPose()).toBe(true);
+
+    stepTo(fixture, row, seat + 1);
+    expect(service.isAtStartPose()).toBe(false);
+    expect(handleOf(fixture, row).value).toBe(String(seat + 1));
+  });
+
+  it('does not take a key step after a click that moved nothing for a release', async () => {
+    const { fixture, bar, service } = await createBar('4-Bar');
+    const row = bar.rows.find((candidate) => candidate.master)!;
+    const seat = row.anchorAt ?? 0;
+
+    handleOf(fixture, row).dispatchEvent(new Event('pointerdown'));
+    stepTo(fixture, row, seat + 1);
     expect(service.isAtStartPose()).toBe(false);
   });
 });

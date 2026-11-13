@@ -247,6 +247,13 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
   private positionSub?: Subscription;
   private wasAnimating = false;
   private wasRowAnimating = false;
+  /**
+   * A pointer pressed a handle and has not yet committed a value, so the next
+   * `change` is a release that may snap to the start. A key press clears it: a
+   * click that moved nothing commits nothing, and must not make the next arrow
+   * key's step look like a release.
+   */
+  protected scrubPointerHeld = false;
 
   ngOnInit(): void {
     // The rows are rebuilt from the service on every change detection, and the
@@ -1082,12 +1089,7 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
     // Any transport action is the reader moving on from the news that the
     // start moved, so the row stops carrying it.
     this.mechanism.clearStartMoved();
-    const input = event.target as HTMLInputElement;
-    if (snapsToStart(Number(input.value), row.anchorAt, input.getBoundingClientRect().width)) {
-      this.seekRowToStart(row, input);
-      return;
-    }
-    const along = Number(input.value) / 1000;
+    const along = Number((event.target as HTMLInputElement).value) / 1000;
     if (row.index === -1) {
       // The combined row stands for all of them, so all of them go -- led by
       // the longest cycle, which is the one whose frames the handle spans.
@@ -1096,6 +1098,25 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
     }
     this.mechanism.seekMechanismTo(row.index, along);
     this.publishMotion();
+  }
+
+  /**
+   * A pointer let go of a row's handle: if it came to rest a few pixels from
+   * the seat, it means the start.
+   *
+   * Only a pointer. An arrow key moves one step from the seat, which is inside
+   * the snap band, so snapping keyboard steps would hold the handle in the seat
+   * for good. `change` rather than `pointerup` because a range commits on
+   * release wherever the pointer is, mouse or finger, and the press may have
+   * left the track by then.
+   */
+  settleScrub(row: PlaybackRow, event: Event): void {
+    if (!this.scrubPointerHeld) return;
+    this.scrubPointerHeld = false;
+    const input = event.target as HTMLInputElement;
+    if (snapsToStart(Number(input.value), row.anchorAt, input.getBoundingClientRect().width)) {
+      this.seekRowToStart(row, input);
+    }
   }
 
   /**
