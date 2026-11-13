@@ -76,25 +76,23 @@ describe('loads on a body dragged through neighboring holds', () => {
     });
   });
 
-  it('leaves an interior load fixed when the hold makes the plate deform', () => {
+  it('keeps the plate whole, and the load on it, when a hold blocks a free translation', () => {
+    // This used to deform the plate, and the load was left where it was drawn.
+    // #261 made a body drag keep its shape against neighboring holds, so the
+    // plate now either moves rigidly or not at all; either way the load keeps
+    // its place on the plate.
     const { plate, neighbor, force, grid } = scene();
     neighbor.hold = 'angle';
     (neighbor.joints[0] as RealJoint).locked = true;
-    const before = endpoints(force);
-    const span = Math.hypot(
-      plate.joints[1].x - plate.joints[0].x,
-      plate.joints[1].y - plate.joints[0].y
-    );
+    const reach = () =>
+      plate.joints.flatMap((joint) =>
+        endpoints(force).map((point) => Math.hypot(point.x - joint.x, point.y - joint.y))
+      );
+    const span = () =>
+      Math.hypot(plate.joints[1].x - plate.joints[0].x, plate.joints[1].y - plate.joints[0].y);
+    const before = { reach: reach(), span: span() };
     grid.dragLink(plate, 0, 5);
-    expect(
-      Math.abs(
-        Math.hypot(plate.joints[1].x - plate.joints[0].x, plate.joints[1].y - plate.joints[0].y) -
-          span
-      )
-    ).toBeGreaterThan(0.1);
-    endpoints(force).forEach((point, index) => {
-      expect(point.x).toBeCloseTo(before[index].x, 4);
-      expect(point.y).toBeCloseTo(before[index].y, 4);
-    });
+    expect(span()).toBeCloseTo(before.span, 4);
+    reach().forEach((distance, index) => expect(distance).toBeCloseTo(before.reach[index], 4));
   });
 });
