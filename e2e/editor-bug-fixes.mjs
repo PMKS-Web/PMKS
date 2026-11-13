@@ -148,8 +148,8 @@ try {
   );
   await page.mouse.click(bodyPoint.x, bodyPoint.y);
   check(
-    'second click selects the primitive under the pointer',
-    await grid((g) => g.activeObjService.selectedLink.id === 'CD')
+    'a second click keeps the compound: a welded bar is edited from its joints',
+    await grid((g) => g.activeObjService.selectedLink.id === 'CDE')
   );
   check(
     'compound settings and Unweld All are absent',
@@ -164,11 +164,10 @@ try {
   await page.getByRole('tab', { name: 'Center of mass', exact: true }).click();
   await page.locator('app-view-button[data-switch="traces"] button').click();
   check(
-    'a massless primitive link has a CoM path and mark',
+    'the selected body has a CoM path and mark',
     await grid((g) => {
       const link = g.activeObjService.selectedLink;
       return (
-        link.mass === 0 &&
         g.linkTraces.paths(g.mechanismSrv).some((t) => t.id === link.id && t.d.length > 30) &&
         g.showsCoM(link)
       );

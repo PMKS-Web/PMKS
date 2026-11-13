@@ -2915,6 +2915,25 @@ entries in place. This is a metadata operation separate from rebasing the branch
 the groups does not replace the code checks. The [Stacks API](https://docs.github.com/en/rest/pulls/stacks)
 describes the endpoints.
 
+### The templates' centers of mass are all placed by hand
+
+Every link in the library templates arrives with `comIsCustom` set, its CoM stored at the bar's
+middle. So nothing that derives an automatic CoM reaches a template untouched: adding a tracer,
+welding, or Drawn as a Disc leaves the mark where it was until the reader presses "Back to the
+shape's centroid". `e2e/center-of-mass.mjs` clears the flag before it tests anything. The
+verification fixtures do the same on purpose (`buildFixtureLink` in
+`test-utils/verification/fixture.ts`), and their unstated CoM is the mean of the joints written out
+there, because the `RealLink` constructor's seed is now the shape's centroid and fixture data must
+not move with it (#156).
+
+### A welded member's `mass` is written, never read
+
+Since #279 a compound's one mass is shared among its members by length (`model/weld-density.ts`),
+and the property pass writes each member's share onto `member.mass` on every rebuild. Setting a
+member's mass by hand does nothing that lasts: the next pass overwrites it, and `assignBodyMass`
+refuses it outright. Set the compound's mass instead. A spec that builds a compound by hand and
+wants a particular member to weigh more has to make that member longer.
+
 ### A neighboring hold used to stretch a whole-link drag (#259)
 
 `moveLinkRigidly` gave each endpoint an independent goal. With AB holding its length or angle, B followed that constraint and C followed its own translated goal, changing BC's length. Because the canvas calculated each new translation from B's already constrained position, C accumulated the shortfall on every pointer event. A four-bar drag of 120px right and 80px down shortened BC by 17.4% beside a fixed length, or lengthened it by 139.2% beside a fixed angle. Solve temporary body distances with the real holds, use targets from `beforeDrag.joints`, and commit the whole placement through the existing edit plan. That also preserves the carried body's load direction and custom center. The new `constrained-link-drag` suite captures both failures and repeated pointer events at the same location.
@@ -2943,3 +2962,15 @@ what decides which pull requests get a preview: Netlify builds one only for a PR
 production branch or a branch-deploy branch. So a PR into `staging` gets
 `deploy-preview-NNN--pmksprod.netlify.app`, and a stacked PR into another feature branch gets none.
 Adding a branch to the branch-deploy list turns on both its own deploy and previews of PRs into it.
+
+### A welded link is edited from its joints, not by a second click (#279)
+
+A click on a welded body used to select the body, and a second click the link under the pointer.
+Once a body had one density there was nothing on a link worth selecting it for except its length
+and angle, and its Fixed Length did nothing: `heldBars` was handed the top-level links and never
+saw a leaf. So the second click went (a cylinder's barrel and rod keep it, their lengths not being
+a distance between two joints), the joint panel's Distance to Joints draws each welded bar's far
+end with padlocks, and a body's menu has **Delete Link CD** for the link under the pointer. That
+row reads `lastSelectedSublink`, which the canvas sets on every press of a compound, not on
+selection. Distance to Joints lists neighbors only -- the far end of each bar, the rest of a plate
+-- so a chain of bars never offers a padlock between its two far ends.

@@ -223,6 +223,23 @@ describe('dragging against a held bar', () => {
     expect(dist(parts.a, parts.b)).toBeCloseTo(2 * S, 3);
   });
 
+  // A welded bar's padlock is in its joint's Distance to Joints. Its hold used
+  // to be stored, saved and shown, and never handed to the solver, because the
+  // solver was given the top-level links and a welded bar is in its body's
+  // subset: the length moved anyway.
+  it('keeps a welded bar at its held length when a joint of it is dragged', () => {
+    const parts = fourBar(service);
+    service.weldJoint(parts.c);
+    parts.bc.hold = 'length';
+    expect(service.links.includes(parts.bc), 'BC is welded into a body').toBe(false);
+    const held = dist(parts.b, parts.c);
+    const before = dist(parts.c, parts.d);
+    grid.dragJoint(parts.b, new Coord(-1 * S, 2.5 * S));
+    expect(dist(parts.b, parts.c)).toBeCloseTo(held, 3);
+    // Something had to give, and it is the bar nothing holds.
+    expect(Math.abs(dist(parts.c, parts.d) - before)).toBeGreaterThan(0.1 * S);
+  });
+
   it('forgets a refusal once the bars that refused are unlocked', () => {
     const parts = fourBar(service);
     parts.ab.hold = 'length';

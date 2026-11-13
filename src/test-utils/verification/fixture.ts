@@ -293,7 +293,17 @@ function buildDrawingNow(fixture: MechanismFixture): BuiltDrawing {
 
   const buildFixtureLink = (spec: FixtureLink): RealLink => {
     const linkJoints = [...spec.joints].map((id) => jointById.get(id)!);
-    const com = spec.com ? new Coord(spec.com[0], spec.com[1]) : undefined;
+    // Unstated, a fixture's center is the mean of its joints: what the link
+    // constructor used to default to, and so what every published URL and
+    // oracle problem was written with. Spelled out here because the
+    // constructor's seed is now the shape's centroid (#156), and fixture data
+    // must not move when the app's derivation does.
+    const com = spec.com
+      ? new Coord(spec.com[0], spec.com[1])
+      : new Coord(
+          linkJoints.reduce((sum, joint) => sum + joint.x, 0) / linkJoints.length,
+          linkJoints.reduce((sum, joint) => sum + joint.y, 0) / linkJoints.length
+        );
     const subset = spec.subset?.map(buildFixtureLink);
     const link = new RealLink(spec.joints, linkJoints, spec.mass ?? 1, spec.moi ?? 1, com, subset);
     // A fixture's numbers are chosen, MATLAB-parity data — never re-derived.

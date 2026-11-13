@@ -1,7 +1,8 @@
+import { PartLinkComponent } from '../BLOCKS/part-link/part-link.component';
 import { forceFrameAngle, forceFrameDirection } from '../../model/force-frame';
 import { ForceGuideService } from '../../services/force-guide.service';
 import { NumberDragDirective } from '../../directives/number-drag.directive';
-import { distanceNeighbors } from '../../model/joint-distances';
+import { DistanceNeighbor, distanceNeighbors } from '../../model/joint-distances';
 import { describeActuatorRefusal } from '../../model/actuator';
 import {
   DriveKind,
@@ -57,7 +58,7 @@ import { registerEditPanel } from '../../services/edit-panel-handle';
 import { MODEL_SCALE } from '../../model/render-scale';
 import { EditBannerComponent } from '../BLOCKS/banner/edit-banner.component';
 import { StateInputComponent } from '../BLOCKS/state-input/state-input.component';
-import { uniformBodyOf } from '../../model/uniform-body';
+import { derivedCenterOfMass } from '../../model/link-body';
 import { cylinderAtSeal, cylinderLengthsOf, cylinderSizeOf, Cylinder } from '../../model/cylinder';
 import { bodyLabelParts } from '../../model/body-label';
 import { NotificationService } from 'src/app/services/notification.service';
@@ -137,6 +138,7 @@ const INPUT_SPEED_UNITS = [
     RadioComponent,
     MultiEditPanelComponent,
     SegmentedComponent,
+    PartLinkComponent,
   ],
 })
 export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, OnDestroy {
@@ -177,6 +179,14 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
   tutorial = inject(TutorialService);
 
   listOfOtherJoints: RealJoint[] = [];
+  /**
+   * The rows of Distance to Joints, one per entry of `listOfOtherJoints`. A
+   * row with a `bar` is the two ends of a welded bar: it is drawn with the
+   * Link panel's own length and angle fields, padlocks included, over
+   * `distanceBarForms[i]`.
+   */
+  distanceRows: DistanceNeighbor[] = [];
+  distanceBarForms: (FormGroup | undefined)[] = [];
   private currentlyOpenJointID: string = '';
 
   /** Whether each collapsible section is open, kept for the session rather
@@ -384,6 +394,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
   ngDoCheck(): void {
     this.freezePoseBoundFields();
     this.freezeMassesWhilePlaying();
+    this.freezeWeldedMemberMass();
     if (!this.editingRefused() || this.activeSrv.objType !== 'Joint') return;
     const joint = this.activeSrv.selectedJoint;
     if (!joint) return;
@@ -778,6 +789,33 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
    * the next decode is worse than no control: the reader has no way to find
    * out their number is gone.
    */
+  /** The compound the selected link is welded into, which owns its mass. */
+  protected weldedInto(): RealLink | undefined {
+    if (this.activeSrv.objType !== 'Link') return undefined;
+    const link = this.activeSrv.selectedLink;
+    if (!this.mechanismService.isWeldedMember(link)) return undefined;
+    return this.mechanismService.rootLinkOwning(link) as RealLink | undefined;
+  }
+
+  /**
+   * A welded member's mass is its share of the compound's, so its field is
+   * read-only. Kept apart from the play freeze so neither hands back a field
+   * the other is still holding.
+   */
+  private freezeWeldedMemberMass(): void {
+    const control = this.linkForm.controls['mass'];
+    if (this.weldedInto()) {
+      if (control.enabled) control.disable({ emitEvent: false });
+      this.frozenAsMember = true;
+    } else if (this.frozenAsMember && !this.playingNow()) {
+      this.frozenAsMember = false;
+      control.enable({ emitEvent: false });
+      this.syncLockDisabledFields();
+    }
+  }
+
+  private frozenAsMember = false;
+
   protected memberMassDerived(): boolean {
     if (this.activeSrv.objType !== 'Link') return false;
     return this.mechanismService.memberInertiaIsDerived(this.activeSrv.selectedLink);
@@ -1627,7 +1665,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
           );
           return;
         }
-        this.mechanismService.assignBodyMass(this.activeSrv.selectedLink, value);
+        if (!this.mechanismService.assignBodyMass(this.activeSrv.selectedLink, value)) return;
         this.syncMassDependents();
         this.mechanismService.updateMechanism(true);
         this.mechanismService.onMechUpdateState.next(2);
@@ -2075,7 +2113,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
       const joint = link.joints.find((candidate) => candidate.id === id);
       if (joint) return { x: joint.x, y: joint.y };
     }
-    return uniformBodyOf(link.joints).centroid;
+    return derivedCenterOfMass(link);
   }
 
   // ---------------------------------------------------------------------------
@@ -2511,7 +2549,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
     canvasHandle()?.setStartsAtOverlay(showing);
   }
 
-  getOtherJointsInLink(selectedJoint: RealJoint): RealJoint[] {
+  getOtherJointsInLink(selectedJoint: RealJoint): DistanceNeighbor[] {
     return distanceNeighbors(
       selectedJoint,
       this.mechanismService.links,
@@ -2519,8 +2557,48 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
     );
   }
 
+  /** What a bar row's Length help says: which bar, and what its padlock does. */
+  distanceBarHelp(row: DistanceNeighbor): string {
+    return (
+      `Length of the welded link from joint ${this.activeSrv.selectedJoint.name} to joint ` +
+      `${row.joint.name}. The padlock keeps it fixed while you edit other joints.`
+    );
+  }
+
+  /** And its Angle help. */
+  distanceBarAngleHelp(row: DistanceNeighbor): string {
+    return (
+      `Angle of the welded link from joint ${this.activeSrv.selectedJoint.name} to joint ` +
+      `${row.joint.name}, measured from the positive x axis. The padlock keeps it fixed.`
+    );
+  }
+
+  /**
+   * Put a typed number on a welded bar the way the Link panel does: as a
+   * constraint when a hold reaches it, so a fixed bar takes the new number as
+   * its fixed one and its neighbors' holds stay true. False when it was
+   * refused, after saying why.
+   *
+   * `value` is the distance, or the angle from the selected joint to the other
+   * one, which is the bar's own angle or that plus a half turn.
+   */
+  private commitBarValue(
+    row: DistanceNeighbor,
+    kind: 'length' | 'angle',
+    value: number
+  ): 'applied' | 'unheld' | 'refused' {
+    const bar = row.bar!;
+    const fromSelected = bar.joints[0] === this.activeSrv.selectedJoint;
+    const asked = kind === 'angle' && !fromSelected ? value + Math.PI : value;
+    const solved = this.gridUtils.setBarValue(bar, kind, asked);
+    if (solved === 'refused') this.refuseTypedValue(kind);
+    if (solved === 'applied') this.mechanismService.save();
+    return solved;
+  }
+
   private reloadOtherJointForm() {
-    this.listOfOtherJoints = this.getOtherJointsInLink(this.activeSrv.selectedJoint);
+    this.distanceRows = this.getOtherJointsInLink(this.activeSrv.selectedJoint);
+    this.listOfOtherJoints = this.distanceRows.map((row) => row.joint);
     this.jointForm.controls['otherJoints'] = this.fb.array([]);
     this.otherJoitnsSubscriptions.forEach((subscription) => subscription.unsubscribe());
     this.otherJoitnsSubscriptions = [];
@@ -2546,7 +2624,15 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
               { emitEvent: false }
             );
           } else {
-            this.updateDistanceBetweenJoints(this.activeSrv.selectedJoint, joint, value);
+            const row = this.distanceRows[i];
+            const solved = row?.bar ? this.commitBarValue(row, 'length', value) : 'unheld';
+            if (solved === 'refused') {
+              this.setFormDistAndAngle(this.activeSrv.selectedJoint, joint, i);
+              return;
+            }
+            if (solved === 'unheld') {
+              this.updateDistanceBetweenJoints(this.activeSrv.selectedJoint, joint, value);
+            }
             this.mechanismService.onMechUpdateState.next(2);
             this.otherJoints.controls[i * 2].patchValue(
               this.nup.formatModelLength(value, this.settingsService.lengthUnit.getValue()),
@@ -2581,15 +2667,20 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
               { emitEvent: false }
             );
           } else {
-            this.updateAngleBetweenJoints(
-              this.activeSrv.selectedJoint,
-              joint,
-              this.nup.convertAngle(
-                value,
-                this.settingsService.angleUnit.getValue(),
-                AngleUnit.RADIAN
-              )
+            const radians = this.nup.convertAngle(
+              value,
+              this.settingsService.angleUnit.getValue(),
+              AngleUnit.RADIAN
             );
+            const row = this.distanceRows[i];
+            const solved = row?.bar ? this.commitBarValue(row, 'angle', radians) : 'unheld';
+            if (solved === 'refused') {
+              this.setFormDistAndAngle(this.activeSrv.selectedJoint, joint, i);
+              return;
+            }
+            if (solved === 'unheld') {
+              this.updateAngleBetweenJoints(this.activeSrv.selectedJoint, joint, radians);
+            }
             this.mechanismService.onMechUpdateState.next(2);
             this.otherJoints.controls[i * 2 + 1].patchValue(
               this.nup.formatValueAndUnit(value, this.settingsService.angleUnit.getValue()),
@@ -2599,6 +2690,20 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
         })
       );
     });
+    // A bar row is drawn by the Link panel's hold-field block, which reads a
+    // group with `length` and `angle`. The group wraps the row's own two
+    // controls rather than copying them, so what is typed there commits
+    // through the subscriptions above, and freezing and refreshing the array
+    // reach it too. (A control's parent becomes the group; nothing reads
+    // `otherJoints` as a value, only control by control.)
+    this.distanceBarForms = this.distanceRows.map((row, i) =>
+      row.bar
+        ? new FormGroup({
+            length: this.otherJoints.controls[i * 2],
+            angle: this.otherJoints.controls[i * 2 + 1],
+          })
+        : undefined
+    );
   }
 
   private setFormDistAndAngle(

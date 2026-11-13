@@ -41,8 +41,17 @@ function saveAndReopen(opened: ReturnType<typeof openAuditPayload>) {
   }
   for (const prop of properties) {
     const body = bodiesUnder(reopened.service.links).find((one) => one.id === prop.id)!;
-    expect(body.mass).toBe(prop.mass);
-    expect(body.massMoI).toBe(prop.inertia);
+    if (reopened.service.isWeldedMember(body)) {
+      // A member's mass is its share of the compound's, measured off joint
+      // positions the URL rounds in the last digit; only the typed mass is exact.
+      expect(Math.abs(body.mass - prop.mass)).toBeLessThanOrEqual(1e-12 * Math.abs(prop.mass));
+      expect(Math.abs(body.massMoI - prop.inertia)).toBeLessThanOrEqual(
+        1e-12 * Math.abs(prop.inertia)
+      );
+    } else {
+      expect(body.mass).toBe(prop.mass);
+      expect(body.massMoI).toBe(prop.inertia);
+    }
     expect(body.CoM.x).toBeCloseTo(prop.com[0], 9);
     expect(body.CoM.y).toBeCloseTo(prop.com[1], 9);
   }

@@ -3,6 +3,7 @@ import { Link, RealLink, LinkHold } from './link';
 import { Cylinder, cylindersIn } from './cylinder';
 import { visibleBodyName } from './body-label';
 import { HoldBar, HoldJoint, reachedByHolds } from './hold-solver';
+import { selectableLinks } from './selection';
 
 /**
  * What a bar's hold means on the drawing, in one place.
@@ -252,7 +253,11 @@ export function heldBars(links: readonly Link[], cylinders?: readonly Cylinder[]
   const bars: HoldBar[] = [];
   const seen = new Set<string>();
   const members = cylinders ? membersOf(cylinders) : cylinderMembers(jointsOf(links));
-  for (const link of links) {
+  // Every bar, the ones welded into a body included. Callers hand over the
+  // drawing's top-level links, and a welded bar lives in its body's `subset`:
+  // walking only the top level offered a padlock on a welded bar, stored and
+  // saved its hold, and never told the solver, so the length moved anyway.
+  for (const link of selectableLinks([...links])) {
     const sealed = members.get(link.id);
     const hold = sealed ? (cylinderHoldsAngle(sealed) ? 'angle' : undefined) : holdOf(link);
     if (!hold) continue;
@@ -304,7 +309,7 @@ export function heldBarsAt(
   const members = cylinders ? membersOf(cylinders) : cylinderMembers(jointsOf(links));
   const held: RealLink[] = [];
   const seen = new Set<string>();
-  for (const link of links) {
+  for (const link of selectableLinks([...links])) {
     const sealed = members.get(link.id);
     const carrier = sealed ? cylinderAngleCarrier(sealed) : undefined;
     if (sealed ? carrier === undefined : holdOf(link) === undefined) continue;
@@ -326,8 +331,8 @@ export function heldBarsReaching(
 ): RealLink[] {
   const reached = reachedByHolds([joint.id], heldBars(links, cylinders)).bars.map((bar) => bar.id);
   const at = heldBarsAt(joint, links, cylinders);
-  const beyond = links.filter(
-    (link): link is RealLink => reached.includes(link.id) && !at.includes(link as RealLink)
+  const beyond = selectableLinks([...links]).filter(
+    (link) => reached.includes(link.id) && !at.includes(link)
   );
   return [...at, ...beyond];
 }

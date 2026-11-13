@@ -98,7 +98,12 @@ import { NotificationService } from './notification.service';
 import { SettingsService } from './settings.service';
 import { slotHalfLength } from '../model/joint-marks';
 import { interiorNames, nextFreeLetter } from '../model/joint-letters';
-import { uniformBodyOf } from '../model/uniform-body';
+import {
+  derivedBodyOf,
+  derivedCenterOfMass,
+  memberMasses,
+  weldedMembers,
+} from '../model/link-body';
 import { siUnitFactors } from '../model/unit-conversions';
 import { DragStateService } from './drag-state.service';
 import { Coord } from '../model/coord';
@@ -2606,7 +2611,7 @@ export class MechanismService {
     const newLink = new RealLink(id, newLinkJoints, totalMass, massMoI, CoM, leaves);
     // Custom is an override of *this body*, not a summary of its members. It
     // used to be set whenever any member had one, which locked the aggregate
-    // against the derivation in `uniformBodyFor` -- and that derivation is the
+    // against the derivation in `derivedBodyOf` -- and that derivation is the
     // only thing that reads a member's shape rather than whatever number was
     // last stored on it. A body of one typed bar and one automatic bar came
     // out with the automatic one's contribution frozen at a stale value, and
@@ -2729,27 +2734,40 @@ export class MechanismService {
   /**
    * The one door for writing a body's mass, wherever the field lives.
    *
-   * A compound and its members must keep telling one story: edit a member and
-   * the compound's aggregate moves by the same amount; edit the compound and
-   * the members scale to match, so unwelding later restores what the sum
-   * really was. Without this, the mass table and the cylinder fields were two
-   * sources of truth that only agreed until the first unweld.
+   * A compound has one mass, spread evenly through its material, so it is set
+   * on the compound and its members' shares follow (`weld-density.ts`, #279).
+   * A member welded into a compound has no mass of its own to set, and is
+   * refused: answered `false`, with nothing changed. Unwelding later hands each
+   * member the share it carried.
    */
-  assignBodyMass(body: Link, value: number): void {
-    if (!(value >= 0)) return;
-    if (body instanceof RealLink && body.subset.length > 0) {
-      const members = body.subset;
-      const total = members.reduce((sum, member) => sum + member.mass, 0);
-      for (const member of members) {
-        member.mass = total > 0 ? (member.mass / total) * value : value / members.length;
-      }
-    } else {
-      const root = this.rootLinkOwning(body);
-      if (root && root !== body) {
-        root.mass += value - body.mass;
-      }
-    }
+  assignBodyMass(body: Link, value: number): boolean {
+    if (!(value >= 0)) return false;
+    const root = this.rootLinkOwning(body);
+    if (root && root !== body) return false;
     body.mass = value;
+    if (body instanceof RealLink) this.shareCompoundMass(body);
+    return true;
+  }
+
+  /** Whether `link` is welded into a compound, whose mass it shares. */
+  isWeldedMember(link: Link | undefined): boolean {
+    if (!link) return false;
+    const root = this.rootLinkOwning(link);
+    return root !== undefined && root !== link;
+  }
+
+  /**
+   * Write each member's share of a compound's mass onto the member.
+   *
+   * The shares are derived, never typed; they are stored so an unweld, and a
+   * URL read by an older reader, carry what the member weighed.
+   */
+  private shareCompoundMass(compound: RealLink): void {
+    const members = weldedMembers(compound);
+    memberMasses(compound).forEach((mass, index) => {
+      members[index].mass = mass;
+      this.shareCompoundMass(members[index]);
+    });
   }
 
   /**
@@ -3109,7 +3127,7 @@ export class MechanismService {
 
     if (link instanceof RealLink) {
       if (!link.comIsCustom) {
-        link.CoM = RealLink.determineCenterOfMass(link.joints);
+        link.CoM = derivedCenterOfMass(link);
       }
       link.reComputeDPath();
     }
@@ -4023,6 +4041,9 @@ export class MechanismService {
     const factor = this.storedMoiFactor(unitStr);
     for (const link of this.links) {
       if (!(link instanceof RealLink)) continue;
+      // A compound's shares follow its shape, so a drag that lengthens one
+      // member moves weight onto it.
+      this.shareCompoundMass(link);
       // A body with no mass has no moment of inertia, full stop: the solver
       // applies I·α regardless of mass, so a leftover typed inertia on a
       // weightless bar would quietly steer every dynamic answer. Zeroing the
@@ -4054,7 +4075,7 @@ export class MechanismService {
         }
       }
       if (link.moiIsCustom && link.comIsCustom) continue;
-      const derived = this.uniformBodyFor(link, factor);
+      const derived = derivedBodyOf(link, factor);
       if (!link.comIsCustom) {
         link.CoM = new Coord(derived.com.x, derived.com.y);
         link.updateCoMDs();
@@ -4084,55 +4105,6 @@ export class MechanismService {
       default:
         return 'cm';
     }
-  }
-
-  /**
-   * The uniform body a link derives its auto properties from.
-   *
-   * A plain link is a rod or a hull plate over its own joints. A compound is
-   * the *sum of its parts* — each member as its own body, combined by the
-   * parallel-axis theorem — never a plate over the whole hull: a V-shaped
-   * weld is two bars, and a plate spanning the crook would weigh material
-   * that is not there. Members somebody typed at contribute the numbers they
-   * were given.
-   */
-  private uniformBodyFor(link: RealLink, factor: number): { com: Coord; moi: number } {
-    if (link.subset.length === 0) {
-      const body = uniformBodyOf(link.joints);
-      return {
-        com: new Coord(body.centroid.x, body.centroid.y),
-        moi: link.mass * body.gyrationSq * factor,
-      };
-    }
-    const parts = link.subset
-      .filter((member): member is RealLink => member instanceof RealLink)
-      .map((member) => {
-        const own = this.uniformBodyFor(member, factor);
-        return {
-          mass: member.mass,
-          com: member.comIsCustom ? new Coord(member.CoM.x, member.CoM.y) : own.com,
-          moi: member.moiIsCustom ? member.massMoI : own.moi,
-        };
-      });
-    const totalMass = parts.reduce((sum, part) => sum + part.mass, 0);
-    const com =
-      totalMass > 0
-        ? new Coord(
-            parts.reduce((sum, part) => sum + part.mass * part.com.x, 0) / totalMass,
-            parts.reduce((sum, part) => sum + part.mass * part.com.y, 0) / totalMass
-          )
-        : new Coord(
-            parts.reduce((sum, part) => sum + part.com.x, 0) / Math.max(1, parts.length),
-            parts.reduce((sum, part) => sum + part.com.y, 0) / Math.max(1, parts.length)
-          );
-    const moi = parts.reduce(
-      (sum, part) =>
-        sum +
-        part.moi +
-        part.mass * ((part.com.x - com.x) ** 2 + (part.com.y - com.y) ** 2) * factor,
-      0
-    );
-    return { com, moi };
   }
 
   /**
@@ -7810,7 +7782,7 @@ export class MechanismService {
       if (ids.has(leaf.fixedLocation.fixedPoint)) leaf.fixedLocation.fixedPoint = 'com';
       if (leaf.joints.length < 2) return false;
       if (leaf instanceof RealLink) {
-        if (!leaf.comIsCustom) leaf.CoM = RealLink.determineCenterOfMass(leaf.joints);
+        if (!leaf.comIsCustom) leaf.CoM = derivedCenterOfMass(leaf);
         leaf.reComputeDPath();
       }
       return true;
@@ -7823,6 +7795,28 @@ export class MechanismService {
       if (members.length < 2 && !slideAssemblyAt(joint)) joint.isWelded = false;
     }
     return this.splitCompoundAtRemainingWelds(compound);
+  }
+
+  /**
+   * A welded body that came apart took the center of mass or inertia somebody
+   * set on it with it: no piece is that body, so none can inherit the number.
+   * Dropping it is right; dropping it without a word is not, because the CoM
+   * mark jumps and a student copying the number would not know why (#156).
+   */
+  private sayBodyValuesDropped(compound: RealLink): void {
+    const dropped = [
+      compound.comIsCustom ? 'center of mass' : undefined,
+      compound.moiIsCustom ? 'moment of inertia' : undefined,
+    ].filter((value): value is string => value !== undefined);
+    if (dropped.length === 0) return;
+    this.notify.news(
+      'weld.split-values',
+      `${this.bodyLabel(compound)} came apart, so the ${dropped.join(' and ')} you set ` +
+        `for it no longer applies. Each piece uses its own.`,
+      {
+        actions: [{ label: 'Undo', run: () => this.injector.get(SaveHistoryService).undo() }],
+      }
+    );
   }
 
   private splitCompoundAtRemainingWelds(compound: RealLink): RealLink[] {
@@ -7851,6 +7845,7 @@ export class MechanismService {
     // handing a typed inertia to both would describe material twice.
     const stillABody = components.filter((component) => component.length > 1);
     const continuation = stillABody.length === 1 ? stillABody[0] : undefined;
+    if (!continuation) this.sayBodyValuesDropped(compound);
     const replacements = components.map((component) =>
       component.length === 1
         ? component[0]

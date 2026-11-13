@@ -402,23 +402,43 @@
             (closed)="sectionExpanded['JDistToJ'] = false"
           >
             @for (joint of listOfOtherJoints; track joint; let i = $index) {
-              <div>
-                <!-- The repeated alias template -->
-                <dual-input-block
-                  label1="D"
-                  label2="⊾"
-                  tooltip="How far this joint is from that one, and in what direction. Editing either moves that joint."
-                  [formGroup]="jointForm"
-                  formSubGroup="otherJoints"
-                  [formControl1]="(i * 2).toString()"
-                  [formControl2]="(i * 2 + 1).toString()"
-                  (field1Entry)="setShowLinkLengthOverlay($event)"
-                  (field2Entry)="setShowLinkAngleOverlay($event)"
-                  [emitterOutputID]="i"
-                >
-                  Joint {{ joint!.name }}</dual-input-block
-                >
-              </div>
+              <!-- A neighbor at the other end of a welded bar: that bar's
+                   length and angle, with the Link panel's own fields and
+                   padlocks. Only the two ends of one bar are offered a hold,
+                   so the padlock always means "this bar keeps its length". -->
+              @if (distanceRows[i]?.bar && distanceBarForms[i]) {
+                <div class="distance-bar" [attr.data-distance-bar]="distanceRows[i].bar!.id">
+                  <div class="row">
+                    <span class="label">Joint {{ joint!.name }}</span>
+                  </div>
+                  <hold-field-block
+                    [formGroup]="distanceBarForms[i]!"
+                    [link]="distanceRows[i].bar!"
+                    [lengthHelp]="distanceBarHelp(distanceRows[i])"
+                    [angleHelp]="distanceBarAngleHelp(distanceRows[i])"
+                    (lengthEntry)="setShowLinkLengthOverlay($event === -1 ? i : $event)"
+                    (angleEntry)="setShowLinkAngleOverlay($event === -1 ? i : $event)"
+                  ></hold-field-block>
+                </div>
+              } @else {
+                <div>
+                  <!-- The repeated alias template -->
+                  <dual-input-block
+                    label1="D"
+                    label2="⊾"
+                    tooltip="How far this joint is from that one, and in what direction. Editing either moves that joint."
+                    [formGroup]="jointForm"
+                    formSubGroup="otherJoints"
+                    [formControl1]="(i * 2).toString()"
+                    [formControl2]="(i * 2 + 1).toString()"
+                    (field1Entry)="setShowLinkLengthOverlay($event)"
+                    (field2Entry)="setShowLinkAngleOverlay($event)"
+                    [emitterOutputID]="i"
+                  >
+                    Joint {{ joint!.name }}</dual-input-block
+                  >
+                </div>
+              }
             }
           </collapsible-subsection>
         }
@@ -522,7 +542,7 @@
               [formGroup]="linkForm"
               _formControl="drawAsDisc"
               [disabled]="!canDrawAsDisc()"
-              tooltip="Draw this link as the disc it sweeps, centered on its fixed pin. Its mass and rotational inertia are unchanged."
+              tooltip="Draw this link as the disc it sweeps, centered on its fixed pin. It is then treated as a solid disc: its mass is unchanged, and its center of mass and rotational inertia come from the disc."
             >
               Draw as a Disc
             </toggle-block>
@@ -554,7 +574,17 @@
              so where the two fields would otherwise be. The sentence is the one
              the retired Edit Cylinder panel carried, because it is the same
              promise. -->
-            @if (memberMassDerived()) {
+            <!-- A link welded into a compound shares the compound's one mass by
+             length (#279): the field shows its share and is read-only, and its
+             own center and inertia are not inputs to anything any more. -->
+            @if (weldedInto(); as compound) {
+              <p class="massNote">
+                Welded into
+                <part-link [part]="compound">{{ mechanismService.bodyLabel(compound) }}</part-link
+                >. A compound has one mass, shared among its links by length. Set it on the
+                compound.
+              </p>
+            } @else if (memberMassDerived()) {
               <p class="massNote">
                 Each part's rotational inertia and center of mass are computed from its own shape
                 and the mass you give it.
@@ -676,14 +706,14 @@
                   }
                 </span>
               </input-block>
-              <!-- Drawing a crank as a disc is a picture, not a declaration that the
-               part is one. Said here, next to the two numbers it would otherwise
-               be reasonable to assume it had changed — and only here, because
-               with no mass there are no such numbers to mislead anyone. -->
+              <!-- A crank drawn as a disc is treated as a solid disc on its ground
+               pin (#156), which moves both numbers above off the bar's values.
+               Said here, next to them, so the change has a reason in view -- and
+               only here, because with no mass there are no such numbers. -->
               @if (drawnAsDisc()) {
                 <p class="shapeNote">
-                  Drawn as a disc. These two still follow the link's joints, not the circle — set
-                  Inertia by hand for a real flywheel.
+                  Drawn as a disc, so it is treated as a solid disc on its ground pin: the CoM sits
+                  on the pin.
                 </p>
               }
             }

@@ -391,6 +391,24 @@ body. `anchoredTo` retains the member so unwelding can restore the load to it. D
 replacement, pass the new owner explicitly: the service's old graph still contains the compound.
 Paused tracer attachment uses `indexOfMechanismSolving`, including leaves and shared frame parts.
 
+### A compound has one mass, shared among its links by length
+
+A compound is one rigid part, so it has one mass, set on the compound. `model/weld-density.ts`
+spreads it evenly through the compound's material, and `derivedBodyOf` places the center of mass
+and inertia from those shares. A member's stored `mass` is a copy of its share, rewritten by the
+property pass whenever the shape changes, so it is right for an unweld and in the URL, but it is
+never read as an input. `assignBodyMass` refuses a member, and the Edit panel shows a member's
+mass read-only with the compound linked beside it.
+
+Material is measured by **length**: a bar by its own, a plate by its outline, a disc by its rim.
+The physics treats a bar as a line and a plate as an area, and adding the two needs a width. The
+only width on hand is the drawn one, which comes from Object Size, which comes from the zoom when
+the first part was drawn, so two readers drawing the same part would get different centers of
+mass. Length is exact for a weld of bars, the common case, and misjudges a plate's share only by
+treating it as its outline. Member-level custom centers of mass and inertias are ignored: a
+compound's override is the compound's own. (#279; before it, each member kept a typed mass, and a
+10 g bar welded to a 0 g bar put the center of mass on the heavy bar however long the other was.)
+
 ### Forces are assembled in SI, and a floating motor pushes back
 
 The force solver converts model coordinates and accelerations to SI at equation assembly. Its
@@ -498,8 +516,15 @@ advance the other endpoint again on every pointer event. `e2e/constrained-link-d
 checks both length and angle neighbors, a stationary pointer, and undo/redo.
 
 A hold is only meaningful on a plain two-joint bar, and `holdOf()` in `model/link-holds.ts` reads
-one as absent on anything else -- which is why nothing has to clear the flag when a bar is welded or
-given a third joint. It rides the URL as an `H` entry in the trailing section (`HlAB`, `HaAB`),
+one as absent on anything else -- which is why nothing has to clear the flag when a bar is given a
+third joint. **A bar welded into a body still holds**, because a welded body reshapes in the editor:
+it is a two-joint leaf in its body's `subset`, and `heldBars`, `heldBarsAt`, `heldBarsReaching` and
+`holdChips` walk the leaves (`selectableLinks`) rather than the top-level list. They walked only the
+top level until #279, so a welded bar's padlock was stored, saved and drawn, and the solver never
+heard of it. Its padlocks are in the **joint** panel: Distance to Joints draws the two ends of a
+welded bar with the Link panel's own `hold-field-block`, and offers a hold only between the two ends
+of one bar (`model/joint-distances.ts`) -- never between joints at opposite ends of a chain, where
+there is no part for the padlock to be about. It rides the URL as an `H` entry in the trailing section (`HlAB`, `HaAB`),
 beside the locks, so it survives undo and travels in a shared link; the decoder refuses a hold on
 anything but a bar. The held-value chips and the amber guide are canvas state
 (`heldChips()`, `holdGuide`, `holdRing` in `new-grid.component.ts`), shown only when the lock marks

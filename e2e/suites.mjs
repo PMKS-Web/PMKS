@@ -38,6 +38,7 @@ export const SUITES = [
   { name: 'analysis-setup', seconds: 90, lanes: BOTH },
   { name: 'attach-cylinder', seconds: 9, lanes: BOTH },
   { name: 'background-image', seconds: 26, lanes: BOTH },
+  { name: 'center-of-mass', seconds: 15, lanes: BOTH },
   { name: 'circular-link', seconds: 4, lanes: BOTH },
   { name: 'constrained-link-drag', seconds: 15, lanes: NIGHTLY },
   { name: 'context-menu', seconds: 26, lanes: BOTH },

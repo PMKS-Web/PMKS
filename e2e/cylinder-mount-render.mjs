@@ -731,10 +731,13 @@ check(
 );
 await film.shot('reference-member-selected');
 const onBody = await selects(`[id="${barrelBody.root}"]`);
+// A plain welded link is never selected on its own: its length is in its
+// joints' Distance to Joints. Only a cylinder member is reached by a second
+// click, because its length is not a distance between two joints.
 check(
-  'a subsequent click on the bracket selects that primitive',
-  onBody.type === 'Link' && onBody.id === barrelBody.bracket,
-  JSON.stringify({ got: onBody, wanted: barrelBody.bracket })
+  'a subsequent click on the bracket selects the body',
+  onBody.type === 'Link' && onBody.id === barrelBody.root,
+  JSON.stringify({ got: onBody, wanted: barrelBody.root })
 );
 await film.shot('reference-body-selected');
 const onSeal = await selects('.cylinder-seal-hit');

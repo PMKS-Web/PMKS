@@ -467,9 +467,9 @@ try {
           );
         })
       );
-      // Welded to its rod, the disc is a part of one body: the first click
-      // inside it takes the body, the second the disc, by its shaded inside
-      // rather than only its lines.
+      // Welded to its rod, the disc is a part of one body: a click inside it
+      // takes the body, by its shaded inside rather than only its lines, and a
+      // second click keeps the body -- a welded link is edited from its joints.
       const wheelId = await grid((g) => {
         g.activeObjService.updateSelectedObj(null);
         const wheel = g.mechanismSrv.links.find((l) => l.isCircle);
@@ -492,10 +492,8 @@ try {
       const firstPick = await clickInside();
       const secondPick = await clickInside();
       check(
-        'inside a disc welded into a body, the first click picks the body and the second the disc',
-        firstPick.holdsWheel &&
-          secondPick.id === wheelId &&
-          (await page.locator('.selection-halo.context').count()) === 1,
+        'inside a disc welded into a body, every click picks the body',
+        firstPick.holdsWheel && secondPick.holdsWheel,
         { wheelId, firstPick, secondPick }
       );
       await load(id);
@@ -544,11 +542,14 @@ try {
         return { id: l.id, p: { x: at.x, y: at.y } };
       });
       // Five pixels beside the line is still inside its 12px pointer target.
+      // From the selected barrel, a click on the bracket goes back to the body:
+      // only a cylinder member is reached by a second click.
       await page.mouse.click(leaf.p.x + 5, leaf.p.y);
       check(
-        'the thin connection still selects its ordinary primitive inside a compound',
-        (await grid((g) => g.activeObjService.selectedLink?.id)) === leaf.id &&
-          (await page.locator('.cylinder-barrel-selected.link-selected').count()) === 0
+        'the thin connection selects the whole body, not its ordinary link',
+        (await grid(
+          (g) => g.activeObjService.selectedLink === g.mechanismSrv.sealedStructures()[0].barrelRoot
+        )) && (await page.locator('.cylinder-barrel-selected.link-selected').count()) === 0
       );
       check(
         'a picked schematic bar keeps its own color, over an amber band a halo draws',
@@ -640,15 +641,15 @@ try {
         await page.mouse.click(p.x, p.y);
         await page.mouse.click(p.x, p.y);
         check(
-          `${style} also picks the ordinary primitive from its displayed body`,
-          (await grid((g) => g.activeObjService.selectedLink?.id)) === leaf.id
+          `${style} keeps the whole body on a second click on its ordinary link`,
+          await grid(
+            (g) =>
+              g.activeObjService.selectedLink === g.mechanismSrv.sealedStructures()[0].barrelRoot
+          )
         );
         check(
-          `${style} outlines the part solid and its whole body dashed`,
-          (await page.locator('#primitiveSelection .link-selected').count()) === 1 &&
-            (await page
-              .locator('#primitiveSelection .compound-context[stroke-dasharray]')
-              .count()) === 1
+          `${style} outlines no part of the body on its own`,
+          (await page.locator('#primitiveSelection .link-selected').count()) === 0
         );
       }
       await settings();

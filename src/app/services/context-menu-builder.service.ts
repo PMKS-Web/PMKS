@@ -963,7 +963,13 @@ export class ContextMenuBuilderService {
         { label: 'State', rows: this.linkStateRows(bar) },
         { label: 'Traces', rows: [this.traceRow(bar), ...this.vectorRows(bar)] },
         { rows: this.positionRows(handlers, undefined) },
-        { rows: [this.deleteLinkRow(bar), this.deleteMechanismRow(bar)] },
+        {
+          rows: [
+            this.deleteLinkRow(bar),
+            ...this.deleteMemberRow(bar),
+            this.deleteMechanismRow(bar),
+          ],
+        },
       ],
     };
   }
@@ -1243,6 +1249,32 @@ export class ContextMenuBuilderService {
       this.nup.convertAngle(degrees, AngleUnit.DEGREE, this.settings.angleUnit.getValue()),
       this.settings.angleUnit.getValue()
     );
+  }
+
+  /**
+   * On a welded body, a row to delete just the link under the pointer.
+   *
+   * A click selects the whole body, so Delete takes the whole body. Taking one
+   * link out of it used to need a second click to select that link first; the
+   * second click went (a welded link's length and angle are in its joints'
+   * Distance to Joints now), and this is where deleting one link went.
+   */
+  private deleteMemberRow(body: RealLink): MenuRow[] {
+    const leaf = body.lastSelectedSublink;
+    if (!body.isCompound || !(leaf instanceof RealLink) || leaf.isCompound) return [];
+    if (this.mechanism.cylinderOfBar(leaf)) return [];
+    return [
+      new MenuRow({
+        label: `Delete Link ${this.mechanism.visibleBodyName(leaf)}`,
+        detail: 'Only this link of the body',
+        icon: 'remove',
+        destructive: true,
+        action: () => {
+          this.activeObj.updateSelectedObj(leaf);
+          this.mechanism.deleteLink();
+        },
+      }),
+    ];
   }
 
   private deleteLinkRow(link: RealLink): MenuRow {

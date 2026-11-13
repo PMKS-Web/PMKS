@@ -1,6 +1,7 @@
 import { Component, OnInit, ChangeDetectionStrategy, inject } from '@angular/core';
 import { Force } from '../../model/force';
 import { Link, RealLink } from '../../model/link';
+import { derivedCenterOfMass } from '../../model/link-body';
 import { Joint, PrisJoint, RealJoint, RevJoint } from '../../model/joint';
 import { Coord } from '../../model/coord';
 import { isCylinderInner } from '../../model/cylinder';
@@ -91,7 +92,7 @@ export class LinkageTableComponent implements OnInit {
           l.joints[jointIndex].x = roundNumber(joint.x, 3);
           l.joints[jointIndex].y = roundNumber(joint.y, 3);
           if (!l.comIsCustom) {
-            l.CoM = RealLink.determineCenterOfMass(l.joints);
+            l.CoM = derivedCenterOfMass(l);
           }
           // l.bound = RealLink.getBounds(new Coord(l.joints[0].x, l.joints[0].y), new Coord(l.joints[1].x, l.joints[1].y), Shape.line);
           // l.d = RealLink.getPointsFromBounds(l.bound, l.shape);
@@ -114,7 +115,9 @@ export class LinkageTableComponent implements OnInit {
           const jointIndex = l.joints.findIndex((jt) => jt.id === joint.id);
           l.joints[jointIndex].x = roundNumber(joint.x, 3);
           l.joints[jointIndex].y = roundNumber(joint.y, 3);
-          l.CoM = RealLink.determineCenterOfMass(l.joints);
+          if (!l.comIsCustom) {
+            l.CoM = derivedCenterOfMass(l);
+          }
           l.d = l.getPathString();
           l.forces.forEach((f) => {
             // TODO: adjust the location of force endpoints and update the line and arrow
@@ -160,7 +163,8 @@ export class LinkageTableComponent implements OnInit {
         if (typed < 0) {
           return this.notify.refusal('value.mass', NOT_A.nonNegativeMass);
         }
-        link.mass = typed;
+        // Through the one door, so a compound's members follow its mass.
+        this.mechanismService.assignBodyMass(link, typed);
         break;
       }
       case 'massMoI':

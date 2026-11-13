@@ -19,6 +19,9 @@ import { Coord } from './coord';
  *   - a degenerate hull (collinear joints, e.g. a tracer on the bar's own
  *     axis) — the rod again, between the two farthest joints.
  *
+ * A link drawn as a disc is not shaped here: `link-body.ts` makes it a solid
+ * disc on its ground pin, and is what callers should ask for a link.
+ *
  * Everything is expressed per unit mass: `gyrationSq` is k², the squared
  * radius of gyration, in squared model units. MoI = mass × k², converted to
  * whatever unit the store keeps inertia in — mass stays the one number a
@@ -116,7 +119,7 @@ function platedPolygon(points: { x: number; y: number }[]): UniformBody | undefi
 }
 
 /** Andrew's monotone chain; returns the hull counterclockwise. */
-function convexHull(points: { x: number; y: number }[]): { x: number; y: number }[] {
+export function convexHull(points: { x: number; y: number }[]): { x: number; y: number }[] {
   const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
   const cross = (
     o: { x: number; y: number },
