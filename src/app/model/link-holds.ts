@@ -286,18 +286,11 @@ export function heldBars(links: readonly Link[], cylinders?: readonly Cylinder[]
 /** The drawing's joints as the solver sees them; `fixed` says which never move. */
 export function holdJoints(
   joints: readonly Joint[],
-  fixed: (joint: RealJoint) => boolean,
-  yields: (joint: RealJoint) => boolean = () => false
+  fixed: (joint: RealJoint) => boolean
 ): HoldJoint[] {
   return joints
     .filter((joint): joint is RealJoint => joint instanceof RealJoint)
-    .map((joint) => ({
-      id: joint.id,
-      x: joint.x,
-      y: joint.y,
-      fixed: fixed(joint),
-      yields: yields(joint),
-    }));
+    .map((joint) => ({ id: joint.id, x: joint.x, y: joint.y, fixed: fixed(joint) }));
 }
 
 /**

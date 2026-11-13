@@ -478,12 +478,16 @@ for a padlock they had never pressed. `hold` stays the code's name for it.
 The rules are the CAD ones, and they live in one place, `model/hold-solver.ts`: the joint that was
 asked for reaches its ask when the holds allow and lands on the nearest allowed place when they do
 not; every other joint on a held bar moves as little as it must (drag the free end of a held bar and
-its far end is towed; drag it when the far end is grounded and it rides the arc); locked joints, a
-slider on a moving slot and a cylinder's interior never move. **A grounded joint is a tiebreaker,
-not an anchor**: it holds while the dragged joint has any freedom without it, and gives way only
-when it is all that would stop the drag -- so a crank holding both its length and its angle from a
-ground pin is dragged whole, ground pin and all, where it used to be refused (`HoldJoint.yields`).
-A grounded slider is ground in this sense too, and carries its rail with it when it gives way. A joint the holds have fully
+its far end is towed; drag it when the far end is locked and it rides the arc); locked joints, a
+slider on a moving slot and a cylinder's interior never move. **A ground pin is fixed for a typed
+number and free under the pointer** (#261): a typed coordinate, length or angle keeps every ground
+pin still when the number can be met that way, and moves one only when it cannot, before refusing. A
+canvas drag treats a ground pin as an ordinary joint, so dragging a coupler next to a crank with a
+fixed length swings the crank about a moving A rather than stopping at it, and a crank holding both
+its length and its angle from a ground pin is dragged whole, ground pin and all; only a Lock holds
+still. A grounded slider is ground in this sense too, and carries its rail with it when it moves.
+`GridUtilsService.byHand` reads `DragStateService` to tell the two apart, so no caller passes a
+flag. A joint the holds have fully
 determined -- between two held lengths from two locked points -- is refused at the grab, naming the
 holds, exactly as a locked joint is; an ask no configuration satisfies (a four-bar dragged past where its coupler can follow) is
 refused *whole* -- the half-settled positions the sweep stopped in have a hold false in them, and
@@ -494,6 +498,13 @@ becomes the number locked. **Every route that moves a joint lands in `GridUtilsS
 solver is asked**, so a typed coordinate, a distance-to-joint field and a link drag get the same
 answer as a canvas drag. `settled` is how the solver writes its answer back through the same door
 without being asked again; forget it and you get a recursion.
+
+A whole-link drag preserves the carried body's shape while solving its neighboring holds.
+Temporary pairwise distances join the solve without adding a Fixed Length to the document;
+the result is committed together, carrying the body's loads and custom center of mass.
+Cursor goals come from the grab snapshot, so a constrained endpoint falling short does not
+advance the other endpoint again on every pointer event. `e2e/constrained-link-drag.mjs`
+checks both length and angle neighbors, a stationary pointer, and undo/redo.
 
 A hold is only meaningful on a plain two-joint bar, and `holdOf()` in `model/link-holds.ts` reads
 one as absent on anything else -- which is why nothing has to clear the flag when a bar is welded or
