@@ -343,12 +343,28 @@ describe('which way a bare slider’s coordinate runs', () => {
     // are each other reversed rather than each other.
     const forward = slidingDrive('Scotch_Yoke', 1);
     const backward = slidingDrive('Scotch_Yoke', -1);
-    const last = forward.profile.along.length - 1;
-    expect(backward.profile.along.length).toBe(last + 1);
     expect(forward.profile.along[0]).toBeCloseTo(backward.profile.along[0], 6);
     // Reversed, not repeated: the old coordinate gave the identical array.
-    expect(forward.profile.along[1]).toBeCloseTo(backward.profile.along[last - 1], 3);
     expect(forward.profile.along[1]).not.toBeCloseTo(backward.profile.along[1], 3);
+    // And every pose the backward run visits reads where the forward run read
+    // it. Not sample for sample in reverse: the crank carries on through its
+    // dead centers, and the two runs need not cut the cycle at the same points.
+    const poseOf = (frame: Joint[]) => frame.flatMap((joint) => [joint.x, joint.y]);
+    const forwardPoses = forward.solved.joints.map(poseOf);
+    let compared = 0;
+    backward.solved.joints.forEach((frame, sample) => {
+      const pose = poseOf(frame);
+      let nearest = 0;
+      let gap = Infinity;
+      forwardPoses.forEach((other, index) => {
+        const apart = Math.max(...other.map((value, k) => Math.abs(value - pose[k])));
+        if (apart < gap) [gap, nearest] = [apart, index];
+      });
+      if (gap > 1e-6) return;
+      compared++;
+      expect(backward.profile.along[sample]).toBeCloseTo(forward.profile.along[nearest], 6);
+    });
+    expect(compared).toBeGreaterThan(forwardPoses.length / 2);
   });
 
   it('leaves a cylinder measured by its own extension', () => {
