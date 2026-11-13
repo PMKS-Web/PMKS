@@ -114,6 +114,14 @@ for (const { id, name } of wanted()) {
   });
   await page.waitForTimeout(700);
 
+  // A drawing too large to solve in Edit (Running_Horse) waits for Play.
+  // Work its motion out now, the way pressing Play would, so there is a cycle
+  // to frame and to step through.
+  await page.evaluate(() =>
+    ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv.solveNow()
+  );
+  await page.waitForTimeout(150);
+
   // Frame the entire cycle before clipping: a translating cylinder can leave the initial viewport.
   await page.evaluate(() =>
     ng.getComponent(document.querySelector('app-new-grid')).svgGrid.scaleToFitFullMotion(false)

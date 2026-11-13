@@ -33,10 +33,7 @@ import { filmstrip, contactSheet } from './filmstrip.mjs';
 import { waitForReady } from './app-ready.mjs';
 
 const BASE = process.env.PMKS_BASE_URL ?? 'http://localhost:4200';
-import {
-  TEMPLATE_LINKAGES as payloads,
-  DEV_TEMPLATE_LINKAGES as devPayloads,
-} from './template-payloads.mjs';
+import { TEMPLATE_LINKAGES as payloads } from './template-payloads.mjs';
 
 /** A gallery drawing's query, as docs/fixture-urls.md publishes it. */
 const galleryQuery = (name) => {
@@ -471,7 +468,7 @@ record(
 );
 
 // --- a large drawing waiting for Play is not "can't run" --------------------
-await open(devPayloads['Dev_Render_Stress']);
+await open(payloads.Running_Horse);
 text = await panelText();
 record(
   'a drawing solved on Play has no "Can\'t run yet" banner',

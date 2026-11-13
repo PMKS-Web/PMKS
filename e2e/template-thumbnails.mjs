@@ -79,6 +79,7 @@ const FILENAMES = {
   Peaucellier: 'peaucellier',
   Pantograph: 'pantograph',
   Double_Butterfly: 'double-butterfly',
+  Running_Horse: 'running-horse',
   Crane_Two_Loads: 'crane-two-loads',
   Locked_Four_Bar: 'locked-four-bar',
   Three_Machines: 'three-machines',
