@@ -1,4 +1,6 @@
 import { writeMechanismName } from '../model/mechanism/mechanism-name';
+import { familyReading, machineFacts } from '../model/machine-facts/machine-facts';
+import { AnalyticsService } from './analytics.service';
 import { orphanedByLinkRemoval } from '../model/link-removal';
 import { graftJoint } from '../model/graft-joint';
 import { pruneUnlinkedJoints } from '../model/prune-unlinked-joints';
@@ -54,6 +56,7 @@ import {
 import { Mechanism } from '../model/mechanism/mechanism';
 import {
   MechanismPartition,
+  movingJointIds,
   MOST_MACHINES,
   partitionKey,
   partitionMechanisms,
@@ -218,6 +221,7 @@ export class MechanismService {
   private settingsService = inject(SettingsService);
   private nup = inject(NumberUnitParserService);
   private notify = inject(NotificationService);
+  private analytics = inject(AnalyticsService);
   /**
    * The synthesis design, whose poses are stored in user lengths like every
    * other coordinate. Injected directly rather than through the injector this
@@ -443,6 +447,10 @@ export class MechanismService {
     if (!this.solvingDeferred) return;
     this.forceSolveOnce = true;
     this.updateMechanism();
+    // An edit saved while the solve was put off is asked about now that its
+    // answer exists; with none pending, this solve is only the starting point.
+    if (this.runCheckPending) this.noticeFirstRun();
+    else this.runningBefore ??= this.runningMachines();
   }
 
   updateMechanism(save: boolean = false) {
@@ -656,6 +664,83 @@ export class MechanismService {
       this.save();
     }
     this.leaveForceAnalysisWithoutInputs();
+  }
+
+  /**
+   * Set by the URL reader while a different drawing arrives -- a template, a
+   * shared link, an opened file -- so one that already runs is not reported as
+   * a mechanism the reader made run (`noticeFirstRun`).
+   */
+  arriving = false;
+  /**
+   * The moving joints of every machine that ran after the last saved edit,
+   * undo, redo or arrival. Undefined while a deferred solve hides what runs:
+   * there is nothing to compare against until the first solve, and that solve
+   * is then the starting point rather than something the reader made run.
+   */
+  private runningBefore?: Set<string>;
+  /** An edit was saved while the solve was put off, so whether it made a machine run is still unknown. */
+  private runCheckPending = false;
+  /** Whether this visit has reported its first run; one report a visit, whatever family runs next. */
+  private reportedFirstRun = false;
+
+  /** A drawing has arrived, or an undo or redo has landed: what runs now is the starting point. */
+  arrived(): void {
+    this.arriving = false;
+    this.runCheckPending = false;
+    this.runningBefore = this.solvingDeferred ? undefined : this.runningMachines();
+  }
+
+  private runningMachines(): Set<string> {
+    return new Set(
+      this.partitions
+        .filter((_, index) => this.mechanisms[index]?.isMechanismValid())
+        .flatMap(movingJointIds)
+    );
+  }
+
+  /**
+   * Report the moment an edit of the reader's makes a machine run that did
+   * not before: the point at which a student's own build works. Once a visit.
+   *
+   * Asked after every saved edit, which is every committed gesture -- a drag
+   * that saves directly as much as an edit that rebuilds with `save` -- and
+   * never mid-drag. A machine is new when none of its moving joints was in a
+   * machine that ran, so building a second machine beside a template that
+   * already runs still counts, and a running machine that is merely edited --
+   * even given a tracer with a letter earlier than any it had -- does not.
+   *
+   * Named by family -- one PMKS recognized, or its body count -- which is a
+   * word from the app's own catalog, never anything the reader typed.
+   */
+  private noticeFirstRun(): void {
+    if (this.arriving) return;
+    if (this.solvingDeferred) {
+      this.runCheckPending = true;
+      return;
+    }
+    this.runCheckPending = false;
+    const before = this.runningBefore;
+    const running = this.runningMachines();
+    this.runningBefore = running;
+    if (!before || this.reportedFirstRun) return;
+    const index = this.partitions.findIndex(
+      (partition, at) =>
+        this.mechanisms[at]?.isMechanismValid() &&
+        !movingJointIds(partition).some((id) => before.has(id))
+    );
+    if (index === -1) return;
+    this.reportedFirstRun = true;
+    const partition = this.partitions[index];
+    const solved = this.mechanisms[index];
+    let family = 'Not recognized';
+    try {
+      family = familyReading(partition, solved, machineFacts(partition, solved)).name;
+    } catch {
+      // Recognition reads the solved cycle. Whatever goes wrong in it, the
+      // edit around it must not: a report with no family is the worst case.
+    }
+    this.analytics.track('mechanism_runs', { family });
   }
 
   /**
@@ -1311,6 +1396,10 @@ export class MechanismService {
     if (this.savesHeld) return;
     const saveHistoryService = this.injector.get(SaveHistoryService);
     saveHistoryService.save();
+    // After the entry is written, so nothing in the report can cost an edit
+    // its undo. Here rather than in `updateMechanism` because a drag commits by
+    // calling this directly, after rebuilds that did not save.
+    this.noticeFirstRun();
   }
 
   /** Apply a pose-independent change to the authored drawing, then restore every clock. */

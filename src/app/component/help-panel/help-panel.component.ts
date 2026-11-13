@@ -144,12 +144,12 @@ export class HelpPanelComponent {
   // service -- after the tab had already opened, which is why it looked fine.
   readonly gotoHelpSite = (): void => {
     window.open('https://pmks.mech.website/pmks-web-how-to-videos/', '_blank');
-    this.analytics.logEvent('goto_help_site');
+    this.analytics.track('help_link_click', { destination: 'help_site' });
   };
 
   readonly gotoGithub = (): void => {
     window.open('https://github.com/PMKS-Web/PMKS', '_blank');
-    this.analytics.logEvent('goto_github');
+    this.analytics.track('help_link_click', { destination: 'github' });
   };
 
   readonly sendCommentEmail = async (): Promise<void> => {

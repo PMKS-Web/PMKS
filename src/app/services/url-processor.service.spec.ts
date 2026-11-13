@@ -6,6 +6,7 @@ import { ActiveObjService } from './active-obj.service';
 import { RealLink } from '../model/link';
 import { RealJoint } from '../model/joint';
 import { NotificationService } from './notification.service';
+import { AnalyticsService } from './analytics.service';
 
 describe('malformed address recovery', () => {
   afterEach(() => {
@@ -34,6 +35,31 @@ describe('malformed address recovery', () => {
       expect(failure).toHaveBeenCalledWith('url.undecodable', expect.any(String));
     }
   );
+
+  it('counts a link by what its decode found: a link, a bad link, or nothing at all', () => {
+    const entryFor = (address: string) => {
+      TestBed.resetTestingModule();
+      window.history.replaceState({}, '', '/?' + address);
+      TestBed.configureTestingModule({
+        providers: [{ provide: NotificationService, useValue: { failure: () => undefined } }],
+      });
+      const track = vi.spyOn(AnalyticsService.prototype, 'track');
+      TestBed.inject(UrlProcessorService);
+      const call = (track.mock.calls as unknown[][]).find(([name]) => name === 'app_start');
+      track.mockRestore();
+      return (call?.[1] as { entry?: string } | undefined)?.entry;
+    };
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const good = TEMPLATE_LINKAGES['4-Bar'];
+    // The last character is the checksum's; changing it is what a link
+    // truncated or mangled in transit looks like to the decoder.
+    const broken = good.slice(0, -1) + (good.endsWith('A') ? 'B' : 'A');
+
+    expect(entryFor(good)).toBe('link');
+    expect(entryFor(broken)).toBe('bad_link');
+    // A share's tracking parameters bring no mechanism: an empty grid.
+    expect(entryFor('utm_source=twitter')).toBe('blank');
+  });
 
   it('still opens a valid mechanism with a percent-encoded backdrop name', () => {
     window.history.replaceState({}, '', '/?' + TEMPLATE_LINKAGES['4-Bar'] + '#backdrop=Four%20Bar');

@@ -8,6 +8,7 @@ import { EditPermissionService } from '../app/services/edit-permission.service';
 import { GridUtilsService } from '../app/services/grid-utils.service';
 import { MechanismService } from '../app/services/mechanism.service';
 import { NotificationService } from '../app/services/notification.service';
+import { AnalyticsService } from '../app/services/analytics.service';
 import { NumberUnitParserService } from '../app/services/number-unit-parser.service';
 import { SaveHistoryService } from '../app/services/save-history.service';
 import { SelectedTabService } from '../app/selected-tab.service';
@@ -63,6 +64,7 @@ export function createMechanismHarness(): MechanismHarness {
       { provide: DragStateService, deps: [] },
       { provide: SelectedTabService, deps: [] },
       { provide: NotificationService, useFactory: silentNotifications, deps: [] },
+      { provide: AnalyticsService, deps: [] },
       { provide: SaveHistoryService, useValue: history },
       { provide: SynthesisBuilderService, deps: [] },
       { provide: SvgGridService, deps: [] },

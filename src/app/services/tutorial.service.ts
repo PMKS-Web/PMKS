@@ -1,3 +1,4 @@
+import { AnalyticsService } from './analytics.service';
 import { Injectable, inject } from '@angular/core';
 import { Joint, RealJoint } from '../model/joint';
 import { Coord } from '../model/coord';
@@ -55,6 +56,7 @@ export class TutorialService {
   private activeObj = inject(ActiveObjService);
   private settings = inject(SettingsService);
   private samples = inject(AnalysisSampleService);
+  private analytics = inject(AnalyticsService);
   private nup = inject(NumberUnitParserService);
   private tabs = inject(SelectedTabService);
   private svgGrid = inject(SvgGridService);
@@ -269,6 +271,8 @@ export class TutorialService {
   // ---------- entering and leaving ----------
 
   start(): void {
+    // Resume calls this too, and a resumed tutorial is not a new one.
+    if (!this.started) this.analytics.track('tutorial_begin');
     this.started = true;
     this.exited = false;
     this.knownStep = stepOf(this.mechanism.joints, this.mechanism.links);
@@ -299,6 +303,7 @@ export class TutorialService {
 
   /** Back to a bare grid and step one. The only thing that discards work. */
   restart(): void {
+    this.analytics.track('tutorial_begin');
     this.mechanism.deleteAll();
     this.started = true;
     this.exited = false;
@@ -348,6 +353,7 @@ export class TutorialService {
     if (!reading) return;
     this.reading = reading;
     this.done = true;
+    this.analytics.track('tutorial_complete');
     this.remember();
   }
 

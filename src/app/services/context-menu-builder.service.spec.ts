@@ -11,6 +11,7 @@ import { GridUtilsService } from './grid-utils.service';
 import { KeyboardShortcutsService } from './keyboard-shortcuts.service';
 import { MechanismService } from './mechanism.service';
 import { NotificationService } from './notification.service';
+import { AnalyticsService } from './analytics.service';
 import { NumberUnitParserService } from './number-unit-parser.service';
 import { SaveHistoryService } from './save-history.service';
 import { SettingsService } from './settings.service';
@@ -74,6 +75,7 @@ function createBuilderHarness() {
       { provide: DragStateService, deps: [] },
       { provide: SelectedTabService, deps: [] },
       { provide: NotificationService, useFactory: silentNotifications, deps: [] },
+      { provide: AnalyticsService, deps: [] },
       { provide: SaveHistoryService, useValue: { save: () => {} } },
       { provide: SynthesisBuilderService, deps: [] },
       { provide: SvgGridService, deps: [] },

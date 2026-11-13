@@ -75,11 +75,18 @@ function byJointId(a: string, b: string): number {
  * joint between two moving bodies is precisely what unions them.
  */
 export function partitionKey(partition: MechanismPartition): string {
-  const moving = partition.ownJoints
+  return movingJointIds(partition).sort(byJointId)[0] ?? partition.id;
+}
+
+/**
+ * The joints a machine is made of that are not pinned to the frame: what it
+ * keeps through an edit. A grounded pivot is left out because two machines
+ * can share one.
+ */
+export function movingJointIds(partition: MechanismPartition): string[] {
+  return partition.ownJoints
     .filter((joint) => !(joint instanceof RealJoint && joint.ground))
-    .map((joint) => joint.id)
-    .sort(byJointId);
-  return moving[0] ?? partition.id;
+    .map((joint) => joint.id);
 }
 
 /**

@@ -825,7 +825,7 @@ export class TopBarComponent implements AfterViewInit, AfterViewChecked, OnDestr
 
   newProject(): void {
     this.closeMenu();
-    this.analytics.logEvent('new_project');
+    this.analytics.track('new_project');
     window.open(window.location.origin + window.location.pathname, '_blank');
   }
 
@@ -876,7 +876,6 @@ export class TopBarComponent implements AfterViewInit, AfterViewChecked, OnDestr
   }
 
   upload($event: Event): void {
-    this.analytics.logEvent('upload_file');
     this.closeMenu();
     const input = $event.target as HTMLInputElement;
     // Silently. This fires when the picker is dismissed, and canceling a
@@ -885,6 +884,7 @@ export class TopBarComponent implements AfterViewInit, AfterViewChecked, OnDestr
     if (!input.files || input.files.length !== 1) {
       return;
     }
+    this.analytics.track('open_file');
     const reader = new FileReader();
     reader.onload = () => {
       // Behind the cover, and everything below waits on it: solving the
@@ -924,7 +924,7 @@ export class TopBarComponent implements AfterViewInit, AfterViewChecked, OnDestr
 
   downloadLinkage(): void {
     this.closeMenu();
-    this.analytics.logEvent('download_linkage');
+    this.analytics.track('save_file');
     const blob = new Blob([this.urlGeneration.generateUrlQuery()], {
       type: 'text;charset=utf-8;',
     });
@@ -941,7 +941,7 @@ export class TopBarComponent implements AfterViewInit, AfterViewChecked, OnDestr
 
   copyURL(): void {
     this.closeMenu();
-    this.analytics.logEvent('copyURL');
+    this.analytics.track('share', { method: 'copy_link', content_type: 'mechanism' });
     this.urlGeneration.copyFullUrl();
     this.notify.success('share.copied', 'Link copied. Copy again after your next change.');
   }

@@ -1,3 +1,4 @@
+import { AnalyticsService } from '../../services/analytics.service';
 import { mechanismLabel, mechanismName } from '../../model/mechanism/mechanism-name';
 import {
   AfterViewChecked,
@@ -240,6 +241,7 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
   private permission = inject(EditPermissionService);
   private loading = inject(LoadingService);
   private history = inject(SaveHistoryService);
+  private analytics = inject(AnalyticsService);
   private host = inject<ElementRef<HTMLElement>>(ElementRef);
   private changeDetector = inject(ChangeDetectorRef);
 
@@ -1067,6 +1069,8 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
     // Any transport action is the reader moving on from the news that the
     // start moved, so the row stops carrying it.
     this.mechanism.clearStartMoved();
+    // A row's own Play is Play too, when the machines are unsynced.
+    if (!this.mechanism.isMechanismPlaying(row.index)) this.analytics.trackOnce('playback_start');
     this.mechanism.toggleMechanismPlaying(row.index);
   }
 
@@ -1210,6 +1214,7 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
 
   private startPlaying(): void {
     if (!this.mechanism.oneValidMechanismExists()) return;
+    if (!this.mechanism.isPlaying) this.analytics.trackOnce('playback_start');
     // Every row, not just the shared flag: unsynced it is the rows that run,
     // and a master button that left them alone showed a pause icon over a
     // drawing standing still.
