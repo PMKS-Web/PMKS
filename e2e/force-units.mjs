@@ -91,7 +91,7 @@ await openMechanism(page, `${BASE}/?${payloads['Crane_Two_Loads']}`);
 await openSettings();
 
 // ---- English: one force unit, so no row ------------------------------------
-await pick('Global Units', 'English (in)');
+await pick('Length Units', 'Inch (in)');
 record(
   'English offers no Force Units row — there is nothing to pick',
   (await pill('Force Units')) === null,
@@ -105,7 +105,7 @@ record('and stores its magnitudes in pounds-force', english.forceUnit === 20, en
 record('while the strip names lbf', /\blbf\b/.test(english.strip), english.strip);
 
 // ---- Metric: newtons and kilograms-force ------------------------------------
-await pick('Global Units', 'Metric (cm)');
+await pick('Length Units', 'Centimeter (cm)');
 const metric = await pill('Force Units');
 record(
   'metric raises the row, on newtons',
@@ -168,19 +168,19 @@ record(
 );
 
 // ---- SI keeps the pick; English spends it -----------------------------------
-await pick('Global Units', 'SI (m)');
+await pick('Length Units', 'Meter (m)');
 record(
   'kilograms-force survives a move between metric lengths',
   (await state()).forceUnit === 23,
   await state()
 );
-await pick('Global Units', 'English (in)');
+await pick('Length Units', 'Inch (in)');
 record(
   'and English lands on lbf whatever was chosen before',
   (await state()).forceUnit === 20,
   await state()
 );
-await pick('Global Units', 'Metric (cm)');
+await pick('Length Units', 'Centimeter (cm)');
 record(
   'coming back reads newtons rather than a kgf it cannot carry',
   (await state()).forceUnit === 21,
@@ -212,7 +212,7 @@ const torqueCaption = async () => {
 await pick('Force Units', 'Kilogram-force (kgf)');
 const cmCaption = await torqueCaption();
 record('a torque in a centimeter drawing reads in kgf·cm', /\bkgf·cm\b/.test(cmCaption), cmCaption);
-await pick('Global Units', 'SI (m)');
+await pick('Length Units', 'Meter (m)');
 const mCaption = await torqueCaption();
 record('and the same drawing in meters reads in kgf·m', /\bkgf·m\b/.test(mCaption), mCaption);
 // The number moves with the unit; the exact factor is pinned where it can be
@@ -223,7 +223,7 @@ record(
     Number.isFinite(parseFloat(mCaption.match(/(-?[\d.]+) kgf·m/)?.[1] ?? 'NaN')),
   { cmCaption, mCaption }
 );
-await pick('Global Units', 'Metric (cm)');
+await pick('Length Units', 'Centimeter (cm)');
 
 // ---- The pick rides the URL -------------------------------------------------
 await pick('Force Units', 'Kilogram-force (kgf)');

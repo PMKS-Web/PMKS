@@ -18,7 +18,8 @@ import {
 } from '@angular/core';
 import { SettingsFocusService } from '../../services/settings-focus.service';
 import { SettingsService, writeStoredFlag } from 'src/app/services/settings.service';
-import { LengthUnit, AngleUnit, ForceUnit, GlobalUnit } from 'src/app/model/utils';
+import { LengthUnit, AngleUnit, ForceUnit, GlobalUnit, MassUnit } from 'src/app/model/utils';
+import { displayMassUnit, inertiaUnitFor, storedMassUnit } from 'src/app/model/mass-units';
 import { FormBuilder, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { MechanismService } from '../../services/mechanism.service';
 import { SvgGridService } from '../../services/svg-grid.service';
@@ -107,6 +108,7 @@ export class SettingsPanelComponent implements OnDestroy {
 
   currentLengthUnit!: LengthUnit;
   currentForceUnit!: ForceUnit;
+  currentMassUnit!: MassUnit;
   currentAngleUnit!: AngleUnit;
   // currentTorqueUnit!: TorqueUnit;
   currentGlobalUnit!: GlobalUnit;
@@ -115,6 +117,7 @@ export class SettingsPanelComponent implements OnDestroy {
   ngOnInit(): void {
     this.currentLengthUnit = this.settingsService.lengthUnit.value;
     this.currentForceUnit = this.settingsService.forceUnit.value;
+    this.currentMassUnit = this.settingsService.massUnit.value;
     this.currentAngleUnit = this.settingsService.angleUnit.value;
     this.currentGlobalUnit = this.settingsService.globalUnit.value;
     this.settingsForm.patchValue({
@@ -122,6 +125,7 @@ export class SettingsPanelComponent implements OnDestroy {
       lengthunit: this.currentLengthUnit.toString(),
       angleunit: (this.currentAngleUnit - 10).toString(),
       forceunit: forceUnitIndex(this.currentForceUnit),
+      massunit: massUnitIndex(displayMassUnit(this.currentLengthUnit, this.currentMassUnit)),
       // torqueunit: (this.currentTorqueUnit - 20).toString(),
       globalunit: (this.currentGlobalUnit - 30).toString(),
       showMajorGrid: this.settingsService.isShowMajorGrid.value,
@@ -142,28 +146,33 @@ export class SettingsPanelComponent implements OnDestroy {
         this.settingsService.lengthUnit,
         this.settingsService.angleUnit,
         this.settingsService.forceUnit,
+        this.settingsService.massUnit,
         this.settingsService.globalUnit,
         this.settingsService.isShowMajorGrid,
         this.settingsService.isShowMinorGrid,
         this.settingsService.isGravity,
-      ]).subscribe(([length, angle, force, global, showMajorGrid, showMinorGrid, gravity]) => {
-        this.currentLengthUnit = length;
-        this.currentAngleUnit = angle;
-        this.currentForceUnit = force;
-        this.currentGlobalUnit = global;
-        this.settingsForm.patchValue(
-          {
-            lengthunit: length.toString(),
-            angleunit: (angle - 10).toString(),
-            forceunit: forceUnitIndex(force),
-            globalunit: (global - 30).toString(),
-            showMajorGrid,
-            showMinorGrid,
-            gravity,
-          },
-          { emitEvent: false }
-        );
-      })
+      ]).subscribe(
+        ([length, angle, force, mass, global, showMajorGrid, showMinorGrid, gravity]) => {
+          this.currentLengthUnit = length;
+          this.currentAngleUnit = angle;
+          this.currentForceUnit = force;
+          this.currentMassUnit = mass;
+          this.currentGlobalUnit = global;
+          this.settingsForm.patchValue(
+            {
+              lengthunit: length.toString(),
+              angleunit: (angle - 10).toString(),
+              forceunit: forceUnitIndex(force),
+              massunit: massUnitIndex(displayMassUnit(length, mass)),
+              globalunit: (global - 30).toString(),
+              showMajorGrid,
+              showMinorGrid,
+              gravity,
+            },
+            { emitEvent: false }
+          );
+        }
+      )
     );
   }
 
@@ -195,6 +204,20 @@ export class SettingsPanelComponent implements OnDestroy {
       if (chosen === this.settingsService.forceUnit.value) return;
       this.currentForceUnit = chosen;
       this.settingsService.forceUnit.next(chosen);
+      this.mechanismSrv.updateMechanism();
+      this.mechanismSrv.onMechUpdateState.next(2);
+    });
+    this.settingsForm.controls['massunit'].valueChanges.subscribe((val) => {
+      // A display unit, like force: masses stay stored in the length's own
+      // unit and the fields convert on the way in and out. Nothing about the
+      // solve changes; the redraw puts every open field and table in the new
+      // unit, exactly as the force switch above does.
+      if (!this.showsMassUnit()) return;
+      const chosen = val === '1' ? MassUnit.KG : MassUnit.GRAM;
+      const shown = displayMassUnit(this.currentLengthUnit, this.settingsService.massUnit.value);
+      if (chosen === shown) return;
+      this.currentMassUnit = chosen;
+      this.settingsService.massUnit.next(chosen);
       this.mechanismSrv.updateMechanism();
       this.mechanismSrv.onMechUpdateState.next(2);
     });
@@ -273,7 +296,7 @@ export class SettingsPanelComponent implements OnDestroy {
     // The permission model, not `settings.animating`. That flag is pushed by
     // the transport's master controls and says nothing about a *row* being
     // played: with one machine of several visibly running, it read false, and
-    // Global Units, Angle Units and Gravity stayed live while every other
+    // Length Units, Angle Units and Gravity stayed live while every other
     // surface in the app said the drawing was read-only.
     //
     // `properties` rather than `structure`: a unit change rescales every length
@@ -336,6 +359,30 @@ export class SettingsPanelComponent implements OnDestroy {
     return this.currentGlobalUnit !== GlobalUnit.ENGLISH;
   }
 
+  /** Whether there is a mass unit to pick: grams or kilograms, under cm and m. */
+  showsMassUnit(): boolean {
+    return this.currentGlobalUnit !== GlobalUnit.ENGLISH;
+  }
+
+  /**
+   * What the units chosen above make of everything else.
+   *
+   * Torque and inertia are never picked -- each is a product of units that are
+   * -- so the panel says what they come to rather than offering a row for each.
+   * Under inches the mass and force rows are hidden for having a single option,
+   * and this is where the reader learns that the force is in pounds-force.
+   */
+  derivedUnitsNote(): string {
+    const length = this.currentLengthUnit;
+    const mass = displayMassUnit(length, this.currentMassUnit);
+    const force = this.currentForceUnit;
+    const torque = this.nup.torqueLabel(force, length);
+    const inertia = this.nup.unitLabel(inertiaUnitFor(mass, length));
+    const derived = `Torque reads in ${torque} and inertia in ${inertia}.`;
+    if (this.showsMassUnit()) return derived;
+    return `Mass is in ${this.nup.unitLabel(mass)} and force in ${this.nup.unitLabel(force)}. ${derived}`;
+  }
+
   /**
    * The force unit that goes with the length system just chosen.
    *
@@ -358,12 +405,33 @@ export class SettingsPanelComponent implements OnDestroy {
   }
 
   /**
-   * The single length-unit switch. Both the Global Units radio and the internal
+   * The mass unit that goes with the length just chosen: that length's own.
+   *
+   * Unlike kilograms-force, a mass pick does not survive a change of length.
+   * Grams suit centimeters and kilograms suit meters, and a reader who moves a
+   * drawing from one to the other and never opened Mass Units should see what
+   * the app has always shown them -- not a meter drawing weighed in grams with
+   * its inertia in g·m².
+   */
+  private settleMassUnit(length: LengthUnit): void {
+    this.currentMassUnit = MassUnit.NULL;
+    this.settingsService.massUnit.next(MassUnit.NULL);
+    this.settingsForm.patchValue(
+      { massunit: massUnitIndex(storedMassUnit(length)) },
+      { emitEvent: false }
+    );
+  }
+
+  /**
+   * The single length-unit switch. Both the Length Units radio and the internal
    * length control funnel here so a unit change always rescales the mechanism's
    * stored geometry, mass, inertia, and forces — never just relabels them.
    */
   private changeLengthUnit(toUnit: LengthUnit): void {
     const fromUnit = this.settingsService.lengthUnit.value;
+    // The mass first, as the URL reader does, so nothing listening to the
+    // length is handed a pairing the reader never had.
+    if (fromUnit !== toUnit) this.settleMassUnit(toUnit);
     this.currentLengthUnit = toUnit;
     this.settingsService.lengthUnit.next(toUnit);
     this.settingsForm.controls['lengthunit'].patchValue(String(toUnit), { emitEvent: false });
@@ -417,6 +485,7 @@ export class SettingsPanelComponent implements OnDestroy {
       lengthunit: ['', { updateOn: 'change' }],
       angleunit: ['', { updateOn: 'change' }],
       forceunit: ['', { updateOn: 'change' }],
+      massunit: ['', { updateOn: 'change' }],
       torqueunit: ['', { updateOn: 'change' }],
       globalunit: ['', { updateOn: 'change' }],
       showMinorGrid: [true, { updateOn: 'change' }],
@@ -427,6 +496,11 @@ export class SettingsPanelComponent implements OnDestroy {
     },
     { updateOn: 'blur' }
   );
+}
+
+/** Which option of the Mass Units pill stands for this unit. */
+function massUnitIndex(unit: MassUnit): string {
+  return unit === MassUnit.KG ? '1' : '0';
 }
 
 /** Which option of the Force Units pill stands for this unit. */

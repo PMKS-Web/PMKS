@@ -8,12 +8,13 @@ import {
 } from '@angular/core';
 import { FormControl, FormGroup } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { skip } from 'rxjs';
 import { Force } from '../../model/force';
 import { RealJoint } from '../../model/joint';
 import { LinkHold, RealLink } from '../../model/link';
 import { MODEL_SCALE } from '../../model/render-scale';
 import { CommonValue, aggregateCommonValue } from '../../model/selection';
-import { AngleUnit, LengthUnit, MassUnit } from '../../model/utils';
+import { AngleUnit } from '../../model/utils';
 import { ActiveObjService } from '../../services/active-obj.service';
 import { EditPermissionService } from '../../services/edit-permission.service';
 import { MechanismService } from '../../services/mechanism.service';
@@ -178,6 +179,10 @@ export class MultiEditPanelComponent implements OnInit, DoCheck {
       );
     this.active.onActiveObjChange
       .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.syncForm());
+    // A mass unit picked in Settings re-reads the shared mass in it.
+    this.settings.massUnit
+      .pipe(skip(1), takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.syncForm());
   }
 
@@ -434,7 +439,13 @@ export class MultiEditPanelComponent implements OnInit, DoCheck {
   }
 
   massText(value: CommonValue<number>): string {
-    return value.kind === 'common' ? this.nup.formatValueAndUnit(value.value, this.massUnit()) : '';
+    return value.kind === 'common'
+      ? this.nup.formatStoredMass(
+          value.value,
+          this.settings.lengthUnit.value,
+          this.settings.massUnit.value
+        )
+      : '';
   }
 
   placeholder(value: CommonValue<unknown>): string {
@@ -469,7 +480,11 @@ export class MultiEditPanelComponent implements OnInit, DoCheck {
   }
 
   commitMass(text: string): void {
-    const [valid, value] = this.nup.parseMassString(text, this.massUnit());
+    const [valid, value] = this.nup.parseStoredMass(
+      text,
+      this.settings.lengthUnit.value,
+      this.settings.massUnit.value
+    );
     if (!valid || value < 0) return this.invalid('mass', 'Mass must be zero or greater.');
     this.report(this.multi.assignLinkMass(this.active.selectedPartRefs, value));
     this.active.fakeUpdateSelectedObj();
@@ -524,17 +539,6 @@ export class MultiEditPanelComponent implements OnInit, DoCheck {
   private forceLocal(): boolean {
     const state = this.forceFrameState();
     return state.kind === 'common' && state.value;
-  }
-
-  private massUnit(): MassUnit {
-    switch (this.settings.lengthUnit.value) {
-      case LengthUnit.INCH:
-        return MassUnit.LBM;
-      case LengthUnit.METER:
-        return MassUnit.KG;
-      default:
-        return MassUnit.GRAM;
-    }
   }
 
   private syncForm(): void {

@@ -31,8 +31,9 @@ export enum ForceUnit {
   KGF = 23,
 }
 
-// Mass and inertia are shown in whichever unit pairs with the current length
-// unit, so these mirror LengthUnit's inch/cm/meter ordering.
+// Stored in whichever unit pairs with the current length unit, which is why
+// these mirror LengthUnit's inch/cm/meter ordering; shown in the reader's
+// choice under the metric lengths (model/mass-units.ts).
 export enum MassUnit {
   LBM = 40,
   GRAM = 41,
@@ -52,6 +53,12 @@ export enum InertiaUnit {
    * unit exists only at the input/label boundary.
    */
   G_CM2 = 54,
+  /**
+   * Grams beside meters: mass times length squared, for a reader who measures
+   * in meters and weighs in grams. Display only, like G_CM2; storage under
+   * meters stays KG_M2.
+   */
+  G_M2 = 55,
 }
 
 export enum TimeUnit {

@@ -82,6 +82,16 @@ export class SegmentedComponent implements AfterViewInit, OnDestroy {
    */
   readonly fill = input<boolean>(true);
   /**
+   * Whether a shared width is split by label length rather than equally.
+   *
+   * The pill still fills its row; each option starts from what its label needs
+   * and the room left over is shared. For a row whose labels differ a lot in
+   * length -- "Inch (in)", "Centimeter (cm)", "Meter (m)" -- where an equal
+   * third cut the long one to "Centimeter (c…" while the short ones had room
+   * to spare.
+   */
+  readonly weighted = input<boolean, unknown>(false, { transform: booleanAttribute });
+  /**
    * The options in two columns, wrapping onto rows. Four choices with a glyph
    * each do not fit one row of a 250px panel: shared four ways, every label
    * was cut to its first few letters.

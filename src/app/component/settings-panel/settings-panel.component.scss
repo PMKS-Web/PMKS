@@ -47,6 +47,16 @@
   // The panel stretches its children to its own width, which is a content-box
   // width -- so a row with side padding came out wider than the drawer and the
   // version ran off the edge.
+  // What the unit choices above it come to: torque and inertia, and under
+  // inches the mass and force whose rows are hidden for having one option.
+  // Secondary text under the rows it explains, on the rows' own gutter.
+  .unitsNote {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text-secondary);
+  }
+
   .versionRow {
     box-sizing: border-box;
     display: flex;
