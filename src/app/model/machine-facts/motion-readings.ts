@@ -69,13 +69,21 @@ function inputRange(machine: MachineContext): InputRange | undefined {
 
 /**
  * A driven slider the input reading does not cover: one whose guide is not
- * fixed. The drive moves it along its own guide angle all the same, so its
- * travel is measured along that angle.
+ * fixed. On a slot cut into a moving link the drive commands the distance
+ * from the slot's first joint to the block (`registerSlotDrive`), which the
+ * carrier's own motion leaves alone, so that is what is measured. A slider
+ * with no slot to measure from is moved along its own guide angle.
  */
 function drivenSliderTravel(machine: MachineContext): number[] | undefined {
   const { driven } = machine;
   if (!(driven instanceof PrisJoint)) return undefined;
   if (machine.ctx.cylinders.some((cylinder) => cylinder.seal === driven)) return undefined;
+  const paths = machine.ctx.samples.paths;
+  const block = paths.get(driven.id);
+  const origin = driven.slotJointA && paths.get(driven.slotJointA.id);
+  if (block && origin && driven.slotJointA !== driven) {
+    return block.map(([x, y], i) => Math.hypot(x - origin[i][0], y - origin[i][1]));
+  }
   return travelAlong(driven, machine);
 }
 

@@ -3,6 +3,9 @@ import { TEMPLATE_LINKAGES } from '../../component/MODALS/templates/template-lin
 import { solvedDrawing } from '../../../test-utils/machine-facts/drawing';
 import { machineContext } from './machine-facts';
 import { motionReadings, RateAt } from './motion-readings';
+import { partitionMechanisms } from '../mechanism/mechanism-partition';
+import { buildMechanism, inModelUnits } from '../../../test-utils/verification/fixture';
+import { invertedSliderCrankFixture } from '../../../test-utils/verification/slot-fixtures';
 
 /** One machine of a library drawing, read with a rate the test makes up. */
 function readingsOf(id: keyof typeof TEMPLATE_LINKAGES, rateAt: RateAt = () => Number.NaN, at = 0) {
@@ -66,5 +69,33 @@ describe('how a machine moves, as the Kinematic Analysis overview reads it', () 
     expect(readings.peakVelocity?.value).toBe(50);
     const ground = readingsOf('4-Bar', (id) => (id === 'A' ? 99 : 1)).readings;
     expect(ground.peakAcceleration?.joint.id).not.toBe('A');
+  });
+});
+
+describe('the stroke of a slider driven along a slot in a moving link', () => {
+  it('is measured along the slot from its first joint, whatever the carrier does', () => {
+    // The inverted slider-crank driven at its block rather than its crank: the
+    // block slides along lever CD, and the lever turns about C as it does.
+    const fixture = invertedSliderCrankFixture();
+    fixture.joints.find((joint) => joint.id === 'A')!.input = false;
+    fixture.sliders![0].input = true;
+    const { mechanism, joints, links, forces } = buildMechanism(inModelUnits(fixture), 'adaptive');
+    const partition = partitionMechanisms(joints, links, forces).mechanisms[0];
+    const machine = machineContext(partition, mechanism)!;
+    const range = motionReadings(machine, () => Number.NaN).inputRange;
+
+    const paths = machine.ctx.samples.paths;
+    const block = paths.get('B')!;
+    const slotEnd = paths.get('C')!;
+    const lever = paths.get('D')!;
+    const along = block.map(([x, y], i) => Math.hypot(x - slotEnd[i][0], y - slotEnd[i][1]));
+    const turned = lever.map(([x, y], i) => Math.atan2(y - slotEnd[i][1], x - slotEnd[i][0]));
+    // The carrier really does turn, so a reading in world axes would differ.
+    expect(Math.max(...turned) - Math.min(...turned)).toBeGreaterThan(0.1);
+    expect(range?.kind).toBe('length');
+    expect((range as { length: number }).length).toBeCloseTo(
+      Math.max(...along) - Math.min(...along),
+      6
+    );
   });
 });
