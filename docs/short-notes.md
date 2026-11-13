@@ -229,6 +229,14 @@ one, two and twelve times its fixture and not at four to ten. And the numerical 
 budget is missed near a toggle by the hatch drawn as 1.1 m and by the excavator drawn more than a
 few times larger, so the hatch is published as 110 cm and the excavator was left as traced.
 
+A third surprise was the browser's. The Flywheel Engine at ten times its fixture, opened in
+Schematic, froze Playwright's headless Chromium most times: the compositor stuck activating a
+frame, no `requestAnimationFrame`, every click timing out (`drawing-styles.mjs`). The trigger was
+the slider block's entrance animation, a `transform: scale` on an SVG child; headed Chrome
+recovered, and the staging-sized flywheel never tripped it. The slider entrances in
+`new-grid.component.scss` are opacity alone now. A suite that suddenly cannot click anything on a
+large drawing is worth checking for a transform animation before blaming the drawing.
+
 ### A context menu is one menu per kind of thing
 
 A row on the right-click menu never comes and goes with the situation. It is there on every joint
