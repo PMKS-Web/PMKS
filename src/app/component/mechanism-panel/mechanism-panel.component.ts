@@ -4,7 +4,10 @@ import { RealJoint } from '../../model/joint';
 import { MOST_MACHINES } from '../../model/mechanism/mechanism-partition';
 import { SelectedTabService, TabID } from '../../selected-tab.service';
 import { ActiveObjService } from '../../services/active-obj.service';
-import { MechanismOverviewService } from '../../services/mechanism-overview.service';
+import {
+  MechanismOverviewService,
+  OverviewPurpose,
+} from '../../services/mechanism-overview.service';
 import { MechanismPanelStateService } from '../../services/mechanism-panel-state.service';
 import { MechanismService } from '../../services/mechanism.service';
 import { ViewportService } from '../../services/viewport.service';
@@ -60,6 +63,12 @@ export class MechanismPanelComponent {
     return this.overview.drivenJoint(this.index);
   }
 
+  /** Which mode's Overview this is: Edit's counts, how it moves, or what it carries. */
+  protected get purpose(): OverviewPurpose {
+    if (this.editable()) return 'edit';
+    return this.tabs.getCurrentTab() === TabID.FORCE ? 'force' : 'kinematic';
+  }
+
   /** Whether the panel lists every machine rather than showing one. */
   protected get showsList(): boolean {
     return this.overview.count() > 1 && !this.picked;
@@ -97,8 +106,9 @@ export class MechanismPanelComponent {
   /** The list's lead: what picking a row shows in this mode. */
   protected get listLead(): string {
     const press = this.viewport.isTouch() ? 'Tap' : 'Select';
-    return this.editable()
-      ? `${press} one to see its details.`
+    if (this.editable()) return `${press} one to see its details.`;
+    return this.purpose === 'force'
+      ? `${press} one for its family and loads.`
       : `${press} one for its family and motion.`;
   }
 

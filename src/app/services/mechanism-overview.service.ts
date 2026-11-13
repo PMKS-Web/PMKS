@@ -14,6 +14,7 @@ import { SetupIssue } from '../model/mechanism/setup-issue';
 import { READINESS } from '../ui-text';
 import { DragStateService } from './drag-state.service';
 import { MechanismService } from './mechanism.service';
+import { MechanismReadingsService, OverviewFact } from './mechanism-readings.service';
 import { NumberUnitParserService } from './number-unit-parser.service';
 import { SettingsService } from './settings.service';
 
@@ -47,6 +48,7 @@ export class MechanismOverviewService {
   private settings = inject(SettingsService);
   private nup = inject(NumberUnitParserService);
   private dragState = inject(DragStateService);
+  private readings = inject(MechanismReadingsService);
 
   count(): number {
     return this.mechanism.partitions.length;
@@ -119,26 +121,50 @@ export class MechanismOverviewService {
   /**
    * What the Overview says of a machine, by what the reader is doing with it.
    * Building it, what matters is how free it is and what drives it -- the
-   * count a deleted or added link changes. Analyzing it, how it moves too:
-   * its speed, how long a cycle takes, whether it turns or rocks.
+   * count a deleted or added link changes. In Kinematic Analysis, how it
+   * moves: its speed and cycle, how far the input goes, its peaks, and for a
+   * four-bar driven by its crank how well it transmits. In Force Analysis,
+   * what it carries. A machine that does not run has none of that to say, so
+   * an analysis mode shows it as Edit does, with the count that stops it.
    */
-  facts(index: number, building = false): MechanismFact[] {
-    const facts = this.mechanism.readinessOfEachMechanism()[index]?.facts ?? [];
-    if (building) return facts.filter((fact) => BUILDING_FACTS.has(fact.label));
+  facts(index: number, purpose: OverviewPurpose = 'kinematic'): OverviewFact[] {
+    const facts = this.allFacts(index);
+    const building = facts.filter((fact) => BUILDING_FACTS.has(fact.label));
+    if (purpose === 'edit' || !this.ready(index)) return building;
+    const input = facts.filter((fact) => fact.label === 'Input joint');
+    if (purpose === 'force') {
+      return [...input, ...(this.readings.forceFacts(index) ?? [])];
+    }
     // A named family already says how the input moves -- a crank-rocker's
     // crank turns fully -- so Motion is said only where no family is.
     const named = this.family(index).kind === 'named';
-    return facts.filter(
-      (fact) => ANALYZING_FACTS.has(fact.label) || (fact.label === 'Motion' && !named)
-    );
+    return [
+      ...facts.filter(
+        (fact) => MOTION_FACTS.has(fact.label) || (fact.label === 'Motion' && !named)
+      ),
+      ...this.readings.kinematicFacts(index),
+    ];
+  }
+
+  /**
+   * Whether Force Analysis has nothing to say about a machine that runs: its
+   * setup still needs something, or the solver could not solve it.
+   */
+  forcesUnread(index: number): boolean {
+    return this.ready(index) && this.readings.forceFacts(index) === undefined;
   }
 
   /** "1 degree of freedom", for a list row; nothing where the count is not a number. */
   freedoms(index: number): string | undefined {
-    const value = this.facts(index).find((fact) => fact.label === 'Degrees of freedom')?.value;
+    const value = this.allFacts(index).find((fact) => fact.label === 'Degrees of freedom')?.value;
     const count = Number(value);
     if (value === undefined || !Number.isFinite(count)) return undefined;
     return `${count} ${count === 1 ? 'degree' : 'degrees'} of freedom`;
+  }
+
+  /** Every fact the readiness check gives this machine, before a mode picks among them. */
+  private allFacts(index: number): MechanismFact[] {
+    return this.mechanism.readinessOfEachMechanism()[index]?.facts ?? [];
   }
 
   /**
@@ -236,11 +262,15 @@ const BUILDING_FACTS = new Set([
 ]);
 
 /**
- * The facts the analysis modes show under the Family: the same, and the
- * input's speed beside the cycle time it sets (60 / rpm), so a student can
- * check one against the other.
+ * What Kinematic Analysis keeps of those, under the Family: what drives it,
+ * and the input's speed beside the cycle time it sets (60 / rpm), so a student
+ * can check one against the other. The counts are Edit's: a machine that runs
+ * has one degree of freedom, and saying so again says nothing.
  */
-const ANALYZING_FACTS = new Set([...BUILDING_FACTS, 'Cycle time']);
+const MOTION_FACTS = new Set(['Input joint', 'Input speed', 'Cycle time']);
+
+/** Which mode's Overview is asked for: each says something different about the same machine. */
+export type OverviewPurpose = 'edit' | 'kinematic' | 'force';
 
 /** Red if anything stops it running, amber if it runs with something to check, green if not. */
 export function chipOf(issues: readonly SetupIssue[]): MachineChip {

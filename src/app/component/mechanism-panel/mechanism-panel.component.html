@@ -119,13 +119,22 @@
               <span class="factBasis">{{ family.basis }}</span>
             </div>
           }
-          @for (fact of overview.facts(index, editable()); track fact.label) {
+          @for (fact of overview.facts(index, purpose); track fact.label) {
             @if (fact.label === 'Input joint' && drivenJoint; as joint) {
               <!-- Select the joint in this mode, just like a part on the grid. -->
               <div class="fact">
                 <span class="factLabel">{{ fact.label }}</span>
                 <span class="factValue"
                   ><part-link [part]="joint">{{ fact.value }}</part-link></span
+                >
+              </div>
+            } @else if (fact.at; as joint) {
+              <!-- A peak names where it happens: the joint whose graph shows it. -->
+              <div class="fact">
+                <span class="factLabel">{{ fact.label }}</span>
+                <span class="factValue"
+                  >{{ fact.value }} at
+                  <part-link [part]="joint">{{ joint.name || joint.id }}</part-link></span
                 >
               </div>
             } @else {
@@ -140,6 +149,13 @@
                    edit, and these facts are read off that solve. -->
               <p class="factNote">This drawing's motion is worked out when you press Play.</p>
             }
+          }
+          @if (purpose === 'force' && overview.forcesUnread(index)) {
+            <!-- It runs, but its loads cannot be read yet: say where to look. -->
+            <p class="factNote">
+              Its loads appear here once Force Analysis can solve it. The Force Analysis setup says
+              what it needs.
+            </p>
           }
         </div>
       }
