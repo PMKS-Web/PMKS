@@ -516,8 +516,15 @@ advance the other endpoint again on every pointer event. `e2e/constrained-link-d
 checks both length and angle neighbors, a stationary pointer, and undo/redo.
 
 A hold is only meaningful on a plain two-joint bar, and `holdOf()` in `model/link-holds.ts` reads
-one as absent on anything else -- which is why nothing has to clear the flag when a bar is welded or
-given a third joint. It rides the URL as an `H` entry in the trailing section (`HlAB`, `HaAB`),
+one as absent on anything else -- which is why nothing has to clear the flag when a bar is given a
+third joint. **A bar welded into a body still holds**, because a welded body reshapes in the editor:
+it is a two-joint leaf in its body's `subset`, and `heldBars`, `heldBarsAt`, `heldBarsReaching` and
+`holdChips` walk the leaves (`selectableLinks`) rather than the top-level list. They walked only the
+top level until #279, so a welded bar's padlock was stored, saved and drawn, and the solver never
+heard of it. Its padlocks are in the **joint** panel: Distance to Joints draws the two ends of a
+welded bar with the Link panel's own `hold-field-block`, and offers a hold only between the two ends
+of one bar (`model/joint-distances.ts`) -- never between joints at opposite ends of a chain, where
+there is no part for the padlock to be about. It rides the URL as an `H` entry in the trailing section (`HlAB`, `HaAB`),
 beside the locks, so it survives undo and travels in a shared link; the decoder refuses a hold on
 anything but a bar. The held-value chips and the amber guide are canvas state
 (`heldChips()`, `holdGuide`, `holdRing` in `new-grid.component.ts`), shown only when the lock marks

@@ -33,9 +33,13 @@ try {
     const p = g.svgGrid.modelToScreen(g.mechanismSrv.links[0].subset[0].CoM);
     return { x: p.x, y: p.y };
   });
+  // One click selects the welded body; the click also notes the bar under the
+  // pointer, which is the one a new tracer point joins.
   await page.mouse.click(target.x, target.y);
-  await page.mouse.click(target.x, target.y);
-  check('second click selects HI', await grid((g) => g.activeObjService.selectedLink.id === 'HI'));
+  check(
+    'a click on HI selects its body',
+    await grid((g) => g.activeObjService.selectedLink === g.mechanismSrv.links[0])
+  );
   await page.getByRole('button', { name: 'Add Tracer Point', exact: true }).click();
   const topology = () =>
     grid((g) => {
@@ -89,18 +93,20 @@ try {
     added
   );
   await page.screenshot({ path: `${OUT}/tracer.png` });
-  // Selecting a leaf must make Delete address that leaf, not silently look
-  // for it among roots. Exercise the keyboard and the panel separately.
-  for (const command of ['keyboard', 'panel']) {
+  // A click selects the whole welded body, so one link of it is deleted from
+  // the menu's row for the link under the pointer.
+  for (const command of ['the menu row']) {
     await load(compound);
     const at = await grid((g) => {
       const p = g.svgGrid.modelToScreen(g.mechanismSrv.links[0].subset[0].CoM);
       return { x: p.x, y: p.y };
     });
-    await page.mouse.click(at.x, at.y);
-    await page.mouse.click(at.x, at.y);
-    if (command === 'keyboard') await page.keyboard.press('Delete');
-    else await page.getByRole('button', { name: 'Delete', exact: true }).click();
+    await page.mouse.click(at.x, at.y, { button: 'right' });
+    await page.locator('#contextMenu').waitFor({ state: 'visible' });
+    await page
+      .locator('.cm-row')
+      .filter({ has: page.locator('.cm-row__label', { hasText: /^Delete Link HI$/ }) })
+      .click();
     const remaining = await grid((g) => ({
       links: g.mechanismSrv.links.map((l) => l.id),
       joints: g.mechanismSrv.joints.map((j) => j.id),
