@@ -2971,6 +2971,11 @@ production branch or a branch-deploy branch. So a PR into `staging` gets
 `deploy-preview-NNN--pmksprod.netlify.app`, and a stacked PR into another feature branch gets none.
 Adding a branch to the branch-deploy list turns on both its own deploy and previews of PRs into it.
 
+`waitForReady` settles whatever was on the page when it was called. A suite that loads an empty
+grid, waits, and then builds its part with a poke has waited for nothing: the new part still has to
+be drawn and framed. `cylinder-members` pressed on a barrel that was not there yet, once in about
+sixty gate runs, and the drag moved nothing. Wait again after the poke, before aiming a press.
+
 ### A tracer point snaps to its bar's line against the cursor, not its grid corner
 
 `snapToLines` (`model/line-snap.ts`) is asked before the grid in the joint-drag branch and in
@@ -2980,11 +2985,6 @@ first is as likely as not to be pushed off the line it was on. Only a tracer ask
 welded compound the tracer's `links[0]` is the whole compound, so the lines come from the subset bar
 that holds it. The panel's Add Tracer Point (`addJointAtCOM`) still puts the point a hair off the
 line on purpose; only the right-click row and a drag snap.
-
-`waitForReady` settles whatever was on the page when it was called. A suite that loads an empty
-grid, waits, and then builds its part with a poke has waited for nothing: the new part still has to
-be drawn and framed. `cylinder-members` pressed on a barrel that was not there yet, once in about
-sixty gate runs, and the drag moved nothing. Wait again after the poke, before aiming a press.
 
 ### A scrub handle reaches the start by snapping, not by landing on it
 
