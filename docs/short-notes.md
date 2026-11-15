@@ -22,6 +22,16 @@ checkout. `* text=auto eol=lf` in `.gitattributes` now checks out LF everywhere.
 before that rule keeps its CRLF files until they are checked out again:
 `git rm -r --cached -q . && git reset --hard` (this discards uncommitted changes).
 
+### `polygon-clipping` fails on vertices a hair apart, so `buildCompoundPath` snaps them first
+
+The union library treats two vertices as one only when they are exactly equal. Two bars welded at
+a pin both end in a cap on the same circle, and flattened at the same angular step their vertices
+can land within 1e-14 of each other. The library then threw "Unable to complete output ring", the
+catch handed back the leaves side by side, and the Bell Crank's body drew as two loose bars with
+no rings for the CAD export (#291). It depended on the drawing scale, so a fixture built headless
+fused while the canvas did not. `buildCompoundPath` now snaps each flattened ring to `SNAP_GRIDS`,
+finest first, and only falls back to the leaves when every grid fails.
+
 ### `__dirname` in a shared test helper points somewhere else in the full run
 
 A spec file can resolve paths from its own `__dirname`, as `fixture-gallery.spec.ts` does. A
