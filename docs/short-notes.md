@@ -22,6 +22,16 @@ checkout. `* text=auto eol=lf` in `.gitattributes` now checks out LF everywhere.
 before that rule keeps its CRLF files until they are checked out again:
 `git rm -r --cached -q . && git reset --hard` (this discards uncommitted changes).
 
+### `polygon-clipping` fails on vertices a hair apart, so `buildCompoundPath` snaps them first
+
+The union library treats two vertices as one only when they are exactly equal. Two bars welded at
+a pin both end in a cap on the same circle, and flattened at the same angular step their vertices
+can land within 1e-14 of each other. The library then threw "Unable to complete output ring", the
+catch handed back the leaves side by side, and the Bell Crank's body drew as two loose bars with
+no rings for the CAD export (#291). It depended on the drawing scale, so a fixture built headless
+fused while the canvas did not. `buildCompoundPath` now snaps each flattened ring to `SNAP_GRIDS`,
+finest first, and only falls back to the leaves when every grid fails.
+
 ### `__dirname` in a shared test helper points somewhere else in the full run
 
 A spec file can resolve paths from its own `__dirname`, as `fixture-gallery.spec.ts` does. A
@@ -2956,3 +2966,12 @@ input that turns back passes its seat twice a cycle and only one of those is the
 does not move a handle whose row value has not changed. The snap runs only on a pointer's release
 (`change` after a `pointerdown`), never on `input`: an arrow key steps one unit, which is inside the
 snap band, so snapping every value change held the handle in the seat against the keyboard.
+
+### Option turns snapping off for a drag and on for a placement
+
+Held during a drag, Option suspends every snap: the grid, the alignment guides, a merge on drop,
+the 15-degree steps of a group's or a background image's rotation. Held while placing a new link,
+cylinder or force, it does the opposite for the direction, which steps in 15 degrees only while it
+is down (`placementBearing`). Both are listed under Modifier Keys in Help, from
+`KeyboardShortcutsService.modifiers` (#316). Nothing dispatches those rows. The canvas reads
+`altKey` off the pointer event, so a change to what a held key does needs its row changed by hand.

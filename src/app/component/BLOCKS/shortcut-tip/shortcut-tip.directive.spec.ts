@@ -44,6 +44,18 @@ describe('the shortcut tooltip', () => {
     expect(shown()).toBeNull();
   });
 
+  it('tells a screen reader the key, which only the pointer sees drawn', () => {
+    const fixture = TestBed.createComponent(HostComponent);
+    fixture.detectChanges();
+    const button = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
+    const ids = (button.getAttribute('aria-describedby') ?? '').split(' ').filter(Boolean);
+    const said = ids.map((id) => document.getElementById(id)?.textContent ?? '').join(' ');
+    expect(said).toMatch(/^Keyboard shortcut: .*Z$/);
+
+    fixture.destroy();
+    expect(ids.every((id) => document.getElementById(id) === null)).toBe(true);
+  });
+
   it('is wired onto the view buttons, which is where half the shortcuts live', () => {
     // The binding is a property binding, so nothing about it survives into the
     // DOM as an attribute -- the only way to know it is attached is to ask
