@@ -259,7 +259,8 @@
                 class="rowPlay"
                 [class.live]="canPlay"
                 (click)="toggleRow(row); $event.stopPropagation()"
-                [title]="shortcuts.tip('Play / pause', 'playback.toggle')"
+                [appShortcutTip]="row.playing ? 'Pause' : 'Play'"
+                shortcutTipFor="playback.toggle"
                 [attr.aria-label]="row.playing ? 'Pause ' + row.id : 'Play ' + row.id"
               >
                 <mat-icon>{{ row.playing ? 'pause' : 'play_arrow' }}</mat-icon>
