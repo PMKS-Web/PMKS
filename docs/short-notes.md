@@ -416,6 +416,17 @@ joints and links ask `containsPart`. A selected force also draws its dashed fram
 own `#F<n>` group, which widens that group's box: an e2e suite that clicks the center of `#F1`
 can land on the link beside the arrow, so aim at `#F1 .forceLine`.
 
+### A force copied on its own lands on its own link, and the step can bounce back
+
+`SelectionBatchService.duplicateSelected` used to skip a selected force and copy only bodies, so a
+group of forces copied nothing, said nothing, and still saved an undo entry; the panel's button
+never asked `duplicateRefusal`, the menu's did. A force whose link is not being copied is now copied
+onto that same link (`loneForces`). Its anchor is kept on the body at the next rebuild
+(`keepForcesOnTheirLinks`), so the grid step can be pulled straight back onto the original -- a
+force at a bar's end, stepped past it -- and `loneForceShift` tries the other diagonals first. A
+selection that is restored after a batch edit needs `mechanism.forces` passed in, or force refs
+are dropped.
+
 ### A force anchor refuses a shared pin out loud
 
 A force may sit on a joint only where its link is the one body there: a tracer point. A pin

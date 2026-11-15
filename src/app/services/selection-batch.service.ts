@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Cylinder, cylinderJoints, isCylinderInner } from '../model/cylinder';
 import { Coord } from '../model/coord';
 import { Force } from '../model/force';
+import { constrainForceAnchor } from '../model/force-anchor';
 import { Joint, PrisJoint, RealJoint, RevJoint } from '../model/joint';
 import { Link, RealLink } from '../model/link';
 import { SelectedPartRef } from '../model/selection';
@@ -37,6 +38,8 @@ interface DuplicateClosure {
   resolved: ResolvedPart[];
   joints: Joint[];
   roots: Link[];
+  /** Forces picked out on their own, whose body is not being copied: each is copied onto that same body. */
+  loneForces: Force[];
 }
 
 const emptySelection = (): BatchRefusal => ({
@@ -79,14 +82,6 @@ export class SelectionBatchService {
   duplicateRefusal(refs: readonly SelectedPartRef[]): BatchRefusal | undefined {
     const resolved = resolve(this.mechanism, refs);
     if ('refusal' in resolved) return resolved.refusal;
-    if (resolved.parts.every((part) => 'force' in part)) {
-      return {
-        code: 'duplicate-forces-only',
-        short: 'nothing to copy it onto',
-        message:
-          'A force is copied with the link it acts on. Select that link as well, or copy it from the link.',
-      };
-    }
     const closure = duplicateClosure(this.mechanism, resolved.parts);
     return 'refusal' in closure ? closure.refusal : undefined;
   }
@@ -278,8 +273,8 @@ function duplicateClosure(
   };
 
   for (const part of resolved) {
-    // A force is copied with the body it acts on, which is the only place a
-    // copy of it could go: a force on its own has no position of its own.
+    // A force never pulls its body into the copy: it is copied with that body
+    // when the body is selected too, and onto it otherwise (loneForces below).
     if ('force' in part) continue;
     if ('root' in part) {
       const linked = part;
@@ -331,7 +326,15 @@ function duplicateClosure(
     }
     grew = before !== joints.size + roots.size;
   }
-  return { resolved, joints: [...joints], roots: [...roots] };
+  // A force whose body is copied rides along with the copy (see copyClosure).
+  // One picked out on its own lands on the body it already acts on, a grid
+  // step away, which is the only body it can belong to.
+  const loneForces = resolved.flatMap((part) =>
+    'force' in part && !roots.has(rootOf(mechanism, part.force.link) ?? part.force.link)
+      ? [part.force]
+      : []
+  );
+  return { resolved, joints: [...joints], roots: [...roots], loneForces };
 }
 
 function copyClosure(
@@ -442,12 +445,7 @@ function copyClosure(
   }
 
   const forceCopies: Force[] = [];
-  const selectedOwners = new Set(
-    closure.roots.filter((root): root is RealLink => root instanceof RealLink)
-  );
-  for (const source of mechanism.forces.filter((force) => selectedOwners.has(force.link))) {
-    const owner = linkMap.get(source.link);
-    if (!(owner instanceof RealLink)) continue;
+  const copyForce = (source: Force, owner: RealLink, shift = delta): Force => {
     const id = nextForceId(
       mechanism,
       forceCopies.map((force) => force.id)
@@ -455,8 +453,8 @@ function copyClosure(
     const copy = new Force(
       id,
       owner,
-      new Coord(source.startCoord.x + delta.x, source.startCoord.y + delta.y),
-      new Coord(source.endCoord.x + delta.x, source.endCoord.y + delta.y),
+      new Coord(source.startCoord.x + shift.x, source.startCoord.y + shift.y),
+      new Coord(source.endCoord.x + shift.x, source.endCoord.y + shift.y),
       source.local,
       source.arrowOutward,
       source.mag
@@ -465,21 +463,70 @@ function copyClosure(
     copyPartName(source, copy, usedNames);
     owner.forces.push(copy);
     forceCopies.push(copy);
+    return copy;
+  };
+  const selectedOwners = new Set(
+    closure.roots.filter((root): root is RealLink => root instanceof RealLink)
+  );
+  for (const source of mechanism.forces.filter((force) => selectedOwners.has(force.link))) {
+    const owner = linkMap.get(source.link);
+    if (owner instanceof RealLink) copyForce(source, owner);
+  }
+  const loneCopies = new Map<Force, Force>();
+  for (const source of closure.loneForces) {
+    const copy = copyForce(source, source.link, loneForceShift(source, delta));
+    // Same body, so the same body to come back to after a weld and unweld.
+    copy.anchoredTo = source.anchoredTo;
+    loneCopies.set(source, copy);
   }
 
   mechanism.joints.push(...jointMap.values());
   mechanism.links.push(...rootCopies);
   mechanism.forces.push(...forceCopies);
 
-  // What the copy leaves selected. A force ref is dropped: its copy came with
-  // the body, and the reader's next gesture is about the new bodies.
+  // What the copy leaves selected. A force copied with its body is dropped --
+  // the reader's next gesture is about the new bodies -- while a force copied
+  // on its own is the copy, the way a copied joint or link is.
   return closure.resolved.flatMap((part): SelectedPartRef[] => {
-    if ('force' in part) return [];
+    if ('force' in part) {
+      const copy = loneCopies.get(part.force);
+      return copy ? [{ kind: 'force', id: copy.id }] : [];
+    }
     if (!('root' in part)) {
       return [{ kind: 'joint', id: jointMap.get(part.object)!.id }];
     }
     return [{ kind: 'link', id: linkMap.get(part.root)!.id }];
   });
+}
+
+/**
+ * How far a force copied onto its own body moves.
+ *
+ * Its application point has to stay on that body, and the next rebuild pulls
+ * it back on if it is not, so the plain grid step can come straight back to
+ * where the original is -- a force at a bar's end, stepped past the end -- and
+ * leave the copy hidden under it. The first of the four diagonal steps whose
+ * kept point is clear of the original wins; if none is (a bar lying across
+ * every one of them), the plain step is still a copy, just a stacked one.
+ */
+function loneForceShift(
+  source: Force,
+  delta: Readonly<{ x: number; y: number }>
+): { x: number; y: number } {
+  const step = Math.hypot(delta.x, delta.y);
+  const tries = [
+    { x: delta.x, y: delta.y },
+    { x: -delta.x, y: -delta.y },
+    { x: delta.y, y: -delta.x },
+    { x: -delta.y, y: delta.x },
+  ];
+  for (const t of tries) {
+    const wanted = { x: source.startCoord.x + t.x, y: source.startCoord.y + t.y };
+    const kept = constrainForceAnchor(source.link, wanted, 0);
+    const moved = { x: kept.x - source.startCoord.x, y: kept.y - source.startCoord.y };
+    if (Math.hypot(moved.x, moved.y) >= step / 4) return moved;
+  }
+  return { x: delta.x, y: delta.y };
 }
 
 function copyJoint(

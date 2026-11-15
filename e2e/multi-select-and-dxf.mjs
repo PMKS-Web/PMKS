@@ -538,7 +538,7 @@ await page.waitForTimeout(300);
 // A force is a member of the selection for everything a group *says* about it
 // -- how big, which way, which frame, what color -- and brings no geometry:
 // where a force is, is decided by the body it acts on. So it deletes with the
-// group and refuses to be duplicated on its own, with the reason.
+// group, and a copy of it lands on that same body, a grid step away.
 {
   await openMechanism(page, BASE + FOURBAR);
   await page.waitForTimeout(300);
@@ -638,8 +638,8 @@ await page.waitForTimeout(300);
     JSON.stringify(forceRows.map((row) => row.label))
   );
   check(
-    'and grays Duplicate, because a force is copied with the link it acts on',
-    forceRows.find((row) => row.label === 'Duplicate Selected (2)')?.off === true,
+    'and offers Duplicate, which copies each force onto the link it acts on',
+    forceRows.find((row) => row.label === 'Duplicate Selected (2)')?.off === false,
     JSON.stringify(forceRows.find((row) => row.label === 'Duplicate Selected (2)'))
   );
   await menuRow('Delete Selected (2)').click();
@@ -648,6 +648,42 @@ await page.waitForTimeout(300);
   await page.getByRole('button', { name: 'Undo' }).click();
   await page.waitForTimeout(800);
   check('and one Undo brings both back', (await forces()).length === 2);
+
+  // The panel's button, which is where a group of forces used to do nothing at
+  // all: no copy, no word, and an empty entry on the undo stack.
+  await page.keyboard.press('Escape');
+  const onF1 = await center('#F1 .forceLine');
+  await page.mouse.click(onF1.x, onF1.y);
+  await clickWith('#F2 .forceLine', 'Control');
+  await page.waitForTimeout(250);
+  const owners = () =>
+    page.evaluate(() =>
+      ng
+        .getComponent(document.querySelector('app-new-grid'))
+        .mechanismSrv.forces.map((force) => force.link.id)
+        .sort()
+    );
+  const linkCount = () =>
+    page.evaluate(
+      () => ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv.links.length
+    );
+  const linksBefore = await linkCount();
+  await page.locator('app-multi-edit-panel button[data-action="duplicate"]').click();
+  await page.waitForTimeout(800);
+  const copied = await selection();
+  check(
+    'Duplicate Selected copies each force onto its own link and selects the copies',
+    (await forces()).length === 4 &&
+      JSON.stringify(await owners()) === JSON.stringify(['CD', 'CD', 'OA', 'OA']) &&
+      (await linkCount()) === linksBefore &&
+      copied.length === 2 &&
+      copied.every((ref) => ref.startsWith('force:') && ref !== 'force:F1' && ref !== 'force:F2'),
+    JSON.stringify({ forces: await forces(), owners: await owners(), copied })
+  );
+  await page.screenshot({ path: `${OUT}/force-group-duplicated.png` });
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await page.waitForTimeout(800);
+  check('and one Undo takes both copies back', (await forces()).length === 2);
 }
 
 await openMechanism(page, BASE + FOURBAR);

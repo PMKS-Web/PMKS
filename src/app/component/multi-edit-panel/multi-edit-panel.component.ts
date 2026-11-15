@@ -495,7 +495,8 @@ export class MultiEditPanelComponent implements OnInit, DoCheck {
     this.active.restorePartSelection(
       { refs: result.selection, primary: result.selection.at(-1) },
       this.mechanism.joints,
-      this.mechanism.links
+      this.mechanism.links,
+      this.mechanism.forces
     );
   }
 
