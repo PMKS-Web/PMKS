@@ -401,6 +401,9 @@
         (mousedown)="onScrubDown(row)"
         (mouseup)="onScrubUp(row)"
         (input)="scrubRow(row, $event)"
+        (pointerdown)="holdScrub(row, $event)"
+        (keydown)="scrubPointerHeld = false"
+        (change)="settleScrub(row, $event)"
       />
     }
   </div>
