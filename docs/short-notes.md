@@ -2976,6 +2976,16 @@ grid, waits, and then builds its part with a poke has waited for nothing: the ne
 be drawn and framed. `cylinder-members` pressed on a barrel that was not there yet, once in about
 sixty gate runs, and the drag moved nothing. Wait again after the poke, before aiming a press.
 
+### A tracer point snaps to its bar's line against the cursor, not its grid corner
+
+`snapToLines` (`model/line-snap.ts`) is asked before the grid in the joint-drag branch and in
+`addJoint`, because a slanted bar's line passes between grid corners: a point taken to the corner
+first is as likely as not to be pushed off the line it was on. Only a tracer asks
+(`NewGridComponent.tracerBody`: a free revolute pin on one body that has two other joints). In a
+welded compound the tracer's `links[0]` is the whole compound, so the lines come from the subset bar
+that holds it. The panel's Add Tracer Point (`addJointAtCOM`) still puts the point a hair off the
+line on purpose; only the right-click row and a drag snap.
+
 ### A scrub handle reaches the start by snapping, not by landing on it
 
 The `.rowScrubber` range counts in thousandths, and one thousandth of a 300-pixel track is a third of
