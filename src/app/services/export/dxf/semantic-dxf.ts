@@ -176,15 +176,20 @@ export function buildSemanticDxf(input: SemanticDxfInput): DxfDocument {
       drawnAsBody.add(link.id);
     });
   }
+  // Filtered before the welded axes are merged, not after. Two bars welded in
+  // line merge into one axis keyed `CD+DE`, a key no body carries, so a filter
+  // applied after the merge let that centerline through, drawn straight across
+  // the outline already exported for the body (#292).
   entities.push(
-    ...consolidateWeldedAxes(axes, welded)
-      .filter((axis) => !drawnAsBody.has(axis.key))
-      .map((axis): DxfLine => ({
-        type: 'LINE',
-        layer: DXF_LAYER.links,
-        start: axis.start,
-        end: axis.end,
-      }))
+    ...consolidateWeldedAxes(
+      axes.filter((axis) => !drawnAsBody.has(axis.key)),
+      welded
+    ).map((axis): DxfLine => ({
+      type: 'LINE',
+      layer: DXF_LAYER.links,
+      start: axis.start,
+      end: axis.end,
+    }))
   );
 
   cylinders
