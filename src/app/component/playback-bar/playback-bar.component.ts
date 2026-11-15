@@ -1124,7 +1124,8 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
    * it, and a handle resting a pixel from its seat would stay there. The
    * release is therefore also heard on the window -- anywhere, since the press
    * may have left the track -- and settled a turn later, once any `change` the
-   * release does fire has settled it first.
+   * release does fire has settled it first. Only the pointer that pressed
+   * counts: another finger lifting elsewhere is not this handle's release.
    */
   holdScrub(row: PlaybackRow, event: Event): void {
     this.scrubPointerHeld = true;
@@ -1132,7 +1133,9 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
     const release = new AbortController();
     this.scrubRelease = release;
     const input = event.target as HTMLInputElement;
-    const settleLater = () => {
+    const pressedBy = (event as PointerEvent).pointerId;
+    const settleLater = (lifted: Event) => {
+      if ((lifted as PointerEvent).pointerId !== pressedBy) return;
       release.abort();
       setTimeout(() => this.settleRelease(row, input));
     };

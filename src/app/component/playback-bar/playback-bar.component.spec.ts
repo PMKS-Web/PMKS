@@ -144,6 +144,29 @@ describe('PlaybackBarComponent scrubbing back to the start', () => {
     }
   });
 
+  it('waits for the pointer that pressed the handle, not another finger', async () => {
+    vi.useFakeTimers();
+    try {
+      const { fixture, bar, service } = await createBar('4-Bar');
+      const row = bar.rows.find((candidate) => candidate.master)!;
+      const seat = row.anchorAt ?? 0;
+      const pointer = (type: string, pointerId: number) =>
+        Object.assign(new Event(type), { pointerId });
+
+      stepTo(fixture, row, seat + 1);
+      handleOf(fixture, row).dispatchEvent(pointer('pointerdown', 1));
+      window.dispatchEvent(pointer('pointerup', 2));
+      vi.runAllTimers();
+      expect(service.isAtStartPose()).toBe(false);
+
+      window.dispatchEvent(pointer('pointerup', 1));
+      vi.runAllTimers();
+      expect(service.isAtStartPose()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does not take a key step after a click that moved nothing for a release', async () => {
     const { fixture, bar, service } = await createBar('4-Bar');
     const row = bar.rows.find((candidate) => candidate.master)!;
