@@ -391,6 +391,8 @@ Not suites — import them from one.
   (from a row, the setup drawer's name), the others fading, the drawer folding to it and opening
   on arrival when a machine cannot run, part links keeping either analysis mode and playback, with the setup drawer staying open, and a
   rename riding the URL.
+- `scrub-to-start.mjs` — dragging a scrub handle back and letting go within a few pixels of its
+  seat lands exactly on the start pose (#304), on the shared row and on an unsynced machine's own.
 - `two-mechanisms.mjs` — two machines in one drawing: a row each in the transport, a section each
   in the setup drawer, and a sync toggle that decouples them.
 

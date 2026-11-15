@@ -1,4 +1,5 @@
 import { MenuPosePolicy } from '../../../model/edit-permission';
+import type { ShortcutId } from '../../../services/keyboard-shortcuts.service';
 /**
  * What a right-click menu is made of.
  *
@@ -129,8 +130,10 @@ export interface MenuGroup {
 export interface MenuCrossing {
   icon: string;
   material?: boolean;
-  /** Tooltip, with the mode's shortcut on the end. */
-  tip: string;
+  /** The mode's name, which is the tooltip and the button's accessible name. */
+  label: string;
+  /** The mode's key, drawn as a key cap beside the name rather than in brackets. */
+  shortcut: ShortcutId;
   refusal?: MenuRefusal;
   action: () => void;
 }
