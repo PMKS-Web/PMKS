@@ -104,7 +104,13 @@ async function oneCylinder(options = {}) {
   );
   // The wait above was for an empty grid. The part made just now still has to
   // be drawn, and framed, before a press aimed at it lands on it: on a slow CI
-  // runner a barrel grab once fell on bare grid and moved nothing at all.
+  // runner a barrel grab once fell on bare grid and moved nothing at all. Wait
+  // for its end joints by name first, because `waitForReady` alone is satisfied
+  // by a grid with no joints drawn at all.
+  await page.waitForFunction(
+    (ends) => ends.every((id) => document.getElementById(`joint_${id}`)),
+    [ids.a, ids.b]
+  );
   await waitForReady(page);
   return ids;
 }
