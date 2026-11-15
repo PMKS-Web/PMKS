@@ -2981,6 +2981,11 @@ welded compound the tracer's `links[0]` is the whole compound, so the lines come
 that holds it. The panel's Add Tracer Point (`addJointAtCOM`) still puts the point a hair off the
 line on purpose; only the right-click row and a drag snap.
 
+`waitForReady` settles whatever was on the page when it was called. A suite that loads an empty
+grid, waits, and then builds its part with a poke has waited for nothing: the new part still has to
+be drawn and framed. `cylinder-members` pressed on a barrel that was not there yet, once in about
+sixty gate runs, and the drag moved nothing. Wait again after the poke, before aiming a press.
+
 ### A scrub handle reaches the start by snapping, not by landing on it
 
 The `.rowScrubber` range counts in thousandths, and one thousandth of a 300-pixel track is a third of
