@@ -6112,13 +6112,15 @@ export class NewGridComponent implements OnDestroy {
   }
 
   private reconsiderDrop($event: KeyboardEvent, held: boolean) {
-    if ($event.key !== 'Alt') return;
-    if (this.dragState.joint !== jointStates.dragging) return;
+    if ($event.key !== 'Alt' || this.dragState.joint !== jointStates.dragging) return;
 
     // A move still waiting for its frame carries the old Alt, and would put
     // it back when it landed: let it land first, then apply the key.
     this.applyPendingDragMove();
     this.snapSuspended = held;
+    // Not a drag yet, so nothing will be saved on release: a key must not move
+    // the joint outside the history. The next real move places it.
+    if (!this.dragState.hasModified) return;
     this.updateDropCandidate(this.mouseLocation, held);
     this.activeObjService.selectedJoint = this.gridUtils.dragJoint(
       this.activeObjService.selectedJoint,
