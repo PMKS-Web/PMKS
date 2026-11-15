@@ -125,6 +125,25 @@ describe('PlaybackBarComponent scrubbing back to the start', () => {
     expect(handleOf(fixture, row).value).toBe(String(seat + 1));
   });
 
+  it('settles a click that moved nothing on a handle beside its seat', async () => {
+    vi.useFakeTimers();
+    try {
+      const { fixture, bar, service } = await createBar('4-Bar');
+      const row = bar.rows.find((candidate) => candidate.master)!;
+      const seat = row.anchorAt ?? 0;
+
+      stepTo(fixture, row, seat + 1);
+      expect(service.isAtStartPose()).toBe(false);
+
+      handleOf(fixture, row).dispatchEvent(new Event('pointerdown'));
+      window.dispatchEvent(new Event('pointerup'));
+      vi.runAllTimers();
+      expect(service.isAtStartPose()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does not take a key step after a click that moved nothing for a release', async () => {
     const { fixture, bar, service } = await createBar('4-Bar');
     const row = bar.rows.find((candidate) => candidate.master)!;

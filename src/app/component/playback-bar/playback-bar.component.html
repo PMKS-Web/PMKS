@@ -401,7 +401,7 @@
         (mousedown)="onScrubDown(row)"
         (mouseup)="onScrubUp(row)"
         (input)="scrubRow(row, $event)"
-        (pointerdown)="scrubPointerHeld = true"
+        (pointerdown)="holdScrub(row, $event)"
         (keydown)="scrubPointerHeld = false"
         (change)="settleScrub(row, $event)"
       />

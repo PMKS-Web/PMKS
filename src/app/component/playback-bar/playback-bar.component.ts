@@ -248,12 +248,14 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
   private wasAnimating = false;
   private wasRowAnimating = false;
   /**
-   * A pointer pressed a handle and has not yet committed a value, so the next
-   * `change` is a release that may snap to the start. A key press clears it: a
-   * click that moved nothing commits nothing, and must not make the next arrow
-   * key's step look like a release.
+   * A pointer pressed a handle and has not yet been settled, so the next
+   * `change` is a release that may snap to the start. A key press clears it, so
+   * an arrow key's step never looks like a release.
    */
   protected scrubPointerHeld = false;
+
+  /** Stops listening for the release of the press being held, if any. */
+  private scrubRelease?: AbortController;
 
   ngOnInit(): void {
     // The rows are rebuilt from the service on every change detection, and the
@@ -375,6 +377,7 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
   }
 
   ngOnDestroy(): void {
+    this.scrubRelease?.abort();
     this.keySub.unsubscribe();
     this.positionSub?.unsubscribe();
     this.heightWatch?.disconnect();
@@ -1111,9 +1114,36 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
    * left the track by then.
    */
   settleScrub(row: PlaybackRow, event: Event): void {
+    this.settleRelease(row, event.target as HTMLInputElement);
+  }
+
+  /**
+   * A pointer pressed a row's handle.
+   *
+   * A press that moves nothing commits nothing, so no `change` comes to settle
+   * it, and a handle resting a pixel from its seat would stay there. The
+   * release is therefore also heard on the window -- anywhere, since the press
+   * may have left the track -- and settled a turn later, once any `change` the
+   * release does fire has settled it first.
+   */
+  holdScrub(row: PlaybackRow, event: Event): void {
+    this.scrubPointerHeld = true;
+    this.scrubRelease?.abort();
+    const release = new AbortController();
+    this.scrubRelease = release;
+    const input = event.target as HTMLInputElement;
+    const settleLater = () => {
+      release.abort();
+      setTimeout(() => this.settleRelease(row, input));
+    };
+    window.addEventListener('pointerup', settleLater, { signal: release.signal });
+    window.addEventListener('pointercancel', settleLater, { signal: release.signal });
+  }
+
+  /** Snap a released handle to the start if it came to rest beside its seat. */
+  private settleRelease(row: PlaybackRow, input: HTMLInputElement): void {
     if (!this.scrubPointerHeld) return;
     this.scrubPointerHeld = false;
-    const input = event.target as HTMLInputElement;
     if (snapsToStart(Number(input.value), row.anchorAt, input.getBoundingClientRect().width)) {
       this.seekRowToStart(row, input);
     }
