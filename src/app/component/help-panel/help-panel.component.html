@@ -33,6 +33,17 @@
           }
         </div>
       }
+      <!-- Keys that change a gesture while held. Read off the pointer event
+           by whatever handles the gesture, so they are listed, not dispatched. -->
+      <div class="keyGroup">
+        <h4 class="keyHeading">Modifier Keys</h4>
+        @for (one of shortcuts.modifiers; track one.id) {
+          <div class="keyRow">
+            <span class="keyName">{{ one.label }}</span>
+            <kbd class="keyCap">{{ one.keys }}</kbd>
+          </div>
+        }
+      </div>
     </collapsible-subsection>
 
     <collapsible-subsection titleLabel="Send Feedback" [expanded]="true">
