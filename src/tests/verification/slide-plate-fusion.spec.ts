@@ -1,6 +1,7 @@
 // joint.ts first: the model modules form an import cycle that only
 // initializes cleanly when entered here (see test-utils/verification/fixture.ts).
 import '../../app/model/joint';
+import { paintOf } from '../../app/model/joint-colors';
 import { PrisJoint, RealJoint, RevJoint } from '../../app/model/joint';
 import { Link, RealLink } from '../../app/model/link';
 import { buildCompoundPath, transformRigidPath } from '../../app/model/compound-link-path';
@@ -164,7 +165,8 @@ describe('the drawing four wrong plates were reported on', () => {
         : found.role === 'barrel'
           ? barrelFillOf(found.cylinder)
           : rodFillOf(found.cylinder);
-      expect(plate.fill, id).toBe(drawn);
+      // Painted, not stored: the navies are drawn a step lighter (paintOf).
+      expect(plate.fill, id).toBe(paintOf(drawn));
     }
     // The body at O is light green, which is the whole of what the report asks
     // for there: a plate at all, in the part's own color.

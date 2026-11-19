@@ -22,6 +22,7 @@
  * chosen between solves.
  */
 
+import { paintOf } from './joint-colors';
 import { Cylinder, cylinderOfBarIn } from './cylinder';
 import { memberSilhouette } from './cylinder-fusion';
 import { fillShownOn } from './cylinder-skin';
@@ -94,5 +95,7 @@ export function ghostInkOf(
   link: Link | undefined,
   cylinders: readonly Cylinder[]
 ): string {
-  return link instanceof RealLink ? fillShownOn(link, cylinderOfBarIn(cylinders, link)) : body.fill;
+  return link instanceof RealLink
+    ? paintOf(fillShownOn(link, cylinderOfBarIn(cylinders, link)))
+    : body.fill;
 }

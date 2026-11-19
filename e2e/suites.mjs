@@ -30,6 +30,8 @@ const BOTH = ['gate', 'nightly'];
 const NIGHTLY = ['nightly'];
 
 export const SUITES = [
+  { name: 'library-visual-audit', seconds: 240, lanes: NIGHTLY },
+  { name: 'library-label-motion', seconds: 210, lanes: NIGHTLY },
   { name: 'drawing-styles', seconds: 70, lanes: BOTH },
   { name: 'bug-fixes-2', seconds: 90, lanes: NIGHTLY },
   { name: 'analysis-audit', seconds: 224, lanes: NIGHTLY },

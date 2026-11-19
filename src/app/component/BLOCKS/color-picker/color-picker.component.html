@@ -14,14 +14,14 @@
         <!-- Use a div element to represent each color swatch -->
         <div
           class="swatch"
-          [style.backgroundColor]="color"
+          [style.backgroundColor]="painted(color)"
           [matTooltip]="nameOf(i)"
           [matTooltipDisabled]="!nameOf(i)"
           [matTooltipShowDelay]="400"
           (click)="selectColor(i)"
         >
           @if (chosenIndex() === i) {
-            <mat-icon [style.color]="tickInk(color)">check</mat-icon>
+            <mat-icon [style.color]="tickInk(painted(color))">check</mat-icon>
           }
         </div>
       </div>
