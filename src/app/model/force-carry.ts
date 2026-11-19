@@ -34,7 +34,10 @@ export function carryForce(
   force.moveAnchor(new Coord(at.x, at.y));
   if (Math.hypot(arrow.x, arrow.y) === 0) {
     // No arrow to read a direction off: the stored one is turned instead, and
-    // the handle stays on the anchor.
+    // the handle stays on the anchor -- put back on it exactly, because
+    // `moveAnchor` adds the move to the tip and can leave it a rounding error
+    // away, and an arrow of 2e-16 is one `setCollapsedDirection` will not turn.
+    force.moveDirectionHandle(new Coord(at.x, at.y));
     force.setCollapsedDirection(direction + turn);
     return;
   }

@@ -51,6 +51,20 @@ describe('carrying a force with its body', () => {
     expect(force.angleRad).toBeCloseTo(began + 0.5, 12);
   });
 
+  it('turns a collapsed Local force even when the move leaves its tip a rounding error away', () => {
+    // A bar from (0, 0) to (4, 0) turned 90 degrees about its middle sends the
+    // anchor at (0.13, 0) to (2, -1.87). Moved by the same step, the tip lands
+    // 2.2e-16 from it, which is not a collapsed arrow any more.
+    const link = new RealLink('AB', [new RevJoint('A', 0, 0), new RevJoint('B', 4, 0)]);
+    const force = new Force('F1', link, new Coord(0.13, 0), new Coord(0.13, 1), true, true, 6);
+    force.moveDirectionHandle(new Coord(0.13, 0));
+    const began = force.angleRad;
+    const at = { x: 2 + (0.13 - 2) * Math.cos(Math.PI / 2), y: (0.13 - 2) * Math.sin(Math.PI / 2) };
+    carryForce(force, at, { x: 0, y: 0 }, Math.PI / 2, began);
+    expect(force.angleRad).toBeCloseTo(began + Math.PI / 2, 12);
+    expect([force.endCoord.x, force.endCoord.y]).toEqual([force.startCoord.x, force.startCoord.y]);
+  });
+
   it('says how far a frame turned, the short way round', () => {
     const turn = frameTurn(
       [
