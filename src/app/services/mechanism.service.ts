@@ -1,11 +1,12 @@
 import { writeMechanismName } from '../model/mechanism/mechanism-name';
+import { paintOf } from '../model/joint-colors';
 import { orphanedByLinkRemoval } from '../model/link-removal';
 import { graftJoint } from '../model/graft-joint';
 import { pruneUnlinkedJoints } from '../model/prune-unlinked-joints';
 import { selectableLinks } from '../model/selection';
 import { LinkTraceService } from './link-trace.service';
 import { Injectable, Injector, inject } from '@angular/core';
-import { LinkHold } from '../model/link';
+import { HeldValue, holdWith, LinkHold } from '../model/link';
 import {
   cylinderMemberLinks,
   holdOf,
@@ -130,6 +131,7 @@ import {
   refuseJointMerge,
   slotWouldFoldACylinder,
 } from '../model/drop-target';
+import { forceOffRefusedJoint, refuseForceOnJoint } from '../model/force-on-joint';
 import { constrainForceAnchor } from '../model/force-anchor';
 import { OperationRefusal, refuseAttach } from '../model/joint-operation-permission';
 import { redundantlyHeldJointSets } from '../model/rigid-bodies';
@@ -1516,7 +1518,8 @@ export class MechanismService {
       case 'd':
         return link.d;
       case 'fill':
-        return link.fill;
+        // Painted, not stored: the canvas is the only reader of this case.
+        return paintOf(link.fill);
       case 'CoM_d1':
         return link.CoM_d1;
       case 'CoM_d2':
@@ -2292,48 +2295,48 @@ export class MechanismService {
   }
 
   /**
-   * Hold one of a bar's two numbers against edits, or let it go.
+   * Fix or release one of a bar's two numbers, leaving the other as it was.
    *
-   * One or the other, never both: a bar holding its length and its angle can
-   * only translate, and that is what a Lock on its joints already means. So
-   * asking for the second moves the hold, and says so, with the way back on
-   * the message. A hold is an edit like a lock is -- it rides the URL, so it
+   * What a padlock and a menu row press: each is about one value. A bar may
+   * hold both, keeping its length and its direction while it can still slide
+   * sideways -- which a Lock does not allow (#309). A cylinder's member goes to
+   * `setMemberHold`, whose table knows the part has one angle between two
+   * members. A hold is an edit like a lock is -- it rides the URL, so it
    * survives undo and travels in a shared link.
    */
+  setBarHold(link: Link, which: HeldValue, on: boolean): void {
+    if (this.cylinderOfBar(link)) {
+      this.setMemberHold(link, which, on);
+      return;
+    }
+    if (holdableBar(link)) this.setHold(link, holdWith(link.hold, which, on));
+  }
+
+  /**
+   * Put a bar under exactly this hold, or none. One undo entry.
+   *
+   * For a caller that has the whole value: an undo action, a release. On a
+   * cylinder's member a bare `undefined` is ambiguous -- a member can read held
+   * on two rows, its own length and the part's angle carried by the other --
+   * and the angle wins, because that is the hold both rows show and the one a
+   * reader pressing Release on either member means.
+   */
   setHold(link: Link, hold: LinkHold): void {
-    // A cylinder's member has two rows that can read held at once -- its own
-    // length, and the part's angle carried by the other member -- so a bare
-    // `undefined` is ambiguous here in a way it never is on a bar. The angle
-    // wins, because that is the hold both rows show and the one a reader
-    // pressing Release on either member means. `setMemberHold` is the door for
-    // a row that knows which value it is about.
     const sealed = this.cylinderOfBar(link);
     if (sealed) {
       const which =
-        hold ?? (memberHoldReads(sealed, link, 'angle') ? 'angle' : ('length' as const));
+        hold === 'both' || hold === undefined
+          ? memberHoldReads(sealed, link, 'angle')
+            ? 'angle'
+            : 'length'
+          : hold;
       this.setMemberHold(link, which, hold !== undefined);
       return;
     }
-    if (!holdableBar(link)) return;
-    const was = link.hold;
-    if (was === hold) return;
+    if (!holdableBar(link) || link.hold === hold) return;
     link.hold = hold;
     this.updateMechanism(true);
     this.activeObjService.fakeUpdateSelectedObj();
-    if (hold !== undefined && was !== undefined) {
-      const name = (which: LinkHold) => (which === 'angle' ? 'angle' : 'length');
-      // Through the one name a reader is shown. Only a plain bar reaches here --
-      // a cylinder's member left by the door above -- so no id on this road can
-      // hold a hidden joint today; asking anyway is what keeps that true of the
-      // sentence rather than of the road to it.
-      const who = this.visibleBodyName(link);
-      this.notify.news(
-        'hold.moved',
-        'A link can keep either its length or its angle fixed. ' +
-          `${who} now has a fixed ${name(hold)}.`,
-        { actions: [{ label: `Fix ${name(was)} instead`, run: () => this.setHold(link, was) }] }
-      );
-    }
   }
 
   /**
@@ -7944,15 +7947,48 @@ export class MechanismService {
    * row is on a joint's menu as well as a link's and the selection there is
    * the joint. Falls back to the selected link for the callers that have one.
    */
-  /** Move any force whose anchor has left the region its link's joints span. */
+  /**
+   * Move any force whose anchor has left the region its link's joints span, or
+   * that sits on a joint a force may not sit on.
+   *
+   * The second is how a force that was legal when it was placed stops being
+   * legal: a tracer point carrying one is merged onto another joint, a link is
+   * attached to it, it is grounded or made a slider -- or a URL or a library
+   * drawing arrived with a load on a pin (issue #138). The edit is what the
+   * reader asked for, so it stands; the force is moved a short way along its
+   * link, and the reader is told where it went.
+   */
   private keepForcesOnTheirLinks(): void {
+    const { within, margin } = this.forceJointMargins();
     for (const force of this.forces) {
       if (!(force.link instanceof RealLink)) continue;
       const kept = constrainForceAnchor(force.link, force.startCoord, 0);
       if (Math.hypot(kept.x - force.startCoord.x, kept.y - force.startCoord.y) > 1e-9) {
         force.moveAnchor(kept);
       }
+      const off = forceOffRefusedJoint(force.link, force.startCoord, within, margin);
+      if (!off) continue;
+      if (Math.hypot(off.to.x - force.startCoord.x, off.to.y - force.startCoord.y) <= 1e-9) {
+        continue;
+      }
+      force.moveAnchor(off.to);
+      const why = refuseForceOnJoint(off.joint)?.because;
+      this.notify.news(
+        `force.moved-off-joint.${force.id}`,
+        `Force ${force.name || force.id} moved off joint ${off.joint.id} onto link ${this.visibleBodyName(force.link)}: ${why}.`
+      );
     }
+  }
+
+  /**
+   * How near a joint's center a force counts as on it -- the pin's own radius,
+   * a joint being 0.15 object scales across -- and how far off it one is put.
+   * In object scales rather than the drawing style's scale, because a rebuild
+   * is about the mechanism and not about how it is drawn.
+   */
+  private forceJointMargins(): { within: number; margin: number } {
+    const scale = this.settingsService.objectScale;
+    return { within: 0.075 * scale, margin: 0.3 * scale };
   }
 
   createForce(startCoord: Coord, endCoord: Coord, onLink?: RealLink): Force | undefined {
@@ -7963,7 +7999,12 @@ export class MechanismService {
     // Where the click landed, kept to the region the link's joints span: the
     // line between a bar's two joints, the inside of a plate. A right-click
     // out at a plate's drawn edge is a load on its skin, not on the linkage.
-    const kept = constrainForceAnchor(selectedLink, startCoord, 0);
+    // And off a joint where a second body meets the link, quietly: a new force
+    // has nowhere it "was", so there is nothing to tell the reader it moved
+    // from (`model/force-on-joint.ts`).
+    const { within, margin } = this.forceJointMargins();
+    const onBody = constrainForceAnchor(selectedLink, startCoord, 0);
+    const kept = forceOffRefusedJoint(selectedLink, onBody, within, margin)?.to ?? onBody;
     endCoord.x += kept.x - startCoord.x;
     endCoord.y += kept.y - startCoord.y;
     startCoord = kept;

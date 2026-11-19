@@ -80,7 +80,7 @@ export const ORACLE_FRAME_EXCLUSIONS: FrameExclusion[] = [
       'Compared anyway they fall inside the differenced budgets today, the hydraulic ' +
       "cylinder's frame-0 acceleration at 9.9e-3 against 1e-2, which is not agreement.",
     issue: 'https://github.com/PMKS-Web/PMKS/issues/255',
-    review: 'When #84 is resolved.',
+    review: 'When #255 is resolved.',
   },
 ];
 

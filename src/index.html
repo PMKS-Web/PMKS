@@ -46,15 +46,14 @@
       UI rather than inside a letterbox the browser draws for it. Without it the
       page is held below the status bar and above the home indicator, and every
       `env(safe-area-inset-*)` reads zero -- which on real hardware showed as a
-      dead white band above the mode strip and the grid stopping short of the
+      dead white band above the top strip and the grid stopping short of the
       bottom of the screen.
 
       This was deliberately left off until there was hardware to check it on,
       because it costs a safe-area inset on every card that measures itself from
-      a window edge. Those are: the mode strip, which takes the top inset into
-      its own padding so its text clears the clock; the top strip, which stands
-      below it; and the transport, which keeps the bottom inset off the home
-      indicator.
+      a window edge. Those are: the top strip, which stands off the top inset so
+      its tabs clear the clock; and the transport, which keeps the bottom inset
+      off the home indicator.
 
       Measured on the hardware afterwards, all four insets read zero in Safari
       with its bars showing -- the page is already laid out inside the safe area
@@ -92,8 +91,8 @@
       readers in the chrome finally have something to read. `black-translucent`
       is the part that earns it at the top -- it puts the status bar *over* the
       web view instead of above it, which is what lets the grid run under the
-      clock. The strips are already built for it: the mode strip takes the top
-      inset into its own padding, the transport keeps the bottom inset off the
+      clock. The strips are already built for it: the top strip stands off the
+      top inset, the transport keeps the bottom inset off the
       home indicator, and the canvas is the size of the screen either way.
 
       `start_url` is deliberately absent from the manifest, so it defaults to

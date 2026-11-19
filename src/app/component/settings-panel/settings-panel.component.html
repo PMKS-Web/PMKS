@@ -18,24 +18,30 @@
       }
       <radio-block
         #globalUnits
-        option1="English (in)"
-        option2="Metric (cm)"
-        option3="SI (m)"
+        option1="Inch (in)"
+        option2="Centimeter (cm)"
+        option3="Meter (m)"
+        weighted
         [formGroup]="this.settingsForm"
         _formControl="globalunit"
         [tooltip]="'The length unit the whole drawing is measured in.' + lockedNote()"
         [disabled]="!documentEditable()"
-        >Global Units
+        >Length Units
       </radio-block>
-      <radio-block
-        option1="Degree (&deg;)"
-        option2="Radian"
-        [formGroup]="this.settingsForm"
-        _formControl="angleunit"
-        [tooltip]="'The unit for angles, angular velocity and angular acceleration.' + lockedNote()"
-        [disabled]="!documentEditable()"
-        >Angle Units
-      </radio-block>
+      <!-- Length, mass and force, then what they come to. Inches have one mass
+           and one force, so both rows hide there and the note says what the
+           reader gets instead. Angle stands apart: nothing is derived from it. -->
+      @if (showsMassUnit()) {
+        <radio-block
+          option1="Gram (g)"
+          option2="Kilogram (kg)"
+          [formGroup]="this.settingsForm"
+          _formControl="massunit"
+          [tooltip]="'The unit masses and moments of inertia are shown in.' + lockedNote()"
+          [disabled]="!documentEditable()"
+          >Mass Units
+        </radio-block>
+      }
       @if (showsForceUnit()) {
         <radio-block
           option1="Newton (N)"
@@ -47,6 +53,16 @@
           >Force Units
         </radio-block>
       }
+      <p class="unitsNote">{{ derivedUnitsNote() }}</p>
+      <radio-block
+        option1="Degree (&deg;)"
+        option2="Radian (rad)"
+        [formGroup]="this.settingsForm"
+        _formControl="angleunit"
+        [tooltip]="'The unit for angles, angular velocity and angular acceleration.' + lockedNote()"
+        [disabled]="!documentEditable()"
+        >Angle Units
+      </radio-block>
       <toggle-block
         [formGroup]="this.settingsForm"
         _formControl="gravity"

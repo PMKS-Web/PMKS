@@ -102,7 +102,8 @@ function renameLink(link: Link, from: string, to: string, forces: Force[]): void
     .map((joint) => joint.id)
     .sort()
     .join('');
-  if (oldName === oldId) link.name = link.id;
+  // A link named after its joints goes on being named after them.
+  if (oldName === oldId) link.name = '';
   link.fixedLocations = link.fixedLocations.map((location) =>
     location.id === from ? { id: to, label: to } : location
   );

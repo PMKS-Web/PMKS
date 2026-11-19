@@ -6,6 +6,7 @@ import {
   GlobalUnit,
   ForceUnit,
   AngularVelocityUnit,
+  MassUnit,
 } from '../model/unit-enums';
 import type { ForceAnalysisMode } from '../model/mechanism/force-solver';
 import { MODEL_SCALE } from '../model/render-scale';
@@ -36,6 +37,17 @@ export class SettingsService {
   lengthUnit = new BehaviorSubject(LengthUnit.CM);
   angleUnit = new BehaviorSubject(AngleUnit.DEGREE);
   forceUnit = new BehaviorSubject(ForceUnit.NEWTON);
+  /**
+   * The unit masses are *read* in, not the one they are stored in.
+   *
+   * Storage follows the length unit (model/mass-units.ts); this is the
+   * reader's pick between grams and kilograms under centimeters and meters,
+   * and is ignored under inches, which have only pounds-mass. NULL means no
+   * pick -- the length's own mass -- and is what a change of length puts back,
+   * so a reader who never touches Mass Units sees what the app always showed.
+   * Read it through `displayMassUnit`, never directly.
+   */
+  massUnit = new BehaviorSubject(MassUnit.NULL);
   // inputTorque = new BehaviorSubject(TorqueUnit.CM_N);
   globalUnit = new BehaviorSubject(GlobalUnit.METRIC);
   isInputCW = new BehaviorSubject(true);

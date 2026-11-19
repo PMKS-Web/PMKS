@@ -320,11 +320,13 @@ await section('properties', async () => {
     const after = await snapshot();
     preserves(label, before, after);
     const crank = after.links.find((link) => link.id === 'AB');
+    // Fixed Angle is pressed after Fixed Length, so it adds the angle to the
+    // held length rather than replacing it (#309).
     check(
       `${label}: state persisted`,
       label === 'Drawn as a Disc'
         ? crank.disc
-        : crank.hold === (label === 'Fixed Length' ? 'length' : 'angle'),
+        : crank.hold === (label === 'Fixed Length' ? 'length' : 'both'),
       crank
     );
   }
@@ -378,8 +380,8 @@ await section('properties', async () => {
   const decoded = await roundtrip('disc, hold and lock', shared);
   const crank = decoded.links.find((link) => link.id === 'AB');
   check(
-    'disc, angle hold and lock survive URL roundtrip',
-    crank.disc && crank.hold === 'angle' && decoded.locked.includes('C'),
+    'disc, both holds and lock survive URL roundtrip',
+    crank.disc && crank.hold === 'both' && decoded.locked.includes('C'),
     decoded
   );
 });

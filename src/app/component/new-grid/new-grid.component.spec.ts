@@ -21,6 +21,7 @@ import { SaveHistoryService } from '../../services/save-history.service';
 import { LONGEST_ARROW_FRACTION } from '../../model/vector-trace';
 import { CYLINDER, MARK, slideMarkPath } from '../../model/joint-marks';
 import { ColorService } from '../../services/color.service';
+import { CanvasLabelsService } from '../../services/canvas-labels.service';
 
 /**
  * NewGridComponent renders through svg-pan-zoom, which needs real SVG layout;
@@ -83,6 +84,16 @@ async function configureGridTestBed() {
     providers: [provideAnimations()],
   })
     .overrideProvider(SvgGridService, { useValue: svgGridStub })
+    // Packing uses real Canvas paths, just as framing uses real SVG layout.
+    // These drag tests keep the preferred model anchors; the browser library
+    // audit checks their final rendered clearance and contrast.
+    .overrideProvider(CanvasLabelsService, {
+      useFactory: () => {
+        const labels = new CanvasLabelsService();
+        vi.spyOn(labels, 'forLink').mockImplementation((link, preferred) => preferred(link, 1));
+        return labels;
+      },
+    })
     .compileComponents();
 }
 
@@ -233,10 +244,11 @@ describe('NewGridComponent cylinder selectables', () => {
     const clear = -anchor.y - cylinder.seal.y;
     expect(clear).toBeGreaterThan(CYLINDER.barrelHalf * 0.15 * SettingsService.objectScale);
 
-    // An ordinary joint keeps the offset every joint has always had.
+    // An ordinary joint's letter clears the pin and its connected bar.
     const plain = component.jointTagAnchor(cylinder.mountA);
-    expect(plain.x).toBeCloseTo(cylinder.mountA.x - SettingsService.objectScale * 0.3, 6);
-    expect(plain.y).toBeCloseTo(-cylinder.mountA.y - SettingsService.objectScale * 0.5, 6);
+    expect(Math.hypot(plain.x - cylinder.mountA.x, plain.y + cylinder.mountA.y)).toBeGreaterThan(
+      0.15 * SettingsService.objectScale
+    );
   });
 });
 
@@ -358,6 +370,60 @@ describe('NewGridComponent welded SVG presentation', () => {
     component.mouseMove(new MouseEvent('mousemove', { clientX: 25, clientY: 25 }));
     component.mouseUp(new MouseEvent('mouseup'));
     expect(drag).toHaveBeenCalledTimes(2);
+  });
+
+  it('lets a move waiting for its frame land before Alt changes, so it cannot undo the key', () => {
+    const mechanism = TestBed.inject(MechanismService);
+    const active = TestBed.inject(ActiveObjService);
+    const joint = new RevJoint('A', 0, 0);
+    mechanism.joints = [joint];
+    mechanism.links = [];
+    active.selectedJoint = joint;
+
+    const fixture = TestBed.createComponent(NewGridComponent);
+    const component = fixture.componentInstance;
+    TestBed.inject(DragStateService).beginDraggingJoint();
+    component['timeMouseDown'] = 0;
+    component['startX'] = 0;
+    component['startY'] = 0;
+
+    // A move made without Alt is still waiting for its frame when Alt goes down.
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 20, clientY: 20, altKey: false }));
+    component['reconsiderDrop'](new KeyboardEvent('keydown', { key: 'Alt' }), true);
+    frame(component);
+    expect(component['snapSuspended']).toBe(true);
+  });
+
+  it('lets Alt move a joint only once the press has become a drag', () => {
+    const mechanism = TestBed.inject(MechanismService);
+    const active = TestBed.inject(ActiveObjService);
+    const gridUtils = TestBed.inject(GridUtilsService);
+    const joint = new RevJoint('A', 0, 0);
+    mechanism.joints = [joint];
+    mechanism.links = [];
+    active.selectedJoint = joint;
+
+    const fixture = TestBed.createComponent(NewGridComponent);
+    const component = fixture.componentInstance;
+    TestBed.inject(DragStateService).beginDraggingJoint();
+    component['startX'] = 0;
+    component['startY'] = 0;
+    const drag = vi.spyOn(gridUtils, 'dragJoint');
+    const alt = () =>
+      component['reconsiderDrop'](new KeyboardEvent('keydown', { key: 'Alt' }), true);
+
+    // Pressed, not moved: the key changes the snap and leaves the joint alone.
+    alt();
+    expect(component['snapSuspended']).toBe(true);
+    expect(drag).not.toHaveBeenCalled();
+
+    // Once a move has carried it, the key re-places it at once.
+    component['timeMouseDown'] = 0;
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 20, clientY: 20 }));
+    frame(component);
+    drag.mockClear();
+    alt();
+    expect(drag).toHaveBeenCalledTimes(1);
   });
 });
 

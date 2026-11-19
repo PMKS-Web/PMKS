@@ -19,7 +19,7 @@ import {
   roundNumber,
   point_on_line_segment_closest_to_point,
 } from '../model/utils';
-import { Link, RealLink } from '../model/link';
+import { holdsLength, Link, RealLink } from '../model/link';
 import {
   JointOperationContext,
   OperationRefusal,
@@ -63,6 +63,7 @@ import { EditPermissionService } from './edit-permission.service';
 import { canDrive } from '../model/actuator';
 import { Lockable, frozenJointIds, locksHolding } from '../model/lock-set';
 import { Coord } from '../model/coord';
+import { refuseForceOnJoint } from '../model/force-on-joint';
 import { constrainForceAnchor } from '../model/force-anchor';
 import { PositionSolver } from '../model/mechanism/position-solver';
 import { Force } from '../model/force';
@@ -644,7 +645,8 @@ export class GridUtilsService {
    * Which joints the hold solver may never move: grounded pins are bolted to
    * the frame -- unless the pin is the one being moved, since in Edit a ground
    * pin drags like any other -- locked ones are held by a mark, and a slider's
-   * joints live on a line of their own that the solver does not know.
+   * joints live on a line of their own that the solver does not know, unless
+   * the slider is grounded, when its line is the frame and it is ground.
    *
    * A cylinder's *interior* is the same kind of thing: the barrel's buried
    * end, the welded pin and the block are placed by the layout and re-derived
@@ -668,7 +670,10 @@ export class GridUtilsService {
     return (
       (holdGrounds && joint.ground && !moving.has(joint.id)) ||
       frozen.has(joint.id) ||
-      joint instanceof PrisJoint ||
+      // A slot the solver does not know. A grounded slider's slot is the
+      // frame, though, so it is ground like any other: free under the
+      // pointer, and carrying its rail along when it moves.
+      (joint instanceof PrisJoint && (holdGrounds || !joint.ground)) ||
       this.mechanismSrv.cylindersAt(joint).some((cylinder) => isInsideCylinder(cylinder, joint))
     );
   }
@@ -1111,8 +1116,8 @@ export class GridUtilsService {
    */
   private cylinderLengthHolds(sealed: Cylinder): CylinderHolds {
     return {
-      barrel: sealed.barrel instanceof RealLink && sealed.barrel.hold === 'length',
-      rod: sealed.rod.hold === 'length',
+      barrel: sealed.barrel instanceof RealLink && holdsLength(sealed.barrel.hold),
+      rod: holdsLength(sealed.rod.hold),
     };
   }
 
@@ -1471,7 +1476,7 @@ export class GridUtilsService {
       // neither of them.
       heldBy: (cylinder) => {
         const holding = [cylinder.barrel, cylinder.rod].filter(
-          (member): member is RealLink => member instanceof RealLink && member.hold === 'length'
+          (member): member is RealLink => member instanceof RealLink && holdsLength(member.hold)
         );
         return holding.length > 0
           ? heldBySentence(holding, undefined, (bar) => this.mechanismSrv.visibleBodyName(bar))
@@ -1667,12 +1672,13 @@ export class GridUtilsService {
   /**
    * Where a force's anchor may sit on its link, given where the pointer is.
    *
-   * Two joints are two different answers. A pin shared by more than one link is
-   * refused outright: a force applied *there* does not say which of the bodies
-   * meeting there it acts on, and every answer the force solver could pick is a
-   * guess the user never made — the same rule a driven joint follows. A joint on
-   * exactly one link has no such ambiguity, so the anchor snaps onto it, which
-   * is how a load is put on a tracer point at the end of a boom.
+   * Two joints are two different answers. A joint where a second body meets the
+   * link -- another link, the ground, a slider's slot -- is refused outright: a
+   * force applied *there* does not say which of the bodies it acts on, and
+   * every answer the force solver could pick is a guess the user never made.
+   * A joint on exactly one link and nothing else has no such ambiguity, so the
+   * anchor snaps onto it, which is how a load is put on a tracer point at the
+   * end of a boom.
    *
    * `undefined` means the anchor may not go there at all. The caller keeps its
    * own "inside the bar" test, because that one needs the drawn path.
@@ -1695,10 +1701,11 @@ export class GridUtilsService {
       }
     }
     if (nearest && nearestGap <= snapRadius) {
-      // A pin several links meet at is not a place for a force -- it would
-      // not say which body it acts on -- but it is not a wall either. The
-      // caller keeps the force on the link, short of the pin.
-      if (nearest.links.length > 1) return { at: point, shared: nearest };
+      // A joint where a second body meets the link -- another link, the
+      // ground, a slider's slot -- is not a place for a force: it would not
+      // say which body it acts on. Nor is it a wall. The caller keeps the
+      // force on the link, short of the joint (`model/force-on-joint.ts`).
+      if (refuseForceOnJoint(nearest)) return { at: point, shared: nearest };
       return { at: new Coord(nearest.x, nearest.y), snappedTo: nearest };
     }
     return { at: point };
@@ -1830,7 +1837,15 @@ export class GridUtilsService {
       const picked = pick((leaf) =>
         drawn(leaf) ? hit.isPointInStroke(at()) : hit.isPointInFill(at())
       );
-      if (!this.settings.isSchematic || !picked.isCompound) return picked;
+      if (!picked.isCompound) return picked;
+      if (!this.settings.isSchematic) {
+        return pick((leaf) => {
+          const line = schematicLink(leaf, cylinders);
+          if (!line) return false;
+          hit.setAttribute('d', line);
+          return hit.isPointInStroke(at());
+        });
+      }
       // Nothing's line was hit, so the shaded inside of a part -- a plate, or a
       // disc -- picks it: Schematic shades it because it takes a click. Asked
       // second, so a bar lying across a plate is still picked by its line.

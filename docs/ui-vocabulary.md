@@ -236,6 +236,18 @@ name follows the rules every name does (letters, numbers, spaces, hyphens, under
 apostrophes and parentheses), may not repeat another machine's, and an empty one takes it back to
 the code.
 
+### A part's name
+
+A joint, link or force is called by its id until someone names it with Rename: `C`, `AB`, `F1`.
+A link's id is its joints' letters, so a link nobody has named follows its joints. Add a tracer
+point to `AB` and it becomes `ABE`; split or merge a joint and the letters change with it. A name
+somebody typed stays put whatever happens to the joints, with one exception: typing the part's
+own id is the automatic name, not a fixed one, so `AB` typed on link `AB` still becomes `ABE` when a
+tracer point is added. Saving an empty name gives a part its automatic name back, the same way an
+empty name gives a machine back its code, unless another part already goes by that id. Where the
+part came from does not matter: a template, a shared link, a reload and an undo all keep this rule
+(#317).
+
 ### Refusals wear their reason
 
 A control a reader could reasonably expect is **grayed with the reason beside
