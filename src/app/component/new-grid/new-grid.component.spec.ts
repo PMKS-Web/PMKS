@@ -1126,6 +1126,35 @@ describe('NewGridComponent typed multi-selection', () => {
     expect(save).not.toHaveBeenCalled();
   });
 
+  it('selects a force from a group across two machines away from the start, without a refusal', () => {
+    // A group of nothing but forces moves nothing, so it is not staged. Staged,
+    // a group spread over two machines was refused at the press, and the plain
+    // click that should have picked the force under it did nothing.
+    const { component, active, mechanism, link } = setUpSelection();
+    const f1 = new Force('F1', link, new Coord(0, 0), new Coord(0, MODEL_SCALE));
+    const f2 = new Force(
+      'F2',
+      link,
+      new Coord(MODEL_SCALE, 0),
+      new Coord(MODEL_SCALE, MODEL_SCALE)
+    );
+    mechanism.forces = [f1, f2];
+    active.replacePartSelection(f1);
+    active.togglePartSelection(f2);
+    vi.spyOn(mechanism, 'isAtStartPose').mockReturnValue(false);
+    vi.spyOn(mechanism, 'indexOfMechanismContaining').mockImplementation((part) =>
+      part === f1 ? 0 : 1
+    );
+    const refusal = vi.spyOn(component['notify'], 'refusal');
+
+    component.setLastLeftClick(f1, new MouseEvent('pointerdown'));
+    component.mouseDown(new MouseEvent('mousedown', { button: 0 }));
+    component.mouseUp(new MouseEvent('mouseup', { button: 0 }));
+
+    expect(refusal.mock.calls.map(([id]) => id)).not.toContain('selection.spans-machines');
+    expect(active.selectedPartRefs).toEqual([{ kind: 'force', id: 'F1' }]);
+  });
+
   it('refuses the whole transform when one canonical member is locked', () => {
     const { component, active, mechanism, a, b } = setUpSelection();
     active.replacePartSelection(a);

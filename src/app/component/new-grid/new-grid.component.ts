@@ -1474,7 +1474,11 @@ export class NewGridComponent implements OnDestroy {
     // A selection spanning machines is refused its staging outright. What that
     // means for the reader is that a group across two machines is edited at the
     // start pose, as it was before any of this existed.
-    if (!this.stageSelection()) return;
+    //
+    // A group of nothing but forces is not staged at all: it has no geometry
+    // to move, and refusing its press across two machines also swallowed the
+    // plain click that should select the force under it.
+    if (snapshot.jointIds.size > 0 && !this.stageSelection()) return;
     this.selectionGesture = {
       snapshot,
       mode,
