@@ -62,6 +62,7 @@ import {
 } from '../../model/utils';
 import { Force } from '../../model/force';
 import { NotificationService } from '../../services/notification.service';
+import { ForceRefusalNotice } from './force-refusal-notice';
 import { BackgroundImageService, MIN_WIDTH } from '../../services/background-image.service';
 import { CdkContextMenuTrigger } from '@angular/cdk/menu';
 import { MatDialog } from '@angular/material/dialog';
@@ -1842,14 +1843,8 @@ export class NewGridComponent implements OnDestroy {
   /** Where inside the arrow a body drag picked it up, so it does not jump. */
   private forceGrabOffset = new Coord(0, 0);
 
-  /**
-   * The pin a force's anchor is being held short of, ringed red while the
-   * hand is over it: the same ring a joint drop that will be refused wears.
-   */
-  forceRefusedJoint?: RealJoint;
-
-  /** The id of the last refusal said under a force drag, to take down when another replaces it. */
-  private forceRefusalSaid?: string;
+  /** The joint a force's anchor is being held short of, and what was said about it. */
+  readonly forceRefusal = new ForceRefusalNotice(this.notify);
 
   beginDraggingForceBody(force: Force, event: PointerEvent): void {
     // The arrow itself was grabbed, so neither handle is: a press on the
@@ -1895,29 +1890,17 @@ export class NewGridComponent implements OnDestroy {
     const shared = anchor.shared ?? refusedJointAt(link, at, margin);
     const refusal = shared ? refuseForceOnJoint(shared) : undefined;
     if (shared && refusal) {
-      // Held short of the joint, along the link it is on. The joint is ringed
-      // red for as long as the hand is over it and the reason is said once --
-      // the notification service holds a repeat while one is up, so saying it
-      // on every pointer move does not stack it.
+      // Held short of the joint, along the link it is on.
       at = holdOffJoint(link, shared, at, margin);
-      this.forceRefusedJoint = shared;
-      // One message per joint, and the last joint's taken down: a hand that
-      // passes one refused pin on its way to another is told about the one it
-      // is over, which a single shared id held back as a repeat.
-      const id = `force.refused-joint.${shared.id}`;
-      if (this.forceRefusalSaid && this.forceRefusalSaid !== id) {
-        this.notify.dismissId(this.forceRefusalSaid);
-      }
-      this.forceRefusalSaid = id;
       // The body by the name the canvas tags it with: a bracket welded to a
       // barrel mount carries the cylinder's buried inner end in its id (D14,
       // S11), so this named a joint the drawing never shows.
-      this.notify.refusal(
-        id,
+      this.forceRefusal.refuse(
+        shared,
         `A force cannot sit on joint ${shared.id}: ${refusal.because}. It is held on link ${this.mechanismSrv.visibleBodyName(link)}, short of the joint.`
       );
     } else {
-      this.forceRefusedJoint = undefined;
+      this.forceRefusal.clearRing();
     }
     this.gridUtils.dragForce(force, at, how);
     // So that the panel values update continuously.
@@ -3380,9 +3363,7 @@ export class NewGridComponent implements OnDestroy {
    */
   private letGoOfEverything(revert = false): void {
     // The red ring a force drag put on a pin goes with the drag.
-    this.forceRefusedJoint = undefined;
-    // So does the refusal it remembers: the next drag starts with none said.
-    this.forceRefusalSaid = undefined;
+    this.forceRefusal.forget();
     // The preview is rendered independently of the drag state, so canceling
     // that state alone leaves a frozen arrow behind after another right-click.
     this.forceGhost = undefined;
@@ -3554,15 +3535,6 @@ export class NewGridComponent implements OnDestroy {
     }
   }
 
-  /**
-   * The red ring a force drag put on a pin goes with the drag, and so does
-   * the refusal it remembers: the next drag starts with none said.
-   */
-  private forgetForceRefusal(): void {
-    this.forceRefusedJoint = undefined;
-    this.forceRefusalSaid = undefined;
-  }
-
   mouseUp($event: MouseEvent) {
     this.holdRing = undefined;
     this.holdGuide = undefined;
@@ -3570,7 +3542,7 @@ export class NewGridComponent implements OnDestroy {
     // ends where the hand was, not one frame short of it.
     this.applyPendingDragMove();
     // After that move, which can refuse a joint all over again.
-    this.forgetForceRefusal();
+    this.forceRefusal.forget();
     //This is the mouseUp that is called no matter what is clicked on
     this.bgDrag = undefined;
     if (this.showSynthesis()) {
@@ -3848,7 +3820,7 @@ export class NewGridComponent implements OnDestroy {
    */
   releaseCanvasGestures(event?: PointerEvent): void {
     this.applyPendingDragMove();
-    this.forgetForceRefusal();
+    this.forceRefusal.forget();
     this.bgDrag = undefined;
     if (this.synthCanvas.dragging) {
       this.synthCanvas.release();
