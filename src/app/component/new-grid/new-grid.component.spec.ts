@@ -447,6 +447,26 @@ describe('NewGridComponent welded SVG presentation', () => {
     expect(force.angleRad).toBe(angle);
     expect(rebuild).toHaveBeenCalled();
   });
+
+  it('puts a live-dragged force back on Escape, with nothing saved', () => {
+    const mechanism = TestBed.inject(MechanismService);
+    const { ab } = twoBars(mechanism);
+    const force = new Force('F1', ab, new Coord(2, 2), new Coord(2, 3), false, true, 10);
+    ab.forces.push(force);
+    mechanism.forces = [force];
+    const component = TestBed.createComponent(NewGridComponent).componentInstance;
+    TestBed.inject(DragStateService).beginDraggingForceBody();
+    component['rememberBeforeDrag']();
+    TestBed.inject(GridUtilsService).dragForceLive(force, new Coord(4, 4), 'whole');
+    expect([force.startCoord.x, force.startCoord.y]).not.toEqual([2, 2]);
+    const save = vi.spyOn(TestBed.inject(SaveHistoryService), 'save');
+
+    component['onKeyPress'](new KeyboardEvent('keydown', { key: 'Escape' }));
+
+    expect([force.startCoord.x, force.startCoord.y]).toEqual([2, 2]);
+    expect([force.endCoord.x, force.endCoord.y]).toEqual([2, 3]);
+    expect(save).not.toHaveBeenCalled();
+  });
 });
 
 /**
