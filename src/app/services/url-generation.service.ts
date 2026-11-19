@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { MechanismService } from './mechanism.service';
-import { Link, RealLink } from '../model/link';
+import { heldValues, Link, RealLink } from '../model/link';
 import { LengthUnit, AngleUnit, ForceUnit, GlobalUnit } from '../model/utils';
 import {
   EnumSetting,
@@ -219,7 +219,11 @@ export class UrlGenerationService {
             (link): link is RealLink =>
               link instanceof RealLink && link.hold !== undefined && link.joints.length === 2
           )
-          .map((link) => 'H' + (link.hold === 'length' ? 'l' : 'a') + link.id)
+          // A bar holding both writes both entries (#309), so a URL written
+          // before both were allowed decodes exactly as it always did.
+          .flatMap((link) =>
+            heldValues(link.hold).map((which) => 'H' + (which === 'length' ? 'l' : 'a') + link.id)
+          )
       );
 
       // Where a hand-placed center of mass is held. Only the links that answer

@@ -3034,3 +3034,13 @@ cylinder or force, it does the opposite for the direction, which steps in 15 deg
 is down (`placementBearing`). Both are listed under Modifier Keys in Help, from
 `KeyboardShortcutsService.modifiers` (#316). Nothing dispatches those rows. The canvas reads
 `altKey` off the pointer event, so a change to what a held key does needs its row changed by hand.
+
+### `LinkHold` has a `'both'`, so ask `holdsLength` / `holdsAngle`, never `hold === 'length'`
+
+Since #309 a bar may hold its length and its angle at once, and `RealLink.hold` is then `'both'`.
+An equality test against `'length'` or `'angle'` silently reads a bar holding both as holding
+neither. Ask `holdsLength`, `holdsAngle` or `holdsValue` (`model/link.ts`), and change a hold with
+`holdWith` so the other value is left alone. `HoldBar.hold` is still one value: `heldBars` gives the
+solver one entry per held value, so a bar holding both is two entries with the same id, and the URL
+writes it as two `H` entries the same way. A sentence names it through `holdWords`
+("fixed length and angle AB"), never by interpolating the flag.

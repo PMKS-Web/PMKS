@@ -43,7 +43,12 @@ describe('EditableTitleComponent names', () => {
           },
         },
         { provide: NotificationService, useValue: { refusal } },
-        { provide: KeyboardShortcutsService, useValue: { spokenKeysFor: () => '' } },
+        // The row's buttons wear a shortcut tip, which asks for the keys to
+        // speak; none of these rows has a shortcut.
+        {
+          provide: KeyboardShortcutsService,
+          useValue: { keysFor: () => '', spokenKeysFor: () => '' },
+        },
       ],
     }).compileComponents();
     fixture = TestBed.createComponent(EditableTitleComponent);
