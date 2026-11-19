@@ -11,6 +11,8 @@ import { SelectedTabService, TabID } from '../selected-tab.service';
 import { SynthesisBuilderService } from './synthesis/synthesis-builder.service';
 import { applySynthesisDesign } from './synthesis/synthesis-url';
 import { SynthesisSolutionService } from './synthesis/synthesis-solution.service';
+import { AnalyticsService } from './analytics.service';
+import { AppEntry } from '../model/analytics-events';
 
 /** The one query that names a screen instead of describing a mechanism. */
 const LIBRARY_QUERY = 'library';
@@ -84,6 +86,7 @@ export class UrlProcessorService {
   private activeObj = inject(ActiveObjService);
   private notify = inject(NotificationService);
   private synthesis = inject(SynthesisBuilderService);
+  private analytics = inject(AnalyticsService);
 
   /**
    * Whether the address asked for the mechanism library rather than carrying a
@@ -108,6 +111,13 @@ export class UrlProcessorService {
    * same reason.
    */
   readonly wantsBackdropFor: string | null;
+
+  /**
+   * What the last decode made of the address: a mechanism it opened, a
+   * payload it could not open, or ordinary query parameters that were never a
+   * mechanism -- a mailer's or a social share's tracking.
+   */
+  private decoded: 'opened' | 'refused' | 'not-a-mechanism' = 'opened';
 
   constructor() {
     // the content part of the url (the part after the ?)
@@ -151,6 +161,20 @@ export class UrlProcessorService {
     // the word to the decoder would raise "that shared link could not be
     // opened" over the library the reader just asked for.
     this.updateFromURL(this.wantsLibrary ? null : url, true, true, true);
+    // After the decode, not before: a payload whose checksum fails is only
+    // found out by decoding it, and reported before that it counted as a link
+    // that worked.
+    const badLink = invalidAddress || (fromAddress !== null && this.decoded === 'refused');
+    // A query that was never a mechanism brought none: that visit is a blank grid.
+    const ignored = this.decoded === 'not-a-mechanism';
+    this.analytics.track('app_start', {
+      entry: arrivedBy(
+        badLink,
+        this.wantsLibrary,
+        ignored ? null : fromAddress,
+        ignored ? null : url
+      ),
+    });
     // The strip that a decode does in its `finally`, for the branch that skips
     // it: a reload should not be a second trip through the front door, and the
     // address bar should say what is on screen.
@@ -201,6 +225,27 @@ export class UrlProcessorService {
      * loading a template and the initial URL decode do not.
      */
     continuingHistory: boolean = false
+  ) {
+    // A different drawing arriving is not the reader building one, so a
+    // template that runs is not reported as a mechanism they made run.
+    const mechanismSrv = this.injector.get(MechanismService);
+    mechanismSrv.arriving = !continuingHistory;
+    try {
+      this.decode(url, resetSvgScale, updateSettings, save, continuingHistory);
+    } finally {
+      // An undo or redo is not the reader building either: what runs after
+      // one is the new starting point, or the next edit would be credited
+      // with what the undo did.
+      mechanismSrv.arrived();
+    }
+  }
+
+  private decode(
+    url: string | null,
+    resetSvgScale: boolean,
+    updateSettings: boolean,
+    save: boolean,
+    continuingHistory: boolean
   ) {
     const mechanismSrv = this.injector.get(MechanismService);
     // A different mechanism reuses the same joint letters and means something
@@ -257,6 +302,7 @@ export class UrlProcessorService {
 
     // if the url exists, decode it and build the mechanism. Otherwise, skip to updating mechanism directly
     if (url !== null) {
+      this.decoded = 'opened';
       try {
         console.log('decoded url: ' + url);
         decoder.decodeURL(url);
@@ -322,6 +368,7 @@ export class UrlProcessorService {
         // level, so every '&'-separated piece carrying one is somebody else's
         // tracking, not our payload.
         if (looksLikeQueryParameters(url)) {
+          this.decoded = 'not-a-mechanism';
           window.history.replaceState({}, document.title, window.location.pathname);
           return;
         }
@@ -330,6 +377,7 @@ export class UrlProcessorService {
         // be dismissed: the reader followed a link that did not work, and the
         // grid they are looking at instead is not an obvious clue that it
         // didn't.
+        this.decoded = 'refused';
         this.reportInvalidURL(error);
       } finally {
         // Invalid data must not remain in the address bar or be retried on refresh.
@@ -434,4 +482,17 @@ export class UrlProcessorService {
       this.svgGrid.compensateForUnitChange(unitBefore, this.settingsSrv.lengthUnit.value);
     }
   }
+}
+
+/** How the reader arrived, for `app_start`. */
+function arrivedBy(
+  invalid: boolean,
+  library: boolean,
+  fromAddress: string | null,
+  url: string | null
+): AppEntry {
+  if (invalid) return 'bad_link';
+  if (library) return 'library';
+  if (fromAddress !== null) return 'link';
+  return url !== null ? 'restored' : 'blank';
 }

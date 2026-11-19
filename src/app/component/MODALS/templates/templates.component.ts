@@ -1,3 +1,4 @@
+import { AnalyticsService } from '../../../services/analytics.service';
 import {
   Component,
   ChangeDetectionStrategy,
@@ -142,6 +143,7 @@ export class TemplatesComponent {
   private svgGrid = inject(SvgGridService);
   private backdrop = inject(BackgroundImageService);
   private design = inject(SynthesisBuilderService);
+  private analytics = inject(AnalyticsService);
   private host = inject<ElementRef<HTMLElement>>(ElementRef);
   readonly viewport = inject(ViewportService);
   readonly drafts = inject(SuggestionDraftService);
@@ -393,9 +395,13 @@ export class TemplatesComponent {
     const card = [...TEMPLATE_CARDS, ...DEV_TEMPLATE_CARDS].find((one) => one.id === linkage);
     this.choosing = card?.name ?? '';
 
+    const opened = (placement: 'here' | 'new_tab') =>
+      this.analytics.track('template_open', { template: linkage, placement });
+
     // An empty grid has nothing to lose, so load right here instead of
     // spawning a tab the user then has to switch to.
     if (this.gridIsEmpty()) {
+      opened('here');
       this.openHere(content, card?.backdrop);
       return;
     }
@@ -405,8 +411,10 @@ export class TemplatesComponent {
       .afterClosed()
       .subscribe((choice) => {
         if (choice === 'replace') {
+          opened('here');
           this.openHere(content, card?.backdrop);
         } else if (choice === 'new-tab') {
+          opened('new_tab');
           this.openInNewTab(content, linkage);
         }
       });

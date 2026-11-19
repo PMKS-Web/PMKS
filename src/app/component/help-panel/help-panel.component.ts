@@ -150,14 +150,14 @@ export class HelpPanelComponent {
   // service -- after the tab had already opened, which is why it looked fine.
   readonly gotoIssues = (): void => {
     window.open(ISSUES_URL, '_blank', 'noopener');
-    this.analytics.logEvent('goto_issues');
+    this.analytics.track('help_link_click', { destination: 'issues' });
   };
 
   // A plain link rather than Ko-fi's embeddable widget, which would load its
   // scripts and cookies into an app that otherwise stores nothing anywhere.
   readonly gotoDonate = (): void => {
     window.open(DONATION_URL, '_blank', 'noopener');
-    this.analytics.logEvent('goto_donate');
+    this.analytics.track('help_link_click', { destination: 'donate' });
   };
 
   readonly sendCommentEmail = async (): Promise<void> => {

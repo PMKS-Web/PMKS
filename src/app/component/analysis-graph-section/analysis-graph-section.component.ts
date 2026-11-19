@@ -1,3 +1,4 @@
+import { AnalyticsService } from '../../services/analytics.service';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -75,6 +76,7 @@ export class AnalysisGraphSectionComponent {
   private settings = inject(SettingsService);
   private nup = inject(NumberUnitParserService);
   private samples = inject(AnalysisSampleService);
+  private analytics = inject(AnalyticsService);
 
   readonly label = input('');
   /** Short text in a row whose surrounding heading already names the subject. */
@@ -265,6 +267,10 @@ export class AnalysisGraphSectionComponent {
    * own open/closed class.
    */
   toggle(): void {
+    // The graph's own label, from the app's catalog, never the part's name.
+    if (!this.expanded()) {
+      this.analytics.trackOnce('graph_open', { analysis: this.analysis(), graph: this.mechProp() });
+    }
     this.expandedChange.emit(!this.expanded());
   }
 
