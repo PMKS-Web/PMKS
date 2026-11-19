@@ -300,6 +300,17 @@ when the tutorial is pinned above a page and the two do not fit, each card scrol
 (`.tutorialSlot` shrinks to a 200px floor, the page below keeps a 260px floor and takes the rest),
 and the frame's bottom edge is never the visible one. `e2e/right-drawer.mjs` measures all of it.
 
+### A link is renamed whenever its joints change, and `Force.anchoredTo` has to follow
+
+A link's id is its sorted joint letters, so dropping D onto B renames bar CD to BC. A force
+remembers the bar it was put on by that id (`anchoredTo`, which an unweld uses to hand the load
+back), and the URL writes that name in place of the current owner's. A name nothing followed made
+every URL written afterwards name a bar that does not exist, and `validateDecodedData` refuses
+the whole URL: each Undo after the merge failed to open its entry and skipped past it (#322). Any
+code that rewrites `link.id` calls `renameAnchors` from `model/force-anchor-name.ts`, and the
+encoder writes through `anchorToWrite`, which falls back to the force's current body when the
+remembered bar is gone. `e2e/force-on-joint.mjs` replays the report.
+
 ### A force is anchored on the linkage, not on the skin
 
 `model/force-anchor.ts` is the one rule for where a load may sit: on the line between a bar's two

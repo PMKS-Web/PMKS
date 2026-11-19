@@ -141,6 +141,7 @@ import { redundantlyHeldJointSets } from '../model/rigid-bodies';
 import { reseatEndJoint } from '../model/slot-reseat';
 import { MODEL_SCALE } from '../model/render-scale';
 import { labelForBody, visibleBodyName as nameOfBody } from '../model/body-label';
+import { renameAnchors } from '../model/force-anchor-name';
 import { SynthesisBuilderService } from './synthesis/synthesis-builder.service';
 
 /** One machine's playback state, carried across a rebuild by `partitionKey`. */
@@ -3190,10 +3191,12 @@ export class MechanismService {
     link.joints[index] = target;
     // Link ids are the sorted concatenation of their joint letters, which is
     // what createNewCompoundLinkFromSubset builds and what the URL codec reads.
+    const was = link.id;
     link.id = link.joints
       .map((joint) => joint.id)
       .sort()
       .join('');
+    renameAnchors(this.forces, was, link.id);
     link.fixedLocations = link.fixedLocations.map((location) =>
       location.id === source.id ? { id: target.id, label: target.id } : location
     );
@@ -7893,10 +7896,12 @@ export class MechanismService {
     compound.subset = compound.subset.filter((leaf) => {
       if (!leaf.joints.some((joint) => ids.has(joint.id))) return leaf.joints.length >= 2;
       leaf.joints = leaf.joints.filter((joint) => !ids.has(joint.id));
+      const was = leaf.id;
       leaf.id = leaf.joints
         .map((joint) => joint.id)
         .sort()
         .join('');
+      renameAnchors(this.forces, was, leaf.id);
       leaf.fixedLocations = [
         { id: 'com', label: 'com' },
         ...leaf.joints.map((joint) => ({ id: joint.id, label: joint.id })),
