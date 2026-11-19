@@ -661,6 +661,13 @@ describe('the right-click menu', () => {
       expect(harness.builder.build('grid', noHandlers).header?.crossing).toBeUndefined();
     });
 
+    it('names the crossing and leaves its key to be drawn as a key cap', () => {
+      const parts = fourBar(harness.mechanism);
+      const crossing = harness.builder.build(parts.a, noHandlers).header?.crossing;
+      expect(crossing?.label).toBe('Kinematic Analysis');
+      expect(crossing?.shortcut).toBe('mode.kinematic');
+    });
+
     it('will not offer analysis of a part that is in no mechanism', () => {
       const parts = fourBar(harness.mechanism);
       // Nothing has been partitioned, so no part belongs to a machine yet —

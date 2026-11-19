@@ -1059,3 +1059,27 @@ export function motorBodyAt(r: number, center: { x: number; y: number }, along: 
   }
   return out.join(' ');
 }
+
+/**
+ * Ticks across both ends of a line, `half` long on each side, so its two ends
+ * read as limits -- a cylinder's travel, drawn while its seal is dragged.
+ */
+export function endTicks(range: { from: SnapEnd; to: SnapEnd }, half: number): Segment[] {
+  const dx = range.to.x - range.from.x;
+  const dy = range.to.y - range.from.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const nx = (-dy / length) * half;
+  const ny = (dx / length) * half;
+  return [range.from, range.to].map((end) => ({
+    x1: end.x - nx,
+    y1: end.y - ny,
+    x2: end.x + nx,
+    y2: end.y + ny,
+  }));
+}
+
+/** A point at either end of a line given to `endTicks`. */
+interface SnapEnd {
+  x: number;
+  y: number;
+}
