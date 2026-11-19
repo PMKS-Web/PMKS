@@ -43,7 +43,7 @@ describe('EditableTitleComponent names', () => {
           },
         },
         { provide: NotificationService, useValue: { refusal } },
-        { provide: KeyboardShortcutsService, useValue: {} },
+        { provide: KeyboardShortcutsService, useValue: { spokenKeysFor: () => '' } },
       ],
     }).compileComponents();
     fixture = TestBed.createComponent(EditableTitleComponent);
