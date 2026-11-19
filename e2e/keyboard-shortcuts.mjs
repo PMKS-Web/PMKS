@@ -306,6 +306,18 @@ record(
   listed.heading && listed.caps >= 15,
   listed
 );
+const modifiers = await page.evaluate(() => {
+  const headings = [...document.querySelectorAll('app-help-panel .keyHeading')];
+  const group = headings.find((one) => one.textContent.trim() === 'Modifier Keys')?.parentElement;
+  return group ? [...group.querySelectorAll('.keyCap')].map((cap) => cap.textContent.trim()) : [];
+});
+record(
+  'and the keys held during a gesture under Modifier Keys',
+  modifiers.length === 5 &&
+    modifiers.some((keys) => /^(Option|Alt) \+ drag$/.test(keys)) &&
+    modifiers.includes('Shift + drag'),
+  modifiers
+);
 
 // ---- R stops, and stopping means back to the start ----------------------
 //

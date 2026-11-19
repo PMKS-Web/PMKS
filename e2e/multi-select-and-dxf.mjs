@@ -527,8 +527,8 @@ await page.locator('app-multi-edit-panel [data-action="fixedAngle"]').click();
 await page.waitForTimeout(700);
 const heldAngle = await holds();
 check(
-  'and a bar holds one value or the other, never both',
-  heldAngle.OA === 'angle' && heldAngle.CD === 'angle',
+  'and fixing the angle as well holds both on every selected bar (#309)',
+  heldAngle.OA === 'both' && heldAngle.CD === 'both' && heldAngle.ACT === null,
   JSON.stringify(heldAngle)
 );
 await openMechanism(page, BASE + FOURBAR);

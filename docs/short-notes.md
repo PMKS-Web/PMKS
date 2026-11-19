@@ -13,6 +13,23 @@ whose title covers it, and leave a heading here only if someone would still sear
 
 ---
 
+### `body` is `position: fixed`, because iOS Safari pans over overflow `clip` does not stop
+
+On a phone the whole interface could be dragged sideways with a finger (issue #298), though
+`html` and `body` both carry `overflow: clip` and Chromium's touch emulation moves nothing. Safari
+on iOS pans the page over anything hanging past the window: here the closed right drawer, parked
+one width off screen. `src/styles.scss` now pins `body` to the window, so it is the containing
+block that clips every absolutely positioned card, and adds `overscroll-behavior: none`. A card that
+has to reach past the window must therefore be `position: fixed`, as `#canvas` is. `e2e/mobile.mjs`
+checks the rule is in place; only a real iPhone shows the gesture itself.
+
+### `ng serve` does not rebuild a component stylesheet that is a theme mixin
+
+The `*.component.scss` files here are `@mixin css($theme)` partials pulled into the global
+`styles.scss`, so the dev server can report a rebuild while the old rule stays in `styles.css`.
+When a style change seems to have no effect, check the served `styles.css` for it, then restart
+`npm start`.
+
 ### `.gitattributes` keeps every text file LF, because specs compare checked-in bytes
 
 `fixture-gallery.spec.ts` compares `docs/fixture-urls.md` with freshly generated text, and
@@ -21,6 +38,16 @@ whose title covers it, and leave a heading here only if someone would still sear
 checkout. `* text=auto eol=lf` in `.gitattributes` now checks out LF everywhere. A clone made
 before that rule keeps its CRLF files until they are checked out again:
 `git rm -r --cached -q . && git reset --hard` (this discards uncommitted changes).
+
+### `polygon-clipping` fails on vertices a hair apart, so `buildCompoundPath` snaps them first
+
+The union library treats two vertices as one only when they are exactly equal. Two bars welded at
+a pin both end in a cap on the same circle, and flattened at the same angular step their vertices
+can land within 1e-14 of each other. The library then threw "Unable to complete output ring", the
+catch handed back the leaves side by side, and the Bell Crank's body drew as two loose bars with
+no rings for the CAD export (#291). It depended on the drawing scale, so a fixture built headless
+fused while the canvas did not. `buildCompoundPath` now snaps each flattened ring to `SNAP_GRIDS`,
+finest first, and only falls back to the leaves when every grid fails.
 
 ### `__dirname` in a shared test helper points somewhere else in the full run
 
@@ -1793,14 +1820,18 @@ dead code. The square's hitbox is a separate transparent path drawn *after* the 
 head is the marker now (decision S13) and the id went with it, because a hit area is a handle and
 not a joint.
 
-### A decoded joint always has an explicit name, even when nobody named it
+### A name written as the part's own id is read back as no name
 
-`Joint.name` falls back to the id when `_name` is empty, and the encoder writes the *getter's*
-answer -- so every joint in a URL carries a name, and `buildJoint` assigns it unconditionally.
-After a decode nothing is unnamed. That is invisible until something renames an id underneath it:
-re-lettering a cylinder's seal (decision S9) left the joint reading as its old interior name `A2`
-while its id was `E`. The reader clears a name that is only the old id back to empty, so the new
-letter is what a reader sees; a name somebody actually chose is left alone.
+`Joint.name`, `Link.name` and `Force.name` fall back to the id when `_name` is empty, and the
+encoder writes the *getter's* answer -- so every part in a URL carries a name, whether anyone chose
+one or not. The reader used to keep it, so after a decode nothing was unnamed, and that only shows
+when an id changes underneath. Two places it did: re-lettering a cylinder's seal (decision S9) left
+the joint reading as its old interior name `A2` while its id was `E`. And adding a tracer point
+renamed link `AB` to `ABE` in a drawing made in the session but not in one opened from a template, a
+shared link, a reload or an undo (#317). `ownName` in `mechanism-builder.ts` now reads a name equal
+to the id back as empty. The URL is unchanged, because the getter still writes the id. The cost is
+that a reader cannot type a name equal to the id and have it stick, which is the automatic name
+anyway.
 
 ### Three shipped templates carry an interior-named seal, and are not regenerated from anything
 
@@ -2465,10 +2496,12 @@ ungated half, and `coordinateRuleFor` calls it, so there is still one answer.
 
 ### Only one shipped drawing's scrub track moved when that was fixed
 
-`Elliptical_Trammel` is the whole library's only bare-slider input, and its
-block runs against its slot's stored direction, so its handle now starts at
-0.856 of the track where it started at 0.144. Nothing stored moved: the anchor
-has its own coordinate rule and never read `DriveProfile.along`.
+`Elliptical_Trammel` was then the whole library's only bare-slider input, and
+its block runs against its slot's stored direction, so its handle started at
+0.856 of the track where it had started at 0.144. Nothing stored moved: the
+anchor has its own coordinate rule and never read `DriveProfile.along`. The
+template is cranked now (below), so no library template drives a bare slider;
+the gallery's `Elliptical trammel, driven` and `Screw jack` still do.
 
 ### `advanceBoundary` used to interpolate its boundary along *chords*
 
@@ -2967,3 +3000,71 @@ what decides which pull requests get a preview: Netlify builds one only for a PR
 production branch or a branch-deploy branch. So a PR into `staging` gets
 `deploy-preview-NNN--pmksprod.netlify.app`, and a stacked PR into another feature branch gets none.
 Adding a branch to the branch-deploy list turns on both its own deploy and previews of PRs into it.
+
+### A trammel driven at a block draws half its ellipse, and a crank pinned to its middle locks
+
+The library's elliptical trammel used to drive block A along its guide, and drew only the half of
+the ellipse above that guide. Not a solver fault: A's travel ends where the bar lies along A's
+guide, and B, at the crossing there, could go on either way, so a driven block runs out and back
+over one half. Turning the bar is what draws the whole curve.
+
+The textbook way -- a crank from the crossing pinned straight to the middle of the bar -- is a
+redundant constraint, since the guides already keep the middle on that circle. Gruebler counts
+zero, `mobility.ts` finds the one freedom the exact geometry leaves, and
+`template-count-stability.spec.ts` rightly refuses it: nudged by 1e-9 it locks, and so would the
+first joint a reader dragged. The template is a drag-link instead, crank and rod from a pivot off
+both guides to the middle of the bar (`crankedTrammelFixture`), which is one freedom by Gruebler
+alone and keeps running however its joints are moved.
+
+The redundant version also turned back at random, which is a separate bug not yet fixed:
+`circleLineIntersection` in `utils.ts` rejects a negative discriminant outright, with none of the
+0.001 tolerance `circleCircleIntersection` gives a tangency. Twice a turn that trammel solves a
+block on a slot line tangent to its circle, rounding makes the line miss as often as not, and the
+walk reverses at a limit that is not there -- at a different crank angle for every start angle.
+Giving the line the circles' tolerance and clamping the root made it loop from every start.
+`waitForReady` settles whatever was on the page when it was called. A suite that loads an empty
+grid, waits, and then builds its part with a poke has waited for nothing: the new part still has to
+be drawn and framed. `cylinder-members` pressed on a barrel that was not there yet, once in about
+sixty gate runs, and the drag moved nothing. Wait again after the poke, before aiming a press.
+
+### A tracer point snaps to its bar's line against the cursor, not its grid corner
+
+`snapToLines` (`model/line-snap.ts`) is asked before the grid in the joint-drag branch and in
+`addJoint`, because a slanted bar's line passes between grid corners: a point taken to the corner
+first is as likely as not to be pushed off the line it was on. Only a tracer asks
+(`NewGridComponent.tracerBody`: a free revolute pin on one body that has two other joints). In a
+welded compound the tracer's `links[0]` is the whole compound, so the lines come from the subset bar
+that holds it. The panel's Add Tracer Point (`addJointAtCOM`) still puts the point a hair off the
+line on purpose; only the right-click row and a drag snap.
+
+### A scrub handle reaches the start by snapping, not by landing on it
+
+The `.rowScrubber` range counts in thousandths, and one thousandth of a 300-pixel track is a third of
+a pixel, so a hand dragging back to the left end used to stop a sample short (79° / 0.01 s) and the
+editor stayed shut. `snapsToStart` (`model/scrub-snap.ts`) treats a value within `SCRUB_SNAP_PX`
+screen pixels of the row's `anchorAt` as the start -- pixels of the thumb's travel, which is the
+input less one 24px thumb (`SCRUB_THUMB_PX`), as `.anchorSeat` lays it out -- and
+`PlaybackBarComponent.settleScrub` then seeks by *time* to 0 rather than by position, because an
+input that turns back passes its seat twice a cycle and only one of those is the start. It writes the handle's DOM value itself: the `[value]` binding
+does not move a handle whose row value has not changed. The snap runs only on a pointer's release
+(`change` after a `pointerdown`), never on `input`: an arrow key steps one unit, which is inside the
+snap band, so snapping every value change held the handle in the seat against the keyboard.
+
+### Option turns snapping off for a drag and on for a placement
+
+Held during a drag, Option suspends every snap: the grid, the alignment guides, a merge on drop,
+the 15-degree steps of a group's or a background image's rotation. Held while placing a new link,
+cylinder or force, it does the opposite for the direction, which steps in 15 degrees only while it
+is down (`placementBearing`). Both are listed under Modifier Keys in Help, from
+`KeyboardShortcutsService.modifiers` (#316). Nothing dispatches those rows. The canvas reads
+`altKey` off the pointer event, so a change to what a held key does needs its row changed by hand.
+
+### `LinkHold` has a `'both'`, so ask `holdsLength` / `holdsAngle`, never `hold === 'length'`
+
+Since #309 a bar may hold its length and its angle at once, and `RealLink.hold` is then `'both'`.
+An equality test against `'length'` or `'angle'` silently reads a bar holding both as holding
+neither. Ask `holdsLength`, `holdsAngle` or `holdsValue` (`model/link.ts`), and change a hold with
+`holdWith` so the other value is left alone. `HoldBar.hold` is still one value: `heldBars` gives the
+solver one entry per held value, so a bar holding both is two entries with the same id, and the URL
+writes it as two `H` entries the same way. A sentence names it through `holdWords`
+("fixed length and angle AB"), never by interpolating the flag.

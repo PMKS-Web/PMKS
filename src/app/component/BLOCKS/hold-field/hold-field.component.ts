@@ -6,7 +6,7 @@ import { MatTooltip } from '@angular/material/tooltip';
 import { MatFormField } from '@angular/material/form-field';
 import { MatInput } from '@angular/material/input';
 import { Joint } from '../../../model/joint';
-import { LinkHold, RealLink } from '../../../model/link';
+import { holdsValue, LinkHold, RealLink } from '../../../model/link';
 import { holdableBar } from '../../../model/link-holds';
 import { GridUtilsService } from '../../../services/grid-utils.service';
 import { MechanismService } from '../../../services/mechanism.service';
@@ -167,29 +167,21 @@ export class HoldFieldComponent {
     // fixed angle -- which is more than `holdOf` can say, since that answers
     // with one value for the whole link (decision S5).
     if (this.member()) return this.mechanism.memberHoldOf(this.link(), which);
-    return this.hold() === which;
+    return holdsValue(this.hold(), which);
   }
 
   protected padlockTitle(which: Which): string {
-    const other = which === 'length' ? 'angle' : 'length';
     if (this.held(which))
       return `Release the fixed ${which}. Typing a number keeps it fixed at that number`;
-    if (this.held(other)) return `Fix the ${which} instead — the ${other} is released`;
     return `Fix the ${which}`;
   }
 
   protected toggle(which: Which, event: Event): void {
     event.stopPropagation();
     if (!this.holdable()) return;
-    // The row knows which of the two values it is about, and on a member that
-    // is the whole question: releasing there is ambiguous to `setHold`, which
-    // takes one hold for the link and has to guess between the member's length
-    // and the part's angle. `setMemberHold` is the door for a row that knows.
-    if (this.member()) {
-      this.mechanism.setMemberHold(this.link(), which, !this.held(which));
-      return;
-    }
-    this.mechanism.setHold(this.link(), this.held(which) ? undefined : which);
+    // The row knows which of the two values it is about, and says so: the
+    // other value's padlock is left as it is, on a bar and on a member alike.
+    this.mechanism.setBarHold(this.link(), which, !this.held(which));
   }
 
   protected enter(which: Which): void {

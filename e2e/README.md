@@ -274,6 +274,9 @@ Not suites — import them from one.
   turns a link drag into a swing, undo removes a lock, the marks stand down outside Edit.
 - `link-labels.mjs` — a link's name is readable against its body and lands on it, welded shapes
   included.
+- `link-auto-names.mjs` — a link nobody has named follows its joints: the four-bar template's
+  crank `AB` becomes `ABE` when a tracer point is added, and after an undo and a redo a second
+  tracer point renames it again (#317).
 
 ### Slots, slides and cylinders
 
@@ -394,6 +397,10 @@ Not suites — import them from one.
   (from a row, the setup drawer's name), the others fading, the drawer folding to it and opening
   on arrival when a machine cannot run, part links keeping either analysis mode and playback, with the setup drawer staying open, and a
   rename riding the URL.
+- `tracer-line-snap.mjs` — a tracer point placed or dragged within a few pixels of a slanted bar's
+  line lands on it with the dotted guide showing (#307), and Option turns that off.
+- `scrub-to-start.mjs` — dragging a scrub handle back and letting go within a few pixels of its
+  seat lands exactly on the start pose (#304), on the shared row and on an unsynced machine's own.
 - `two-mechanisms.mjs` — two machines in one drawing: a row each in the transport, a section each
   in the setup drawer, and a sync toggle that decouples them.
 

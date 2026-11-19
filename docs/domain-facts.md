@@ -453,11 +453,17 @@ gray force chip, so the three cannot disagree.
 
 ### A hold is a constraint, not a lock, and every move goes through the solver
 
-A bar can hold its **length** or its **angle** against edits (`RealLink.hold`, the menu's Fixed
-Length / Fixed Angle rows, the padlocks on the Link Length and Link Angle fields). It is not a Lock:
-the joints stay free to move, on the arc or the line the held value leaves them. One or the other,
-never both -- both is what a Lock on the joints already means -- so asking for the second moves the
-hold and says so, with "Fix length instead" on the message.
+A bar can hold its **length**, its **angle**, or **both** against edits (`RealLink.hold`, the
+menu's Fixed Length / Fixed Angle rows, the padlocks on the Link Length and Link Angle fields). It
+is not a Lock: the joints stay free to move, on the arc or the line the held value leaves them.
+**Both is not a Lock either** (#309): a bar holding its length and its angle keeps its shape and its
+direction and may still slide sideways, which a Lock on its joints does not allow. Each padlock and
+each menu row is about its own value, so fixing the second adds to the first rather than replacing
+it (`holdWith` in `model/link.ts`). The solver is given one entry per held value (`heldBars`), and
+the URL writes one `H` entry per value, `Hl<bar>` and `Ha<bar>`, so a bar holding both is two
+entries and every URL written before this decodes exactly as it did. A cylinder's member is the
+exception: the part has one angle between two members, so its padlocks keep the S5 table in
+`memberHoldTransition`.
 
 **To the reader the word is "fixed", and never "locked".** The padlock inside a field says
 **Fixed**, the menu rows say **Fixed Length** and **Fixed Angle**, a refusal says "Held by fixed
@@ -472,13 +478,16 @@ for a padlock they had never pressed. `hold` stays the code's name for it.
 The rules are the CAD ones, and they live in one place, `model/hold-solver.ts`: the joint that was
 asked for reaches its ask when the holds allow and lands on the nearest allowed place when they do
 not; every other joint on a held bar moves as little as it must (drag the free end of a held bar and
-its far end is towed; drag it when the far end is locked and it rides the arc); locked, slider and
-cylinder joints never move. **A ground pin is fixed for a typed number and free under the pointer**
-(#261): a typed coordinate, length or angle keeps every ground pin still when the number can be met
-that way, and moves one only when it cannot, before refusing. A canvas drag treats a ground pin as an
-ordinary joint, so dragging a coupler next to a crank with a fixed length swings the crank about a
-moving A rather than stopping at it; only a Lock holds still. `GridUtilsService.byHand` reads
-`DragStateService` to tell the two apart, so no caller passes a flag. A joint the holds have fully
+its far end is towed; drag it when the far end is locked and it rides the arc); locked joints, a
+slider on a moving slot and a cylinder's interior never move. **A ground pin is fixed for a typed
+number and free under the pointer** (#261): a typed coordinate, length or angle keeps every ground
+pin still when the number can be met that way, and moves one only when it cannot, before refusing. A
+canvas drag treats a ground pin as an ordinary joint, so dragging a coupler next to a crank with a
+fixed length swings the crank about a moving A rather than stopping at it, and a crank holding both
+its length and its angle from a ground pin is dragged whole, ground pin and all; only a Lock holds
+still. A grounded slider is ground in this sense too, and carries its rail with it when it moves.
+`GridUtilsService.byHand` reads `DragStateService` to tell the two apart, so no caller passes a
+flag. A joint the holds have fully
 determined -- between two held lengths from two locked points -- is refused at the grab, naming the
 holds, exactly as a locked joint is; an ask no configuration satisfies (a four-bar dragged past where its coupler can follow) is
 refused *whole* -- the half-settled positions the sweep stopped in have a hold false in them, and

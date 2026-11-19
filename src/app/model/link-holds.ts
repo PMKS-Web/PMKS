@@ -1,5 +1,5 @@
 import { Joint, RealJoint } from './joint';
-import { Link, RealLink, LinkHold } from './link';
+import { HeldValue, heldValues, holdsLength, Link, RealLink, LinkHold } from './link';
 import { Cylinder, cylindersIn } from './cylinder';
 import { visibleBodyName } from './body-label';
 import { HoldBar, HoldJoint, reachedByHolds } from './hold-solver';
@@ -141,7 +141,7 @@ export function memberHoldReads(
   which: 'length' | 'angle'
 ): boolean {
   if (which === 'angle') return cylinderHoldsAngle(sealed);
-  return member instanceof RealLink && member.hold === 'length';
+  return member instanceof RealLink && holdsLength(member.hold);
 }
 
 /**
@@ -256,6 +256,7 @@ export function heldBars(links: readonly Link[], cylinders?: readonly Cylinder[]
     const sealed = members.get(link.id);
     const hold = sealed ? (cylinderHoldsAngle(sealed) ? 'angle' : undefined) : holdOf(link);
     if (!hold) continue;
+    const values: HeldValue[] = heldValues(hold);
     // A cylinder's angle is measured mount to mount -- the pair the reader sees
     // and the pair its Angle field states -- not the barrel's own two joints,
     // which are inside the part and which the normalizer re-derives anyway. So
@@ -266,14 +267,18 @@ export function heldBars(links: readonly Link[], cylinders?: readonly Cylinder[]
     const id = sealed ? (cylinderAngleCarrier(sealed)?.id ?? link.id) : link.id;
     if (seen.has(id)) continue;
     seen.add(id);
-    bars.push({
-      id,
-      a: a.id,
-      b: b.id,
-      hold,
-      length: Math.hypot(b.x - a.x, b.y - a.y),
-      angle: Math.atan2(b.y - a.y, b.x - a.x),
-    });
+    // One entry per value held: a bar keeping both its length and its angle
+    // is two constraints to the solver, each true or false on its own (#309).
+    for (const value of values) {
+      bars.push({
+        id,
+        a: a.id,
+        b: b.id,
+        hold: value,
+        length: Math.hypot(b.x - a.x, b.y - a.y),
+        angle: Math.atan2(b.y - a.y, b.x - a.x),
+      });
+    }
   }
   return bars;
 }
@@ -362,7 +367,13 @@ export function describeHold(
     : sealed
       ? `${sealed.mountA.name || sealed.mountA.id}${sealed.mountB.name || sealed.mountB.id}`
       : visibleBodyName(link, cylinders);
-  return `fixed ${holdOf(link) === 'angle' ? 'angle' : 'length'} ${name}`;
+  return `fixed ${holdWords(holdOf(link))} ${name}`;
+}
+
+/** What a hold keeps, in the words a sentence uses: "length", "angle", "length and angle". */
+export function holdWords(hold: LinkHold): string {
+  if (hold === 'both') return 'length and angle';
+  return hold === 'angle' ? 'angle' : 'length';
 }
 
 /** "fixed length AB and fixed angle BC": the holds, as a list. */

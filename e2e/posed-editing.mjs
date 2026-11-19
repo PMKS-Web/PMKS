@@ -542,14 +542,17 @@ await fresh();
     await page.waitForTimeout(250);
     await page.mouse.move(start.x, start.y);
     await page.mouse.down();
+    // Past the drag threshold's tenth of a second, so the first step moves it.
+    await page.waitForTimeout(150);
     const offsets = [];
     let last = start;
     let reversals = 0;
+    // Alt stays down through each reading: letting go of it re-lands the
+    // joint as a move without it would, on the grid (#307).
+    if (!snap) await page.keyboard.down('Alt');
     for (let i = 1; i <= 10; i++) {
       const at = { x: start.x, y: start.y + (dy * i) / 10 };
-      if (!snap) await page.keyboard.down('Alt');
       await page.mouse.move(at.x, at.y, { steps: 1 });
-      if (!snap) await page.keyboard.up('Alt');
       await page.waitForTimeout(45);
       const on = await jointAt('B');
       offsets.push(on.y - at.y);
@@ -559,6 +562,7 @@ await fresh();
       last = on;
     }
     await page.mouse.up();
+    if (!snap) await page.keyboard.up('Alt');
     await page.waitForTimeout(400);
     return {
       spread: Math.max(...offsets) - Math.min(...offsets),
