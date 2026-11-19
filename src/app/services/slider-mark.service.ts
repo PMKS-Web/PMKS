@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import { paintOf } from '../model/joint-colors';
 import { Joint, PrisJoint, RealJoint } from '../model/joint';
 import { Link, RealLink } from '../model/link';
 import { Cylinder, cylinderOfBarIn, cylindersIn } from '../model/cylinder';
@@ -585,11 +586,11 @@ export class SliderMarkService {
       barrelId: found.barrel.id,
       rodId: found.rod.id,
       barrel: barrelPath(r, anchor, mouth),
-      barrelFill: barrelFillOf(found),
+      barrelFill: paintOf(barrelFillOf(found)),
       rod: rodBodyPath(r, rodReach, headHalf),
       // The barrel's color until the rod was given one of its own (S15), which
       // is a question `cylinder-skin.ts` answers for every painter at once.
-      rodFill: rodFillOf(found),
+      rodFill: paintOf(rodFillOf(found)),
       block: cylinderBlockPath(r, headHalf),
       headAlongHalf: headHalf,
       contour: cylinderContourPath(r, anchor, mouth, rodReach),
@@ -727,7 +728,7 @@ export class SliderMarkService {
    * drawing. One rule for every painter, not a third one here.
    */
   private plateInk(rider: RealLink, cylinders: readonly Cylinder[]): string {
-    return fillShownOn(rider, cylinderOfBarIn(cylinders, rider));
+    return paintOf(fillShownOn(rider, cylinderOfBarIn(cylinders, rider)));
   }
 
   /**

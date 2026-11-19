@@ -51,7 +51,7 @@ export interface AnalyticsEvents {
   new_project: NoParams;
   open_file: NoParams;
   save_file: NoParams;
-  help_link_click: { destination: 'help_site' | 'github' };
+  help_link_click: { destination: 'issues' | 'donate' };
   exception: { description: string; fatal: boolean };
 }
 

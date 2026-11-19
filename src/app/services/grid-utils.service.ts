@@ -1,8 +1,10 @@
+import { linkDragGoals, rigidBodyHolds, rigidDragMap } from '../model/rigid-link-drag';
 import { linkArtwork, schematicLink } from '../model/link-artwork';
 import { cylinderJoints } from '../model/cylinder';
 import { pickLink } from '../model/link-pick';
 import { Injectable, Injector, inject } from '@angular/core';
-import { HoldBar, HoldGoal, reachedByHolds, settleHolds } from '../model/hold-solver';
+import { DragStateService } from './drag-state.service';
+import { HoldBar, HoldGoal, HoldSolution, reachedByHolds, settleHolds } from '../model/hold-solver';
 import {
   heldBars,
   heldBarsReaching,
@@ -11,8 +13,13 @@ import {
   holdOf,
 } from '../model/link-holds';
 import { Joint, PrisJoint, RealJoint, RevJoint } from '../model/joint';
-import { roundNumber, point_on_line_segment_closest_to_point } from '../model/utils';
-import { Link, RealLink } from '../model/link';
+import {
+  jointStates,
+  linkStates,
+  roundNumber,
+  point_on_line_segment_closest_to_point,
+} from '../model/utils';
+import { holdsLength, Link, RealLink } from '../model/link';
 import {
   JointOperationContext,
   OperationRefusal,
@@ -56,6 +63,7 @@ import { EditPermissionService } from './edit-permission.service';
 import { canDrive } from '../model/actuator';
 import { Lockable, frozenJointIds, locksHolding } from '../model/lock-set';
 import { Coord } from '../model/coord';
+import { refuseForceOnJoint } from '../model/force-on-joint';
 import { constrainForceAnchor } from '../model/force-anchor';
 import { PositionSolver } from '../model/mechanism/position-solver';
 import { Force } from '../model/force';
@@ -100,6 +108,19 @@ function pointThroughFrame(
   return [toStart.x + along * toX - across * toY, toStart.y + along * toY + across * toX];
 }
 
+/** How far short of its ask a goal may land and still count as reached. */
+const REACHED = 1e-6;
+
+/** Whether a hold solve gave every goal exactly what it asked for. */
+function granted(solved: HoldSolution): boolean {
+  return solved.satisfied && solved.immovable.length === 0 && solved.shortfall <= REACHED;
+}
+
+/** Whether `next` honors the ask better than `current` does. */
+function goesFurther(next: HoldSolution, current: HoldSolution): boolean {
+  return next.satisfied && (!current.satisfied || next.shortfall < current.shortfall - REACHED);
+}
+
 /** A joint by the letter it wears, or the name somebody typed over it. */
 function nameOfJoint(joint: { name?: string; id: string }): string {
   return joint.name || joint.id;
@@ -129,6 +150,7 @@ export class GridUtilsService {
   private notify = inject(NotificationService);
   private nup = inject(NumberUnitParserService);
   private settings = inject(SettingsService);
+  private dragState = inject(DragStateService);
 
   /**
    * MechanismService injects this service, so it can only be resolved at call
@@ -358,7 +380,7 @@ export class GridUtilsService {
    * of those joints are returned so the caller can move the rest itself, and
    * `lastHoldRefusal` says what, if anything, could not be granted.
    */
-  settleHolds(goals: readonly HoldGoal[]): Set<string> | undefined {
+  settleHolds(goals: readonly HoldGoal[], body?: Link): Set<string> | undefined {
     // Every ask starts clean. A refusal that stood from an earlier move used
     // to survive the bars being unlocked, because a drawing with no holds
     // returns here before anything below could clear it -- and the canvas
@@ -366,26 +388,43 @@ export class GridUtilsService {
     this.lastHoldRefusal = undefined;
     const links = this.mechanismSrv.links;
     const cylinders = this.mechanismSrv.sealedStructures();
-    const bars = heldBars(links, cylinders);
-    if (bars.length === 0) return undefined;
+    const held = heldBars(links, cylinders);
+    if (held.length === 0) return undefined;
+    const bars = body ? [...held, ...rigidBodyHolds(goals)] : held;
     const asked = goals.map((goal) => this.mechanismSrv.joints.find((j) => j.id === goal.id));
     const reached = reachedByHolds(
       goals.map((goal) => goal.id),
       bars
     ).joints;
-    if (!reached.size || !bars.some((bar) => reached.has(bar.a))) return undefined;
+    if (!reached.size || !held.some((bar) => reached.has(bar.a))) return undefined;
     const frozen = this.frozenJointIds();
     // A grounded joint anchors the others, not itself: in Edit a ground pin
     // is dragged like any other, and the bar it is on follows.
     const moving = new Set(goals.map((goal) => goal.id));
-    const joints = holdJoints(this.mechanismSrv.joints, (joint) =>
-      this.holdAnchor(joint, frozen, moving)
-    );
-    const solved = settleHolds(joints, bars, goals);
+    const solveWith = (holdGrounds: boolean) =>
+      settleHolds(
+        holdJoints(this.mechanismSrv.joints, (joint) =>
+          this.holdAnchor(joint, frozen, moving, holdGrounds)
+        ),
+        bars,
+        goals
+      );
+    // Under the pointer a ground pin is an ordinary joint: only a Lock holds
+    // still, so dragging a coupler swings a held crank about its ground pin
+    // rather than stopping at it. A typed coordinate keeps its grounds where
+    // the number can be met that way, and moves them only when it cannot.
+    const byHand = this.byHand;
+    let solved = solveWith(!byHand);
+    if (!byHand && !granted(solved) && this.groundsReached(reached, moving)) {
+      const released = solveWith(false);
+      if (goesFurther(released, solved)) solved = released;
+    }
     // An ask no configuration satisfies is refused whole: the half-settled
     // positions the sweep stopped in have a hold or two false in them, and
     // writing those is how a locked length came to change under a drag.
-    if (solved.satisfied) {
+    if (solved.satisfied && body) {
+      solved.satisfied = this.commitHeldBody(body, solved.positions);
+    } else if (solved.satisfied) {
       solved.positions.forEach((at, id) => {
         const joint = this.mechanismSrv.joints.find((j) => j.id === id);
         if (joint instanceof RealJoint) this.dragJoint(joint, new Coord(at.x, at.y), false, true);
@@ -407,6 +446,17 @@ export class GridUtilsService {
         }
       : undefined;
     return reached;
+  }
+
+  private commitHeldBody(body: Link, positions: Map<string, Point>): boolean {
+    const points = body.joints.map(({ id, x, y }) => ({ id, x, y }));
+    const mapPoint = rigidDragMap(points, positions);
+    if (!mapPoint) return false;
+    const carried = body instanceof RealLink ? [body, ...body.subset] : [body];
+    if (!this.runEdit({ moves: positions }, false, new Set(carried.map((link) => link.id))))
+      return false;
+    carried.forEach((link) => this.transformLinkBody(link, mapPoint));
+    return true;
   }
 
   /**
@@ -461,16 +511,20 @@ export class GridUtilsService {
     const free = [a, b].filter((joint) => !frozen.has(joint.id));
     const preferred = free.filter((joint) => !joint.ground);
     const moving = new Set((preferred.length > 0 ? preferred : free).map((joint) => joint.id));
-    const joints = holdJoints(this.mechanismSrv.joints, (joint) =>
-      this.holdAnchor(joint, frozen, moving)
-    );
-    const solved = settleHolds(
-      joints,
-      [...others, asked],
-      [a, b].map((joint) => ({ id: joint.id, x: joint.x, y: joint.y })),
-      // A typed number changes the holds; the ends go where it puts them.
-      { holdStill: false }
-    );
+    const solveWith = (holdGrounds: boolean) =>
+      settleHolds(
+        holdJoints(this.mechanismSrv.joints, (joint) =>
+          this.holdAnchor(joint, frozen, moving, holdGrounds)
+        ),
+        [...others, asked],
+        [a, b].map((joint) => ({ id: joint.id, x: joint.x, y: joint.y })),
+        // A typed number changes the holds; the ends go where it puts them.
+        { holdStill: false }
+      );
+    // Grounds stay put when the number can be met that way. When it cannot,
+    // a ground pin gives before the number is refused: only a Lock refuses.
+    let solved = solveWith(true);
+    if (!solved.satisfied) solved = solveWith(false);
     if (!solved.satisfied) {
       this.lastHoldRefusal = {
         immovable: [],
@@ -531,12 +585,25 @@ export class GridUtilsService {
       }
     }
     const frozen = this.frozenJointIds();
-    const joints = holdJoints(
-      this.mechanismSrv.joints,
-      (joint) =>
-        this.holdAnchor(joint, frozen, moving) || (anchors.has(joint.id) && !moving.has(joint.id))
-    );
-    const solved = settleHolds(joints, constraints, [...goals.values()], { holdStill: false });
+    const solveWith = (holdGrounds: boolean) =>
+      settleHolds(
+        holdJoints(
+          this.mechanismSrv.joints,
+          (joint) =>
+            this.holdAnchor(joint, frozen, moving, holdGrounds) ||
+            (anchors.has(joint.id) &&
+              !moving.has(joint.id) &&
+              (holdGrounds || !(joint instanceof RealJoint && joint.ground)))
+        ),
+        constraints,
+        [...goals.values()],
+        { holdStill: false }
+      );
+    // The same preference as one bar's: ground pins stay put if the numbers
+    // allow it, and give before the edit is refused. An ungrounded anchor end
+    // stays pinned either way, so this retry relaxes grounds and nothing else.
+    let solved = solveWith(true);
+    if (!solved.satisfied) solved = solveWith(false);
     if (!solved.satisfied) {
       this.lastHoldRefusal = {
         immovable: [],
@@ -558,7 +625,8 @@ export class GridUtilsService {
    *
    * Asked at the grab, before anything moves: a joint the holds have fully
    * determined never enters the dragging state, the same way a locked one
-   * does not, so nothing downstream has to hold it still.
+   * does not, so nothing downstream has to hold it still. A drag moves ground
+   * pins like any other joint, so only Locks and the holds count here.
    */
   holdsImmobilizing(joint: RealJoint): RealLink[] {
     const links = this.mechanismSrv.links;
@@ -567,7 +635,7 @@ export class GridUtilsService {
     if (bars.length === 0 || heldBarsReaching(joint, links, cylinders).length === 0) return [];
     const frozen = this.frozenJointIds();
     const joints = holdJoints(this.mechanismSrv.joints, (j) =>
-      this.holdAnchor(j, frozen, new Set([joint.id]))
+      this.holdAnchor(j, frozen, new Set([joint.id]), false)
     );
     const solved = settleHolds(joints, bars, [{ id: joint.id, x: joint.x, y: joint.y }]);
     return solved.immovable.includes(joint.id) ? heldBarsReaching(joint, links, cylinders) : [];
@@ -577,7 +645,8 @@ export class GridUtilsService {
    * Which joints the hold solver may never move: grounded pins are bolted to
    * the frame -- unless the pin is the one being moved, since in Edit a ground
    * pin drags like any other -- locked ones are held by a mark, and a slider's
-   * joints live on a line of their own that the solver does not know.
+   * joints live on a line of their own that the solver does not know, unless
+   * the slider is grounded, when its line is the frame and it is ground.
    *
    * A cylinder's *interior* is the same kind of thing: the barrel's buried
    * end, the welded pin and the block are placed by the layout and re-derived
@@ -592,12 +661,38 @@ export class GridUtilsService {
     return this.holdAnchor(joint, this.frozenJointIds());
   }
 
-  private holdAnchor(joint: RealJoint, frozen: Set<string>, moving = new Set<string>()): boolean {
+  private holdAnchor(
+    joint: RealJoint,
+    frozen: Set<string>,
+    moving = new Set<string>(),
+    holdGrounds = !this.byHand
+  ): boolean {
     return (
-      (joint.ground && !moving.has(joint.id)) ||
+      (holdGrounds && joint.ground && !moving.has(joint.id)) ||
       frozen.has(joint.id) ||
-      joint instanceof PrisJoint ||
+      // A slot the solver does not know. A grounded slider's slot is the
+      // frame, though, so it is ground like any other: free under the
+      // pointer, and carrying its rail along when it moves.
+      (joint instanceof PrisJoint && (holdGrounds || !joint.ground)) ||
       this.mechanismSrv.cylindersAt(joint).some((cylinder) => isInsideCylinder(cylinder, joint))
+    );
+  }
+
+  /**
+   * Whether the pointer is moving a joint or a body right now. A drag treats a
+   * ground pin as an ordinary joint; a typed number keeps it where it can.
+   */
+  private get byHand(): boolean {
+    return (
+      this.dragState.joint === jointStates.dragging || this.dragState.link === linkStates.dragging
+    );
+  }
+
+  /** Whether any joint the holds reach is a ground pin the ask did not name. */
+  private groundsReached(reached: Set<string>, moving: Set<string>): boolean {
+    return this.mechanismSrv.joints.some(
+      (joint) =>
+        reached.has(joint.id) && !moving.has(joint.id) && joint instanceof RealJoint && joint.ground
     );
   }
 
@@ -862,6 +957,19 @@ export class GridUtilsService {
     return this.moveLinkRigidly(selectedLink, (x, y) => ({ x: x + dx, y: y + dy }));
   }
 
+  /** Follow the pointer from the grab snapshot even when holds kept an end behind. */
+  dragLinkTo(link: Link, target: Point, start: readonly HoldGoal[]): Link {
+    link = this.mechanismSrv.rootLinkOwning(link) ?? link;
+    const points = link.joints.map((joint) => start.find((point) => point.id === joint.id)!);
+    const dx = target.x - link.joints[0].x;
+    const dy = target.y - link.joints[0].y;
+    return this.moveLinkRigidly(
+      link,
+      (x, y) => ({ x: x + dx, y: y + dy }),
+      linkDragGoals(points, target)
+    );
+  }
+
   /**
    * Turn a whole link about a point, carrying everything rigidly attached.
    *
@@ -884,12 +992,12 @@ export class GridUtilsService {
 
   private moveLinkRigidly(
     selectedLink: Link,
-    mapPoint: (x: number, y: number) => { x: number; y: number }
+    mapPoint: (x: number, y: number) => { x: number; y: number },
+    targets?: readonly HoldGoal[]
   ) {
-    // A held bar somewhere on this body, or on a neighbor sharing one of its
-    // joints, has a say in where the joints go. Then this is not a rigid move
-    // at all: every joint is asked for as a goal, the holds answer for the
-    // ones they reach, and the rest go where the body would have put them.
+    // A neighboring hold and the dragged body's shape are solved together.
+    // Independent endpoint goals let the held end follow its arc while the
+    // other end translated, stretching the very body the reader was carrying.
     // The link's own joints, and only those. A slider riding one of them used
     // to bring its coincident partner along through the block that joined the
     // two; a slider is one joint now, so one that is a *member* of this body is
@@ -898,18 +1006,13 @@ export class GridUtilsService {
     // carries it there.
     selectedLink = this.mechanismSrv.rootLinkOwning(selectedLink) ?? selectedLink;
     const carried: Joint[] = [...selectedLink.joints];
-    const goals: HoldGoal[] = carried
-      .filter((joint, index) => carried.indexOf(joint) === index)
-      .map((joint) => ({ id: joint.id, ...mapPoint(joint.x, joint.y) }));
-    const settled = this.settleHolds(goals);
+    const goals: readonly HoldGoal[] =
+      targets ??
+      carried
+        .filter((joint, index) => carried.indexOf(joint) === index)
+        .map((joint) => ({ id: joint.id, ...mapPoint(joint.x, joint.y) }));
+    const settled = this.settleHolds(goals, selectedLink);
     if (settled) {
-      goals.forEach((goal) => {
-        if (settled.has(goal.id)) return;
-        const joint = carried.find((candidate) => candidate.id === goal.id);
-        if (joint instanceof RealJoint) {
-          this.dragJoint(joint, new Coord(goal.x, goal.y), false, true);
-        }
-      });
       this.mechanismSrv.reseatFloatingSliders();
       this.mechanismSrv.updateMechanism(false);
       return selectedLink;
@@ -1013,8 +1116,8 @@ export class GridUtilsService {
    */
   private cylinderLengthHolds(sealed: Cylinder): CylinderHolds {
     return {
-      barrel: sealed.barrel instanceof RealLink && sealed.barrel.hold === 'length',
-      rod: sealed.rod.hold === 'length',
+      barrel: sealed.barrel instanceof RealLink && holdsLength(sealed.barrel.hold),
+      rod: holdsLength(sealed.rod.hold),
     };
   }
 
@@ -1373,7 +1476,7 @@ export class GridUtilsService {
       // neither of them.
       heldBy: (cylinder) => {
         const holding = [cylinder.barrel, cylinder.rod].filter(
-          (member): member is RealLink => member instanceof RealLink && member.hold === 'length'
+          (member): member is RealLink => member instanceof RealLink && holdsLength(member.hold)
         );
         return holding.length > 0
           ? heldBySentence(holding, undefined, (bar) => this.mechanismSrv.visibleBodyName(bar))
@@ -1569,12 +1672,13 @@ export class GridUtilsService {
   /**
    * Where a force's anchor may sit on its link, given where the pointer is.
    *
-   * Two joints are two different answers. A pin shared by more than one link is
-   * refused outright: a force applied *there* does not say which of the bodies
-   * meeting there it acts on, and every answer the force solver could pick is a
-   * guess the user never made — the same rule a driven joint follows. A joint on
-   * exactly one link has no such ambiguity, so the anchor snaps onto it, which
-   * is how a load is put on a tracer point at the end of a boom.
+   * Two joints are two different answers. A joint where a second body meets the
+   * link -- another link, the ground, a slider's slot -- is refused outright: a
+   * force applied *there* does not say which of the bodies it acts on, and
+   * every answer the force solver could pick is a guess the user never made.
+   * A joint on exactly one link and nothing else has no such ambiguity, so the
+   * anchor snaps onto it, which is how a load is put on a tracer point at the
+   * end of a boom.
    *
    * `undefined` means the anchor may not go there at all. The caller keeps its
    * own "inside the bar" test, because that one needs the drawn path.
@@ -1597,10 +1701,11 @@ export class GridUtilsService {
       }
     }
     if (nearest && nearestGap <= snapRadius) {
-      // A pin several links meet at is not a place for a force -- it would
-      // not say which body it acts on -- but it is not a wall either. The
-      // caller keeps the force on the link, short of the pin.
-      if (nearest.links.length > 1) return { at: point, shared: nearest };
+      // A joint where a second body meets the link -- another link, the
+      // ground, a slider's slot -- is not a place for a force: it would not
+      // say which body it acts on. Nor is it a wall. The caller keeps the
+      // force on the link, short of the joint (`model/force-on-joint.ts`).
+      if (refuseForceOnJoint(nearest)) return { at: point, shared: nearest };
       return { at: new Coord(nearest.x, nearest.y), snappedTo: nearest };
     }
     return { at: point };
@@ -1732,7 +1837,15 @@ export class GridUtilsService {
       const picked = pick((leaf) =>
         drawn(leaf) ? hit.isPointInStroke(at()) : hit.isPointInFill(at())
       );
-      if (!this.settings.isSchematic || !picked.isCompound) return picked;
+      if (!picked.isCompound) return picked;
+      if (!this.settings.isSchematic) {
+        return pick((leaf) => {
+          const line = schematicLink(leaf, cylinders);
+          if (!line) return false;
+          hit.setAttribute('d', line);
+          return hit.isPointInStroke(at());
+        });
+      }
       // Nothing's line was hit, so the shaded inside of a part -- a plate, or a
       // disc -- picks it: Schematic shades it because it takes a click. Asked
       // second, so a bar lying across a plate is still picked by its line.

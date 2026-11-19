@@ -179,6 +179,10 @@ Not suites — import them from one.
 
 ### Editing, undo and paused poses
 
+- `constrained-link-drag.mjs` — #259: dragging BC beside a fixed length or angle on AB
+  preserves BC’s shape, does not creep at a stationary pointer, and costs one undo step.
+  Reports and drag filmstrips in `artifacts/constrained-link-drag/`.
+
 - `edit-playback.mjs` — Gate 1 of `docs/edit-mode-playback-plan.md`: the transport is chrome
   (present and inert over an empty grid), the Edit panel stays while the mechanism moves, every
   gate gives one answer, and the mode-switch table edge by edge.
@@ -268,8 +272,19 @@ Not suites — import them from one.
   the check to look at. The sheet needs Pillow under `python3` and is skipped without it.
 - `locking.mjs` — a locked link refuses a drag with an Unlock in the message, a locked joint
   turns a link drag into a swing, undo removes a lock, the marks stand down outside Edit.
+- `library-visual-audit.mjs` — every card in the running library, including development cards,
+  with its tracing backdrop in Standard, Fine and Schematic. Saves all views and label bounds
+  under `artifacts/library-visual-audit/` for individual inspection; `ONLY=id,id` narrows a recheck
+  and `PMKS_AUDIT_OUT` keeps before/after captures separate. Checks that style changes preserve
+  geometry and model text size, and that the rendered wheel and slider names clear their pins.
+- `library-label-motion.mjs` — six library mechanisms in all three styles: fixed label colors,
+  plain text without connecting lines, and stable body attachments over a full sampled cycle.
+  Also records actual Play filmstrips for visual inspection in `artifacts/library-label-motion/`.
 - `link-labels.mjs` — a link's name is readable against its body and lands on it, welded shapes
   included.
+- `link-auto-names.mjs` — a link nobody has named follows its joints: the four-bar template's
+  crank `AB` becomes `ABE` when a tracer point is added, and after an undo and a redo a second
+  tracer point renames it again (#317).
 
 ### Slots, slides and cylinders
 
@@ -361,12 +376,18 @@ Not suites — import them from one.
 
 - `force-edit.mjs` — picking a force up by its arrow, where its anchor may land and snap, and
   drawing a new one.
+- `force-on-joint.mjs` — a force kept off a joint where a second body meets its link (issue
+  #138): held short of a grounded pin under a drag, moved off one when a drawing opens with it
+  there, and moved off a tracer point another link's end is merged onto, each said out loud.
 - `force-analysis-panels.mjs` — the Force Analysis rows on the joint and link panels and the
   shared Force Analysis Type toggle. Needs installed Chrome (`PMKS_CHROME`).
 - `force-labels-and-legend.mjs` — force graph titles name parts the reader can see, both cylinder
   mounts are listed, and the legend does not shift as values change sign.
 - `force-units.mjs` — which unit a force is read in: the Force Units row, kilograms-force leaving
   storage alone, conversion at each edge, and a grayed pill not reacting to hover.
+- `mass-units.mjs` — Settings picks length, mass and force separately (#142): the Length Units
+  and Mass Units rows, a note naming the torque and inertia units (and lbm and lbf under inches),
+  a mass pick leaving storage alone, riding the URL, and resetting with a change of length.
 
 ### Analysis modes and machines
 
@@ -387,6 +408,10 @@ Not suites — import them from one.
   (from a row, the setup drawer's name), the others fading, the drawer folding to it and opening
   on arrival when a machine cannot run, part links keeping either analysis mode and playback, with the setup drawer staying open, and a
   rename riding the URL.
+- `tracer-line-snap.mjs` — a tracer point placed or dragged within a few pixels of a slanted bar's
+  line lands on it with the dotted guide showing (#307), and Option turns that off.
+- `scrub-to-start.mjs` — dragging a scrub handle back and letting go within a few pixels of its
+  seat lands exactly on the start pose (#304), on the shared row and on an unsynced machine's own.
 - `two-mechanisms.mjs` — two machines in one drawing: a row each in the transport, a section each
   in the setup drawer, and a sync toggle that decouples them.
 
@@ -461,6 +486,10 @@ Not suites — import them from one.
   the drawing.
 - `background-image.mjs` — placing, moving, resizing, fading and deleting a background image, which
   cannot be clicked or dragged and follows the grid's zoom.
+- `brand.mjs` — the logo, favicons and icons as a browser receives them: every icon the page head
+  and manifest name is served with an image type, `/favicon.ico` answers, the link-preview card
+  exists, and the startup screen and top bar draw the logo in its own proportions.
+  `docs/brand.md` says where the files come from.
 
 ### Library, synthesis and export
 

@@ -1,4 +1,5 @@
 import { buildMechanismFixture } from '../../../tests/fixtures/mechanism-fixtures';
+import { paintOf } from '../../model/joint-colors';
 import { TEMPLATE_LINKAGES } from '../../component/MODALS/templates/template-linkages';
 import { RealLink } from '../../model/link';
 import { paintCylinderMember } from '../../model/cylinder-skin';
@@ -32,8 +33,8 @@ describe('the report drawing of a mechanism', () => {
 
     const svg = mechanismSvg(built.service.joints, built.service.links, 330, 230);
     const drawn = [...svg.matchAll(/stroke="(#[0-9a-fA-F]{6})"/g)].map((match) => match[1]);
-    expect(drawn).toContain(barrel.fill);
-    expect(drawn).not.toContain(cylinder.rod.fill);
+    expect(drawn).toContain(paintOf(barrel.fill));
+    expect(drawn).not.toContain(paintOf(cylinder.rod.fill));
   });
 
   it('and paints it in its own the moment somebody gives it one', () => {
@@ -51,7 +52,7 @@ describe('the report drawing of a mechanism', () => {
     const built = buildMechanismFixture(TEMPLATE_LINKAGES['4-Bar']);
     const fills = built.service.links
       .filter((link): link is RealLink => link instanceof RealLink)
-      .map((link) => link.fill);
+      .map((link) => paintOf(link.fill));
     expect(inks(TEMPLATE_LINKAGES['4-Bar'])).toEqual(fills);
   });
 

@@ -68,7 +68,7 @@ async function oneCylinder(options = {}) {
   await page.goto(BASE, { waitUntil: 'domcontentloaded' });
   await waitForReady(page);
   await page.waitForTimeout(250);
-  return inAngular(
+  const ids = await inAngular(
     page,
     (how) => {
       const grid = ng.getComponent(document.querySelector('app-new-grid'));
@@ -102,6 +102,17 @@ async function oneCylinder(options = {}) {
     },
     options
   );
+  // The wait above was for an empty grid. The part made just now still has to
+  // be drawn, and framed, before a press aimed at it lands on it: on a slow CI
+  // runner a barrel grab once fell on bare grid and moved nothing at all. Wait
+  // for its end joints by name first, because `waitForReady` alone is satisfied
+  // by a grid with no joints drawn at all.
+  await page.waitForFunction(
+    (ends) => ends.every((id) => document.getElementById(`joint_${id}`)),
+    [ids.a, ids.b]
+  );
+  await waitForReady(page);
+  return ids;
 }
 
 /** What the drawing says about the part right now. */

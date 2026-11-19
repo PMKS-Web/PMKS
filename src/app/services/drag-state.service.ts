@@ -99,6 +99,11 @@ export class DragStateService {
     return this.pointerMoved;
   }
 
+  /** This gesture has changed the mechanism so far, and will be saved on release. */
+  get hasModified(): boolean {
+    return this.mechanismModified;
+  }
+
   get isPointerDown(): boolean {
     return this.pointerIsDown;
   }

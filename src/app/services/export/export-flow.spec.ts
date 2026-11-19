@@ -668,7 +668,7 @@ describe('what the export is written as', () => {
     const heads = ['Time (s)', ...Array.from({ length: 46 }, (_, at) => `Position P${at} X (cm)`)];
     const rows = Array.from({ length: 3 }, () => heads.map(() => '-1234.567890'));
     const html = reportHtml({
-      logoUrl: 'assets/PMKS_logo.png',
+      logoUrl: 'assets/brand/pmks-logo.svg',
       sections: [
         {
           title: 'Analysis — M1',
@@ -696,7 +696,7 @@ describe('what the export is written as', () => {
     const { flow, table } = sample();
     const rows = table.times.map((time) => [String(time), '1', '2']);
     const html = reportHtml({
-      logoUrl: 'assets/PMKS_logo.png',
+      logoUrl: 'assets/brand/pmks-logo.svg',
       sections: [
         {
           title: 'Kinematic analysis — M1',
@@ -730,7 +730,7 @@ describe('how much paper the report asks for', () => {
   function report(rows: number, columns: number, digits: number): string {
     const cell = (-1.0618581).toFixed(digits);
     return reportHtml({
-      logoUrl: 'assets/PMKS_logo.png',
+      logoUrl: 'assets/brand/pmks-logo.svg',
       sections: [
         {
           title: 'Kinematic analysis — M1',

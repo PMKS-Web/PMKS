@@ -1,4 +1,5 @@
 import { Injectable, inject } from '@angular/core';
+import { LOGO_URL } from '../../model/brand';
 import { ANALYSIS_SERIES_COLORS } from '../../model/analysis-series';
 import { RealJoint } from '../../model/joint';
 import { MechanismService } from '../mechanism.service';
@@ -236,7 +237,7 @@ export class ExportWriterService {
       )
       .filter((section): section is ReportSection => !!section);
     if (sections.length === 0) return false;
-    const logo = new URL('assets/PMKS_logo.png', document.baseURI).href;
+    const logo = new URL(LOGO_URL, document.baseURI).href;
     // The name the reader typed reaches the file through the document's title:
     // the app never writes this one, the print dialog does, and the title is
     // what it offers as the name.
@@ -302,7 +303,9 @@ export class ExportWriterService {
       .map((part) => part.label)
       .join(', ');
     const length = this.catalog.unitStr(this.settings.lengthUnit.value);
-    const mass = this.nup.unitLabel(this.nup.massUnitFor(this.settings.lengthUnit.value));
+    const mass = this.nup.unitLabel(
+      this.nup.displayMassUnit(this.settings.lengthUnit.value, this.settings.massUnit.value)
+    );
     const angle = this.catalog.unitStr(this.settings.angleUnit.value);
     return [
       {
@@ -414,7 +417,7 @@ function distinctNames(files: ExportFile[]): ExportFile[] {
  */
 async function logoDataUrl(): Promise<string | undefined> {
   try {
-    const response = await fetch(new URL('assets/PMKS_logo.png', document.baseURI).href);
+    const response = await fetch(new URL(LOGO_URL, document.baseURI).href);
     const blob = await response.blob();
     return await new Promise<string | undefined>((resolve) => {
       const reader = new FileReader();

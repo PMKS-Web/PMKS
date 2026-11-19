@@ -2,6 +2,12 @@ import { ObjectDisplayService } from '../../services/object-display.service';
 import { forceInk } from '../../model/force-ink';
 import { ForceMarkComponent } from '../force-mark/force-mark.component';
 import { barLabelAxis } from '../../model/bar-label-axis';
+import {
+  bodyLabelAngle,
+  bodyLabelCenter,
+  jointLabelOffset,
+  placeBarLabel,
+} from '../../model/label-placement';
 import { PlacementTargetService } from '../../services/placement-target.service';
 import { placementBearing } from '../../model/placement-snap';
 import { LinkTraceService } from '../../services/link-trace.service';
@@ -45,10 +51,11 @@ import {
   ContextMenuBuilderService,
   MenuHandlers,
 } from '../../services/context-menu-builder.service';
-import { Link, RealLink } from '../../model/link';
+import { holdsValue, Link, RealLink } from '../../model/link';
 import { Lockable } from '../../model/lock-set';
 import { Joint, PrisJoint, RealJoint, RevJoint } from '../../model/joint';
 import { Coord } from '../../model/coord';
+import { holdOffJoint, refuseForceOnJoint, refusedJointAt } from '../../model/force-on-joint';
 import { constrainForceAnchor } from '../../model/force-anchor';
 import {
   forceStates,
@@ -61,6 +68,7 @@ import {
 } from '../../model/utils';
 import { Force } from '../../model/force';
 import { NotificationService } from '../../services/notification.service';
+import { ForceRefusalNotice } from './force-refusal-notice';
 import { BackgroundImageService, MIN_WIDTH } from '../../services/background-image.service';
 import { CdkContextMenuTrigger } from '@angular/cdk/menu';
 import { MatDialog } from '@angular/material/dialog';
@@ -104,6 +112,7 @@ import {
   motorBodyPath,
   motorBodyAt,
   Segment,
+  endTicks,
 } from '../../model/joint-marks';
 import {
   JointDropCandidate,
@@ -122,7 +131,9 @@ import { CylinderPreview, cylinderPreviewOf } from '../../model/cylinder-preview
 import { Cylinder, cylinderSizeOf, cylinderSpanRange, cylinderJoints } from '../../model/cylinder';
 import { accentOutlineClass, CylinderRole, hiddenByCylinder } from '../../model/cylinder-skin';
 import { memberIsFused, PaintStep } from '../../model/cylinder-paint-order';
-import { SnapGuide, snapToAxes } from '../../model/axis-snap';
+import { SnapGuide, SnapPoint, snapToAxes } from '../../model/axis-snap';
+import { SnapLine, snapToLines } from '../../model/line-snap';
+import { placementLines, tracerSnapTargets } from '../../model/tracer-lines';
 import { drawDepths } from '../../model/draw-order';
 import { MODEL_SCALE } from '../../model/render-scale';
 import { uniformBodyOf } from '../../model/uniform-body';
@@ -144,6 +155,7 @@ export interface SlotStackItem {
 import { SvgArrowComponent } from '../svg-arrow/svg-arrow.component';
 import { KeyboardShortcutsService, ShortcutId } from '../../services/keyboard-shortcuts.service';
 import { INK_FLIPS_AT, luminanceOf } from '../../model/contrast';
+import { CanvasLabel, CanvasLabelsService } from '../../services/canvas-labels.service';
 import { SELECTION_RING } from '../../model/joint-colors';
 import { isAdditiveSelectionGesture, SelectedPart } from '../../model/selection';
 import {
@@ -219,6 +231,7 @@ const SELECTION_RING_PX = 3;
 export class NewGridComponent implements OnDestroy {
   readonly Math = Math;
   readonly objectDisplay = inject(ObjectDisplayService);
+  readonly canvasLabels = inject(CanvasLabelsService);
   svgGrid = inject(SvgGridService);
   mechanismSrv = inject(MechanismService);
   protected linkTraces = inject(LinkTraceService);
@@ -1692,7 +1705,15 @@ export class NewGridComponent implements OnDestroy {
       this.lastRightClickCoord.y
     );
 
-    this.mechanismSrv.addJointAt(this.svgGrid.snapToGrid(coord, this.snapSuspendedAtRightClick));
+    // On the bar's line if nearly on it: just off it makes a plate (#307).
+    const lines = placementLines(this.activeObjService.selectedLink, (link) =>
+      this.isCylinderMemberLink(link)
+    );
+    const lined = this.lineSnap(coord, lines, [], this.snapSuspendedAtRightClick);
+    this.axisSnapGuides = [];
+    this.mechanismSrv.addJointAt(
+      lined ?? this.svgGrid.snapToGrid(coord, this.snapSuspendedAtRightClick)
+    );
   }
 
   /**
@@ -1830,11 +1851,8 @@ export class NewGridComponent implements OnDestroy {
   /** Where inside the arrow a body drag picked it up, so it does not jump. */
   private forceGrabOffset = new Coord(0, 0);
 
-  /**
-   * The pin a force's anchor is being held short of, ringed red while the
-   * hand is over it: the same ring a joint drop that will be refused wears.
-   */
-  forceRefusedJoint?: RealJoint;
+  /** The joint a force's anchor is being held short of, and what was said about it. */
+  readonly forceRefusal = new ForceRefusalNotice(this.notify);
 
   beginDraggingForceBody(force: Force, event: PointerEvent): void {
     // The arrow itself was grabbed, so neither handle is: a press on the
@@ -1850,8 +1868,9 @@ export class NewGridComponent implements OnDestroy {
    *
    * Two rules, and the joint one is checked first because a joint is on the
    * link whether or not the point lands inside the drawn bar: the anchor snaps
-   * onto a joint that belongs to one link only, and is refused at a pin where
-   * several meet — a force there does not say which body it acts on. Anywhere
+   * onto a joint that belongs to one link only, and is refused at a joint where
+   * a second body meets the link -- another link, the ground, a slider -- since
+   * a force there does not say which body it acts on. Anywhere
    * else it is kept to the region the link's joints span, which
    * `constrainForceAnchor` describes: the line between a bar's two joints, the
    * inside of a plate, any piece of a compound. The hand off that region is
@@ -1870,37 +1889,26 @@ export class NewGridComponent implements OnDestroy {
       const snapWithin = this.snapSuspended ? 0 : 0.2 * this.settings.drawingScale;
       at = constrainForceAnchor(link, wanted, snapWithin);
     }
-    // A pin several links meet at, if the anchor has come to rest within a
-    // margin of one -- whether the hand is over the pin or has pushed past
-    // it, where the link's region ends at the pin and the anchor was left
-    // standing exactly on it.
+    // A joint the force may not sit on, if the anchor has come to rest within
+    // a margin of one -- whether the hand is over it or has pushed past it,
+    // where the link's region ends at the joint and the anchor was left
+    // standing exactly on it. Shared pins, grounded pins and sliders alike:
+    // `model/force-on-joint.ts` is the one rule.
     const margin = 0.3 * this.settings.drawingScale;
-    const shared =
-      anchor.shared ??
-      link.joints.find(
-        (joint): joint is RealJoint =>
-          joint instanceof RealJoint &&
-          joint.links.length > 1 &&
-          Math.hypot(joint.x - at.x, joint.y - at.y) < margin
-      );
-    if (shared) {
-      // Held short of a pin several links meet at, along the bar it is on: a
-      // force exactly there would not say which body it acts on. The pin is
-      // ringed red for as long as the hand is over it and the reason is said
-      // once -- the notification service holds a repeat while one is up, so
-      // saying it on every pointer move does not stack it.
-      at = this.heldOffJoint(link, shared, at, margin);
-      at = constrainForceAnchor(link, at, 0);
-      this.forceRefusedJoint = shared;
+    const shared = anchor.shared ?? refusedJointAt(link, at, margin);
+    const refusal = shared ? refuseForceOnJoint(shared) : undefined;
+    if (shared && refusal) {
+      // Held short of the joint, along the link it is on.
+      at = holdOffJoint(link, shared, at, margin);
       // The body by the name the canvas tags it with: a bracket welded to a
       // barrel mount carries the cylinder's buried inner end in its id (D14,
       // S11), so this named a joint the drawing never shows.
-      this.notify.refusal(
-        'force.shared-joint',
-        `A force cannot sit on joint ${shared.id}: several links meet there, so it would not say which body it pushes on. It is held on ${this.mechanismSrv.visibleBodyName(link)} short of the pin.`
+      this.forceRefusal.refuse(
+        shared,
+        `A force cannot sit on joint ${shared.id}: ${refusal.because}. It is held on link ${this.mechanismSrv.visibleBodyName(link)}, short of the joint.`
       );
     } else {
-      this.forceRefusedJoint = undefined;
+      this.forceRefusal.clearRing();
     }
     this.gridUtils.dragForce(force, at, how);
     // So that the panel values update continuously.
@@ -1918,20 +1926,6 @@ export class NewGridComponent implements OnDestroy {
     else this.dragState.noteMechanismModified();
   }
 
-  /** The same point, pushed `margin` away from a joint along the bar it is on. */
-  private heldOffJoint(link: RealLink, pin: RealJoint, at: Coord, margin: number): Coord {
-    const gap = Math.hypot(at.x - pin.x, at.y - pin.y);
-    if (gap >= margin) return at;
-    // Away from the pin, along the bar the point is on -- toward the joint on
-    // the bar's other end, which is the direction the force was coming from.
-    const other = link.joints.find((joint) => joint !== pin) ?? pin;
-    const dx = other.x - pin.x;
-    const dy = other.y - pin.y;
-    const length = Math.hypot(dx, dy);
-    if (!(length > margin)) return at;
-    return new Coord(pin.x + (dx / length) * margin, pin.y + (dy / length) * margin);
-  }
-
   /**
    * The joint a force's anchor is sitting on, if it is sitting on one.
    *
@@ -1940,7 +1934,7 @@ export class NewGridComponent implements OnDestroy {
    */
   forceSnappedJoint(force: Force): RealJoint | undefined {
     for (const joint of force.link.joints) {
-      if (!(joint instanceof RealJoint) || joint.links.length > 1) continue;
+      if (!(joint instanceof RealJoint) || refuseForceOnJoint(joint)) continue;
       if (Math.hypot(joint.x - force.startCoord.x, joint.y - force.startCoord.y) < 1e-6) {
         return joint;
       }
@@ -2147,26 +2141,13 @@ export class NewGridComponent implements OnDestroy {
           break;
         }
         this.updateDropCandidate(mousePosInSvg, $event.altKey);
-        // A capture has a target of its own, so any axis the last move squared
-        // itself against is no longer what decides where the joint goes.
-        this.axisSnapGuides = [];
         // Captured: the joint sits exactly on the target instead of trailing the
         // cursor, so what is on screen is what a release would produce.
         // A slot capture pulls the joint onto the slot line the same way, so a
         // drop-on-link is as unsurprising as a drop-on-joint (§4.3).
         this.activeObjService.selectedJoint = this.gridUtils.dragJoint(
           this.activeObjService.selectedJoint,
-          this.snapTargetJoint
-            ? new Coord(this.snapTargetJoint.x, this.snapTargetJoint.y)
-            : this.slotCandidate
-              ? new Coord(this.slotCandidate.x, this.slotCandidate.y)
-              : this.alongItsSlot(
-                  this.activeObjService.selectedJoint,
-                  // Last, and only here: a capture is a target the reader
-                  // picked, and a joint on a slot has a line to stay on. The
-                  // grid gets the position nothing else has a claim on.
-                  this.svgGrid.snapToGrid(mousePosInSvg, $event.altKey)
-                )
+          this.dragLanding(this.activeObjService.selectedJoint, mousePosInSvg, $event.altKey)
         );
         this.afterHoldMove(this.activeObjService.selectedJoint);
         this.dragState.noteMechanismModified();
@@ -2234,10 +2215,10 @@ export class NewGridComponent implements OnDestroy {
           // on its corner for ever.
           const reference = this.activeObjService.selectedLink.joints[0];
           const landed = this.placeDraggedBody(reference, mousePosInSvg, $event.altKey);
-          this.gridUtils.dragLink(
+          this.gridUtils.dragLinkTo(
             this.activeObjService.selectedLink,
-            landed.x - reference.x,
-            landed.y - reference.y
+            landed,
+            this.beforeDrag!.joints
           );
           this.linkDragAnchor = mousePosInSvg;
           this.dragState.noteMechanismModified();
@@ -2491,8 +2472,8 @@ export class NewGridComponent implements OnDestroy {
    * angle's wedge for an angle. Sized in screen pixels, so it reads the same
    * at any zoom.
    */
-  heldChips(): { id: string; x: number; y: number; text: string; w: number }[] {
-    const chips: { id: string; x: number; y: number; text: string; w: number }[] = [];
+  heldChips(): { id: string; hold: string; x: number; y: number; text: string; w: number }[] {
+    const chips: { id: string; hold: string; x: number; y: number; text: string; w: number }[] = [];
     // What reads as held, which is not what the solver is fed: a member's
     // fixed length is honored by the layout rather than by the solver, and a
     // list taken from the solver's bars left the reader's own padlock
@@ -2526,12 +2507,8 @@ export class NewGridComponent implements OnDestroy {
         hold === 'length'
           ? this.lengthLabelAt(a.x, a.y, b.x, b.y)
           : this.angleLabelAt(a.x, a.y, b.x, b.y);
-      const placed = hold === 'length' ? this.lengthChipPlace(link, w) : undefined;
-      if (placed) {
-        at.x = placed.x;
-        at.y = placed.y;
-      }
-      chips.push({ id, x: at.x, y: at.y, text, w });
+      const { x, y } = (hold === 'length' && this.lengthChipPlace(link, w)) || at;
+      chips.push({ id, hold, x, y, text, w });
     }
     return chips;
   }
@@ -2576,8 +2553,8 @@ export class NewGridComponent implements OnDestroy {
    * It used to sit a fixed step up and left of the midpoint, which is on the
    * arrow for any force pointing up-left or down-right -- and a name printed
    * over a shaft is a name that cannot be read. The offset is taken along the
-   * arrow's own normal instead, a set distance in screen pixels so it holds at
-   * every zoom, and always to the side that is "up" on the screen, so the
+   * arrow's own normal instead, scaled with the arrow, and always to the side
+   * that is "up" on the screen, so the
    * name is above the arrow whichever way the arrow points.
    */
   forceLabelAt(force: Force): { x: number; y: number } {
@@ -2614,17 +2591,6 @@ export class NewGridComponent implements OnDestroy {
     const offSetRadius = this.settings.drawingScale * 2;
     const midAngle = Math.atan2(y2 - y1, x2 - x1) / 2;
     return { x: x1 + offSetRadius * Math.cos(midAngle), y: y1 + offSetRadius * Math.sin(midAngle) };
-  }
-
-  /**
-   * How far the link's name steps up from the center, in the label's own
-   * units: clear of the center-of-mass mark, and clear of a locked length's
-   * chip, which is a screen-sized pill and so needs a zoom-sized step.
-   */
-  linkLabelLift(link: Link): number {
-    // A bar's name has already moved along the bar; only a body steps up.
-    if (this.barAxis(link)) return 0;
-    return this.showsCoM(link) ? -this.settings.drawingScale * 0.13 : 0;
   }
 
   /** The label of the length hover dimension, as the panel spells it. */
@@ -3083,8 +3049,44 @@ export class NewGridComponent implements OnDestroy {
   private snapSuspendedAtRightClick = false;
 
   /** Is the app allowed to square this drag up with anything? */
-  private alignmentAllowed(): boolean {
-    return this.settings.isSnapToAlignment.value && !this.snapSuspended;
+  private alignmentAllowed(suspended = this.snapSuspended): boolean {
+    return this.settings.isSnapToAlignment.value && !suspended;
+  }
+
+  /**
+   * Where a dragged joint lands for a cursor at `wanted`: a captured joint or
+   * slot, else its bar's line, else its own slot, else the grid. Called by the
+   * move and by an Alt press or release, which must land it the same way.
+   */
+  private dragLanding(joint: Joint, wanted: Coord, altKey: boolean): Coord {
+    // Any axis the last landing squared itself against is no longer in play.
+    this.axisSnapGuides = [];
+    const captured = this.snapTargetJoint ?? this.slotCandidate;
+    if (captured) return new Coord(captured.x, captured.y);
+    return (
+      this.tracerLineSnap(joint, wanted) ??
+      // Last, and only here: a capture is a target the reader picked, and a
+      // joint on a slot has a line to stay on. The grid gets the position
+      // nothing else has a claim on.
+      this.alongItsSlot(joint, this.svgGrid.snapToGrid(wanted, altKey))
+    );
+  }
+
+  /** A dragged tracer on its bar's line when nearly there, tried before the grid (#307). */
+  private tracerLineSnap(joint: Joint, wanted: Coord): Coord | undefined {
+    const pins = this.mechanismSrv.getJoints();
+    const { lines, others } = tracerSnapTargets(joint, pins, (link) =>
+      this.isCylinderMemberLink(link)
+    );
+    return this.lineSnap(wanted, lines, others, this.snapSuspended);
+  }
+
+  /** On one of `lines` if `wanted` is within the axis snap's reach of it. */
+  private lineSnap(wanted: Coord, lines: SnapLine[], others: SnapPoint[], suspended: boolean) {
+    if (!lines.length || !this.alignmentAllowed(suspended)) return undefined;
+    const snapped = snapToLines(wanted, lines, others, this.svgGrid.scaleWithZoom(8));
+    if (snapped) this.axisSnapGuides = snapped.guides;
+    return snapped && new Coord(snapped.point.x, snapped.point.y);
   }
 
   /**
@@ -3358,7 +3360,7 @@ export class NewGridComponent implements OnDestroy {
    */
   private letGoOfEverything(revert = false): void {
     // The red ring a force drag put on a pin goes with the drag.
-    this.forceRefusedJoint = undefined;
+    this.forceRefusal.forget();
     // The preview is rendered independently of the drag state, so canceling
     // that state alone leaves a frozen arrow behind after another right-click.
     this.forceGhost = undefined;
@@ -3533,11 +3535,11 @@ export class NewGridComponent implements OnDestroy {
   mouseUp($event: MouseEvent) {
     this.holdRing = undefined;
     this.holdGuide = undefined;
-    // The red ring a force drag put on a pin goes with the drag.
-    this.forceRefusedJoint = undefined;
     // The last move of a drag lands before the release is read, so the part
     // ends where the hand was, not one frame short of it.
     this.applyPendingDragMove();
+    // After that move, which can refuse a joint all over again.
+    this.forceRefusal.forget();
     //This is the mouseUp that is called no matter what is clicked on
     this.bgDrag = undefined;
     if (this.showSynthesis()) {
@@ -3815,6 +3817,7 @@ export class NewGridComponent implements OnDestroy {
    */
   releaseCanvasGestures(event?: PointerEvent): void {
     this.applyPendingDragMove();
+    this.forceRefusal.forget();
     this.bgDrag = undefined;
     if (this.synthCanvas.dragging) {
       this.synthCanvas.release();
@@ -5109,18 +5112,7 @@ export class NewGridComponent implements OnDestroy {
 
   /** End ticks across the travel line, so its two ends read as limits. */
   cylinderRangeCaps(range: { from: Coord; to: Coord }): Segment[] {
-    const dx = range.to.x - range.from.x;
-    const dy = range.to.y - range.from.y;
-    const length = Math.hypot(dx, dy) || 1;
-    const half = 0.12 * this.settings.drawingScale;
-    const nx = (-dy / length) * half;
-    const ny = (dx / length) * half;
-    return [range.from, range.to].map((end) => ({
-      x1: end.x - nx,
-      y1: end.y - ny,
-      x2: end.x + nx,
-      y2: end.y + ny,
-    }));
+    return endTicks(range, 0.12 * this.settings.drawingScale);
   }
 
   /** The label sits clear of the line, on the side away from the barrel. */
@@ -5282,16 +5274,21 @@ export class NewGridComponent implements OnDestroy {
   /**
    * Where a joint's letter goes, in the tag layer's own half-flipped frame.
    *
-   * Up and a little to the left of the joint, for every joint but one. A seal
-   * sits in the middle of its own part, so "up" is along the barrel as often as
-   * it is clear of it — and the letter came out painted on the metal. Its own
-   * letter goes out along the axis's normal instead, clear of the barrel's
-   * widest edge, on whichever side of the part is nearer the top of the screen.
+   * Ordinary joints use an open sector between their connections. A cylinder
+   * seal instead clears the barrel's widest edge along the axis's normal.
    */
   jointTagAnchor(joint: Joint): { x: number; y: number } {
-    const scale = Math.max(this.settings.drawingScale, this.svgGrid.scaleWithZoom(22));
+    const scale = this.settings.drawingScale;
     const sealed = this.cylinderSealedAt(joint);
-    if (!sealed) return { x: joint.x - scale * 0.3, y: -joint.y - scale * 0.5 };
+    if (!sealed) {
+      const offset = jointLabelOffset(
+        joint,
+        this.tagFontSize,
+        scale,
+        this.mechanismSrv.mechanismContaining(joint)?.joints[0]
+      );
+      return { x: joint.x + offset.x, y: -(joint.y + offset.y) };
+    }
     const off = cylinderLabelOffset(
       { x: sealed.mountB.x - sealed.mountA.x, y: sealed.mountB.y - sealed.mountA.y },
       0.15 * scale
@@ -5452,33 +5449,10 @@ export class NewGridComponent implements OnDestroy {
   /**
    * How big a name on the canvas is drawn, for joints, links and forces alike.
    *
-   * A fraction of Object Size with an 11px readability floor. Compact drawings
-   * keep legible labels rather than shrinking names into specks.
+   * Fixed model proportions, so names stay attached to the parts through zoom.
    */
   get tagFontSize(): number {
-    return Math.max(this.settings.drawingScale * 0.2, this.svgGrid.scaleWithZoom(11));
-  }
-
-  /**
-   * The angle a link's name is written at, in degrees clockwise from flat.
-   *
-   * A bar is long and thin, and a name longer than a couple of letters written
-   * across it hangs off both edges. Written along it, it has the whole bar to
-   * sit in. Only bars: a compound body is not a direction, and a two-letter
-   * name already fits, so both stay level and stay easy to read.
-   *
-   * Kept within a quarter turn of flat, so the name is never upside down.
-   */
-  private linkLabelAngle(link: Link, name: string): number {
-    if ((link.joints?.length ?? 0) !== 2) return 0;
-    if (name.length <= 2) return 0;
-    const [from, to] = link.joints;
-    // Screen degrees: y runs down here, and the label sits in a frame that has
-    // already flipped it, so the rise is negated.
-    let angle = (Math.atan2(-(to.y - from.y), to.x - from.x) * 180) / Math.PI;
-    if (angle > 90) angle -= 180;
-    if (angle < -90) angle += 180;
-    return Math.round(angle * 10) / 10;
+    return this.canvasLabels.fontSize();
   }
 
   /**
@@ -5506,20 +5480,69 @@ export class NewGridComponent implements OnDestroy {
    * Two bodies are not their own hull. A welded link is the Boolean union of
    * its parts and can be any shape at all -- an L has nothing in the crook --
    * so the name goes in the middle of its biggest part, which is inside the
-   * union because that part is. And a bar carrying a slot is drawn as a rail
+   * union because that part is. A short bar whose center is occupied puts its
+   * long name beside the body rather than through an end pin. A slotted bar is drawn as a rail
    * with a channel down it, so the name goes in the channel, in full black:
    * there is no body color behind it there to be read against.
    */
-  linkLabelStyle(link: Link): {
-    x: number;
-    y: number;
-    ink: string;
-    opacity: number;
-    name: string;
-    angle: number;
-  } {
+  linkLabelStyle(link: Link): CanvasLabel {
+    return this.canvasLabels.forLink(
+      link,
+      (one, font) => this.preferredLinkLabelStyle(one, font),
+      this.sliderMarkList,
+      this.cylinderList
+    );
+  }
+
+  /**
+   * Every body's name for this redraw, asked once: the text layer draws them,
+   * and the gap mask cuts the lines under them, and both must agree.
+   */
+  linkTags(): { link: Link; tag: CanvasLabel }[] {
+    return this.canvasLabels.forLinks(
+      (one, font) => this.preferredLinkLabelStyle(one, font),
+      this.sliderMarkList,
+      this.cylinderList
+    );
+  }
+
+  /**
+   * The area the line-gap mask covers, in the drawing's own coordinates: the
+   * drawing with a wide margin, for the rails that run past their pins. Not
+   * unbounded -- a mask region of a billion units drew nothing at all, which
+   * blanked every line it was applied to.
+   */
+  labelGapRegion(): { x: number; y: number; width: number; height: number } {
+    const joints = this.mechanismSrv.joints;
+    if (!joints.length) return { x: -1, y: -1, width: 2, height: 2 };
+    const xs = joints.map((joint) => joint.x);
+    const ys = joints.map((joint) => joint.y);
+    const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+    const margin = span * 2 + this.settings.drawingScale * 20;
+    return {
+      x: Math.min(...xs) - margin,
+      y: Math.min(...ys) - margin,
+      width: Math.max(...xs) - Math.min(...xs) + 2 * margin,
+      height: Math.max(...ys) - Math.min(...ys) + 2 * margin,
+    };
+  }
+
+  /**
+   * Where a name's line gap sits, in the drawing's own y-up frame: the text's
+   * rotation is a screen one, so it turns the other way here.
+   */
+  labelGapTransform(tag: CanvasLabel): string {
+    return `translate(${tag.x} ${tag.y})` + (tag.angle ? ` rotate(${-tag.angle})` : '');
+  }
+
+  private preferredLinkLabelStyle(link: Link, font: number): CanvasLabel {
     const name = this.linkDisplayName(link);
-    const angle = this.linkLabelAngle(link, name);
+    // Whether a name turns along its body is asked at the drawing's own type
+    // size and Standard's proportions, so neither the zoom nor the style can
+    // turn it. Where it sits along the bar is asked at the size it is drawn.
+    const turnFont = this.canvasLabels.modelFontSize();
+    const turnScale = this.settings.forceScale;
+    const angle = bodyLabelAngle(link, name, turnFont, turnScale);
     // A member's tag sits on its own visible half: A to S, or S to B.
     const sealed = this.mechanismSrv.cylinderOfBar(link);
     const slot = this.slotCarriedBy(link);
@@ -5532,52 +5555,38 @@ export class NewGridComponent implements OnDestroy {
       return {
         x: (from.x + to.x) / 2,
         y: (from.y + to.y) / 2,
-        // Black *in a channel*, because there is no body color behind the name
-        // there. A cylinder's barrel carries a slot too -- that is how the rod
-        // slides in it -- but it is drawn as painted metal, so its name is read
-        // against its own color like every other body's. Left on black, a
-        // cylinder given one of the dark navies disappeared while the bar
-        // beside it in the same color turned its name white.
-        ink: sealed ? this.linkLabelInk(link) : 'black',
-        // A name in a channel is black on nothing, so it needs its full weight.
-        // A cylinder's name is on painted metal like every bar's, and at full
-        // weight it sat a shade darker than the bar beside it in the same
-        // color -- the one label in the row that did not match.
-        opacity: sealed ? 0.55 : 1,
+        // Every name is black: the palette is painted light enough for black
+        // to read on each color (`paintOf`), in a channel or on metal alike.
+        ink: 'black',
+        opacity: 1,
         name,
         angle,
+        fontSize: font,
       };
     }
-    const parts = (link instanceof RealLink ? link.subset : []) ?? [];
-    const middleOf = (of: Link) => {
-      const joints = of.joints ?? [];
-      if (joints.length === 0) return { x: 0, y: 0 };
-      return {
-        x: joints.reduce((total, joint) => total + joint.x, 0) / joints.length,
-        y: joints.reduce((total, joint) => total + joint.y, 0) / joints.length,
-      };
-    };
-    const span = (part: Link) => {
-      const first = part.joints[0];
-      const last = part.joints[part.joints.length - 1];
-      return first && last ? Math.hypot(last.x - first.x, last.y - first.y) : 0;
-    };
-    const on =
-      parts.length === 0
-        ? link
-        : parts.reduce((best, part) => (span(part) > span(best) ? part : best));
-    const center = middleOf(on);
-    // On a bar the name gives up the center to the center-of-mass mark and a
-    // locked length's chip by moving *along* the bar, toward its higher end;
-    // stepping "up" across the bar put a flat bar's name on top of its chip.
+    const center = bodyLabelCenter(link, name, turnFont, turnScale);
     const axis = this.barAxis(link);
-    if (axis && (this.showsCoM(link) || this.lengthChipShown(link))) {
-      const along = this.labelHalfExtentAlong(name, angle, axis);
-      const off = this.centerClearance() + along;
-      center.x += axis.x * off;
-      center.y += axis.y * off;
+    if (axis) {
+      const placed = placeBarLabel(
+        link,
+        center,
+        name,
+        angle,
+        axis,
+        font,
+        this.settings.drawingScale,
+        this.showsCoM(link) || this.lengthChipShown(link)
+      );
+      return {
+        ...placed,
+        ink: 'black',
+        opacity: 1,
+        name,
+        angle,
+        fontSize: font,
+      };
     }
-    return { ...center, ink: this.linkLabelInk(link), opacity: 0.55, name, angle };
+    return { ...center, ink: 'black', opacity: 1, name, angle, fontSize: font };
   }
 
   /**
@@ -5604,27 +5613,15 @@ export class NewGridComponent implements OnDestroy {
    */
   private holdReads(link: Link, which: 'length' | 'angle'): boolean {
     if (this.mechanismSrv.isLockedTarget(link)) return false;
-    return this.mechanismSrv.holdOf(link) === which || this.mechanismSrv.memberHoldOf(link, which);
+    return (
+      holdsValue(this.mechanismSrv.holdOf(link), which) ||
+      this.mechanismSrv.memberHoldOf(link, which)
+    );
   }
 
   /** How far from the center anything must sit to clear the center-of-mass mark. */
   private centerClearance(): number {
-    return 0.16 * this.settings.drawingScale + this.svgGrid.scaleWithZoom(4);
-  }
-
-  /**
-   * Half of how much a name takes up along the bar: a name written along the
-   * bar is its own width; one left flat is its box projected onto the axis.
-   */
-  private labelHalfExtentAlong(
-    name: string,
-    angle: number,
-    axis: { x: number; y: number }
-  ): number {
-    const width = name.length * this.tagFontSize * 0.32;
-    const height = this.tagFontSize * 0.4;
-    if (angle !== 0) return width;
-    return Math.abs(axis.x) * width + Math.abs(axis.y) * height;
+    return 0.22 * this.settings.drawingScale;
   }
 
   /** Half of how much a chip takes up along the bar: its box projected onto the axis. */
@@ -5698,25 +5695,6 @@ export class NewGridComponent implements OnDestroy {
         !!joint.slotJointA &&
         !!joint.slotJointB
     );
-  }
-
-  /**
-   * Black or white, whichever the link's own color can be read against.
-   *
-   * The label sits on the body it names, and the bodies run from pale mint to
-   * navy, so one ink cannot serve them all. Through `contrast.ts`, which is
-   * where the joint mark and the swatch picker get the same answer: this used
-   * to do its own luminance and flip at its own threshold, so a band of grays
-   * took dark ink on the mark and light ink on the name beside it.
-   */
-  linkLabelInk(link: Link): string {
-    // A body the analysis modes have nothing to say about is drawn in one pale
-    // gray whatever color it was given, so its name is read against that gray
-    // rather than against the color it no longer wears. A dark link's white
-    // name went invisible the moment the body went gray under it.
-    if (this.settings.isSchematic || this.mechanismSrv.isPartInert(link)) return 'black';
-    const fill = (link as { fill?: string }).fill ?? '#ffffff';
-    return luminanceOf(fill) > INK_FLIPS_AT ? 'black' : 'white';
   }
 
   /**
@@ -6089,14 +6067,19 @@ export class NewGridComponent implements OnDestroy {
   }
 
   private reconsiderDrop($event: KeyboardEvent, held: boolean) {
-    if ($event.key !== 'Alt') return;
-    if (this.dragState.joint !== jointStates.dragging) return;
+    if ($event.key !== 'Alt' || this.dragState.joint !== jointStates.dragging) return;
 
+    // A move still waiting for its frame carries the old Alt, and would put
+    // it back when it landed: let it land first, then apply the key.
+    this.applyPendingDragMove();
+    this.snapSuspended = held;
+    // Not a drag yet, so nothing will be saved on release: a key must not move
+    // the joint outside the history. The next real move places it.
+    if (!this.dragState.hasModified) return;
     this.updateDropCandidate(this.mouseLocation, held);
-    const restingOn = this.snapTargetJoint ?? this.mouseLocation;
     this.activeObjService.selectedJoint = this.gridUtils.dragJoint(
       this.activeObjService.selectedJoint,
-      new Coord(restingOn.x, restingOn.y)
+      this.dragLanding(this.activeObjService.selectedJoint, this.mouseLocation, held)
     );
     this.activeObjService.updateSelectedObj(this.activeObjService.selectedJoint);
   }

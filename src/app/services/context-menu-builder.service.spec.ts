@@ -663,6 +663,13 @@ describe('the right-click menu', () => {
       expect(harness.builder.build('grid', noHandlers).header?.crossing).toBeUndefined();
     });
 
+    it('names the crossing and leaves its key to be drawn as a key cap', () => {
+      const parts = fourBar(harness.mechanism);
+      const crossing = harness.builder.build(parts.a, noHandlers).header?.crossing;
+      expect(crossing?.label).toBe('Kinematic Analysis');
+      expect(crossing?.shortcut).toBe('mode.kinematic');
+    });
+
     it('will not offer analysis of a part that is in no mechanism', () => {
       const parts = fourBar(harness.mechanism);
       // Nothing has been partitioned, so no part belongs to a machine yet —
@@ -820,7 +827,7 @@ describe('the right-click menu', () => {
  * Fixed Length and Fixed Angle: a bar's two holds, in the State group.
  *
  * The rows carry the value they would hold, so what is held is what is
- * named; a link holds one or the other, so the second says it moves the hold;
+ * named; a link may hold both, each row about its own value (#309);
  * and a locked link, or a body that is not a bar, gets the model's refusal.
  */
 describe('the right-click menu, on a bar that can hold a value', () => {
@@ -843,14 +850,29 @@ describe('the right-click menu, on a bar that can hold a value', () => {
     expect(angle.hint).toMatch(/^90/);
   });
 
-  it('checks the held one and says the other would move the hold', () => {
+  it('checks the held one and offers the other as a second hold', () => {
     const parts = fourBar(harness.mechanism);
     parts.crank.hold = 'length';
     const model = harness.builder.build(parts.crank, noHandlers);
     expect(row(model, 'Fixed Length')!.checked).toBe(true);
     expect(row(model, 'Fixed Length')!.hint).toBeUndefined();
-    expect(row(model, 'Fixed Angle')!.hint).toBe('moves the fix');
+    // The value it would hold, not a warning: the angle joins the length (#309).
+    expect(row(model, 'Fixed Angle')!.hint).toMatch(/deg/);
+    expect(row(model, 'Fixed Angle')!.tip).toContain('length and angle');
     expect(model.header?.subtitle).toContain('fixed length');
+  });
+
+  it('holds both, and releases one without the other', () => {
+    const parts = fourBar(harness.mechanism);
+    row(harness.builder.build(parts.crank, noHandlers), 'Fixed Length')!.action();
+    row(harness.builder.build(parts.crank, noHandlers), 'Fixed Angle')!.action();
+    expect(parts.crank.hold).toBe('both');
+    const model = harness.builder.build(parts.crank, noHandlers);
+    expect(row(model, 'Fixed Length')!.checked).toBe(true);
+    expect(row(model, 'Fixed Angle')!.checked).toBe(true);
+    expect(model.header?.subtitle).toContain('fixed length and angle');
+    row(model, 'Fixed Length')!.action();
+    expect(parts.crank.hold).toBe('angle');
   });
 
   it('sets and releases the hold through the mechanism', () => {

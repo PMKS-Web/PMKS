@@ -289,7 +289,6 @@ const stack = await page.evaluate(() => {
   const card = r('.panel .page1, .panel .page2, .panel .page3');
   const row = r('.playbackRow');
   const rowCard = r('.playbackRow > *');
-  const strip = r('app-bottombar > *');
   // The cards actually in the bottom row, whichever mode is open: the
   // transport is only there in the two analyses, the view controls always.
   const inRow = [...document.querySelector('.playbackRow').children].map((child) =>
@@ -299,11 +298,11 @@ const stack = await page.evaluate(() => {
     cardLeft: Math.round(card.left),
     cardRight: Math.round(window.innerWidth - card.right),
     cardToRow: Math.round(row.top - card.bottom),
-    // The strip is at the top of the window on a phone now, so what stands off
-    // what has changed: the controls row is the last thing before the window's
-    // own bottom edge, and the strip is the first thing before the mode cards.
+    // The controls row is the last thing before the window's own bottom edge,
+    // and the mode cards the first thing below its top: a phone draws no
+    // status strip (issue #298).
     rowToWindow: Math.round(window.innerHeight - rowCard.bottom),
-    stripToTopStrip: Math.round(r('.topStrip').top - strip.bottom),
+    topStripToWindow: Math.round(r('.topStrip').top),
     bottomLeft: Math.round(Math.min(...inRow.map((b) => b.left))),
     bottomRight: Math.round(window.innerWidth - Math.max(...inRow.map((b) => b.right))),
   };
@@ -315,24 +314,33 @@ record(
   stack.cardToRow === layoutGap,
   stack
 );
-// The mode strip took the top of the window, so the controls row is measured
-// against the window's own bottom edge and the strip against the cards below it.
+// Nothing stands between either end of the stack and the window.
 record(
   'the controls row stands off the window by the same gap',
   stack.rowToWindow === layoutGap,
   stack
 );
-record('and the mode cards off the strip above them', stack.stripToTopStrip === layoutGap, stack);
-// It is flush to the window's edges rather than inset like the floating cards,
-// which is what makes it read as the window's own edge instead of a fourth card.
+record('and the mode cards off the top of it', stack.topStripToWindow === layoutGap, stack);
+// The status strip used to take the top of the window on a phone, pushing the
+// mode tabs down by its own height to repeat what they already say.
 record(
-  'the strip is flush to the window, not inset like a card',
+  'a phone draws no status strip',
+  await page.evaluate(() => document.querySelector('#bottomBar') === null)
+);
+// Nothing hangs past the edges for a finger to drag the interface sideways by.
+// Safari on iOS pans the page over any overflow, `overflow: clip` or not, so
+// the body is pinned and clips the cards positioned in it -- the closed
+// drawer, parked a width off screen, among them.
+record(
+  'the page has nothing to pan sideways',
   await page.evaluate(() => {
-    const b = document.querySelector('app-bottombar > *').getBoundingClientRect();
+    const body = getComputedStyle(document.body);
+    const root = document.documentElement;
     return (
-      Math.round(b.left) === 0 &&
-      Math.round(b.top) === 0 &&
-      Math.round(window.innerWidth - b.right) === 0
+      body.position === 'fixed' &&
+      body.overscrollBehaviorX === 'none' &&
+      root.scrollWidth <= window.innerWidth &&
+      document.body.scrollWidth <= window.innerWidth
     );
   })
 );

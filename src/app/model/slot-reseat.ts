@@ -1,5 +1,5 @@
 import { Joint } from './joint';
-import { RealLink } from './link';
+import { holdsLength, RealLink } from './link';
 import { Cylinder, CylinderHolds, cylinderLengthsOf, stretchedCylinderPose } from './cylinder';
 import { SettingsService } from '../services/settings.service';
 
@@ -104,7 +104,7 @@ const span = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
  */
 function holdsOf(cylinder: Cylinder): CylinderHolds {
   return {
-    barrel: cylinder.barrel instanceof RealLink && cylinder.barrel.hold === 'length',
-    rod: cylinder.rod instanceof RealLink && cylinder.rod.hold === 'length',
+    barrel: cylinder.barrel instanceof RealLink && holdsLength(cylinder.barrel.hold),
+    rod: cylinder.rod instanceof RealLink && holdsLength(cylinder.rod.hold),
   };
 }

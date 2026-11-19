@@ -24,6 +24,7 @@ import {
   slideGripperFixture,
   ellipticalCrankFixture,
   ellipticalTrammelFixture,
+  crankedTrammelFixture,
   invertedSliderCrankFixture,
   loadedInvertedSliderCrankFixture,
   guidedRodOnALinkFixture,
@@ -718,9 +719,10 @@ export const FIXTURE_GALLERY: GalleryEntry[] = [
   },
   {
     // The mobility fixture above it is deliberately undriven — its whole point
-    // is what the count says about a linkage held only by its guides. A reader
-    // opening it from the library wants to watch the ellipse, so the published
-    // one drives a slide and carries the tracer that draws it.
+    // is what the count says about a linkage held only by its guides. This one
+    // drives a slide and carries the tracer, so it runs and draws -- half the
+    // ellipse, out and back. The library opens the cranked one below, which
+    // draws all of it.
     name: 'Elliptical trammel, driven',
     purpose:
       'No pin touches ground: two blocks on crossed guides swing the bar through a true ellipse',
@@ -728,6 +730,19 @@ export const FIXTURE_GALLERY: GalleryEntry[] = [
     floatingSlot: false,
     speed: { unitsPerSecond: 1.2 },
     fixture: ellipticalTrammelFixture(true, 1),
+  },
+  {
+    // The library's trammel. Driving a block runs it out and back over half
+    // the ellipse; turning the bar through a crank and rod takes it all the
+    // way round. At 20 rpm, twice the library's usual speed, as it was
+    // finished in the app.
+    name: 'Elliptical trammel, cranked',
+    purpose:
+      'A crank and rod turn the middle of the bar, so the traced point draws the whole ellipse',
+    spec: 'trammel-ellipse.spec.ts',
+    floatingSlot: false,
+    speed: { rpm: 20 },
+    fixture: crankedTrammelFixture(),
   },
   {
     name: 'Screw jack',

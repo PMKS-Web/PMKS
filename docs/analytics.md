@@ -81,7 +81,7 @@ else. "Once" means once per visit for each set of parameters (`trackOnce`).
 | `export_data` | Export Data writes a file | `format` |
 | `share` | Copy Link | `method` (`copy_link`), `content_type` (`mechanism`) |
 | `new_project`, `open_file`, `save_file` | The project menu | |
-| `help_link_click` | A link in Help | `destination`: `help_site`, `github` |
+| `help_link_click` | A link in Help | `destination`: `issues`, `donate` |
 | `exception` | Once per message: an uncaught error | `description`, `fatal` (`false`) |
 
 And one user property, `app_version`, so behavior can be read against the release that made it.
@@ -107,7 +107,9 @@ is `bad_link`, not `link`, and an address carrying only someone else's query par
 Before this list, the app sent `copyURL`, `upload_file`, `download_linkage`,
 `export_data_<format>`, `goto_help_site`, `goto_github` and two debug-panel events. They are now
 `share`, `open_file`, `save_file`, `export_data` with a `format`, and `help_link_click`, and the
-debug events are gone. Reports that span the change need both names.
+debug events are gone. The Help site and GitHub links themselves have since given way to Reported
+Issues and Donate, which `help_link_click` names as `issues` and `donate`. Reports that span the
+change need both names.
 
 ## Adding an event
 

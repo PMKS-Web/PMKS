@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
-import { HelpPanelComponent } from './help-panel.component';
+import { DONATION_URL, HelpPanelComponent, ISSUES_URL } from './help-panel.component';
 import { NotificationService } from '../../services/notification.service';
 
 /**
@@ -76,5 +76,31 @@ describe('HelpPanelComponent, sending feedback', () => {
     expect(only.text).not.toContain('try again');
     // And the button is released, or the form is dead until the drawer closes.
     expect(component.sendingEmail).toBe(false);
+  });
+
+  const opening = (press: (panel: HelpPanelComponent) => void): unknown[][] => {
+    answerWith({});
+    const opened: unknown[][] = [];
+    const realOpen = window.open;
+    window.open = ((...args: unknown[]) => {
+      opened.push(args);
+      return null;
+    }) as typeof window.open;
+    try {
+      press(TestBed.createComponent(HelpPanelComponent).componentInstance);
+    } finally {
+      window.open = realOpen;
+    }
+    return opened;
+  };
+
+  it('opens the donation page in a new tab, cut off from this one', () => {
+    expect(opening((panel) => panel.gotoDonate())).toEqual([[DONATION_URL, '_blank', 'noopener']]);
+    expect(DONATION_URL).toBe('https://ko-fi.com/pmksapp');
+  });
+
+  it('sends a reader with a bug to the reported issues, not the repository front page', () => {
+    expect(opening((panel) => panel.gotoIssues())).toEqual([[ISSUES_URL, '_blank', 'noopener']]);
+    expect(ISSUES_URL).toBe('https://github.com/PMKS-Web/PMKS/issues');
   });
 });

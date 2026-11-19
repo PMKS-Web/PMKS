@@ -30,6 +30,8 @@ const BOTH = ['gate', 'nightly'];
 const NIGHTLY = ['nightly'];
 
 export const SUITES = [
+  { name: 'library-visual-audit', seconds: 240, lanes: NIGHTLY },
+  { name: 'library-label-motion', seconds: 210, lanes: NIGHTLY },
   { name: 'drawing-styles', seconds: 70, lanes: BOTH },
   { name: 'bug-fixes-2', seconds: 90, lanes: NIGHTLY },
   { name: 'analysis-audit', seconds: 224, lanes: NIGHTLY },
@@ -38,7 +40,9 @@ export const SUITES = [
   { name: 'analysis-setup', seconds: 90, lanes: BOTH },
   { name: 'attach-cylinder', seconds: 9, lanes: BOTH },
   { name: 'background-image', seconds: 26, lanes: BOTH },
+  { name: 'brand', seconds: 8, lanes: NIGHTLY },
   { name: 'circular-link', seconds: 4, lanes: BOTH },
+  { name: 'constrained-link-drag', seconds: 15, lanes: NIGHTLY },
   { name: 'context-menu', seconds: 26, lanes: BOTH },
   {
     name: 'context-menu-modes',
@@ -82,6 +86,7 @@ export const SUITES = [
   { name: 'force-frame', seconds: 40, lanes: BOTH },
   { name: 'force-precision', seconds: 30, lanes: BOTH },
   { name: 'force-edit', seconds: 39, lanes: BOTH },
+  { name: 'force-on-joint', seconds: 20, lanes: BOTH },
   { name: 'force-labels-and-legend', seconds: 20, lanes: BOTH },
   { name: 'force-units', seconds: 21, lanes: BOTH },
   {
@@ -119,11 +124,13 @@ export const SUITES = [
     lanes: NIGHTLY,
     note: 'Launches whatever Chrome the machine has, by path, rather than the Chromium Playwright pins — so on a runner it drives whatever was installed that morning. On the first Linux run its own checks passed and `page.screenshot` then hung for thirty seconds. The gate installs Chromium only; this is why.',
   },
+  { name: 'link-auto-names', seconds: 8, lanes: NIGHTLY },
   { name: 'link-holds', seconds: 21, lanes: BOTH },
   { name: 'link-holds-angles', seconds: 6, lanes: BOTH },
   { name: 'link-labels', seconds: 35, lanes: BOTH },
   { name: 'link-mass-fields', seconds: 5, lanes: NIGHTLY },
   { name: 'locking', seconds: 21, lanes: BOTH },
+  { name: 'mass-units', seconds: 25, lanes: NIGHTLY },
   { name: 'mechanism-panel', seconds: 97, lanes: NIGHTLY },
   { name: 'mechanism-audit', seconds: 15, lanes: NIGHTLY },
   { name: 'menu-focus', seconds: 16, lanes: BOTH },
@@ -208,6 +215,8 @@ export const SUITES = [
   { name: 'fit-keeps-grid', seconds: 23, lanes: BOTH },
   { name: 'top-strip-states', seconds: 194, lanes: NIGHTLY },
   { name: 'tutorial', seconds: 52, lanes: NIGHTLY },
+  { name: 'tracer-line-snap', seconds: 10, lanes: NIGHTLY },
+  { name: 'scrub-to-start', seconds: 15, lanes: NIGHTLY },
   { name: 'two-mechanisms', seconds: 40, lanes: BOTH },
   { name: 'ui-copy', seconds: 18, lanes: BOTH },
   { name: 'unit-undo-view', seconds: 10, lanes: BOTH },

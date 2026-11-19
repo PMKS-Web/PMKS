@@ -161,17 +161,21 @@ const jointAt = (p, id) =>
   await p.waitForTimeout(250);
   await p.mouse.move(g.x, g.y);
   await p.mouse.down();
+  // Past the drag threshold's tenth of a second, so the first step moves it.
+  await p.waitForTimeout(150);
   const offs = [];
+  // Alt stays down through each reading: letting go of it re-lands the joint
+  // as a move without it would, on the grid (#307).
+  await p.keyboard.down('Alt');
   for (let i = 1; i <= 8; i++) {
     const at = { x: g.x, y: g.y + i * 8 };
-    await p.keyboard.down('Alt');
     await p.mouse.move(at.x, at.y, { steps: 1 });
-    await p.keyboard.up('Alt');
     await p.waitForTimeout(50);
     const on = await jointAt(p, 'F');
     offs.push(on.y - at.y);
   }
   await p.mouse.up();
+  await p.keyboard.up('Alt');
   await p.waitForTimeout(600);
   const spread = Math.max(...offs) - Math.min(...offs);
   record('a joint of the non-master machine tracks the cursor when synced', spread < 2, {

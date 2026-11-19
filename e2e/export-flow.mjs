@@ -257,7 +257,8 @@ record(
   pictures.name.endsWith('.zip') &&
     inside.length > 2 &&
     drawing.includes('<polyline') &&
-    drawing.includes('<image href="data:image/png'),
+    // The mark is the logo's own SVG, carried inside the drawing so it stays sharp.
+    drawing.includes('<image href="data:image/svg+xml'),
   { name: pictures.name, files: inside.length, bytes: drawing.length }
 );
 

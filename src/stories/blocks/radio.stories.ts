@@ -19,6 +19,7 @@ const meta: Meta = {
     option2: 'Local',
     option3: undefined,
     disabled: false,
+    weighted: false,
   },
   render: (args) => ({
     props: { ...args, form: new FormGroup({ choice: new FormControl('0') }) },
@@ -31,6 +32,7 @@ const meta: Meta = {
         [option2]="option2"
         [option3]="option3"
         [disabled]="disabled"
+        [weighted]="weighted"
       >{{ label }}</radio-block>
     `,
   }),
@@ -41,13 +43,15 @@ type Story = StoryObj;
 
 export const TwoOptions: Story = {};
 
+/** Settings' Length Units: labels of very different lengths, split by length. */
 export const ThreeOptions: Story = {
   args: {
-    label: 'Unit System',
-    tooltip: 'The units every length, mass and force is shown in.',
-    option1: 'Metric',
-    option2: 'English',
-    option3: 'SI',
+    label: 'Length Units',
+    tooltip: 'The length unit the whole drawing is measured in.',
+    option1: 'Inch (in)',
+    option2: 'Centimeter (cm)',
+    option3: 'Meter (m)',
+    weighted: true,
   },
 };
 
