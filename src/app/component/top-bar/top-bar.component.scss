@@ -54,11 +54,16 @@
       white-space: nowrap;
     }
 
+    // The logo's file is cropped to its ink, so its breathing room is set here:
+    // without it the left pin touched the menu button and the right pin the
+    // card's edge. The left gap is 5px because the menu button's 36px box
+    // already leaves room around its icon; the right gap is 10px.
     .logo {
       height: 26px;
       width: auto;
       flex: 0 0 auto;
       display: block;
+      margin-inline: 5px 4px; // 4 + the card's 6px padding = 10 on the right
     }
 
     // The tab card is the one thing allowed to shrink: on a narrow window the

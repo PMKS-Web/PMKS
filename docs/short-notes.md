@@ -3134,3 +3134,18 @@ chrome hidden and tiles a card's three styles into one review sheet. `library-la
 checks fixed ink/attachments across full cycles and captures actual Play filmstrips in all three
 styles. New-grid's jsdom drag tests stub the Canvas packing pass, as they already stub real SVG
 framing; the browser suites exercise the real paths.
+
+### A favicon `.ico` listed after the SVG wins in Chrome, so `index.html` names it first
+
+Chrome takes the *last* icon link it can use, and an `.ico` with no `sizes` counts as usable. Put
+after `favicon.svg`, the `.ico` replaced the SVG, and with it the SVG's dark-theme colors.
+`src/index.html` names `favicon.ico` first, with `sizes="32x32"`, then `assets/brand/favicon.svg`.
+Safari and older browsers that take no SVG icon still find the `.ico`. See
+[brand.md](brand.md).
+
+### Storybook takes its tab icon from whatever `staticDirs` serves at `/favicon.svg`
+
+Storybook 10's manager has no favicon option: it links `/favicon.svg`, and a `staticDirs` entry
+mapped to that path replaces Storybook's own pink one. `.storybook/main.ts` maps
+`src/assets/brand/favicon.svg` there. The sidebar logo is separate: `brandImage` in
+`.storybook/manager.ts`.

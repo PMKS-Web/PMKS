@@ -55,7 +55,12 @@ const config: StorybookConfig = {
   framework: '@storybook/angular-vite',
   // The app's SVG icons are fetched from `assets/icons/...` at runtime, the
   // same relative URL `AppComponent` registers them under.
-  staticDirs: [{ from: '../src/assets', to: '/assets' }],
+  // The gallery's tab icon is the app's: Storybook takes whatever is mapped to
+  // `/favicon.svg` in place of its own.
+  staticDirs: [
+    { from: '../src/assets', to: '/assets' },
+    { from: '../src/assets/brand/favicon.svg', to: '/favicon.svg' },
+  ],
   core: { disableTelemetry: true },
   viteFinal: async (viteConfig) =>
     mergeConfig(viteConfig, {
