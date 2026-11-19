@@ -56,4 +56,12 @@ export enum BoolSetting {
    * recording.
    */
   GRAVITY_OFF,
+  /**
+   * Appended: the reader reads mass in the *other* metric unit from the one
+   * stored under their length -- kilograms under centimeters, grams under
+   * meters. False is what every earlier URL unpacks, and false keeps meaning
+   * what those URLs have always shown. Ten flags still pack into the same two
+   * characters, so a URL that leaves it false is byte-identical.
+   */
+  OTHER_METRIC_MASS,
 }

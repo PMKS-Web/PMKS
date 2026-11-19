@@ -203,18 +203,15 @@ export class BottombarComponent {
    * nobody asked for.
    */
   get unitSet(): string {
-    // Length and mass go with the system; the force unit is a pick of its own
-    // under metric and SI, so it is read rather than assumed -- the strip was
-    // the one place still saying "N" over a drawing shown in kilograms-force.
-    const lengths: Record<number, string> = {
-      [GlobalUnit.ENGLISH]: 'in, lbm',
-      [GlobalUnit.SI]: 'm, kg',
-      [GlobalUnit.METRIC]: 'cm, g',
-    };
-    const base = lengths[this.settings.globalUnit.getValue()] ?? 'cm, g';
+    // Each read from its own setting rather than assumed from the system: the
+    // strip was once the one place still saying "N" over a drawing shown in
+    // kilograms-force, and "g" over one weighed in kilograms would be the same
+    // mistake again.
+    const length = this.settings.lengthUnit.getValue();
+    const mass = this.nup.displayMassUnit(length, this.settings.massUnit.getValue());
     const force = this.nup.unitLabel(this.settings.forceUnit.getValue());
     const angle = this.settings.angleUnit.getValue() === AngleUnit.RADIAN ? 'radians' : 'degrees';
-    return `${base}, ${force}, ${angle}`;
+    return `${this.nup.unitLabel(length)}, ${this.nup.unitLabel(mass)}, ${force}, ${angle}`;
   }
 
   humanReadableString(value: GlobalUnit) {

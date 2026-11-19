@@ -46,7 +46,7 @@ const settings = async () => {
 try {
   await load('4-Bar');
   await settings();
-  await page.getByRole('button', { name: 'Radian', exact: true }).click();
+  await page.getByRole('button', { name: 'Radian (rad)', exact: true }).click();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: 'Synthesis', exact: true }).click();
   await page.getByRole('button', { name: /Motion — 3 positions/ }).click();
@@ -77,7 +77,7 @@ try {
   await settings();
   const unitsFilm = filmstrip(page, `${OUT}/units`);
   await unitsFilm.during(80, 10, 'si', () =>
-    page.getByRole('button', { name: 'SI (m)', exact: true }).click()
+    page.getByRole('button', { name: 'Meter (m)', exact: true }).click()
   );
   const scale = await grid((g) => g.settings.objectScale);
   await page.getByRole('button', { name: 'Close', exact: true }).click();
@@ -210,13 +210,13 @@ try {
       }
     );
     await settings();
-    await page.getByRole('button', { name: 'SI (m)', exact: true }).click();
+    await page.getByRole('button', { name: 'Meter (m)', exact: true }).click();
     check(
       `${id}: unit conversion preserves physical dimensions`,
       same(restored, await geometry(), 0.01),
       { before: restored.cylinders, after: (await geometry()).cylinders }
     );
-    await page.getByRole('button', { name: 'Metric (cm)', exact: true }).click();
+    await page.getByRole('button', { name: 'Centimeter (cm)', exact: true }).click();
     check(`${id}: unit conversion round-trip`, same(restored, await geometry()));
     await page.getByRole('button', { name: 'Schematic', exact: true }).click();
     await page.waitForTimeout(220);
