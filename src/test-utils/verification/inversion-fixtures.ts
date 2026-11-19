@@ -244,12 +244,14 @@ export function fourBarInversionsFixture(): MechanismFixture {
  * offset, and the slide is between L1 and L4 in all four. What changes is
  * which link is held.
  *
- * The held link is drawn in every one, the way the four-bar set draws its
- * held bar: the frame as the rail the piston runs on, anchored at both ends;
- * the crank and the rod as bars across their two ground pins; and the piston,
- * in the pump, as the barrel the pump rod runs in, below the pin the pendulum
- * hangs from. Where L4 is a block it is drawn as one, black; where it is a
- * part of its own it is dark teal, the color L4 wears in the four-bar set.
+ * The held link is drawn wherever it is a bar, the way the four-bar set
+ * draws its held bar: the frame as the rail the piston runs on, anchored at
+ * both ends, and the crank and the rod as bars across their two ground pins.
+ * Held by the piston, the frame is the piston: the pin the pendulum hangs
+ * from and the guide the pump rod runs in, both drawn as ground. Where L4 is
+ * a block it is drawn as one, black; where it is a part of its own, the
+ * oscillating engine's cylinder, it is dark teal, the color L4 wears in the
+ * four-bar set.
  *
  * Laid out two by two with room between, since the Whitworth's slotted bar
  * sweeps a circle ROD + CRANK across and the other three reach up or down
@@ -362,11 +364,17 @@ export function sliderCrankInversionsFixture(): MechanismFixture {
   // ---- Held: L4, the piston. Pendulum pump. ------------------------------
   // The piston's two features are fixed now: the gudgeon pin, at the top,
   // which the rod swings from like a pendulum, and the slide, which is the
-  // pump's barrel below it on the same vertical line. The crank links the
+  // pump's guide below it on the same vertical line. The crank links the
   // pendulum to L1, the frame, which is the pump rod now, running up and
-  // down in the barrel. The pendulum can swing only as far as the crank can
+  // down in the guide. The pendulum can swing only as far as the crank can
   // still reach the line, asin(CRANK / ROD) either side of it, and it is
   // driven between those two toggles.
+  //
+  // The guide is drawn as ground rather than as a bar of its own: a bar
+  // carrying the slot sits on the same line as the rod and is hidden under
+  // it, and the app cannot slide a moving slot over a fixed pin to turn the
+  // two round. The rod is welded to its block, as a pump rod is to its
+  // plunger, so it runs straight up and down without tilting.
   const pumpAt = { x: 10, y: 3.6 };
   const swing = (15 * Math.PI) / 180;
   const pendulumEnd = { x: pumpAt.x + ROD * Math.sin(swing), y: pumpAt.y - ROD * Math.cos(swing) };
@@ -374,25 +382,20 @@ export function sliderCrankInversionsFixture(): MechanismFixture {
     x: pumpAt.x,
     y: pendulumEnd.y - Math.sqrt(CRANK * CRANK - (pendulumEnd.x - pumpAt.x) ** 2),
   };
-  // The top of the pump rod stays between ROD cos(asin(CRANK / ROD)) and
-  // ROD + CRANK below the pivot; the barrel takes the rod's lower end.
-  const PUMP_ROD = 1.8;
+  const PUMP_ROD = 1.5;
   const pump: MechanismFixture = {
     joints: [
       { id: 'O', ...pumpAt, ground: true, input: true, driveSpeed: LIBRARY_RPM },
       { id: 'P', ...pendulumEnd },
       { id: 'Q', ...rodTop },
       { id: 'R', x: pumpAt.x, y: rodTop.y - PUMP_ROD },
-      { id: 'S', x: pumpAt.x, y: pumpAt.y - ROD - CRANK - 0.1, ground: true },
-      { id: 'T', x: pumpAt.x, y: pumpAt.y - ROD - CRANK - PUMP_ROD - 0.4, ground: true },
     ],
     links: [
       { joints: 'OP', name: 'L3', mass: 0, moi: 0 },
       { joints: 'PQ', name: 'L2', mass: 0, moi: 0 },
       { joints: 'QR', name: 'L1', mass: 0, moi: 0 },
-      { joints: 'ST', name: 'L4', mass: 0, moi: 0 },
     ],
-    sliders: [{ at: 'R', on: { carrier: 'ST', a: 'S', b: 'T' } }],
+    sliders: [{ at: 'R', angleRad: Math.PI / 2 }],
     welds: ['R'],
     inputAngVel: radPerSecond(LIBRARY_RPM),
   };

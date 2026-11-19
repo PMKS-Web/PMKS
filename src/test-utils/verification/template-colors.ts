@@ -207,7 +207,7 @@ const TEMPLATE_PARTS: Partial<Record<LibraryTemplateID, TemplateParts>> = {
       ['AB', 'BC', 'AD'],
       ['FG', 'EH', 'EF'],
       ['IJ', 'IK', 'KLM', 'JN'],
-      ['OP', 'PQ', 'QR', 'ST'],
+      ['OP', 'PQ', 'QR'],
     ],
     fixed: {
       AB: 4,
@@ -223,7 +223,6 @@ const TEMPLATE_PARTS: Partial<Record<LibraryTemplateID, TemplateParts>> = {
       OP: 2,
       PQ: 4,
       QR: 1,
-      ST: 5,
     },
   },
   Pumping_Field: {

@@ -216,22 +216,29 @@ describe('one slider-crank chain, each link held still in turn', () => {
     expect(named('L1')).toEqual(['AD', 'EH', 'JN', 'QR']);
     expect(named('L2')).toEqual(['AB', 'EF', 'IJ', 'PQ']);
     expect(named('L3')).toEqual(['BC', 'FG', 'IK', 'OP']);
-    expect(named('L4')).toEqual(['KLM', 'ST']);
+    expect(named('L4')).toEqual(['KLM']);
     // The slide is between L1 and L4 every time: the block on L1's rail or
     // slot in the first two, L4's sleeve on L1's slot in the third, and L1's
-    // rod in L4's barrel in the fourth.
-    const carrier = (at: string) =>
-      fixture.links.find(
-        (link) => link.joints === fixture.sliders!.find((s) => s.at === at)!.on!.carrier
-      )!.name;
-    expect(['C', 'G', 'L', 'M', 'R'].map(carrier)).toEqual(['L1', 'L1', 'L1', 'L1', 'L4']);
+    // rod in L4's guide, which is the ground, in the fourth.
+    const carrier = (at: string) => {
+      const on = fixture.sliders!.find((slider) => slider.at === at)!.on;
+      return on ? fixture.links.find((link) => link.joints === on.carrier)!.name : 'ground';
+    };
+    expect(['C', 'G', 'L', 'M', 'R'].map(carrier)).toEqual(['L1', 'L1', 'L1', 'L1', 'ground']);
+    expect(fixture.welds).toEqual(['R']);
   });
 
-  it('holds a different link still each time, and draws it', () => {
+  it('holds a different link still each time, and draws it where it is a bar', () => {
+    // The frame, the crank and the rod are each drawn across their two ground
+    // pins. Held by the piston, the held link is the ground itself: the pin
+    // the pendulum hangs from and the guide the pump rod runs in.
     const fixture = sliderCrankInversionsFixture();
     const grounded = (id: string) => fixture.joints.find((joint) => joint.id === id)!.ground;
     const held = fixture.links.filter((link) => [...link.joints].every(grounded));
-    expect(held.map((link) => link.name)).toEqual(['L1', 'L2', 'L3', 'L4']);
+    expect(held.map((link) => link.name)).toEqual(['L1', 'L2', 'L3']);
+    const pump = fixture.sliders!.find((slider) => slider.at === 'R')!;
+    expect(pump.on).toBeUndefined();
+    expect(grounded('O')).toBe(true);
   });
 
   it('turns the slotted bar right over for one and rocks the cylinder for the other', () => {
