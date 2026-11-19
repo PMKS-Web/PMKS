@@ -12,7 +12,7 @@ import {
   speedTurning,
   turnsClockwise,
 } from '../../model/drive-direction';
-import { Subscription } from 'rxjs';
+import { Subscription, skip } from 'rxjs';
 import {
   AfterContentInit,
   DoCheck,
@@ -41,9 +41,7 @@ import {
   ForceUnit,
   getDistance,
   getNewOtherJointPos,
-  InertiaUnit,
   LengthUnit,
-  MassUnit,
 } from 'src/app/model/utils';
 import { NumberUnitParserService } from 'src/app/services/number-unit-parser.service';
 import { SettingsService } from '../../services/settings.service';
@@ -950,8 +948,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
   private commitSliderMass(raw: string | null): void {
     const slider = this.sliderMassJoint;
     if (!slider) return;
-    const units = this.massUnit();
-    const [success, value] = this.nup.parseMassString(raw ?? '', units);
+    const [success, value] = this.parseMass(raw ?? '');
     if (!success || value < 0) {
       this.notify.refusal('value.mass', success ? NOT_A.nonNegativeMass : NOT_A.mass);
       this.patchSliderMass();
@@ -971,10 +968,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
   patchSliderMass(): void {
     const slider = this.sliderMassJoint;
     if (!slider) return;
-    this.jointForm.patchValue(
-      { sliderMass: this.nup.formatValueAndUnit(slider.mass, this.massUnit()) },
-      { emitEvent: false }
-    );
+    this.jointForm.patchValue({ sliderMass: this.formatMass(slider.mass) }, { emitEvent: false });
   }
 
   /**
@@ -1215,6 +1209,14 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
   onChanges(): void {
     this.onDestroySubscriptions.push(
       this.settingsService.angleUnit.subscribe((val) => {
+        this.activeSrv.fakeUpdateSelectedObj();
+      })
+    );
+
+    // A mass unit picked in Settings while a link is open re-reads its mass
+    // and inertia in the new unit; skip the replay of the value it opened with.
+    this.onDestroySubscriptions.push(
+      this.settingsService.massUnit.pipe(skip(1)).subscribe(() => {
         this.activeSrv.fakeUpdateSelectedObj();
       })
     );
@@ -1617,12 +1619,11 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
 
     this.onDestroySubscriptions.push(
       this.linkForm.controls['mass'].valueChanges.subscribe((val) => {
-        const units = this.massUnit();
-        const [success, value] = this.nup.parseMassString(val ?? '', units);
+        const [success, value] = this.parseMass(val ?? '');
         if (!success || value < 0) {
           this.notify.refusal('value.mass', success ? NOT_A.nonNegativeMass : NOT_A.mass);
           this.linkForm.patchValue(
-            { mass: this.nup.formatValueAndUnit(this.activeSrv.selectedLink.mass, units) },
+            { mass: this.formatMass(this.activeSrv.selectedLink.mass) },
             { emitEvent: false }
           );
           return;
@@ -1631,10 +1632,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
         this.syncMassDependents();
         this.mechanismService.updateMechanism(true);
         this.mechanismService.onMechUpdateState.next(2);
-        this.linkForm.patchValue(
-          { mass: this.nup.formatValueAndUnit(value, units) },
-          { emitEvent: false }
-        );
+        this.linkForm.patchValue({ mass: this.formatMass(value) }, { emitEvent: false });
         // An auto moment of inertia follows the mass it belongs to; show what
         // the rebuild just derived rather than the number from before it.
         this.refreshDerivedMassFields();
@@ -1645,21 +1643,19 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
       this.linkForm.controls['massMoI'].valueChanges.subscribe((val) => {
         // A member's inertia follows its shape and has no field (decision S14).
         if (this.memberMassDerived()) return;
-        // Typed in the display unit (g·cm² for metric), stored in the unit the
-        // solver and every URL are written against (kg·cm²).
-        const length = this.settingsService.lengthUnit.getValue();
-        const display = this.nup.displayInertiaUnit(length);
-        const [success, value] = this.nup.parseInertiaString(val ?? '', display);
+        // Typed in the display unit (the reader's mass times length squared),
+        // stored in the unit the solver and every URL are written against.
+        const [success, value] = this.nup.parseStoredInertia(
+          val ?? '',
+          this.settingsService.lengthUnit.getValue(),
+          this.settingsService.massUnit.getValue()
+        );
         if (!success || value < 0 || !(this.activeSrv.selectedLink.mass > 0)) {
           if (!success || value < 0) this.notify.refusal('value.inertia', NOT_A.momentOfInertia);
           this.refreshDerivedMassFields();
           return;
         }
-        this.activeSrv.selectedLink.massMoI = this.nup.convertInertia(
-          value,
-          display,
-          this.nup.storedInertiaUnit(length)
-        );
+        this.activeSrv.selectedLink.massMoI = value;
         this.activeSrv.selectedLink.moiIsCustom = true;
         this.mechanismService.updateMechanism(true);
         this.mechanismService.onMechUpdateState.next(2);
@@ -1927,9 +1923,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
               // as ungrounded.
               ground: this.selectedSlider?.ground ?? this.activeSrv.selectedJoint.ground,
               curve: this.activeSrv.selectedJoint.showCurve,
-              sliderMass: this.sliderMassJoint
-                ? this.nup.formatValueAndUnit(this.sliderMassJoint.mass, this.massUnit())
-                : '',
+              sliderMass: this.sliderMassJoint ? this.formatMass(this.sliderMassJoint.mass) : '',
             },
             { emitEvent: false }
           );
@@ -1949,7 +1943,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
           this.patchLinkSize();
           this.linkForm.patchValue(
             {
-              mass: this.nup.formatValueAndUnit(this.activeSrv.selectedLink.mass, this.massUnit()),
+              mass: this.formatMass(this.activeSrv.selectedLink.mass),
               drawAsDisc: this.drawnAsDisc(),
             },
             { emitEvent: false }
@@ -2218,17 +2212,15 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
     if (!link) return;
     const length = this.settingsService.lengthUnit.getValue();
     const origin = this.comFrameOrigin(link);
-    const display = this.nup.displayInertiaUnit(length);
-    const inertia = this.nup.convertInertia(
-      link.massMoI,
-      this.nup.storedInertiaUnit(length),
-      display
-    );
     this.linkForm.patchValue(
       {
         // The unit is typed into the box, as every Basic Settings field does
         // it; the center-of-mass pair stays bare — its unit is the frame's.
-        massMoI: this.nup.formatValueAndUnit(inertia, display),
+        massMoI: this.nup.formatStoredInertia(
+          link.massMoI,
+          length,
+          this.settingsService.massUnit.value
+        ),
         comX: ((link.CoM.x - origin.x) / MODEL_SCALE).toFixed(2),
         comY: ((link.CoM.y - origin.y) / MODEL_SCALE).toFixed(2),
       },
@@ -2236,19 +2228,22 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
     );
   }
 
-  momentOfInertiaUnit(): InertiaUnit {
-    return this.nup.displayInertiaUnit(this.settingsService.lengthUnit.value);
+  /** A stored mass, in the reader's mass unit. */
+  private formatMass(stored: number): string {
+    return this.nup.formatStoredMass(
+      stored,
+      this.settingsService.lengthUnit.value,
+      this.settingsService.massUnit.value
+    );
   }
 
-  massUnit(): MassUnit {
-    switch (this.settingsService.lengthUnit.value) {
-      case LengthUnit.INCH:
-        return MassUnit.LBM;
-      case LengthUnit.METER:
-        return MassUnit.KG;
-      default:
-        return MassUnit.GRAM;
-    }
+  /** A typed mass, returned in the unit storage uses. */
+  private parseMass(typed: string): [boolean, number] {
+    return this.nup.parseStoredMass(
+      typed,
+      this.settingsService.lengthUnit.value,
+      this.settingsService.massUnit.value
+    );
   }
 
   getDistanceBetweenJoints(j1: RevJoint, j2: RevJoint): number {

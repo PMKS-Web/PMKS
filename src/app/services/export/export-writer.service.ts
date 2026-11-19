@@ -302,7 +302,9 @@ export class ExportWriterService {
       .map((part) => part.label)
       .join(', ');
     const length = this.catalog.unitStr(this.settings.lengthUnit.value);
-    const mass = this.nup.unitLabel(this.nup.massUnitFor(this.settings.lengthUnit.value));
+    const mass = this.nup.unitLabel(
+      this.nup.displayMassUnit(this.settings.lengthUnit.value, this.settings.massUnit.value)
+    );
     const angle = this.catalog.unitStr(this.settings.angleUnit.value);
     return [
       {
