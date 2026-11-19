@@ -47,6 +47,8 @@ interface ForceSnapshot {
   force: Force;
   start: { x: number; y: number };
   end: { x: number; y: number };
+  /** Its direction at the grab, which a collapsed arrow cannot be read for. */
+  angle: number;
 }
 
 function pointThroughFrame(
@@ -137,6 +139,7 @@ export class SelectionTransformSnapshot {
           force,
           start: { x: force.startCoord.x, y: force.startCoord.y },
           end: { x: force.endCoord.x, y: force.endCoord.y },
+          angle: force.angleRad,
         })),
       allJointsMove:
         link.joints.length > 0 && link.joints.every((joint) => this.jointIds.has(joint.id)),
@@ -215,8 +218,8 @@ export class SelectionTransformSnapshot {
       body.from.length === 2 && first && second
         ? frameTurn([body.from[0], body.from[1]], [first, second])
         : 0;
-    body.forces.forEach(({ force, start, end }) =>
-      carryForce(force, place(start), { x: end.x - start.x, y: end.y - start.y }, linkTurn)
+    body.forces.forEach(({ force, start, end, angle }) =>
+      carryForce(force, place(start), { x: end.x - start.x, y: end.y - start.y }, linkTurn, angle)
     );
     const com = body.link.comIsCustom
       ? place(body.com)

@@ -207,6 +207,8 @@ describe('SelectionBatchService duplication', () => {
     expect(copy.mag).toBe(4);
     expect(copy.yComp).toBeCloseTo(collapsed.yComp, 9);
     expect(copy.yComp).toBeLessThan(0);
+    expect(copy.endCoord.x - copy.startCoord.x).toBe(0);
+    expect(copy.endCoord.y - copy.startCoord.y).toBe(0);
   });
 
   it('copies a force with its selected link once, and a force on an unselected link onto that link', () => {

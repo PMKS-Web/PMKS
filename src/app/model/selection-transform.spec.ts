@@ -218,6 +218,25 @@ describe('selection affine snapshot', () => {
     expect(forces[0].startCoord.x).toBeCloseTo(3 * 1 - 2 * 2, 10);
   });
 
+  it('turns a collapsed Local force once by the whole turn, however many moves it took', () => {
+    // A drag replays the gesture-start snapshot on every move. A force whose
+    // arrow sits on its anchor took its direction from the force each time,
+    // which already held the last move's turn: 15 degrees then 30 came out 45.
+    const scene = twoBars();
+    const force = new Force('F1', scene.ab, new Coord(1, 0), new Coord(1, 1), true, true, 3);
+    force.moveDirectionHandle(new Coord(1, 0));
+    scene.ab.forces.push(force);
+    const began = force.angleRad;
+    const snapshot = captureSelectionTransform([scene.ab, force], scene.joints, scene.links);
+
+    snapshot.apply({ rotation: Math.PI / 12 });
+    snapshot.apply({ rotation: Math.PI / 6 });
+
+    expect(force.angleRad).toBeCloseTo(began + Math.PI / 6, 10);
+    expect(force.endCoord.x).toBe(force.startCoord.x);
+    expect(force.endCoord.y).toBe(force.startCoord.y);
+  });
+
   it('refuses atomically when the closure intersects existing lock consequences', () => {
     const scene = twoBars();
     scene.b.locked = true;

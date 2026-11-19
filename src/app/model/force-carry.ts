@@ -16,16 +16,26 @@ type Point = { x: number; y: number };
  * @param arrow the arrow from its application point to its tip, as it was
  * before the edit.
  * @param linkTurn how far the edit turned the force's link, in radians.
+ * @param direction the force's direction when `arrow` was read. An edit
+ * replayed from a snapshot on every pointer move passes the snapshot's, so a
+ * collapsed arrow's turn is added to where it began rather than to where the
+ * last move left it.
  */
-export function carryForce(force: Force, at: Point, arrow: Point, linkTurn: number): void {
+export function carryForce(
+  force: Force,
+  at: Point,
+  arrow: Point,
+  linkTurn: number,
+  direction = force.angleRad
+): void {
   const turn = force.local ? linkTurn : 0;
-  const direction = force.angleRad;
   const cos = Math.cos(turn);
   const sin = Math.sin(turn);
   force.moveAnchor(new Coord(at.x, at.y));
   if (Math.hypot(arrow.x, arrow.y) === 0) {
-    // No arrow to read a direction off: the stored one is turned instead.
-    force.angleRad = direction + turn;
+    // No arrow to read a direction off: the stored one is turned instead, and
+    // the handle stays on the anchor.
+    force.setCollapsedDirection(direction + turn);
     return;
   }
   force.moveDirectionHandle(

@@ -35,6 +35,20 @@ describe('carrying a force with its body', () => {
     force.moveDirectionHandle(new Coord(1, 0));
     carryForce(force, { x: 2, y: 0 }, { x: 0, y: 0 }, Math.PI / 2);
     expect(force.angleRad).toBeCloseTo(Math.PI, 12);
+    // Still no arrow: the turn is the stored direction's, not a new handle's.
+    expect([force.endCoord.x, force.endCoord.y]).toEqual([2, 0]);
+  });
+
+  it('adds a replayed turn to the direction it began at, not to the last move’s', () => {
+    // A group drag replays one snapshot on every pointer move, each with the
+    // whole turn so far. Read off the force, a collapsed arrow's direction
+    // already held the last move's turn, and the next added it again.
+    const force = forceOn(true);
+    force.moveDirectionHandle(new Coord(1, 0));
+    const began = force.angleRad;
+    carryForce(force, { x: 1, y: 0 }, { x: 0, y: 0 }, 0.25, began);
+    carryForce(force, { x: 1, y: 0 }, { x: 0, y: 0 }, 0.5, began);
+    expect(force.angleRad).toBeCloseTo(began + 0.5, 12);
   });
 
   it('says how far a frame turned, the short way round', () => {
