@@ -75,7 +75,7 @@ function merge(parts: MechanismFixture[], inputAngVel: number): MechanismFixture
  * The four-bar chain, and the four mechanisms it is.
  *
  * The bars are 1, 2, 3 and 2.5 long in that cyclic order, which satisfies
- * Grashof (1 + 3 ≤ 2 + 2.5) — so what each inversion turns out to be is
+ * Grashof strictly (1 + 3 < 2 + 2.5) — so what each inversion turns out to be is
  * decided by where the shortest bar sits relative to the one being held:
  *
  * | Held | The shortest is | What it becomes |
@@ -83,9 +83,14 @@ function merge(parts: MechanismFixture[], inputAngVel: number): MechanismFixture
  * | L4 | beside the frame | crank-rocker |
  * | L2 | beside the frame | crank-rocker, the other one |
  * | L1 (the shortest) | the frame | double crank — both grounded bars go over |
- * | L3 (opposite L1) | the coupler | double rocker — neither goes over |
+ * | L3 (opposite L1) | the coupler | double rocker — neither grounded bar goes over |
  *
- * In that order, which is the order the textbooks number them in.
+ * In that order, which is the order Norton and Shigley/Uicker draw them in.
+ *
+ * In the double rocker the coupler, being the shortest, can still turn right
+ * round relative to the others — but only by passing through the two toggle
+ * positions, where it lies in line with a rocker. Driven from a rocker, as
+ * here, the input stops and reverses at those two positions instead.
  *
  * The held bar is drawn, pinned to ground at both ends. It cannot move and the
  * app knows it — a bar anchored twice is counted as part of the frame rather
@@ -125,7 +130,9 @@ export function fourBarInversionsFixture(): MechanismFixture {
       coupler: L2,
       rocker: L3,
       names: ['L1', 'L2', 'L3', 'L4'],
-      theta: 60,
+      // Low enough that the crank and coupler are visibly two bars rather
+      // than one side of a triangle.
+      theta: 30,
       branch: 1,
       at: { x: 0, y: 6 },
     },
@@ -137,7 +144,7 @@ export function fourBarInversionsFixture(): MechanismFixture {
       coupler: L4,
       rocker: L3,
       names: ['L1', 'L4', 'L3', 'L2'],
-      theta: 60,
+      theta: 30,
       branch: 1,
       at: { x: 9, y: 6 },
     },
@@ -162,7 +169,9 @@ export function fourBarInversionsFixture(): MechanismFixture {
       coupler: L1,
       rocker: L4,
       names: ['L2', 'L1', 'L4', 'L3'],
-      theta: 55,
+      // Partway up the input's swing, which is 26° to 86°, where neither
+      // joint of the coupler is near straight.
+      theta: 70,
       branch: 1,
       at: { x: 9, y: 0 },
     },
@@ -177,9 +186,10 @@ export function fourBarInversionsFixture(): MechanismFixture {
     return {
       joints: [
         // The left pin drives. For every inversion but the double rocker that
-        // is a bar which goes right over; the double rocker has no such bar
-        // anywhere, and driven here it swings between its two toggle points,
-        // which is what the machine actually does.
+        // is a bar which goes right over. In the double rocker neither bar on
+        // the frame does, so the drive swings it between the two toggle
+        // points, where the coupler lies in line with the far rocker, and
+        // reverses there.
         { id: first, ...pivot, ground: true, input: true, driveSpeed: LIBRARY_RPM },
         { id: second, ...elbow },
         { id: third, ...wrist },
@@ -207,32 +217,43 @@ export function fourBarInversionsFixture(): MechanismFixture {
  * operation on a chain with a slider in it produces an engine, a quick-return,
  * an oscillating-cylinder engine and a pump.
  *
+ * The links are named the way the textbooks number them, and each keeps its
+ * name and color in all four:
+ *
+ * | Link | In the engine | Its joints |
+ * | --- | --- | --- |
+ * | L1 | the frame, with the cylinder in it | crankshaft pin, and the slide |
+ * | L2 | the crank | crankshaft pin, crank pin |
+ * | L3 | the connecting rod | crank pin, gudgeon pin |
+ * | L4 | the piston | gudgeon pin, and the slide |
+ *
+ * A link is which of these it is by the joints it carries, not by what it
+ * looks like in a given inversion, and that is the whole lesson: held by the
+ * rod, the part that rocks on its trunnion is L4 — the cylinder of an
+ * oscillating engine is the piston of the ordinary one — and the rod sliding
+ * in it is L1.
+ *
  * | Held | What it becomes | Where you have seen it |
  * | --- | --- | --- |
  * | L1, the frame | slider-crank | engine, compressor, reciprocating pump |
- * | L2, the crank | the frame swings round the crank | Whitworth quick-return, rotary engine |
+ * | L2, the crank | the slotted bar goes right round | Whitworth quick-return, rotary engine |
  * | L3, the conrod | the cylinder rocks on its trunnion | oscillating cylinder engine |
- * | L4, the block | the frame reciprocates through it | pendulum pump, hand pump |
+ * | L4, the piston | the frame slides up and down over it | pendulum pump, hand pump |
  *
- * One chain throughout: L2 is 1.2 long and L3 is 2.6 in all four, and the
- * sliding pair is between L1 and L4 in all four. What changes is which link is
- * held, and so which pair of joints is pinned to the world.
+ * One chain throughout: L2 is 1.2 long and L3 is 2.6 in all four, with no
+ * offset, and the slide is between L1 and L4 in all four. What changes is
+ * which link is held.
  *
- * The middle two hold a bar, and it is drawn across its two ground pins the
- * way the four-bar set draws its held bar. They are the same arrangement as
- * each other with the parts swapped round — a bar turning about one ground
- * pin, driving a block that runs in a slot cut in a bar pivoted on the other —
- * and what separates them is only which of the two is longer. Held by the
- * crank, the slotted bar's pivot falls inside the circle the block describes
- * and the bar goes right over: a quick-return. Held by the conrod, the pivot
- * falls outside it and the bar rocks: a cylinder on a trunnion.
+ * The held link is drawn in every one, the way the four-bar set draws its
+ * held bar: the frame as the rail the piston runs on, anchored at both ends;
+ * the crank and the rod as bars across their two ground pins; and the piston,
+ * in the pump, as the barrel the pump rod runs in, below the pin the pendulum
+ * hangs from. Where L4 is a block it is drawn as one, black; where it is a
+ * part of its own it is dark teal, the color L4 wears in the four-bar set.
  *
- * The outer two hold the frame or the block, neither of which is a bar. This
- * app draws the frame fixed and the block running along it, which is the first
- * inversion exactly; the fourth is the same relative motion seen from the
- * block, so it arrives here as its own relative motion, with the long bar
- * grounded and the short one reaching the slide. That is a limit of what the
- * canvas can hold still, not of the chain.
+ * Laid out two by two with room between, since the Whitworth's slotted bar
+ * sweeps a circle ROD + CRANK across and the other three reach up or down
+ * further than they reach sideways.
  */
 export function sliderCrankInversionsFixture(): MechanismFixture {
   /** The crank, L2, and the connecting rod, L3. Both, in all four. */
@@ -240,7 +261,10 @@ export function sliderCrankInversionsFixture(): MechanismFixture {
   const ROD = 2.6;
 
   // ---- Held: L1, the frame. The ordinary slider-crank. -------------------
-  const engineAt = { x: 0, y: 6.5 };
+  // The frame is drawn as the rail from the crankshaft out past the end of
+  // the stroke, and the piston rides it: the piston runs between ROD - CRANK
+  // and ROD + CRANK from the crankshaft.
+  const engineAt = { x: 0, y: 9 };
   const engineElbow = along(engineAt, turned(1, 60), CRANK);
   const engine: MechanismFixture = {
     joints: [
@@ -249,23 +273,27 @@ export function sliderCrankInversionsFixture(): MechanismFixture {
       {
         id: 'C',
         // In line with the crank center, so the chain has no offset in any of
-        // the four. The block runs on the frame's own axis.
+        // the four.
         x: engineElbow.x + Math.sqrt(ROD * ROD - (engineElbow.y - engineAt.y) ** 2),
         y: engineAt.y,
       },
+      { id: 'D', x: engineAt.x + ROD + CRANK + 0.6, y: engineAt.y, ground: true },
     ],
     links: [
       { joints: 'AB', name: 'L2', mass: 0, moi: 0 },
       { joints: 'BC', name: 'L3', mass: 0, moi: 0 },
+      { joints: 'AD', name: 'L1', mass: 0, moi: 0 },
     ],
-    sliders: [{ at: 'C', angleRad: 0 }],
+    sliders: [{ at: 'C', on: { carrier: 'AD', a: 'A', b: 'D' } }],
     inputAngVel: radPerSecond(LIBRARY_RPM),
   };
 
   // ---- Held: L2, the crank. Whitworth quick-return. ----------------------
-  // The held bar is the short one, so the slotted bar's pivot sits inside the
-  // circle the block runs on and the bar goes right over.
-  const whitworthAt = { x: 9.6, y: 6.5 };
+  // The crank's two pins are the ground pins now. The rod turns about the
+  // crank pin, and the piston it carries slides along L1, which turns about
+  // the crankshaft pin. That pin is the short crank's length from the other,
+  // inside the circle the piston runs on, so L1 goes right over.
+  const whitworthAt = { x: 10, y: 9 };
   const whitworthPivot = whitworthAt;
   const whitworthCenter = { x: whitworthAt.x + CRANK, y: whitworthAt.y };
   const whitworthBlock = along(whitworthCenter, turned(1, 60), ROD);
@@ -278,7 +306,7 @@ export function sliderCrankInversionsFixture(): MechanismFixture {
         id: 'H',
         // Far enough out that the block never runs off the end: it travels
         // between ROD - CRANK and ROD + CRANK from the pivot.
-        ...along(whitworthPivot, unit(whitworthPivot, whitworthBlock), ROD + CRANK + 0.8),
+        ...along(whitworthPivot, unit(whitworthPivot, whitworthBlock), ROD + CRANK + 0.4),
       },
     ],
     links: [
@@ -291,50 +319,81 @@ export function sliderCrankInversionsFixture(): MechanismFixture {
   };
 
   // ---- Held: L3, the conrod. Oscillating cylinder. -----------------------
-  // The same arrangement, with the long bar held instead of the short one. Now
-  // the pivot is outside the block's circle, so the slotted bar — the cylinder
-  // — rocks on its trunnion rather than going over.
-  const cylinderAt = { x: 0, y: 0 };
-  const cylinderCenter = cylinderAt;
-  const trunnion = { x: cylinderAt.x + ROD, y: cylinderAt.y };
-  const cylinderBlock = along(cylinderCenter, turned(1, 140), CRANK);
+  // The rod's two pins are the ground pins: the crankshaft below and the
+  // trunnion above it. The crank turns about the lower one. L4, which was the
+  // piston, is the cylinder now, rocking on the trunnion; L1, which was the
+  // frame, is the piston rod, pinned to the crank and sliding through it.
+  //
+  // The cylinder is drawn as a short sleeve carrying two pins, one either
+  // side of the trunnion, that ride a slot down the piston rod. Two pins on
+  // one line hold the rod in line with the sleeve, which is what a piston in
+  // its bore does; the app cannot yet solve a rod welded to a block sliding
+  // in a slot that itself moves, so this is how the bore is drawn. The rod
+  // reaches past the sleeve at both ends of the stroke: the crank pin is
+  // between ROD - CRANK and ROD + CRANK from the trunnion.
+  const cylinderAt = { x: 0, y: 0.5 };
+  const trunnion = { x: cylinderAt.x, y: cylinderAt.y + ROD };
+  const cylinderElbow = along(cylinderAt, turned(1, -30), CRANK);
+  const bore = unit(cylinderElbow, trunnion);
+  const SLEEVE = 0.45;
+  const RAM = ROD + CRANK + SLEEVE + 0.5;
   const oscillating: MechanismFixture = {
     joints: [
-      { id: 'J', ...cylinderCenter, ground: true, input: true, driveSpeed: LIBRARY_RPM },
-      { id: 'K', ...cylinderBlock },
-      { id: 'M', ...trunnion, ground: true },
-      { id: 'N', ...along(trunnion, unit(trunnion, cylinderBlock), ROD + CRANK + 0.6) },
+      { id: 'I', ...cylinderAt, ground: true, input: true, driveSpeed: LIBRARY_RPM },
+      { id: 'J', ...cylinderElbow },
+      { id: 'K', ...trunnion, ground: true },
+      { id: 'L', ...along(trunnion, bore, -SLEEVE) },
+      { id: 'M', ...along(trunnion, bore, SLEEVE) },
+      { id: 'N', ...along(cylinderElbow, bore, RAM) },
     ],
     links: [
-      { joints: 'JK', name: 'L2', mass: 0, moi: 0 },
-      { joints: 'MN', name: 'L1', mass: 0, moi: 0 },
-      { joints: 'JM', name: 'L3', mass: 0, moi: 0 },
+      { joints: 'IJ', name: 'L2', mass: 0, moi: 0 },
+      { joints: 'IK', name: 'L3', mass: 0, moi: 0 },
+      { joints: 'KLM', name: 'L4', mass: 0, moi: 0 },
+      { joints: 'JN', name: 'L1', mass: 0, moi: 0 },
     ],
-    sliders: [{ at: 'K', on: { carrier: 'MN', a: 'M', b: 'N' } }],
+    sliders: [
+      { at: 'L', on: { carrier: 'JN', a: 'J', b: 'N' } },
+      { at: 'M', on: { carrier: 'JN', a: 'J', b: 'N' } },
+    ],
     inputAngVel: radPerSecond(LIBRARY_RPM),
   };
 
-  // ---- Held: L4, the block. Pendulum pump. -------------------------------
-  // The beam turns about the pin the held block carries, and the frame
-  // reciprocates along the block's own axis — drawn here, as everywhere in
-  // this app, with the axis still and the block running along it.
-  const pumpAt = { x: 9.6, y: 0 };
-  const pumpBeamEnd = along(pumpAt, turned(1, 20), ROD);
+  // ---- Held: L4, the piston. Pendulum pump. ------------------------------
+  // The piston's two features are fixed now: the gudgeon pin, at the top,
+  // which the rod swings from like a pendulum, and the slide, which is the
+  // pump's barrel below it on the same vertical line. The crank links the
+  // pendulum to L1, the frame, which is the pump rod now, running up and
+  // down in the barrel. The pendulum can swing only as far as the crank can
+  // still reach the line, asin(CRANK / ROD) either side of it, and it is
+  // driven between those two toggles.
+  const pumpAt = { x: 10, y: 3.6 };
+  const swing = (15 * Math.PI) / 180;
+  const pendulumEnd = { x: pumpAt.x + ROD * Math.sin(swing), y: pumpAt.y - ROD * Math.cos(swing) };
+  const rodTop = {
+    x: pumpAt.x,
+    y: pendulumEnd.y - Math.sqrt(CRANK * CRANK - (pendulumEnd.x - pumpAt.x) ** 2),
+  };
+  // The top of the pump rod stays between ROD cos(asin(CRANK / ROD)) and
+  // ROD + CRANK below the pivot; the barrel takes the rod's lower end.
+  const PUMP_ROD = 1.8;
   const pump: MechanismFixture = {
     joints: [
-      { id: 'P', ...pumpAt, ground: true, input: true, driveSpeed: LIBRARY_RPM },
-      { id: 'Q', ...pumpBeamEnd },
-      {
-        id: 'R',
-        x: pumpBeamEnd.x + Math.sqrt(CRANK * CRANK - (pumpBeamEnd.y - pumpAt.y) ** 2),
-        y: pumpAt.y,
-      },
+      { id: 'O', ...pumpAt, ground: true, input: true, driveSpeed: LIBRARY_RPM },
+      { id: 'P', ...pendulumEnd },
+      { id: 'Q', ...rodTop },
+      { id: 'R', x: pumpAt.x, y: rodTop.y - PUMP_ROD },
+      { id: 'S', x: pumpAt.x, y: pumpAt.y - ROD - CRANK - 0.1, ground: true },
+      { id: 'T', x: pumpAt.x, y: pumpAt.y - ROD - CRANK - PUMP_ROD - 0.4, ground: true },
     ],
     links: [
-      { joints: 'PQ', name: 'L3', mass: 0, moi: 0 },
-      { joints: 'QR', name: 'L2', mass: 0, moi: 0 },
+      { joints: 'OP', name: 'L3', mass: 0, moi: 0 },
+      { joints: 'PQ', name: 'L2', mass: 0, moi: 0 },
+      { joints: 'QR', name: 'L1', mass: 0, moi: 0 },
+      { joints: 'ST', name: 'L4', mass: 0, moi: 0 },
     ],
-    sliders: [{ at: 'R', angleRad: 0 }],
+    sliders: [{ at: 'R', on: { carrier: 'ST', a: 'S', b: 'T' } }],
+    welds: ['R'],
     inputAngVel: radPerSecond(LIBRARY_RPM),
   };
 

@@ -194,14 +194,14 @@ export const LIBRARY_TEMPLATE_NAMES: Record<LibraryTemplateID, Record<string, st
   Four_Bar_Inversions: {
     A: 'Crank-rocker (L4 grounded)',
     E: 'Crank-rocker (L2 grounded)',
-    I: 'Double crank (L1 grounded)',
+    I: 'Double crank or drag link (L1 grounded)',
     M: 'Double rocker (L3 grounded)',
   },
   Slider_Crank_Inversions: {
     A: 'Engine (L1 grounded)',
     F: 'Quick return (L2 grounded)',
-    J: 'Oscillating cylinder (L3 grounded)',
-    P: 'Pendulum pump (L4 grounded)',
+    I: 'Oscillating cylinder (L3 grounded)',
+    O: 'Pendulum pump (L4 grounded)',
   },
   Locking_Pliers: { A: 'Locking pliers' },
   Double_Wishbone: { A: 'Double wishbone' },

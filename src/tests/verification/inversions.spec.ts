@@ -137,6 +137,30 @@ describe('one four-bar chain, each link held still in turn', () => {
     ).toEqual(chain);
   });
 
+  it('names each bar the same in all four, and keeps the chain in order', () => {
+    // Sorted spans prove four drawings of one set of lengths; this proves they
+    // are one chain, and that a name means one bar. L1 is 1 long, L2 2, L3 3
+    // and L4 2.5 wherever each turns up, and going round every loop the names
+    // come in cyclic order, L1 beside L2 and L4 and never opposite either.
+    const fixture = fourBarInversionsFixture();
+    const at = (id: string) => fixture.joints.find((joint) => joint.id === id)!;
+    const length = { L1: 1, L2: 2, L3: 3, L4: 2.5 } as Record<string, number>;
+    fixture.links.forEach((link) => {
+      const [a, b] = [...link.joints].map(at);
+      expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeCloseTo(length[link.name!], 9);
+    });
+    for (const letters of ['ABCD', 'EFGH', 'IJKL', 'MNOP']) {
+      const loop = [...letters].map((id, index) => {
+        const next = letters[(index + 1) % 4];
+        return fixture.links.find((link) => link.joints === id + next || link.joints === next + id)!
+          .name!;
+      });
+      const order = loop.map((name) => Number(name.slice(1)));
+      const steps = order.map((n, index) => (order[(index + 1) % 4] - n + 4) % 4);
+      expect(steps.every((step) => step === 1) || steps.every((step) => step === 3)).toBe(true);
+    }
+  });
+
   it('is a different mechanism each time, which is the whole point', () => {
     const [heldL4, heldL2, heldL1, heldL3] = machines(fourBarInversionsFixture());
 
@@ -174,20 +198,77 @@ describe('one slider-crank chain, each link held still in turn', () => {
     expect(spans(engine, [['B', 'C']])).toEqual([2.6]);
     expect(spans(whitworth, [['E', 'F']])).toEqual([1.2]);
     expect(spans(whitworth, [['F', 'G']])).toEqual([2.6]);
-    expect(spans(cylinder, [['J', 'K']])).toEqual([1.2]);
-    expect(spans(cylinder, [['J', 'M']])).toEqual([2.6]);
-    expect(spans(pump, [['Q', 'R']])).toEqual([1.2]);
-    expect(spans(pump, [['P', 'Q']])).toEqual([2.6]);
+    expect(spans(cylinder, [['I', 'J']])).toEqual([1.2]);
+    expect(spans(cylinder, [['I', 'K']])).toEqual([2.6]);
+    expect(spans(pump, [['P', 'Q']])).toEqual([1.2]);
+    expect(spans(pump, [['O', 'P']])).toEqual([2.6]);
   });
 
-  it('turns the slotted bar right over for one and rocks it for the other', () => {
-    // The claim that separates the second inversion from the third, and the
-    // quick-return from the oscillating cylinder. Same arrangement both times;
-    // what decides it is whether the slotted bar's pivot falls inside the
-    // circle the block runs on, which is to say which of the two bars is held.
-    const [, whitworth, cylinder] = machines(sliderCrankInversionsFixture());
+  it('names each link by the joints it carries, so a link is the same link in all four', () => {
+    // L1 carries the crankshaft pin and the slide, L2 the crankshaft and crank
+    // pins, L3 the crank and gudgeon pins, L4 the gudgeon pin and the slide.
+    // The cylinder of the oscillating engine is L4 and its piston rod L1 —
+    // the piston of the ordinary engine and its frame — which is the thing
+    // most easily drawn backwards.
+    const fixture = sliderCrankInversionsFixture();
+    const named = (name: string) =>
+      fixture.links.filter((link) => link.name === name).map((link) => link.joints);
+    expect(named('L1')).toEqual(['AD', 'EH', 'JN', 'QR']);
+    expect(named('L2')).toEqual(['AB', 'EF', 'IJ', 'PQ']);
+    expect(named('L3')).toEqual(['BC', 'FG', 'IK', 'OP']);
+    expect(named('L4')).toEqual(['KLM', 'ST']);
+    // The slide is between L1 and L4 every time: the block on L1's rail or
+    // slot in the first two, L4's sleeve on L1's slot in the third, and L1's
+    // rod in L4's barrel in the fourth.
+    const carrier = (at: string) =>
+      fixture.links.find(
+        (link) => link.joints === fixture.sliders!.find((s) => s.at === at)!.on!.carrier
+      )!.name;
+    expect(['C', 'G', 'L', 'M', 'R'].map(carrier)).toEqual(['L1', 'L1', 'L1', 'L1', 'L4']);
+  });
+
+  it('holds a different link still each time, and draws it', () => {
+    const fixture = sliderCrankInversionsFixture();
+    const grounded = (id: string) => fixture.joints.find((joint) => joint.id === id)!.ground;
+    const held = fixture.links.filter((link) => [...link.joints].every(grounded));
+    expect(held.map((link) => link.name)).toEqual(['L1', 'L2', 'L3', 'L4']);
+  });
+
+  it('turns the slotted bar right over for one and rocks the cylinder for the other', () => {
+    // The claim that separates the second inversion from the third. Held by
+    // the short crank, the slotted bar's pivot falls inside the circle the
+    // block runs on and the bar goes over; held by the long rod, the trunnion
+    // is outside the crank pin's circle and the cylinder only rocks.
+    const [engine, whitworth, cylinder] = machines(sliderCrankInversionsFixture());
+    expect(goesOver(engine, 'A', 'B')).toBe(true);
+    expect(goesOver(whitworth, 'F', 'G')).toBe(true);
     expect(goesOver(whitworth, 'E', 'H')).toBe(true);
-    expect(goesOver(cylinder, 'M', 'N')).toBe(false);
+    expect(goesOver(cylinder, 'I', 'J')).toBe(true);
+    expect(goesOver(cylinder, 'K', 'M')).toBe(false);
+  });
+
+  it('keeps the piston rod in line with the rocking cylinder', () => {
+    const [, , cylinder] = machines(sliderCrankInversionsFixture());
+    const heading = (frame: { id: string; x: number; y: number }[], from: string, to: string) => {
+      const a = frame.find((joint) => joint.id === from)!;
+      const b = frame.find((joint) => joint.id === to)!;
+      return Math.atan2(b.y - a.y, b.x - a.x);
+    };
+    cylinder.joints.forEach((frame) => {
+      const skew = heading(frame, 'J', 'N') - heading(frame, 'L', 'M');
+      expect(Math.abs(Math.sin(skew))).toBeLessThan(1e-6);
+    });
+  });
+
+  it('swings the pump pendulum and runs the pump rod straight up and down', () => {
+    const [, , , pump] = machines(sliderCrankInversionsFixture());
+    expect(goesOver(pump, 'O', 'P')).toBe(false);
+    const xs = pump.joints.flatMap((frame) =>
+      frame.filter((joint) => joint.id === 'Q' || joint.id === 'R').map((joint) => joint.x)
+    );
+    expect(Math.max(...xs) - Math.min(...xs)).toBeLessThan(1e-6);
+    const tops = pump.joints.map((frame) => frame.find((joint) => joint.id === 'Q')!.y);
+    expect(Math.max(...tops) - Math.min(...tops)).toBeGreaterThan(1);
   });
 
   it('carries no mass, being about motion', () => {
