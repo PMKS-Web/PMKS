@@ -456,12 +456,6 @@ export class MechanismService {
     this.poseRevision++;
     this.solveRevision++;
     Force.normalizeVisualWidths(this.forces);
-    // Every load back on the linkage it acts on. Joints move under holds,
-    // solvers and drags that never touch the forces riding the link between
-    // them, and a plate whose corner was dragged in leaves a load standing
-    // where the plate used to be; this is the one funnel every edit passes
-    // through, so it is where the rule holds however the joints got there.
-    this.keepForcesOnTheirLinks();
     // Changing the input speed re-samples the same geometry onto a different time
     // axis. Hold the simulation time rather than the sample index, so t and the pose
     // on screen stay consistent with each other across the rebuild. Read it before
@@ -520,6 +514,14 @@ export class MechanismService {
     this.deriveCylinderInteriors();
     // And only then the silhouettes, which the outlines below are built from.
     this.refreshSkinSilhouettes();
+    // Every load back on the linkage it acts on. Joints move under holds,
+    // solvers and drags that never touch the forces riding the link between
+    // them, and a plate whose corner was dragged in leaves a load standing
+    // where the plate used to be; this is the one funnel every edit passes
+    // through, so it is where the rule holds however the joints got there.
+    // After the start pose is back: restoring it writes sample zero's force
+    // ends, which would put a force the repair had moved straight back.
+    this.keepForcesOnTheirLinks();
 
     // A compound Boolean union is pose-independent. Build it once for the
     // editable pose, then let Mechanism rigidly transform it for solved frames.
