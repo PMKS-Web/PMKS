@@ -459,6 +459,11 @@ function copyClosure(
       source.arrowOutward,
       source.mag
     );
+    // A handle collapsed onto its anchor has no direction to read, so the copy
+    // came out at 0: it takes the source's stored direction instead.
+    if (source.startCoord.x === source.endCoord.x && source.startCoord.y === source.endCoord.y) {
+      copy.angleRad = source.angleRad;
+    }
     copy.color = source.color;
     copyPartName(source, copy, usedNames);
     owner.forces.push(copy);

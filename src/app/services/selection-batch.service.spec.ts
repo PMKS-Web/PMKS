@@ -182,6 +182,33 @@ describe('SelectionBatchService duplication', () => {
     expect(copy.endCoord).toEqual(new Coord(90, 30));
   });
 
+  it('copies a force whose direction handle sits on its anchor with its stored direction', () => {
+    const h = chain(2);
+    const collapsed = new Force(
+      'F1',
+      h.links[0],
+      new Coord(50, 0),
+      new Coord(50, 30),
+      false,
+      true,
+      4
+    );
+    // Straight down, then the handle dragged back onto the anchor: the stored
+    // direction is kept, and the two ends no longer say what it is.
+    collapsed.angleRad = -Math.PI / 2;
+    collapsed.moveDirectionHandle(new Coord(50, 0));
+    h.links[0].forces.push(collapsed);
+    h.service.forces.push(collapsed);
+
+    const result = h.batch.duplicateSelected([{ kind: 'force', id: 'F1' }], { x: 10, y: 10 });
+
+    expect(result.ok).toBe(true);
+    const copy = h.links[0].forces.find((force) => force !== collapsed)!;
+    expect(copy.mag).toBe(4);
+    expect(copy.yComp).toBeCloseTo(collapsed.yComp, 9);
+    expect(copy.yComp).toBeLessThan(0);
+  });
+
   it('copies a force with its selected link once, and a force on an unselected link onto that link', () => {
     const h = chain();
     const { onCD } = withForces(h);

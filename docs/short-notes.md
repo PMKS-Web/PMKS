@@ -3200,3 +3200,14 @@ a narrow box such as a 200px panel note it breaks lines early and leaves a wide 
 measured in Playwright's WebKit, every line of the old note stopped near 160px of 200, while
 Chromium laid it out exactly as without `pretty`. The multi-selection note dropped it. Check a panel paragraph in Safari
 before adding it again.
+
+### An edit carries a force's point, never its load: `carryForce`
+
+Every edit that moves a body moves its forces through `carryForce` (`model/force-carry.ts`): the
+group box's transform, a body drag or turn (`transformLinkBody`), and the reframe of a bar a joint
+drag reshapes (`reframeDeformedLink`). The application point goes where the edit sends it. The
+magnitude and the arrow's drawn length never change, and the direction follows the force's frame
+the way the solver does while the mechanism runs: a Grid force keeps its bearing, a Local force
+keeps its angle to its link. Before this, the box pushed the arrow's tip through the same affine
+map as the joints, so a scale grip stretched the arrow and a turn or squash turned a Grid force
+(#295).

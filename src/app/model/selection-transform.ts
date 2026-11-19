@@ -1,5 +1,6 @@
 import { Coord } from './coord';
 import { Force } from './force';
+import { carryForce, frameTurn } from './force-carry';
 import { Joint, PrisJoint } from './joint';
 import { Link, RealLink } from './link';
 import { SelectedPart, selectableLinks } from './selection';
@@ -207,12 +208,16 @@ export class SelectionTransformSnapshot {
     if (!body.link.joints.some((joint) => this.jointIds.has(joint.id))) return;
     const place = (point: { x: number; y: number }) =>
       body.allJointsMove ? mapPoint(point) : pointThroughFrame(point, body.from, body.link.joints);
-    body.forces.forEach(({ force, start, end }) => {
-      const nextStart = place(start);
-      const nextEnd = place(end);
-      force.moveAnchor(new Coord(nextStart.x, nextStart.y));
-      force.moveDirectionHandle(new Coord(nextEnd.x, nextEnd.y));
-    });
+    // The application point stays where it was on the body; the load itself is
+    // not the box's to scale, squash or turn -- see `carryForce`.
+    const [first, second] = body.link.joints;
+    const linkTurn =
+      body.from.length === 2 && first && second
+        ? frameTurn([body.from[0], body.from[1]], [first, second])
+        : 0;
+    body.forces.forEach(({ force, start, end }) =>
+      carryForce(force, place(start), { x: end.x - start.x, y: end.y - start.y }, linkTurn)
+    );
     const com = body.link.comIsCustom
       ? place(body.com)
       : RealLink.determineCenterOfMass(body.link.joints);
