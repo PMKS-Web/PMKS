@@ -853,6 +853,43 @@ describe('MechanismService keeping forces off joints that refuse them', () => {
     ]);
   });
 
+  it('moves a force off a tracer point grounded while paused away from the start', () => {
+    const harness = createHarness();
+    const a = new RevJoint('A', 0, 0, true, true);
+    const b = new RevJoint('B', 1, 2);
+    const c = new RevJoint('C', 4, 2);
+    const d = new RevJoint('D', 5, 0, false, true);
+    const t = new RevJoint('T', 2.5, 3);
+    const wire = (id: string, joints: RevJoint[]) => {
+      const link = new RealLink(id, joints);
+      joints.forEach((joint) => {
+        joint.links.push(link);
+        joints
+          .filter((other) => other !== joint)
+          .forEach((other) => joint.connectedJoints.push(other));
+      });
+      return link;
+    };
+    const coupler = wire('BCT', [b, c, t]);
+    harness.service.joints = [a, b, c, d, t];
+    harness.service.links = [wire('AB', [a, b]), coupler, wire('CD', [c, d])];
+    a.input = true;
+    const force = forceAt(harness.service, coupler, t.x, t.y);
+    harness.service.updateMechanism();
+    harness.service.animate(60, false);
+    expect(harness.service.mechanismTimeStep).toBeGreaterThan(0);
+    harness.active.updateSelectedObj(t);
+
+    harness.service.toggleGround();
+
+    // The rebuild puts the drawing back on its start pose, the force with it,
+    // and only then is the force kept off the joint it may no longer sit on.
+    expect(t.ground).toBe(true);
+    expect(t.x).toBeCloseTo(2.5, 6);
+    expect(Math.hypot(force.startCoord.x - t.x, force.startCoord.y - t.y)).toBeGreaterThan(0.5);
+    expect(said(harness.service)[0]).toContain('the joint is grounded');
+  });
+
   it('moves a force off a tracer point that is then grounded', () => {
     const harness = createChain(2);
     const [a, b] = harness.joints;
