@@ -8053,11 +8053,20 @@ export class MechanismService {
    * drawing arrived with a load on a pin (issue #138). The edit is what the
    * reader asked for, so it stands; the force is moved a short way along its
    * link, and the reader is told where it went.
+   *
+   * Not the force under the hand. A force drag rebuilds on every move so its
+   * graphs follow it, and the canvas has already held that force off every
+   * joint it may not sit on; repaired here as well, a tail dragged past a pin
+   * carried the head with it, and the reader was told twice. The release's
+   * commit, which comes after the drag has ended, repairs it once.
    */
   private keepForcesOnTheirLinks(): void {
     const { within, margin } = this.forceJointMargins();
+    const underHand = this.injector.get(DragStateService).isDraggingForce
+      ? this.activeObjService.selectedForce
+      : undefined;
     for (const force of this.forces) {
-      if (!(force.link instanceof RealLink)) continue;
+      if (!(force.link instanceof RealLink) || force === underHand) continue;
       const kept = constrainForceAnchor(force.link, force.startCoord, 0);
       if (Math.hypot(kept.x - force.startCoord.x, kept.y - force.startCoord.y) > 1e-9) {
         force.moveAnchor(kept);

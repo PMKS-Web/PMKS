@@ -897,19 +897,25 @@ record(
 );
 await page.locator('.forceRedirectAction').click();
 await page.waitForTimeout(700);
+// There, the force is still what is selected, and the panel shows the
+// reactions of the link it acts on under a head that names it (#305): no
+// second click on the link first.
+const inForce = await page.evaluate(() => {
+  const grid = window.ng.getComponent(document.querySelector('app-new-grid'));
+  return {
+    tab: grid.tabService.getCurrentTab(),
+    selected: grid.activeObjService.objType,
+    title: document.querySelector('app-analysis-panel .panelTitleText')?.textContent.trim(),
+    rows: document.querySelectorAll('app-analysis-panel app-analysis-graph-section').length,
+  };
+});
 record(
-  'and pressing it lands in Force Analysis, where the card offers the link that carries it',
-  (await page.evaluate(() =>
-    window.ng.getComponent(document.querySelector('app-new-grid')).tabService.getCurrentTab()
-  )) === 3 && /Graph /.test(await page.locator('app-analysis-panel').innerText())
-);
-await page.locator('.forceRedirectAction').click();
-await page.waitForTimeout(700);
-record(
-  'and pressing that graphs the link',
-  (await page.evaluate(
-    () => window.ng.getComponent(document.querySelector('app-new-grid')).activeObjService.objType
-  )) === 'Link'
+  'and pressing it lands in Force Analysis on the reactions of the link that carries it',
+  inForce.tab === 3 &&
+    inForce.selected === 'Force' &&
+    /^Force \S+ on /.test(inForce.title ?? '') &&
+    inForce.rows > 0,
+  inForce
 );
 
 record('nothing threw', errors.length === 0, errors.slice(0, 3));

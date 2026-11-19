@@ -1733,6 +1733,18 @@ export class GridUtilsService {
   }
 
   /**
+   * One move of a force drag: the move, then a rebuild, the way `dragJoint`
+   * rebuilds. The solved machine holds its own copy of every force, so until it
+   * is rebuilt the reaction graphs describe where the force was picked up
+   * rather than where the hand has it, and the comparison with the curve from
+   * before the drag shows two equal lines until the release (issue #305).
+   */
+  dragForceLive(force: Force, trueCoord: Coord, how: 'anchor' | 'whole' | 'direction') {
+    this.dragForce(force, trueCoord, how);
+    this.mechanismSrv.updateMechanism(false);
+  }
+
+  /**
    * Whether this joint slides.
    *
    * One question, where there used to be four that could disagree. A slider was

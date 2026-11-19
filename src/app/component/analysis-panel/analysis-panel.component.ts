@@ -174,6 +174,8 @@ export class AnalysisPanelComponent implements OnInit, OnDestroy, DoCheck {
    * over a panel the reader reached by pressing that tab.
    */
   get panelTitle(): string {
+    const carried = this.carriedForce;
+    if (carried) return `Force ${carried.name} on ${this.selectedBodyLabel}`;
     const part =
       this.shownType === 'Joint' ? `Joint ${this.shownJoint.name}` : this.selectedBodyLabel;
     return `${this.modeNoun} for ${part}`;
@@ -268,7 +270,7 @@ export class AnalysisPanelComponent implements OnInit, OnDestroy, DoCheck {
    * would have gated it here is not armed until after.
    */
   get shownType(): ActiveObjType {
-    return this.activeSrv.graphType;
+    return this.carriedForce ? 'Link' : this.activeSrv.graphType;
   }
 
   get shownJoint(): RealJoint {
@@ -276,11 +278,28 @@ export class AnalysisPanelComponent implements OnInit, OnDestroy, DoCheck {
   }
 
   get shownLink(): RealLink {
-    return this.activeSrv.graphLink;
+    return this.carriedForce?.link ?? this.activeSrv.graphLink;
   }
 
   get shownForce(): Force {
     return this.activeSrv.graphForce;
+  }
+
+  /**
+   * The force whose link the panel is graphing, in Force Analysis (#305).
+   *
+   * A force is an input and has no curve of its own, so a selected force used
+   * to get a card pointing at its link -- and a reader who wanted to watch the
+   * reactions while moving the load had to select the link and then drag the
+   * force. Its link's reactions are what selecting a force is asking for, so
+   * they are what the panel shows, under a head that names the force. Dragging
+   * it is then an ordinary tuning gesture over those graphs, before and after
+   * included. Kinematic Analysis has no force graphs, so there it keeps its card.
+   */
+  get carriedForce(): (Force & { link: RealLink }) | undefined {
+    if (!this.showForce || this.activeSrv.graphType !== 'Force') return undefined;
+    const force = this.activeSrv.graphForce;
+    return force?.link instanceof RealLink ? (force as Force & { link: RealLink }) : undefined;
   }
 
   /**
@@ -296,26 +315,10 @@ export class AnalysisPanelComponent implements OnInit, OnDestroy, DoCheck {
   }
 
   /**
-   * Show the reactions on the part this force pushes.
-   *
-   * The same selection a click on that link would make, so the panel that
-   * follows is the ordinary one rather than a second view of it.
-   */
-  graphTheLinkUnder(): void {
-    const link = this.shownForce?.link;
-    if (link) this.activeSrv.updateSelectedObj(link);
-  }
-
-  /** Whether the force graphs this card points at exist in the mode we are in. */
-  get inForceAnalysis(): boolean {
-    return this.tabs.getCurrentTab() === TabID.FORCE;
-  }
-
-  /**
    * The way to the reactions from Kinematic Analysis: the other mode.
    *
-   * The selection is kept, so the reader lands on the same force's card there
-   * -- the one that offers the link to graph.
+   * The selection is kept, so the reader lands on the reactions of the link
+   * this force acts on, under a head naming the force.
    */
   goToForceAnalysis(): void {
     this.tabs.setTab(TabID.FORCE);
@@ -675,7 +678,7 @@ export class AnalysisPanelComponent implements OnInit, OnDestroy, DoCheck {
    * slide pressing in its slot -- and the rod what pushes on the rod.
    */
   linkForceRows(): ForceAnalysisRow[] {
-    const rows = this.cachedRows('link', this.activeSrv.selectedLink?.id ?? '');
+    const rows = this.cachedRows('link', this.shownLink?.id ?? '');
     const sealed = this.selectedCylinder;
     if (!sealed) return rows;
     // The buried barrel end alone (decision S11). It has no hitbox and no row
@@ -692,8 +695,8 @@ export class AnalysisPanelComponent implements OnInit, OnDestroy, DoCheck {
 
   /** The sealed cylinder, when the selected body *is* one and not merely carrying one. */
   get selectedCylinder(): Cylinder | undefined {
-    if (this.activeSrv.objType !== 'Link') return undefined;
-    return this.mechanismService.cylinderOfBar(this.activeSrv.selectedLink);
+    if (this.shownType !== 'Link') return undefined;
+    return this.mechanismService.cylinderOfBar(this.shownLink);
   }
 
   /** Point at the thing on the grid these numbers describe, while asked to. */
@@ -731,7 +734,7 @@ export class AnalysisPanelComponent implements OnInit, OnDestroy, DoCheck {
   }
 
   inputEffortLabel(driven?: RealJoint): string {
-    const joint = driven ?? this.activeSrv.selectedJoint;
+    const joint = driven ?? this.shownJoint;
     return joint instanceof PrisJoint ||
       joint?.connectedJoints.some((candidate) => candidate instanceof PrisJoint && candidate.input)
       ? 'Force'
@@ -757,7 +760,7 @@ export class AnalysisPanelComponent implements OnInit, OnDestroy, DoCheck {
    */
   inputEffortJoint(): RealJoint | undefined {
     const sealed = this.selectedCylinder;
-    if (!sealed || this.activeSrv.selectedLink?.id !== sealed.rod.id) return undefined;
+    if (!sealed || this.shownLink?.id !== sealed.rod.id) return undefined;
     return cylinderJoints(sealed).find(
       (joint): joint is RealJoint => joint instanceof RealJoint && joint.input
     );

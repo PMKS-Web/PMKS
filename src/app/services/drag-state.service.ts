@@ -81,10 +81,17 @@ export class DragStateService {
     return (
       this._joint === jointStates.dragging ||
       this._link === linkStates.dragging ||
+      this.isDraggingForce ||
+      this.backgroundImageHeld
+    );
+  }
+
+  /** True while one of a force's handles, or its arrow, is under the hand. */
+  get isDraggingForce(): boolean {
+    return (
       this._force === forceStates.draggingStart ||
       this._force === forceStates.draggingEnd ||
-      this._force === forceStates.draggingBody ||
-      this.backgroundImageHeld
+      this._force === forceStates.draggingBody
     );
   }
 

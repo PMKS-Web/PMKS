@@ -1910,7 +1910,7 @@ export class NewGridComponent implements OnDestroy {
     } else {
       this.forceRefusal.clearRing();
     }
-    this.gridUtils.dragForce(force, at, how);
+    this.gridUtils.dragForceLive(force, at, how);
     // So that the panel values update continuously.
     this.activeObjService.fakeUpdateSelectedObj();
     // Credited only while it is somewhere else: back where the gesture found
@@ -2237,7 +2237,11 @@ export class NewGridComponent implements OnDestroy {
           return;
         }
         //The 3rd params could be this.selectedFroceEndPoint == 'startPoint'
-        this.gridUtils.dragForce(this.activeObjService.selectedForce, mousePosInSvg, 'direction');
+        this.gridUtils.dragForceLive(
+          this.activeObjService.selectedForce,
+          mousePosInSvg,
+          'direction'
+        );
         //So that the panel values update continously
         this.activeObjService.fakeUpdateSelectedObj();
         this.dragState.noteMechanismModified();

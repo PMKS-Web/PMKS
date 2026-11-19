@@ -3169,3 +3169,24 @@ Storybook 10's manager has no favicon option: it links `/favicon.svg`, and a `st
 mapped to that path replaces Storybook's own pink one. `.storybook/main.ts` maps
 `src/assets/brand/favicon.svg` there. The sidebar logo is separate: `brandImage` in
 `.storybook/manager.ts`.
+
+### A force drag rebuilds on every move, and the rebuild leaves that force to the canvas
+
+`GridUtilsService.dragForceLive` moves the force and calls `updateMechanism(false)`, the way
+`dragJoint` does, because each solved `Mechanism` holds its own copy of the forces: without the
+rebuild the reaction graphs and their comparison with the curve from before the drag stayed on
+where the force was picked up until the release (issue #305). The rebuild's
+`keepForcesOnTheirLinks` skips the selected force while `DragStateService.isDraggingForce` is
+true. The canvas has already held it off refused joints, by a margin scaled by `drawingScale`
+where the repair scales by `objectScale`, and the repair moves a force with `moveAnchor`, so a
+tail dragged past a pin used to carry the head along with it, and post a notice mid-gesture.
+`release()` clears the drag state before the commit's rebuild, so the commit still repairs the
+force once.
+
+### In Force Analysis a selected force is shown as the link it acts on
+
+`AnalysisPanelComponent.carriedForce` is the force a reader picked, when Force Analysis is
+showing and the force sits on a `RealLink`. `shownType` and `shownLink` then answer `'Link'` and
+that link, so every row is the link's own reactions, and `panelTitle` reads "Force F1 on Link
+BC". The selection stays on the force. Kinematic Analysis still offers Switch to Force Analysis,
+because a link's kinematics say nothing about a load.

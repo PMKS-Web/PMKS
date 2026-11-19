@@ -1,3 +1,5 @@
+import { Injector } from '@angular/core';
+import { DragStateService } from './drag-state.service';
 import '../model/joint';
 import { NotificationService } from './notification.service';
 import { Coord } from '../model/coord';
@@ -21,6 +23,7 @@ import { encodeUrlOf } from '../../test-utils/url-encoding';
 
 interface Harness {
   service: MechanismService;
+  injector: Injector;
   active: ActiveObjService;
   settings: SettingsService;
   grid: GridUtilsService;
@@ -879,6 +882,32 @@ describe('MechanismService keeping forces off joints that refuse them', () => {
     expect(said(scene.service)).toEqual([
       `Force F1 moved off joint C onto link CD: 2 links meet there, so the force would not say which one carries it.`,
     ]);
+  });
+
+  it('leaves the force under the hand to the canvas until the drag is released', () => {
+    // A force drag rebuilds on every move so its graphs follow it (#305). The
+    // canvas holds that force off refused joints by its own margin, so the
+    // rebuild repairing it again moved the head with a dragged tail and said
+    // so mid-gesture. The commit after the release still repairs it.
+    const scene = createOpenFourBar();
+    const bc = scene.service.links.find((link) => link.id === 'BC') as RealLink;
+    const force = forceAt(scene.service, bc, scene.b.x, scene.b.y);
+    const drag = scene.injector.get(DragStateService);
+    scene.active.updateSelectedObj(force);
+    drag.press();
+    drag.beginDraggingForceBody();
+
+    scene.service.updateMechanism(false);
+    expect(force.startCoord.x).toBe(scene.b.x);
+    expect(force.endCoord.y).toBe(scene.b.y + 1);
+    expect(said(scene.service)).toEqual([]);
+
+    drag.release();
+    scene.service.updateMechanism(true);
+    expect(
+      Math.hypot(force.startCoord.x - scene.b.x, force.startCoord.y - scene.b.y)
+    ).toBeGreaterThan(0.1);
+    expect(said(scene.service)[0]).toContain('moved off joint B');
   });
 
   it('moves a force off a tracer point grounded while paused away from the start', () => {
