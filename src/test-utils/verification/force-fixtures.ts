@@ -44,8 +44,10 @@ export function punchPressFixture(): MechanismFixture {
     ],
     // The slide runs straight down, so the ram travels on the y axis.
     slider: { at: 'C', angleRad: Math.PI / 2, pistonMass: 6 },
-    // The work pushing back: straight up the slide, at the ram.
-    load: { onLink: 'BC', at: [0, -3.4], vector: [0, 400] },
+    // The work pushing back: straight up the slide, on the rod just above the
+    // ram. Not on C itself, where the rod meets the ram's slide and a load
+    // would not say which of the two it pushes on (issue #138).
+    load: { onLink: 'BC', at: [0, -3.1], vector: [0, 400] },
     inputAngVel: INPUT_SPEED,
   };
 }
