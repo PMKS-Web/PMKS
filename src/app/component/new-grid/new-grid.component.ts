@@ -1921,7 +1921,8 @@ export class NewGridComponent implements OnDestroy {
       force.startCoord.x === was.sx &&
       force.startCoord.y === was.sy &&
       force.endCoord.x === was.ex &&
-      force.endCoord.y === was.ey;
+      force.endCoord.y === was.ey &&
+      force.angleRad === was.angle;
     if (restored) this.dragState.noteMechanismRestored();
     else this.dragState.noteMechanismModified();
   }
@@ -3295,7 +3296,7 @@ export class NewGridComponent implements OnDestroy {
      * every force where the drag had dragged it, and a phone's view gesture
      * moved sample zero by a hundred and sixty units with nothing to undo it.
      */
-    forces: { id: string; sx: number; sy: number; ex: number; ey: number }[];
+    forces: { id: string; sx: number; sy: number; ex: number; ey: number; angle: number }[];
   };
 
   private rememberBeforeDrag(): void {
@@ -3311,6 +3312,7 @@ export class NewGridComponent implements OnDestroy {
         sy: force.startCoord.y,
         ex: force.endCoord.x,
         ey: force.endCoord.y,
+        angle: force.angleRad,
       })),
     };
   }
@@ -3332,13 +3334,13 @@ export class NewGridComponent implements OnDestroy {
     this.mechanismSrv.forces.forEach((force) => {
       const back = forces.get(force.id);
       if (!back) return;
-      if (force.startCoord.x !== back.sx || force.startCoord.y !== back.sy) moved = true;
-      force.startCoord.x = back.sx;
-      force.startCoord.y = back.sy;
-      force.endCoord.x = back.ex;
-      force.endCoord.y = back.ey;
-      force.forceLine = force.createForceLine(force.startCoord, force.endCoord);
-      force.forceArrow = force.createForceArrow(force.startCoord, force.endCoord);
+      // Either end, and the direction: a drag of the arrowhead alone moves
+      // nothing at the anchor and still turns the load.
+      const { sx, sy, ex, ey, angle } = back;
+      const { startCoord: s, endCoord: e } = force;
+      if (s.x !== sx || s.y !== sy || e.x !== ex || e.y !== ey || force.angleRad !== angle)
+        moved = true;
+      force.restorePlacement(new Coord(sx, sy), new Coord(ex, ey), angle);
     });
     // Only where something actually moved: a press that never travelled -- a
     // pinch that began on a joint and simply zoomed -- must not be "restored"

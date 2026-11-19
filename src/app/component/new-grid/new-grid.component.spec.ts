@@ -17,6 +17,7 @@ import { SynthesisBuilderService } from '../../services/synthesis/synthesis-buil
 import { NotificationService } from '../../services/notification.service';
 import { EditPermissionService } from '../../services/edit-permission.service';
 import { Coord } from '../../model/coord';
+import { Force } from '../../model/force';
 import { SaveHistoryService } from '../../services/save-history.service';
 import { LONGEST_ARROW_FRACTION } from '../../model/vector-trace';
 import { CYLINDER, MARK, slideMarkPath } from '../../model/joint-marks';
@@ -424,6 +425,27 @@ describe('NewGridComponent welded SVG presentation', () => {
     drag.mockClear();
     alt();
     expect(drag).toHaveBeenCalledTimes(1);
+  });
+
+  it('puts back a force whose arrowhead alone a cancelled drag turned', () => {
+    const mechanism = TestBed.inject(MechanismService);
+    const { ab } = twoBars(mechanism);
+    const force = new Force('F1', ab, new Coord(2, 2), new Coord(2, 3), false, true, 10);
+    ab.forces.push(force);
+    mechanism.forces = [force];
+    const angle = force.angleRad;
+    const component = TestBed.createComponent(NewGridComponent).componentInstance;
+    TestBed.inject(DragStateService).beginDraggingForceEnd();
+    component['rememberBeforeDrag']();
+    force.moveDirectionHandle(new Coord(3, 2));
+    const rebuild = vi.spyOn(mechanism, 'updateMechanism');
+
+    component.onPinch();
+
+    expect([force.startCoord.x, force.startCoord.y]).toEqual([2, 2]);
+    expect([force.endCoord.x, force.endCoord.y]).toEqual([2, 3]);
+    expect(force.angleRad).toBe(angle);
+    expect(rebuild).toHaveBeenCalled();
   });
 });
 
