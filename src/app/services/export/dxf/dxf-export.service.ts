@@ -533,6 +533,11 @@ export class DxfExportService {
     );
   }
 
+  /**
+   * The units of the stored numbers this file prints -- not the reader's
+   * display picks. A data file says what its numbers are in; converting them
+   * to the reader's mass unit would be a second set of rules to keep in step.
+   */
   private tableUnits(): { massUnit: string; inertiaUnit: string; forceUnit: string } {
     const length = this.settings.lengthUnit.value;
     return {
@@ -543,7 +548,10 @@ export class DxfExportService {
           : length === LengthUnit.METER
             ? 'kg*m^2'
             : 'kg*cm^2',
-      forceUnit: 'N',
+      // The unit the magnitudes are stored in, which is what this file
+      // prints: pounds-force under inches, where it used to say newtons over
+      // numbers that were not.
+      forceUnit: length === LengthUnit.INCH ? 'lbf' : 'N',
     };
   }
 }

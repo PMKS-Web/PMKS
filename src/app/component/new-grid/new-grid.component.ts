@@ -51,10 +51,11 @@ import {
   ContextMenuBuilderService,
   MenuHandlers,
 } from '../../services/context-menu-builder.service';
-import { Link, RealLink } from '../../model/link';
+import { holdsValue, Link, RealLink } from '../../model/link';
 import { Lockable } from '../../model/lock-set';
 import { Joint, PrisJoint, RealJoint, RevJoint } from '../../model/joint';
 import { Coord } from '../../model/coord';
+import { holdOffJoint, refuseForceOnJoint, refusedJointAt } from '../../model/force-on-joint';
 import { constrainForceAnchor } from '../../model/force-anchor';
 import {
   forceStates,
@@ -67,6 +68,7 @@ import {
 } from '../../model/utils';
 import { Force } from '../../model/force';
 import { NotificationService } from '../../services/notification.service';
+import { ForceRefusalNotice } from './force-refusal-notice';
 import { BackgroundImageService, MIN_WIDTH } from '../../services/background-image.service';
 import { CdkContextMenuTrigger } from '@angular/cdk/menu';
 import { MatDialog } from '@angular/material/dialog';
@@ -110,6 +112,7 @@ import {
   motorBodyPath,
   motorBodyAt,
   Segment,
+  endTicks,
 } from '../../model/joint-marks';
 import {
   JointDropCandidate,
@@ -128,7 +131,9 @@ import { CylinderPreview, cylinderPreviewOf } from '../../model/cylinder-preview
 import { Cylinder, cylinderSizeOf, cylinderSpanRange, cylinderJoints } from '../../model/cylinder';
 import { accentOutlineClass, CylinderRole, hiddenByCylinder } from '../../model/cylinder-skin';
 import { memberIsFused, PaintStep } from '../../model/cylinder-paint-order';
-import { SnapGuide, snapToAxes } from '../../model/axis-snap';
+import { SnapGuide, SnapPoint, snapToAxes } from '../../model/axis-snap';
+import { SnapLine, snapToLines } from '../../model/line-snap';
+import { placementLines, tracerSnapTargets } from '../../model/tracer-lines';
 import { drawDepths } from '../../model/draw-order';
 import { MODEL_SCALE } from '../../model/render-scale';
 import { uniformBodyOf } from '../../model/uniform-body';
@@ -1700,7 +1705,15 @@ export class NewGridComponent implements OnDestroy {
       this.lastRightClickCoord.y
     );
 
-    this.mechanismSrv.addJointAt(this.svgGrid.snapToGrid(coord, this.snapSuspendedAtRightClick));
+    // On the bar's line if nearly on it: just off it makes a plate (#307).
+    const lines = placementLines(this.activeObjService.selectedLink, (link) =>
+      this.isCylinderMemberLink(link)
+    );
+    const lined = this.lineSnap(coord, lines, [], this.snapSuspendedAtRightClick);
+    this.axisSnapGuides = [];
+    this.mechanismSrv.addJointAt(
+      lined ?? this.svgGrid.snapToGrid(coord, this.snapSuspendedAtRightClick)
+    );
   }
 
   /**
@@ -1838,11 +1851,8 @@ export class NewGridComponent implements OnDestroy {
   /** Where inside the arrow a body drag picked it up, so it does not jump. */
   private forceGrabOffset = new Coord(0, 0);
 
-  /**
-   * The pin a force's anchor is being held short of, ringed red while the
-   * hand is over it: the same ring a joint drop that will be refused wears.
-   */
-  forceRefusedJoint?: RealJoint;
+  /** The joint a force's anchor is being held short of, and what was said about it. */
+  readonly forceRefusal = new ForceRefusalNotice(this.notify);
 
   beginDraggingForceBody(force: Force, event: PointerEvent): void {
     // The arrow itself was grabbed, so neither handle is: a press on the
@@ -1858,8 +1868,9 @@ export class NewGridComponent implements OnDestroy {
    *
    * Two rules, and the joint one is checked first because a joint is on the
    * link whether or not the point lands inside the drawn bar: the anchor snaps
-   * onto a joint that belongs to one link only, and is refused at a pin where
-   * several meet — a force there does not say which body it acts on. Anywhere
+   * onto a joint that belongs to one link only, and is refused at a joint where
+   * a second body meets the link -- another link, the ground, a slider -- since
+   * a force there does not say which body it acts on. Anywhere
    * else it is kept to the region the link's joints span, which
    * `constrainForceAnchor` describes: the line between a bar's two joints, the
    * inside of a plate, any piece of a compound. The hand off that region is
@@ -1878,37 +1889,26 @@ export class NewGridComponent implements OnDestroy {
       const snapWithin = this.snapSuspended ? 0 : 0.2 * this.settings.drawingScale;
       at = constrainForceAnchor(link, wanted, snapWithin);
     }
-    // A pin several links meet at, if the anchor has come to rest within a
-    // margin of one -- whether the hand is over the pin or has pushed past
-    // it, where the link's region ends at the pin and the anchor was left
-    // standing exactly on it.
+    // A joint the force may not sit on, if the anchor has come to rest within
+    // a margin of one -- whether the hand is over it or has pushed past it,
+    // where the link's region ends at the joint and the anchor was left
+    // standing exactly on it. Shared pins, grounded pins and sliders alike:
+    // `model/force-on-joint.ts` is the one rule.
     const margin = 0.3 * this.settings.drawingScale;
-    const shared =
-      anchor.shared ??
-      link.joints.find(
-        (joint): joint is RealJoint =>
-          joint instanceof RealJoint &&
-          joint.links.length > 1 &&
-          Math.hypot(joint.x - at.x, joint.y - at.y) < margin
-      );
-    if (shared) {
-      // Held short of a pin several links meet at, along the bar it is on: a
-      // force exactly there would not say which body it acts on. The pin is
-      // ringed red for as long as the hand is over it and the reason is said
-      // once -- the notification service holds a repeat while one is up, so
-      // saying it on every pointer move does not stack it.
-      at = this.heldOffJoint(link, shared, at, margin);
-      at = constrainForceAnchor(link, at, 0);
-      this.forceRefusedJoint = shared;
+    const shared = anchor.shared ?? refusedJointAt(link, at, margin);
+    const refusal = shared ? refuseForceOnJoint(shared) : undefined;
+    if (shared && refusal) {
+      // Held short of the joint, along the link it is on.
+      at = holdOffJoint(link, shared, at, margin);
       // The body by the name the canvas tags it with: a bracket welded to a
       // barrel mount carries the cylinder's buried inner end in its id (D14,
       // S11), so this named a joint the drawing never shows.
-      this.notify.refusal(
-        'force.shared-joint',
-        `A force cannot sit on joint ${shared.id}: several links meet there, so it would not say which body it pushes on. It is held on ${this.mechanismSrv.visibleBodyName(link)} short of the pin.`
+      this.forceRefusal.refuse(
+        shared,
+        `A force cannot sit on joint ${shared.id}: ${refusal.because}. It is held on link ${this.mechanismSrv.visibleBodyName(link)}, short of the joint.`
       );
     } else {
-      this.forceRefusedJoint = undefined;
+      this.forceRefusal.clearRing();
     }
     this.gridUtils.dragForce(force, at, how);
     // So that the panel values update continuously.
@@ -1926,20 +1926,6 @@ export class NewGridComponent implements OnDestroy {
     else this.dragState.noteMechanismModified();
   }
 
-  /** The same point, pushed `margin` away from a joint along the bar it is on. */
-  private heldOffJoint(link: RealLink, pin: RealJoint, at: Coord, margin: number): Coord {
-    const gap = Math.hypot(at.x - pin.x, at.y - pin.y);
-    if (gap >= margin) return at;
-    // Away from the pin, along the bar the point is on -- toward the joint on
-    // the bar's other end, which is the direction the force was coming from.
-    const other = link.joints.find((joint) => joint !== pin) ?? pin;
-    const dx = other.x - pin.x;
-    const dy = other.y - pin.y;
-    const length = Math.hypot(dx, dy);
-    if (!(length > margin)) return at;
-    return new Coord(pin.x + (dx / length) * margin, pin.y + (dy / length) * margin);
-  }
-
   /**
    * The joint a force's anchor is sitting on, if it is sitting on one.
    *
@@ -1948,7 +1934,7 @@ export class NewGridComponent implements OnDestroy {
    */
   forceSnappedJoint(force: Force): RealJoint | undefined {
     for (const joint of force.link.joints) {
-      if (!(joint instanceof RealJoint) || joint.links.length > 1) continue;
+      if (!(joint instanceof RealJoint) || refuseForceOnJoint(joint)) continue;
       if (Math.hypot(joint.x - force.startCoord.x, joint.y - force.startCoord.y) < 1e-6) {
         return joint;
       }
@@ -2155,26 +2141,13 @@ export class NewGridComponent implements OnDestroy {
           break;
         }
         this.updateDropCandidate(mousePosInSvg, $event.altKey);
-        // A capture has a target of its own, so any axis the last move squared
-        // itself against is no longer what decides where the joint goes.
-        this.axisSnapGuides = [];
         // Captured: the joint sits exactly on the target instead of trailing the
         // cursor, so what is on screen is what a release would produce.
         // A slot capture pulls the joint onto the slot line the same way, so a
         // drop-on-link is as unsurprising as a drop-on-joint (§4.3).
         this.activeObjService.selectedJoint = this.gridUtils.dragJoint(
           this.activeObjService.selectedJoint,
-          this.snapTargetJoint
-            ? new Coord(this.snapTargetJoint.x, this.snapTargetJoint.y)
-            : this.slotCandidate
-              ? new Coord(this.slotCandidate.x, this.slotCandidate.y)
-              : this.alongItsSlot(
-                  this.activeObjService.selectedJoint,
-                  // Last, and only here: a capture is a target the reader
-                  // picked, and a joint on a slot has a line to stay on. The
-                  // grid gets the position nothing else has a claim on.
-                  this.svgGrid.snapToGrid(mousePosInSvg, $event.altKey)
-                )
+          this.dragLanding(this.activeObjService.selectedJoint, mousePosInSvg, $event.altKey)
         );
         this.afterHoldMove(this.activeObjService.selectedJoint);
         this.dragState.noteMechanismModified();
@@ -2499,8 +2472,8 @@ export class NewGridComponent implements OnDestroy {
    * angle's wedge for an angle. Sized in screen pixels, so it reads the same
    * at any zoom.
    */
-  heldChips(): { id: string; x: number; y: number; text: string; w: number }[] {
-    const chips: { id: string; x: number; y: number; text: string; w: number }[] = [];
+  heldChips(): { id: string; hold: string; x: number; y: number; text: string; w: number }[] {
+    const chips: { id: string; hold: string; x: number; y: number; text: string; w: number }[] = [];
     // What reads as held, which is not what the solver is fed: a member's
     // fixed length is honored by the layout rather than by the solver, and a
     // list taken from the solver's bars left the reader's own padlock
@@ -2534,12 +2507,8 @@ export class NewGridComponent implements OnDestroy {
         hold === 'length'
           ? this.lengthLabelAt(a.x, a.y, b.x, b.y)
           : this.angleLabelAt(a.x, a.y, b.x, b.y);
-      const placed = hold === 'length' ? this.lengthChipPlace(link, w) : undefined;
-      if (placed) {
-        at.x = placed.x;
-        at.y = placed.y;
-      }
-      chips.push({ id, x: at.x, y: at.y, text, w });
+      const { x, y } = (hold === 'length' && this.lengthChipPlace(link, w)) || at;
+      chips.push({ id, hold, x, y, text, w });
     }
     return chips;
   }
@@ -3080,8 +3049,44 @@ export class NewGridComponent implements OnDestroy {
   private snapSuspendedAtRightClick = false;
 
   /** Is the app allowed to square this drag up with anything? */
-  private alignmentAllowed(): boolean {
-    return this.settings.isSnapToAlignment.value && !this.snapSuspended;
+  private alignmentAllowed(suspended = this.snapSuspended): boolean {
+    return this.settings.isSnapToAlignment.value && !suspended;
+  }
+
+  /**
+   * Where a dragged joint lands for a cursor at `wanted`: a captured joint or
+   * slot, else its bar's line, else its own slot, else the grid. Called by the
+   * move and by an Alt press or release, which must land it the same way.
+   */
+  private dragLanding(joint: Joint, wanted: Coord, altKey: boolean): Coord {
+    // Any axis the last landing squared itself against is no longer in play.
+    this.axisSnapGuides = [];
+    const captured = this.snapTargetJoint ?? this.slotCandidate;
+    if (captured) return new Coord(captured.x, captured.y);
+    return (
+      this.tracerLineSnap(joint, wanted) ??
+      // Last, and only here: a capture is a target the reader picked, and a
+      // joint on a slot has a line to stay on. The grid gets the position
+      // nothing else has a claim on.
+      this.alongItsSlot(joint, this.svgGrid.snapToGrid(wanted, altKey))
+    );
+  }
+
+  /** A dragged tracer on its bar's line when nearly there, tried before the grid (#307). */
+  private tracerLineSnap(joint: Joint, wanted: Coord): Coord | undefined {
+    const pins = this.mechanismSrv.getJoints();
+    const { lines, others } = tracerSnapTargets(joint, pins, (link) =>
+      this.isCylinderMemberLink(link)
+    );
+    return this.lineSnap(wanted, lines, others, this.snapSuspended);
+  }
+
+  /** On one of `lines` if `wanted` is within the axis snap's reach of it. */
+  private lineSnap(wanted: Coord, lines: SnapLine[], others: SnapPoint[], suspended: boolean) {
+    if (!lines.length || !this.alignmentAllowed(suspended)) return undefined;
+    const snapped = snapToLines(wanted, lines, others, this.svgGrid.scaleWithZoom(8));
+    if (snapped) this.axisSnapGuides = snapped.guides;
+    return snapped && new Coord(snapped.point.x, snapped.point.y);
   }
 
   /**
@@ -3355,7 +3360,7 @@ export class NewGridComponent implements OnDestroy {
    */
   private letGoOfEverything(revert = false): void {
     // The red ring a force drag put on a pin goes with the drag.
-    this.forceRefusedJoint = undefined;
+    this.forceRefusal.forget();
     // The preview is rendered independently of the drag state, so canceling
     // that state alone leaves a frozen arrow behind after another right-click.
     this.forceGhost = undefined;
@@ -3530,11 +3535,11 @@ export class NewGridComponent implements OnDestroy {
   mouseUp($event: MouseEvent) {
     this.holdRing = undefined;
     this.holdGuide = undefined;
-    // The red ring a force drag put on a pin goes with the drag.
-    this.forceRefusedJoint = undefined;
     // The last move of a drag lands before the release is read, so the part
     // ends where the hand was, not one frame short of it.
     this.applyPendingDragMove();
+    // After that move, which can refuse a joint all over again.
+    this.forceRefusal.forget();
     //This is the mouseUp that is called no matter what is clicked on
     this.bgDrag = undefined;
     if (this.showSynthesis()) {
@@ -3812,6 +3817,7 @@ export class NewGridComponent implements OnDestroy {
    */
   releaseCanvasGestures(event?: PointerEvent): void {
     this.applyPendingDragMove();
+    this.forceRefusal.forget();
     this.bgDrag = undefined;
     if (this.synthCanvas.dragging) {
       this.synthCanvas.release();
@@ -5106,18 +5112,7 @@ export class NewGridComponent implements OnDestroy {
 
   /** End ticks across the travel line, so its two ends read as limits. */
   cylinderRangeCaps(range: { from: Coord; to: Coord }): Segment[] {
-    const dx = range.to.x - range.from.x;
-    const dy = range.to.y - range.from.y;
-    const length = Math.hypot(dx, dy) || 1;
-    const half = 0.12 * this.settings.drawingScale;
-    const nx = (-dy / length) * half;
-    const ny = (dx / length) * half;
-    return [range.from, range.to].map((end) => ({
-      x1: end.x - nx,
-      y1: end.y - ny,
-      x2: end.x + nx,
-      y2: end.y + ny,
-    }));
+    return endTicks(range, 0.12 * this.settings.drawingScale);
   }
 
   /** The label sits clear of the line, on the side away from the barrel. */
@@ -5618,7 +5613,10 @@ export class NewGridComponent implements OnDestroy {
    */
   private holdReads(link: Link, which: 'length' | 'angle'): boolean {
     if (this.mechanismSrv.isLockedTarget(link)) return false;
-    return this.mechanismSrv.holdOf(link) === which || this.mechanismSrv.memberHoldOf(link, which);
+    return (
+      holdsValue(this.mechanismSrv.holdOf(link), which) ||
+      this.mechanismSrv.memberHoldOf(link, which)
+    );
   }
 
   /** How far from the center anything must sit to clear the center-of-mass mark. */
@@ -6069,14 +6067,19 @@ export class NewGridComponent implements OnDestroy {
   }
 
   private reconsiderDrop($event: KeyboardEvent, held: boolean) {
-    if ($event.key !== 'Alt') return;
-    if (this.dragState.joint !== jointStates.dragging) return;
+    if ($event.key !== 'Alt' || this.dragState.joint !== jointStates.dragging) return;
 
+    // A move still waiting for its frame carries the old Alt, and would put
+    // it back when it landed: let it land first, then apply the key.
+    this.applyPendingDragMove();
+    this.snapSuspended = held;
+    // Not a drag yet, so nothing will be saved on release: a key must not move
+    // the joint outside the history. The next real move places it.
+    if (!this.dragState.hasModified) return;
     this.updateDropCandidate(this.mouseLocation, held);
-    const restingOn = this.snapTargetJoint ?? this.mouseLocation;
     this.activeObjService.selectedJoint = this.gridUtils.dragJoint(
       this.activeObjService.selectedJoint,
-      new Coord(restingOn.x, restingOn.y)
+      this.dragLanding(this.activeObjService.selectedJoint, this.mouseLocation, held)
     );
     this.activeObjService.updateSelectedObj(this.activeObjService.selectedJoint);
   }

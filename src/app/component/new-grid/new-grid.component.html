@@ -1463,7 +1463,7 @@
       ></circle>
     }
     <!-- A pin a force's anchor is being held short of -->
-    @if (forceRefusedJoint; as pin) {
+    @if (forceRefusal.joint; as pin) {
       <circle
         class="snapRefused"
         [attr.r]="0.38 * settings.drawingScale"
@@ -2627,8 +2627,13 @@
        like the lock marks: in the analysis modes nothing is being held against. -->
   @if (holdsVisible()) {
     <g id="holdChipHolder" modelFrame style="pointer-events: none">
-      @for (chip of heldChips(); track chip.id) {
-        <g class="holdChip" [upright]="chip" [attr.data-hold-chip]="chip.id">
+      @for (chip of heldChips(); track chip.id + chip.hold) {
+        <g
+          class="holdChip"
+          [upright]="chip"
+          [attr.data-hold-chip]="chip.id"
+          [attr.data-hold-value]="chip.hold"
+        >
           <rect
             [attr.x]="-chip.w / 2"
             [attr.y]="-svgGrid.scaleWithZoom(11)"

@@ -18,6 +18,7 @@ import {
 import { MatIcon } from '@angular/material/icon';
 import { MatTooltip, TooltipPosition } from '@angular/material/tooltip';
 import { TOOLTIPS_ARE_LABELS } from '../tooltips-are-labels';
+import { ShortcutTipDirective } from '../shortcut-tip/shortcut-tip.directive';
 import {
   ContextMenuModel,
   MenuChoice,
@@ -51,7 +52,15 @@ const CHOICE_COLUMNS = 2;
   templateUrl: './context-menu.component.html',
   styleUrls: ['./context-menu.component.scss'],
   changeDetection: ChangeDetectionStrategy.Eager,
-  imports: [CdkMenu, CdkMenuGroup, CdkMenuItem, CdkMenuItemRadio, MatIcon, MatTooltip],
+  imports: [
+    CdkMenu,
+    CdkMenuGroup,
+    CdkMenuItem,
+    CdkMenuItemRadio,
+    MatIcon,
+    MatTooltip,
+    ShortcutTipDirective,
+  ],
   providers: [TOOLTIPS_ARE_LABELS],
 })
 export class ContextMenuComponent {

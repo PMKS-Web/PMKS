@@ -43,6 +43,7 @@ import { SaveHistoryService } from '../../services/save-history.service';
 import { PrisJoint, RealJoint } from '../../model/joint';
 import { inputSetFor, NO_INPUT_SET } from '../../model/mechanism/readiness';
 import { StartMoveRefusal } from '../../model/start-move-refusal';
+import { snapsToStart } from '../../model/scrub-snap';
 import { CdkConnectedOverlay, CdkOverlayOrigin, ConnectedPosition } from '@angular/cdk/overlay';
 
 /** What the stylesheet is asked for, and what to assume if it has not loaded. */
@@ -246,6 +247,15 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
   private positionSub?: Subscription;
   private wasAnimating = false;
   private wasRowAnimating = false;
+  /**
+   * A pointer pressed a handle and has not yet been settled, so the next
+   * `change` is a release that may snap to the start. A key press clears it, so
+   * an arrow key's step never looks like a release.
+   */
+  protected scrubPointerHeld = false;
+
+  /** Stops listening for the release of the press being held, if any. */
+  private scrubRelease?: AbortController;
 
   ngOnInit(): void {
     // The rows are rebuilt from the service on every change detection, and the
@@ -367,6 +377,7 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
   }
 
   ngOnDestroy(): void {
+    this.scrubRelease?.abort();
     this.keySub.unsubscribe();
     this.positionSub?.unsubscribe();
     this.heightWatch?.disconnect();
@@ -1089,6 +1100,74 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
       return;
     }
     this.mechanism.seekMechanismTo(row.index, along);
+    this.publishMotion();
+  }
+
+  /**
+   * A pointer let go of a row's handle: if it came to rest a few pixels from
+   * the seat, it means the start.
+   *
+   * Only a pointer. An arrow key moves one step from the seat, which is inside
+   * the snap band, so snapping keyboard steps would hold the handle in the seat
+   * for good. `change` rather than `pointerup` because a range commits on
+   * release wherever the pointer is, mouse or finger, and the press may have
+   * left the track by then.
+   */
+  settleScrub(row: PlaybackRow, event: Event): void {
+    this.settleRelease(row, event.target as HTMLInputElement);
+  }
+
+  /**
+   * A pointer pressed a row's handle.
+   *
+   * A press that moves nothing commits nothing, so no `change` comes to settle
+   * it, and a handle resting a pixel from its seat would stay there. The
+   * release is therefore also heard on the window -- anywhere, since the press
+   * may have left the track -- and settled a turn later, once any `change` the
+   * release does fire has settled it first. Only the pointer that pressed
+   * counts: another finger lifting elsewhere is not this handle's release.
+   */
+  holdScrub(row: PlaybackRow, event: Event): void {
+    this.scrubPointerHeld = true;
+    this.scrubRelease?.abort();
+    const release = new AbortController();
+    this.scrubRelease = release;
+    const input = event.target as HTMLInputElement;
+    const pressedBy = (event as PointerEvent).pointerId;
+    const settleLater = (lifted: Event) => {
+      if ((lifted as PointerEvent).pointerId !== pressedBy) return;
+      release.abort();
+      setTimeout(() => this.settleRelease(row, input));
+    };
+    window.addEventListener('pointerup', settleLater, { signal: release.signal });
+    window.addEventListener('pointercancel', settleLater, { signal: release.signal });
+  }
+
+  /** Snap a released handle to the start if it came to rest beside its seat. */
+  private settleRelease(row: PlaybackRow, input: HTMLInputElement): void {
+    if (!this.scrubPointerHeld) return;
+    this.scrubPointerHeld = false;
+    if (snapsToStart(Number(input.value), row.anchorAt, input.getBoundingClientRect().width)) {
+      this.seekRowToStart(row, input);
+    }
+  }
+
+  /**
+   * Land exactly on the start pose, because the handle came within a few
+   * pixels of its seat.
+   *
+   * By time rather than by position: the start is t = 0 by construction, and
+   * an input that turns back passes its seat twice a cycle, only once of which
+   * is the start. The handle is put in the seat too, because the binding will
+   * not move it -- the row's value may well not have changed.
+   */
+  private seekRowToStart(row: PlaybackRow, input: HTMLInputElement): void {
+    input.value = String(row.anchorAt ?? 0);
+    if (row.index === -1) {
+      this.mechanism.seekAllAlong(row.leader, 0);
+      return;
+    }
+    this.mechanism.seekMechanism(row.index, 0);
     this.publishMotion();
   }
 
