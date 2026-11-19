@@ -19,10 +19,15 @@
           type="button"
           class="cm-cross"
           [class.cm-cross--off]="!!crossing.refusal"
-          [attr.aria-label]="crossing.tip"
-          [matTooltip]="crossing.refusal?.long ?? crossing.tip"
+          [attr.aria-label]="crossing.label"
+          [matTooltip]="crossing.refusal?.long ?? ''"
+          [matTooltipDisabled]="!crossing.refusal"
           matTooltipPosition="left"
           [matTooltipShowDelay]="500"
+          [appShortcutTip]="crossing.label"
+          [shortcutTipFor]="crossing.shortcut"
+          [shortcutTipDisabled]="!!crossing.refusal"
+          shortcutTipPosition="left"
           (click)="cross(crossing)"
         >
           @if (crossing.material) {

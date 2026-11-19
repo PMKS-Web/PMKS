@@ -199,7 +199,10 @@ describe('MultiEditService', () => {
   });
 
   it('refuses impossible held dimensions without moving any joint or saving', () => {
-    const { b, c, ab, bc } = connectedBars();
+    const { a, b, c, ab, bc } = connectedBars();
+    // Locked, not just grounded: a ground pin gives before a typed number is
+    // refused.
+    a.locked = true;
     c.locked = true;
     ab.hold = bc.hold = 'length';
     mechanism.updateMechanism(false);

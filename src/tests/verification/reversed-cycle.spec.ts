@@ -9,6 +9,7 @@ import {
 } from '../../app/component/MODALS/templates/template-linkages';
 import { MechanismService } from '../../app/services/mechanism.service';
 import { RealJoint } from '../../app/model/joint';
+import { SelectedTabService, TabID } from '../../app/selected-tab.service';
 
 /**
  * Reversing a drive keeps the cycle exactly where it is and turns the machine
@@ -21,6 +22,10 @@ import { RealJoint } from '../../app/model/joint';
  */
 function load(payload: string) {
   const harness = createMechanismHarness();
+  // In Kinematic Analysis, where a drawing is solved whatever its size: Edit
+  // puts off a large one's solve (Running_Horse) until Play, and reversing a
+  // drive is about a cycle that has been worked out.
+  harness.injector.get(SelectedTabService).setTab(TabID.ANALYZE);
   const decoder = new StringTranscoder();
   decoder.decodeURL(payload);
   new MechanismBuilder(harness.service, decoder, harness.settings, harness.active).build(true);

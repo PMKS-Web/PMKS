@@ -122,7 +122,7 @@ export class MechanismBuilder {
       );
     }
 
-    joint.name = jointData.name;
+    joint.name = ownName(jointData.name, jointData.id);
     // Not on a slider: there the same bit is `rotates` above. A slider welds to
     // nothing — its only link was the block, and a weld needs two bodies to
     // fuse — so reading it as a weld here would offer Unweld on a Slide.
@@ -177,7 +177,7 @@ export class MechanismBuilder {
     // for all joints in link, connect to link
     //for (let joint of revoluteJoints) joint.links.push(link);
 
-    link.name = linkData.name;
+    link.name = ownName(linkData.name, linkData.id);
 
     return link;
   }
@@ -208,7 +208,7 @@ export class MechanismBuilder {
       forceData.isFacingOut,
       forceData.magnitude
     );
-    force.name = forceData.name;
+    force.name = ownName(forceData.name, forceData.id);
     // The record may name a selectable welded member. Its root participates
     // in the solve; its member identity determines where an unweld leaves it.
     if (forceData.linkID !== link.id) force.anchoredTo = forceData.linkID;
@@ -316,8 +316,11 @@ export class MechanismBuilder {
       // Copying it only when the pin had been renamed left the surviving joint
       // wearing the *prismatic* record's name, so an unnamed slider decoded as
       // "E" while calling itself B. `name` answers with the id when nobody has
-      // set one, so an unnamed pin hands over its id and nothing reads oddly.
-      slider.name = pin.name;
+      // set one, so an unnamed pin is asked through `ownName`: it hands over no
+      // name, and the joint goes on being called by its id -- the pin's, a line
+      // below -- rather than by that id written down as a name that then
+      // outlives the next re-lettering.
+      slider.name = ownName(pin.name, pin.id);
       renamed.set(slider.id, pin.id);
       slider.id = pin.id;
 
@@ -409,11 +412,10 @@ export class MechanismBuilder {
       const seal = cylinder.seal;
       if (isLetteredId(seal.id)) continue;
       const was = seal.id;
-      // `name` falls back to the id when nobody has set one -- but the codec
-      // writes the getter's answer, so every decoded joint comes back with its
-      // name spelled out. A seal whose name is only its own old id has not been
-      // renamed by anybody, and letting go of it is what makes the new letter
-      // the name a reader sees. A name someone chose is left exactly as it is.
+      // A seal whose name is only its own old id has not been renamed by
+      // anybody, and letting go of it is what makes the new letter the name a
+      // reader sees. `ownName` already did so for the names the URL wrote; this
+      // is for one written down since. A name someone chose is left as it is.
       if (seal.name === was) seal.name = '';
       seal.id = nextFreeLetter(taken);
       taken.delete(was);
@@ -741,4 +743,19 @@ export class MechanismBuilder {
     // Fix visual bug for forces
     this.mechanism.forces.forEach((force) => force.updateInternalValues());
   }
+}
+
+/**
+ * The name a part was given, or none if it was only ever called by its id.
+ *
+ * `name` falls back to the id when nobody has set one, and the codec writes the
+ * getter's answer -- so every part comes back from a URL with its name spelled
+ * out. Kept as written, that name stayed fixed while the id moved on: a link
+ * named after its joints stopped following them, and adding a tracer point
+ * renamed `AB` to `ABC` in a drawing made in this session but not in one opened
+ * from a template, a shared link, a reload or an undo (#317). A name equal to
+ * the id is the automatic one, so it is read back as no name at all.
+ */
+export function ownName(written: string, id: string): string {
+  return written === id ? '' : written;
 }

@@ -33,10 +33,7 @@ import { filmstrip, contactSheet } from './filmstrip.mjs';
 import { waitForReady } from './app-ready.mjs';
 
 const BASE = process.env.PMKS_BASE_URL ?? 'http://localhost:4200';
-import {
-  TEMPLATE_LINKAGES as payloads,
-  DEV_TEMPLATE_LINKAGES as devPayloads,
-} from './template-payloads.mjs';
+import { TEMPLATE_LINKAGES as payloads } from './template-payloads.mjs';
 
 /** A gallery drawing's query, as docs/fixture-urls.md publishes it. */
 const galleryQuery = (name) => {
@@ -185,15 +182,17 @@ await page.waitForTimeout(600);
 record('and opened there, it is open back in Edit', await overviewShown());
 
 // --- a link's job and size share its row when they fit ----------------------
-/** Per link row: does the size sit on the job's line? */
+/** Per link row: does the size sit on the line of the job, or of the name? */
 const linkRowsOnOneLine = () =>
   page.evaluate(() =>
     [...document.querySelectorAll('app-mechanism-panel .linkRest')].map((row) => {
-      const job = row.querySelector('.linkRole').getBoundingClientRect();
+      const beside = (
+        row.querySelector('.linkRole') ?? row.previousElementSibling
+      ).getBoundingClientRect();
       const size = row.querySelector('.linkLength');
       return {
         size: size.innerText,
-        oneLine: Math.abs(job.top - size.getBoundingClientRect().top) < 4,
+        oneLine: Math.abs(beside.top - size.getBoundingClientRect().top) < 4,
       };
     })
   );
@@ -207,6 +206,10 @@ record(
   rows
 );
 record(
+  "Edit names no link's job: that is the analysis modes' to say (#276)",
+  await page.evaluate(() => !document.querySelector('app-mechanism-panel .linkRole'))
+);
+record(
   'and no size carries a tooltip of lengths',
   await page.evaluate(() => !document.querySelector('app-mechanism-panel .linkLength[title]'))
 );
@@ -217,6 +220,11 @@ record(
   "in the analysis panel's width every link, plates too, is one line",
   rows.length > 0 && rows.every((row) => row.oneLine),
   rows
+);
+record(
+  'and there every link says its job',
+  (await page.locator('app-mechanism-panel .linkRole').count()) === rows.length,
+  rows.length
 );
 await tab('Edit').click();
 
@@ -432,8 +440,14 @@ const roles = () =>
   page
     .locator('app-mechanism-panel .linkRole')
     .evaluateAll((cells) => cells.map((cell) => cell.innerText.trim()));
+// The jobs are read in Kinematic Analysis, the one mode that says them; the
+// rename and its undo happen in Edit.
 await open(payloads['4-Bar']);
+await tab('Kinematic').click();
+await page.waitForTimeout(600);
 const before = await roles();
+await tab('Edit').click();
+await page.waitForTimeout(600);
 await page
   .locator('app-mechanism-panel editable-title-block button', { hasText: 'Rename' })
   .click();
@@ -442,7 +456,11 @@ await page.locator('#title-input-box').press('Enter');
 await page.waitForTimeout(500);
 await page.evaluate(() => ng.getComponent(document.querySelector('app-top-bar')).undo());
 await page.waitForTimeout(500);
+await tab('Kinematic').click();
+await page.waitForTimeout(600);
 const after = await roles();
+await tab('Edit').click();
+await page.waitForTimeout(600);
 record(
   'undoing a rename leaves every link its job',
   before.includes('Input crank') && JSON.stringify(after) === JSON.stringify(before),
@@ -450,7 +468,7 @@ record(
 );
 
 // --- a large drawing waiting for Play is not "can't run" --------------------
-await open(devPayloads['Dev_Render_Stress']);
+await open(payloads.Running_Horse);
 text = await panelText();
 record(
   'a drawing solved on Play has no "Can\'t run yet" banner',

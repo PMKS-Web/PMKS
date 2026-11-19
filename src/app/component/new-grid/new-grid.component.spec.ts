@@ -359,6 +359,60 @@ describe('NewGridComponent welded SVG presentation', () => {
     component.mouseUp(new MouseEvent('mouseup'));
     expect(drag).toHaveBeenCalledTimes(2);
   });
+
+  it('lets a move waiting for its frame land before Alt changes, so it cannot undo the key', () => {
+    const mechanism = TestBed.inject(MechanismService);
+    const active = TestBed.inject(ActiveObjService);
+    const joint = new RevJoint('A', 0, 0);
+    mechanism.joints = [joint];
+    mechanism.links = [];
+    active.selectedJoint = joint;
+
+    const fixture = TestBed.createComponent(NewGridComponent);
+    const component = fixture.componentInstance;
+    TestBed.inject(DragStateService).beginDraggingJoint();
+    component['timeMouseDown'] = 0;
+    component['startX'] = 0;
+    component['startY'] = 0;
+
+    // A move made without Alt is still waiting for its frame when Alt goes down.
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 20, clientY: 20, altKey: false }));
+    component['reconsiderDrop'](new KeyboardEvent('keydown', { key: 'Alt' }), true);
+    frame(component);
+    expect(component['snapSuspended']).toBe(true);
+  });
+
+  it('lets Alt move a joint only once the press has become a drag', () => {
+    const mechanism = TestBed.inject(MechanismService);
+    const active = TestBed.inject(ActiveObjService);
+    const gridUtils = TestBed.inject(GridUtilsService);
+    const joint = new RevJoint('A', 0, 0);
+    mechanism.joints = [joint];
+    mechanism.links = [];
+    active.selectedJoint = joint;
+
+    const fixture = TestBed.createComponent(NewGridComponent);
+    const component = fixture.componentInstance;
+    TestBed.inject(DragStateService).beginDraggingJoint();
+    component['startX'] = 0;
+    component['startY'] = 0;
+    const drag = vi.spyOn(gridUtils, 'dragJoint');
+    const alt = () =>
+      component['reconsiderDrop'](new KeyboardEvent('keydown', { key: 'Alt' }), true);
+
+    // Pressed, not moved: the key changes the snap and leaves the joint alone.
+    alt();
+    expect(component['snapSuspended']).toBe(true);
+    expect(drag).not.toHaveBeenCalled();
+
+    // Once a move has carried it, the key re-places it at once.
+    component['timeMouseDown'] = 0;
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 20, clientY: 20 }));
+    frame(component);
+    drag.mockClear();
+    alt();
+    expect(drag).toHaveBeenCalledTimes(1);
+  });
 });
 
 /**

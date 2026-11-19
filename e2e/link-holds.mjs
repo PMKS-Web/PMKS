@@ -252,8 +252,36 @@ await page.screenshot({ path: `${OUT}/02-angle-dimension.png` });
 await page.mouse.move(700, 500);
 await page.waitForTimeout(200);
 
-// --- Dragging B rides the arc about A, with the guide drawn ----------------
+// --- A ground pin is not a Lock: dragging B swings A along (#261) ----------
 
+const aGrounded = await jointModel('A');
+const bGrounded = await jointModel('B');
+await dragBy(await jointOnScreen('B'), 120, 40);
+const aSwung = await jointModel('A');
+const bSwung = await jointModel('B');
+record(
+  'dragging B with A only grounded moves A and keeps AB at its held length',
+  dist(aGrounded, aSwung) > 0.05 &&
+    Math.abs(dist(aSwung, bSwung) - dist(aGrounded, bGrounded)) < 1e-3,
+  { aGrounded, aSwung, bSwung }
+);
+await page.keyboard.press('Control+z');
+await page.waitForTimeout(400);
+record('undo puts A back', dist(await jointModel('A'), aGrounded) < 1e-6);
+
+// --- With A locked, dragging B rides the arc about it, with the guide drawn --
+
+const toggleLockOn = (id) =>
+  inAngular(
+    page,
+    (id) => {
+      const c = ng.getComponent(document.querySelector('app-new-grid'));
+      c.mechanismSrv.toggleLock(c.mechanismSrv.joints.find((j) => j.id === id));
+    },
+    id
+  );
+await toggleLockOn('A');
+await page.waitForTimeout(200);
 const a = await jointModel('A');
 const bBefore = await jointModel('B');
 const radius = dist(a, bBefore);
@@ -272,6 +300,8 @@ record('B actually moved along the arc', dist(bBefore, bAfter) > 0.05, { bBefore
 record('the amber arc guide is drawn while dragging', guideSeen);
 record('A did not move', (await jointModel('A')).x === a.x && (await jointModel('A')).y === a.y);
 await page.screenshot({ path: `${OUT}/03-after-arc-drag.png` });
+await toggleLockOn('A');
+await page.waitForTimeout(200);
 
 // --- Holding the angle moves the hold, and the message offers the way back --
 
@@ -311,12 +341,10 @@ const bcOn = await linkOnScreen('BC');
 await page.mouse.click(bcOn.x, bcOn.y, { button: 'right' });
 await page.waitForTimeout(350);
 await clickRow('Fixed Length');
-// Lock C so BC's far end is fixed: B is then between two held lengths from two
-// fixed points, a rigid triangle.
-await inAngular(page, () => {
-  const c = ng.getComponent(document.querySelector('app-new-grid'));
-  c.mechanismSrv.toggleLock(c.mechanismSrv.joints.find((j) => j.id === 'C'));
-});
+// Lock C and A so both far ends are fixed: B is then between two held lengths
+// from two fixed points, a rigid triangle. A ground pin alone would give.
+await toggleLockOn('C');
+await toggleLockOn('A');
 await page.waitForTimeout(200);
 const bHeld = await jointModel('B');
 let ringSeen = false;
@@ -359,14 +387,13 @@ await page.waitForTimeout(150);
 
 // --- Undo takes the last hold off: the hold rides the URL ------------------
 
-await inAngular(page, () => {
-  const c = ng.getComponent(document.querySelector('app-new-grid'));
-  c.mechanismSrv.toggleLock(c.mechanismSrv.joints.find((j) => j.id === 'C'));
-});
+await toggleLockOn('C');
+await toggleLockOn('A');
 await page.waitForTimeout(200);
 record('BC still holds its length before the undo', (await holdOf('BC')) === 'length');
-// Three edits since the hold: the lock on C, its release, and the hold itself.
-for (let step = 0; step < 3; step++) {
+// Five edits since the hold: the locks on C and A, their releases, and the
+// hold itself.
+for (let step = 0; step < 5; step++) {
   await page.keyboard.press('Control+z');
   await page.waitForTimeout(400);
 }
@@ -476,6 +503,10 @@ record(
   })
 );
 
+// G locked, not just grounded: under the pointer a ground pin gives (#261),
+// and the line is only drawn about an end that holds still.
+await toggleLockOn('G');
+await page.waitForTimeout(200);
 const mountOn = await jointOnScreen('C');
 await page.mouse.move(mountOn.x, mountOn.y);
 await page.mouse.down();
@@ -494,6 +525,8 @@ record(
   { heldAt, now: await bearing(), moved: dist(mountBefore, mountAfter) }
 );
 record('with the line it may slide on drawn while the hand is on it', guideDrawn);
+await toggleLockOn('G');
+await page.waitForTimeout(200);
 
 // It rides the URL, which is what makes it survive a share and an undo.
 record(
