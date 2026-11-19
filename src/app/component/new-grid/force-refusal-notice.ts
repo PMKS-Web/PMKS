@@ -19,15 +19,25 @@ export class ForceRefusalNotice {
   /** The id of the last refusal said, to take down when another replaces it. */
   private said?: string;
 
+  /**
+   * Refusals this notice took down early. Their cooldown is still running, so
+   * a hand back on that joint within it would be ringed with nothing said.
+   */
+  private takenDown = new Set<string>();
+
   constructor(private readonly notify: NotificationService) {}
 
   /** Ring `joint` and say `text` about it. */
   refuse(joint: RealJoint, text: string): void {
     this.joint = joint;
     const id = `force.refused-joint.${joint.id}`;
-    if (this.said && this.said !== id) this.notify.dismissId(this.said);
+    if (this.said && this.said !== id) {
+      this.notify.dismissId(this.said);
+      this.takenDown.add(this.said);
+    }
     this.said = id;
-    this.notify.refusal(id, text);
+    // Still on screen, it is not stacked: the service holds a repeat while one is up.
+    this.notify.refusal(id, text, this.takenDown.delete(id) ? { cooldownMs: 0 } : undefined);
   }
 
   /** The hand has left the joint: the ring goes, and the message stays up for its time. */
@@ -39,5 +49,6 @@ export class ForceRefusalNotice {
   forget(): void {
     this.joint = undefined;
     this.said = undefined;
+    this.takenDown.clear();
   }
 }
