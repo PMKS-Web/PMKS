@@ -1,7 +1,7 @@
 import { SvgGridService } from '../../services/svg-grid.service';
 import { READINESS } from '../../ui-text';
 import { ActiveObjService } from '../../services/active-obj.service';
-import { holdOf } from '../../model/link-holds';
+import { holdOf, holdWords } from '../../model/link-holds';
 import { NumberUnitParserService } from '../../services/number-unit-parser.service';
 import { Component, ChangeDetectionStrategy, inject } from '@angular/core';
 import { RightPanelComponent } from '../right-panel/right-panel.component';
@@ -92,7 +92,7 @@ export class BottombarComponent {
       // its own menu call it (decision S10). It said "Link BC" over a rod whose
       // panel is headed Rod CB and whose id names the buried joint the drawing
       // never shows.
-      return `${this.mechanismSrv.bodyLabel(selected)}: fixed ${held}`;
+      return `${this.mechanismSrv.bodyLabel(selected)}: fixed ${holdWords(held)}`;
     }
     const blockers = this.mechanismSrv.blockerCount();
     if (this.mechanismSrv.mechanisms.length === 0) {

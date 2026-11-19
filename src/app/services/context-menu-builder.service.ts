@@ -2,8 +2,8 @@ import { LinkTraceService } from './link-trace.service';
 import { Injectable, inject } from '@angular/core';
 import { NumberUnitParserService } from './number-unit-parser.service';
 import { AngleUnit } from '../model/utils';
-import { heldBarsAt, holdOf, holdableBar } from '../model/link-holds';
-import { LinkHold } from '../model/link';
+import { heldBarsAt, holdOf, holdableBar, holdWords } from '../model/link-holds';
+import { HeldValue, holdsValue } from '../model/link';
 import {
   ContextMenuModel,
   MenuChoice,
@@ -281,7 +281,7 @@ export class ContextMenuBuilderService {
     if (links.length === parts.length) {
       const refused = said(this.multiEdit.holdRefusal(refs));
       for (const which of ['length', 'angle'] as const) {
-        const held = state(links.map((link) => link.hold === which));
+        const held = state(links.map((link) => holdsValue(link.hold, which)));
         rows.push(
           new MenuRow({
             label: which === 'length' ? 'Fixed Length' : 'Fixed Angle',
@@ -292,7 +292,7 @@ export class ContextMenuBuilderService {
             checked: held.all,
             hint: held.mixed ? 'Mixed' : undefined,
             refusal: refused,
-            action: () => this.multiEdit.setHold(refs, held.all ? undefined : which),
+            action: () => this.multiEdit.setHold(refs, which, !held.all),
           })
         );
       }
@@ -1170,9 +1170,9 @@ export class ContextMenuBuilderService {
   /**
    * Fixed Length and Fixed Angle: the two numbers a bar can hold against
    * edits. Each row carries the value it would hold, so what is held is what
-   * is named. A link holds one or the other -- both is what Lock means -- so
-   * the row for the other says it moves the hold rather than adding one, and
-   * a locked link, which already holds both, offers neither.
+   * is named. Each row is about its own value, so a bar may hold both and
+   * still slide sideways (#309). A locked link, which already cannot move at
+   * all, offers neither.
    *
    * It had drifted up above the cylinder's rows, one function too early, and
    * described neither of the two it was sitting between.
@@ -1190,14 +1190,9 @@ export class ContextMenuBuilderService {
           }
         : undefined;
     const held = holdOf(link);
-    const row = (
-      hold: Exclude<LinkHold, undefined>,
-      label: string,
-      icon: string,
-      value: string
-    ) => {
-      const on = held === hold;
-      const moves = !on && held !== undefined;
+    const row = (hold: HeldValue, label: string, icon: string, value: string) => {
+      const on = holdsValue(held, hold);
+      const both = !on && held !== undefined;
       return new MenuRow({
         label,
         posePolicy: 'preserve',
@@ -1205,14 +1200,14 @@ export class ContextMenuBuilderService {
         material: true,
         kind: 'toggle',
         checked: on,
-        action: () => this.mechanism.setHold(link, on ? undefined : hold),
+        action: () => this.mechanism.setBarHold(link, hold, !on),
         refusal,
         // Never the word "lock" here: this row sits directly above the Locked
-        // row, which is the joint mark and a different rule. A bar keeps one
-        // value or the other fixed; a Lock holds a part where it is.
-        hint: on ? undefined : moves ? 'moves the fix' : value,
-        tip: moves
-          ? 'A link fixes one or the other, never both. Choosing this releases the one already fixed.'
+        // row, which is the joint mark and a different rule. A bar keeps its
+        // values fixed; a Lock holds a part where it is.
+        hint: on ? undefined : value,
+        tip: both
+          ? 'Fix this link at its current length and angle. Dragging it slides it without turning or stretching.'
           : hold === 'length'
             ? 'Fix this link at its current length. Dragging either joint slides it on the arc about the other.'
             : 'Fix this link at its current angle from the grid. Dragging either joint slides it along that line.',
@@ -1288,7 +1283,7 @@ export class ContextMenuBuilderService {
     const kind = bar.subset.length > 0 ? 'Compound' : bar.joints.length > 2 ? 'Body' : 'Bar';
     const joints = this.jointsShownOn(bar);
     const locked = this.mechanism.isLockedTarget(bar) ? ' · locked' : '';
-    const held = !locked && holdOf(bar) ? ` · fixed ${holdOf(bar)}` : '';
+    const held = !locked && holdOf(bar) ? ` · fixed ${holdWords(holdOf(bar))}` : '';
     return `${kind} · Joints ${joints}${locked}${held}`;
   }
 

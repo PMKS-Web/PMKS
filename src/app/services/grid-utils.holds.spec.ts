@@ -1,7 +1,7 @@
 import '../model/joint';
 import { Coord } from '../model/coord';
 import { Force } from '../model/force';
-import { RevJoint } from '../model/joint';
+import { PrisJoint, RevJoint } from '../model/joint';
 import { RealLink } from '../model/link';
 import { MODEL_SCALE } from '../model/render-scale';
 import { createMechanismHarness, wireGraph } from '../../test-utils/mechanism-harness';
@@ -116,6 +116,7 @@ describe('dragging against a held bar', () => {
     const parts = fourBar(service);
     parts.ab.hold = 'length';
     parts.bc.hold = 'length';
+    // Locked, not just grounded: a drag moves a ground pin like any other.
     parts.a.locked = true;
     parts.c.locked = true;
     const bWas = { x: parts.b.x, y: parts.b.y };
@@ -124,6 +125,57 @@ describe('dragging against a held bar', () => {
     expect(parts.b.x).toBeCloseTo(bWas.x, 3);
     expect(parts.b.y).toBeCloseTo(bWas.y, 3);
     expect(grid.lastHoldRefusal?.immovable.map((joint) => joint.id)).toEqual(['B']);
+  });
+
+  it('lets a ground pin give way when it is all that would hold the dragged joint', () => {
+    // A only grounded: B has no freedom with A still, so A yields and B
+    // swings about the locked C, carrying A at the held length.
+    const parts = fourBar(service);
+    parts.ab.hold = 'length';
+    parts.bc.hold = 'length';
+    parts.c.locked = true;
+    const ab = dist(parts.a, parts.b);
+    const bc = dist(parts.b, parts.c);
+    const cWas = { x: parts.c.x, y: parts.c.y };
+    expect(grid.holdsImmobilizing(parts.b)).toEqual([]);
+    grid.dragJoint(parts.b, new Coord(2 * S, 2 * S));
+    expect(grid.lastHoldRefusal).toBeUndefined();
+    expect(dist(parts.a, parts.b)).toBeCloseTo(ab, 3);
+    expect(dist(parts.b, parts.c)).toBeCloseTo(bc, 3);
+    expect(parts.c).toMatchObject(cWas);
+    expect(parts.a.ground).toBe(true);
+  });
+
+  it('drags a crank holding its length and angle whole, ground pin and all', () => {
+    const parts = fourBar(service);
+    parts.ab.hold = 'both';
+    const offset = { x: parts.b.x - parts.a.x, y: parts.b.y - parts.a.y };
+    expect(grid.holdsImmobilizing(parts.b)).toEqual([]);
+    grid.dragJoint(parts.b, new Coord(parts.b.x + S, parts.b.y + S));
+    expect(grid.lastHoldRefusal).toBeUndefined();
+    expect(parts.b.x - parts.a.x).toBeCloseTo(offset.x, 3);
+    expect(parts.b.y - parts.a.y).toBeCloseTo(offset.y, 3);
+    expect(parts.a.x).toBeCloseTo(S, 3);
+  });
+
+  it('drags a bar holding both from a grounded slider whole, rail and all', () => {
+    const b = new RevJoint('B', -3 * S, 2 * S);
+    const c = new PrisJoint('C', 2 * S, 1 * S, false, true);
+    const bc = new RealLink('BC', [b, c], 1, 1);
+    service.joints = [b, c];
+    service.links = [bc];
+    service.forces = [];
+    wireGraph(service);
+    service.updateMechanism();
+    bc.hold = 'both';
+    expect(grid.holdsImmobilizing(b)).toEqual([]);
+    grid.dragJoint(b, new Coord(-2 * S, 3 * S));
+    expect(grid.lastHoldRefusal).toBeUndefined();
+    expect(b.x).toBeCloseTo(-2 * S, 3);
+    expect(b.y).toBeCloseTo(3 * S, 3);
+    expect(c.x).toBeCloseTo(3 * S, 3);
+    expect(c.y).toBeCloseTo(2 * S, 3);
+    expect(c.ground).toBe(true);
   });
 
   it('moves a whole body through the holds when one of its joints is held', () => {

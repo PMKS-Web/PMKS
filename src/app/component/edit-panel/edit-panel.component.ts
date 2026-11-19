@@ -93,7 +93,7 @@ import {
   ORPHANED_JOINT,
   isOrphanedJoint,
 } from '../../model/joint-type';
-import { releaseLabel } from '../../model/link-holds';
+import { holdWords, releaseLabel } from '../../model/link-holds';
 
 /**
  * Input Settings unit choices, in the order the picker shows them. The labels
@@ -2294,7 +2294,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
     // id, and a body welded to a barrel mount carries the buried inner end in
     // its id (D14, S11) -- so this sentence named a joint nothing draws.
     const named = holds
-      .map((bar) => `fixed ${bar.hold} ${this.mechanismService.visibleBodyName(bar)}`)
+      .map((bar) => `fixed ${holdWords(bar.hold)} ${this.mechanismService.visibleBodyName(bar)}`)
       .join(', ');
     this.notify.refusal(
       'hold.typed',
