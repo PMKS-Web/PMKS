@@ -3524,16 +3524,23 @@ export class NewGridComponent implements OnDestroy {
     }
   }
 
+  /**
+   * The red ring a force drag put on a pin goes with the drag, and so does
+   * the refusal it remembers: the next drag starts with none said.
+   */
+  private forgetForceRefusal(): void {
+    this.forceRefusedJoint = undefined;
+    this.forceRefusalSaid = undefined;
+  }
+
   mouseUp($event: MouseEvent) {
     this.holdRing = undefined;
     this.holdGuide = undefined;
-    // The red ring a force drag put on a pin goes with the drag.
-    this.forceRefusedJoint = undefined;
-    // So does the refusal it remembers: the next drag starts with none said.
-    this.forceRefusalSaid = undefined;
     // The last move of a drag lands before the release is read, so the part
     // ends where the hand was, not one frame short of it.
     this.applyPendingDragMove();
+    // After that move, which can refuse a joint all over again.
+    this.forgetForceRefusal();
     //This is the mouseUp that is called no matter what is clicked on
     this.bgDrag = undefined;
     if (this.showSynthesis()) {
@@ -3811,6 +3818,7 @@ export class NewGridComponent implements OnDestroy {
    */
   releaseCanvasGestures(event?: PointerEvent): void {
     this.applyPendingDragMove();
+    this.forgetForceRefusal();
     this.bgDrag = undefined;
     if (this.synthCanvas.dragging) {
       this.synthCanvas.release();
