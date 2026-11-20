@@ -81,11 +81,14 @@ export function partitionKey(partition: MechanismPartition): string {
 /**
  * The joints a machine is made of that are not pinned to the frame: what it
  * keeps through an edit. A grounded pivot is left out because two machines
- * can share one.
+ * can share one. A grounded slider is kept: it travels along its guide and
+ * belongs to one machine, and a trammel is made of nothing else (#341).
  */
 export function movingJointIds(partition: MechanismPartition): string[] {
   return partition.ownJoints
-    .filter((joint) => !(joint instanceof RealJoint && joint.ground))
+    .filter(
+      (joint) => !(joint instanceof RealJoint && joint.ground && !(joint instanceof PrisJoint))
+    )
     .map((joint) => joint.id);
 }
 

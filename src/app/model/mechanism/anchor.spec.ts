@@ -314,3 +314,26 @@ describe('a slot cut along a plate', () => {
     expect(slotCoordinateRuleFor(slider)?.carrierIds).toEqual(['C', 'D']);
   });
 });
+
+describe('a relative angle across the seam', () => {
+  it('unwraps a step of nearly two turns, when both bearings cross it', () => {
+    // Both bearings point left of the joint and turn half a degree each, the
+    // one degree a sample the drive commands, so the raw difference goes from
+    // +359.5 to -359.5 degrees: a step of +1 (#338).
+    const deg = Math.PI / 180;
+    const at = (id: string, angle: number) =>
+      new RevJoint(id, Math.cos(angle * deg), Math.sin(angle * deg));
+    const frame = (driven: number, against: number) => [
+      new RevJoint('J', 0, 0),
+      at('R', driven),
+      at('Q', against),
+    ];
+    const rule = { jointId: 'J', kind: 'angle' as const, referenceId: 'R', againstId: 'Q' };
+    const [first, second] = coordinatesAcross(rule, [
+      frame(179.75, -179.75),
+      frame(-179.75, 179.75),
+    ]).map((value) => value! / deg);
+    expect(first).toBeCloseTo(359.5);
+    expect(second).toBeCloseTo(360.5);
+  });
+});

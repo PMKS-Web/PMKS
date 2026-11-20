@@ -430,9 +430,14 @@ export class SliderMarkService {
     // with what is *drawn* at the rider — and for a cylinder member that is the
     // skin's silhouette, not the thin bar its two joints describe (S18).
     const cylinders = cylindersIn(joints);
-    const marks = joints
-      .filter((joint): joint is PrisJoint => joint instanceof PrisJoint)
-      .map((slider) =>
+    const sliders = joints.filter((joint): joint is PrisJoint => joint instanceof PrisJoint);
+    // A Slide claims first. A slider that turns only draws its rider, and the
+    // Slide needs the same rider to fuse, so taken first it left the Slide a
+    // bare black block (#347).
+    const slide = (slider: PrisJoint) => !slider.rotates && !slider.isSealed;
+    const mark = new Map(
+      [...sliders.filter(slide), ...sliders.filter((slider) => !slide(slider))].map((slider) => [
+        slider,
         this.markFor(
           slider,
           r,
@@ -442,8 +447,10 @@ export class SliderMarkService {
           driveForward,
           this.crossingsFor(slider.id, bands, r),
           cylinders
-        )
-      );
+        ),
+      ])
+    );
+    const marks = sliders.map((slider) => mark.get(slider)!);
     this.fuseSharedPlates(marks, r, joints, cylinders);
     return marks;
   }

@@ -219,11 +219,38 @@ export function rockerAtItsLimitFixture(): MechanismFixture {
 }
 
 /**
+ * A crank AB turning on its own, its pivot A on a frame plate ACE drawn before
+ * it, beside a second frame plate CDE that keeps the frame first when the
+ * drawing is partitioned. No loop, so the rate solve takes the loopless path,
+ * which once drove the frame plate (#336).
+ */
+export function frameFirstLoneCrankFixture(): MechanismFixture {
+  return {
+    joints: [
+      { id: 'A', x: 0, y: 0, ground: true, input: true },
+      { id: 'C', x: 4, y: 0, ground: true },
+      { id: 'E', x: 4, y: 3, ground: true },
+      { id: 'B', x: 0, y: 1 },
+      { id: 'D', x: 6, y: 1.5 },
+    ],
+    links: [{ joints: 'ACE' }, { joints: 'AB' }, { joints: 'CDE' }],
+    inputAngVel: 1,
+  };
+}
+
+/**
  * These drawings as the fixture gallery publishes them, so a reviewer can open
  * each one and read the readiness row it earns. Kept here rather than in
  * `fixture-gallery.ts`, which is a table long enough already.
  */
 export const MOBILITY_GALLERY: GalleryEntry[] = [
+  {
+    name: 'Lone crank on a frame plate drawn first',
+    purpose: 'Runs with no loop: the crank, not the frame, is the link the input turns',
+    spec: 'frame-first-rates.spec.ts',
+    floatingSlot: false,
+    fixture: frameFirstLoneCrankFixture(),
+  },
   {
     name: 'Four-bar with an ungrounded pivot',
     purpose: 'Does not run on purpose: D was never grounded, and grounding it is the fix',

@@ -250,9 +250,9 @@ export function coordinatesAcross(rule: CoordinateRule, frames: Joint[][]): (num
   return raw.map((value) => {
     if (value === undefined) return undefined;
     if (previous !== undefined) {
-      const step = value + turns * TWO_PI - previous;
-      if (step > Math.PI) turns -= 1;
-      else if (step < -Math.PI) turns += 1;
+      // Whole turns, not one: a relative angle lies in (-2π, 2π), so with both
+      // bearings crossing the seam it can step by nearly 4π (#338).
+      turns -= Math.round((value + turns * TWO_PI - previous) / TWO_PI);
     }
     const unwrapped = value + turns * TWO_PI;
     previous = unwrapped;
