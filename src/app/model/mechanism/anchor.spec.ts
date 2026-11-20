@@ -288,8 +288,9 @@ describe('the start-pose anchor', () => {
 
 describe('a relative angle across the seam', () => {
   it('unwraps a step of nearly two turns, when both bearings cross it', () => {
-    // Both bearings point left of the joint and turn a degree apart, so the
-    // raw difference goes from +359 to -359 degrees: a step of +2 (#338).
+    // Both bearings point left of the joint and turn half a degree each, the
+    // one degree a sample the drive commands, so the raw difference goes from
+    // +359.5 to -359.5 degrees: a step of +1 (#338).
     const deg = Math.PI / 180;
     const at = (id: string, angle: number) =>
       new RevJoint(id, Math.cos(angle * deg), Math.sin(angle * deg));
@@ -300,10 +301,10 @@ describe('a relative angle across the seam', () => {
     ];
     const rule = { jointId: 'J', kind: 'angle' as const, referenceId: 'R', againstId: 'Q' };
     const [first, second] = coordinatesAcross(rule, [
-      frame(179.5, -179.5),
-      frame(-179.5, 179.5),
+      frame(179.75, -179.75),
+      frame(-179.75, 179.75),
     ]).map((value) => value! / deg);
-    expect(first).toBeCloseTo(359);
-    expect(second).toBeCloseTo(361);
+    expect(first).toBeCloseTo(359.5);
+    expect(second).toBeCloseTo(360.5);
   });
 });
