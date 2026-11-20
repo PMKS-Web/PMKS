@@ -33,9 +33,47 @@ try {
     const p = g.svgGrid.modelToScreen(g.mechanismSrv.links[0].subset[0].CoM);
     return { x: p.x, y: p.y };
   });
-  await page.mouse.click(target.x, target.y);
+  // Select the compound without retaining a previous primitive hit, as a
+  // click on its welded fillet does.
+  await grid((g) => {
+    const root = g.mechanismSrv.links[0];
+    root.lastSelectedSublink = null;
+    g.activeObjService.updateSelectedObj(root);
+  });
+  check(
+    'compound panel refuses attachments until a member is picked',
+    (await page.getByRole('button', { name: 'Add Tracer Point', exact: true }).isDisabled()) &&
+      (await page.getByRole('button', { name: 'Add Force', exact: true }).isDisabled())
+  );
+  const menuRefusal = await grid((g) => {
+    const rows = g.menuBuilder
+      .build(g.activeObjService.selectedLink, g.menuHandlers())
+      .groups.flatMap((group) => group.rows);
+    return rows.find((row) => row.label === 'Tracer Point').refusal.long;
+  });
+  check(
+    'panel quotes the menu refusal',
+    (await page
+      .getByRole('button', { name: 'Add Tracer Point', exact: true })
+      .getAttribute('aria-description')) === menuRefusal &&
+      (await page
+        .getByRole('button', { name: 'Add Force', exact: true })
+        .getAttribute('aria-description')) === menuRefusal
+  );
+  await page.screenshot({ path: `${OUT}/compound-refusal.png` });
   await page.mouse.click(target.x, target.y);
   check('second click selects HI', await grid((g) => g.activeObjService.selectedLink.id === 'HI'));
+  await page.getByRole('button', { name: 'Add Force', exact: true }).click();
+  const anchorBeforeTracer = await grid((g) => {
+    const f = g.mechanismSrv.forces[0];
+    // The default force and tracer share the CoM. Separate them so the mouse
+    // takes the tracer, rather than the force painted on top of it.
+    const [a, b] = g.activeObjService.selectedLink.joints;
+    f.moveAnchor({ x: a.x + (b.x - a.x) / 4, y: a.y + (b.y - a.y) / 4 });
+    f.moveDirectionHandle({ x: f.startCoord.x - 150, y: f.startCoord.y });
+    g.mechanismSrv.updateMechanism(true);
+    return [f.startCoord.x, f.startCoord.y, f.endCoord.x, f.endCoord.y];
+  });
   await page.getByRole('button', { name: 'Add Tracer Point', exact: true }).click();
   const topology = () =>
     grid((g) => {
@@ -69,6 +107,10 @@ try {
       added.connections === 'H,I,J',
     added
   );
+  const tracerBeforeDrag = await grid((g) => {
+    const j = g.mechanismSrv.joints.find((j) => j.id === 'K');
+    return [j.x, j.y];
+  });
   const k = await page.locator('#joint_K').boundingBox();
   const film = filmstrip(page, OUT);
   await film.during(80, 10, 'tracer', async () => {
@@ -78,6 +120,22 @@ try {
     await page.mouse.up();
   });
   check('dragging the new tracer preserves body ownership', (await topology()).owner);
+  check(
+    'the gesture moves the tracer itself',
+    await grid((g, before) => {
+      const j = g.mechanismSrv.joints.find((j) => j.id === 'K');
+      return Math.hypot(j.x - before[0], j.y - before[1]) > 1;
+    }, tracerBeforeDrag)
+  );
+  const anchorAfterTracer = await grid((g) => {
+    const f = g.mechanismSrv.forces[0];
+    return [f.startCoord.x, f.startCoord.y, f.endCoord.x, f.endCoord.y];
+  });
+  check(
+    'reshaping a member with its tracer leaves its force in place',
+    anchorBeforeTracer.every((v, i) => Math.abs(v - anchorAfterTracer[i]) < 1e-6),
+    { before: anchorBeforeTracer, after: anchorAfterTracer }
+  );
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   check('one undo removes the tracer addition', (await page.locator('#joint_K').count()) === 0);
@@ -119,6 +177,45 @@ try {
       )
     );
   }
+  await load(TEMPLATE_LINKAGES['Offset_Load_Rocker']);
+  const held = await grid((g) => {
+    const plate = g.mechanismSrv.links.find((l) => l.joints.length === 3);
+    const neighbor = g.mechanismSrv.links.find((l) => l.id === 'BC');
+    neighbor.hold = 'angle';
+    const force = g.mechanismSrv.forces[0];
+    force.moveAnchor(plate.CoM);
+    g.mechanismSrv.updateMechanism(true);
+    return {
+      id: plate.id,
+      dx: (neighbor.joints[1].x - neighbor.joints[0].x) / 20,
+      dy: (neighbor.joints[1].y - neighbor.joints[0].y) / 20,
+      before: [force.startCoord.x, force.startCoord.y, force.endCoord.x, force.endCoord.y],
+    };
+  });
+  await film.during(80, 10, 'held-body', async () => {
+    for (let step = 0; step < 8; step++) {
+      await grid((g, held) => {
+        g.gridUtils.dragLink(
+          g.mechanismSrv.links.find((l) => l.id === held.id),
+          held.dx / 8,
+          held.dy / 8
+        );
+      }, held);
+      await page.waitForTimeout(60);
+    }
+  });
+  const carriedForce = await grid((g) => {
+    const f = g.mechanismSrv.forces[0];
+    return [f.startCoord.x, f.startCoord.y, f.endCoord.x, f.endCoord.y];
+  });
+  check(
+    'a neighboring hold carries both endpoints with a rigidly dragged plate',
+    carriedForce.every(
+      (value, index) =>
+        Math.abs(value - held.before[index] - (index % 2 ? held.dy : held.dx)) < 1e-4
+    ),
+    { held, after: carriedForce }
+  );
   await load(TEMPLATE_LINKAGES['4-Bar']);
   await grid((g) => {
     g.activeObjService.updateSelectedObj(g.mechanismSrv.links.find((l) => l.id === 'BC'));
@@ -225,6 +322,7 @@ try {
   );
   await page.screenshot({ path: `${OUT}/locked.png` });
   check('no runtime errors', errors.length === 0, errors);
+  await contactSheet(`${OUT}/*-held-body.png`, `${OUT}/held-body-film.png`, 4, 0.4);
   await contactSheet(`${OUT}/*-tracer.png`, `${OUT}/tracer-film.png`, 4, 0.4);
   await contactSheet(`${OUT}/*-flip.png`, `${OUT}/flip-film.png`, 4, 0.4);
   await contactSheet(`${OUT}/*-playback.png`, `${OUT}/playback-film.png`, 4, 0.4);
