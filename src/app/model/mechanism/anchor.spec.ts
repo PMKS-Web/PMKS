@@ -4,7 +4,7 @@ import {
   wideSwingRockerFixture,
 } from '../../../test-utils/verification/fixtures';
 import { cylinderBoomFixture } from '../../../test-utils/verification/slot-fixtures';
-import { RealJoint } from '../joint';
+import { RealJoint, RevJoint } from '../joint';
 import {
   anchorFrom,
   anchorStillNames,
@@ -283,5 +283,27 @@ describe('the start-pose anchor', () => {
     const fewer = topologyOf(built.joints.slice(0, -1));
     expect(all).not.toBe(fewer);
     expect(all.split(',')).toEqual([...all.split(',')].sort());
+  });
+});
+
+describe('a relative angle across the seam', () => {
+  it('unwraps a step of nearly two turns, when both bearings cross it', () => {
+    // Both bearings point left of the joint and turn a degree apart, so the
+    // raw difference goes from +359 to -359 degrees: a step of +2 (#338).
+    const deg = Math.PI / 180;
+    const at = (id: string, angle: number) =>
+      new RevJoint(id, Math.cos(angle * deg), Math.sin(angle * deg));
+    const frame = (driven: number, against: number) => [
+      new RevJoint('J', 0, 0),
+      at('R', driven),
+      at('Q', against),
+    ];
+    const rule = { jointId: 'J', kind: 'angle' as const, referenceId: 'R', againstId: 'Q' };
+    const [first, second] = coordinatesAcross(rule, [
+      frame(179.5, -179.5),
+      frame(-179.5, 179.5),
+    ]).map((value) => value! / deg);
+    expect(first).toBeCloseTo(359);
+    expect(second).toBeCloseTo(361);
   });
 });
