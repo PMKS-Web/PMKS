@@ -20,6 +20,7 @@ import {
   stuckInputFixture,
   ungroundedPivotFourBarFixture,
 } from '../../test-utils/verification/mobility-fixtures';
+import { crankLockedAtASlotPinFixture } from '../../test-utils/verification/student-mistake-fixtures';
 
 /**
  * "This mechanism has 2 degrees of freedom" is where the app used to stop. These
@@ -107,26 +108,11 @@ describe('which part is loose, and what would fix it', () => {
   });
 
   it('blames a carrier sliding under a still pin, not the pin or its crank', () => {
-    // Held still, crank AB holds B where it is, and the carrier CD slides
-    // along B's slot under it. B was read at the carrier's speed (#344).
-    const { partition } = built({
-      joints: [
-        { id: 'A', x: 0, y: 0, ground: true, input: true },
-        { id: 'B', x: 4, y: 0 },
-        { id: 'C', x: 2, y: 0 },
-        { id: 'D', x: 6, y: 0 },
-      ],
-      links: [{ joints: 'AB' }, { joints: 'CD' }],
-      sliders: [
-        { at: 'C', angleRad: 0 },
-        { at: 'B', on: { carrier: 'CD', a: 'C', b: 'D' } },
-      ],
-      welds: ['C'],
-      inputAngVel: 10,
-    });
-    const diagnosis = diagnoseMobility(partition);
-    expect(diagnosis.looseLinks.map((link) => link.id)).toEqual(['CD']);
-    expect(diagnosis.looseJoints.map((joint) => joint.id).sort()).toEqual(['C', 'D']);
+    // Held still, crank HI and bar IJ hold pin I where it is, and the carrier
+    // BDE slides along I's slot under it. I was read at the carrier's speed,
+    // and HI and IJ came out loose with it (#344).
+    const diagnosis = diagnoseMobility(built(crankLockedAtASlotPinFixture()).partition);
+    expect(diagnosis.looseLinks.map((link) => link.id)).toEqual(['BDE', 'EF']);
   });
 
   describe('none, or fewer', () => {
