@@ -1299,10 +1299,10 @@ export class NewGridComponent implements OnDestroy {
       this.mechanismSrv.joints,
       this.mechanismSrv.links
     );
-    // No box around a single point -- forces alone, or one joint and its
-    // forces: there is nothing to turn or scale, and the grips all landed on
-    // that one joint, stacked on top of each other (#295 review). A drag
-    // still moves the group.
+    // No box around a single point -- forces alone, or joints all on one spot:
+    // there is nothing to turn or scale, and the grips all landed on that one
+    // point, stacked on top of each other (#295 review). A drag still moves
+    // the group.
     if (new Set(closure.joints.map((joint) => `${joint.x},${joint.y}`)).size < 2) return undefined;
     const xs = closure.joints.map((joint) => joint.x);
     const ys = closure.joints.map((joint) => joint.y);

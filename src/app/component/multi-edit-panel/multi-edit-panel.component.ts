@@ -297,7 +297,7 @@ export class MultiEditPanelComponent implements OnInit, DoCheck {
   }
 
   get selectionLabel(): string {
-    return `${selectionCount(this.active.selectedParts, 'title')} Selected`;
+    return `Edit ${selectionCount(this.active.selectedParts, 'title')}`;
   }
 
   private common<T>(values: readonly T[], equals: (left: T, right: T) => boolean = Object.is) {

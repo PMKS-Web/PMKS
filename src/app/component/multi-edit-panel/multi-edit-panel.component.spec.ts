@@ -101,7 +101,7 @@ describe('MultiEditPanelComponent', () => {
     expect(headerDelete(element)).not.toBeNull();
     const x = element.querySelector('[data-field="x"]') as HTMLInputElement;
     const y = element.querySelector('[data-field="y"]') as HTMLInputElement;
-    expect(element.textContent.replace(/\u00a0/g, ' ')).toContain('2 Joints Selected');
+    expect(element.textContent.replace(/\u00a0/g, ' ')).toContain('Edit 2 Joints');
     expect(x.value).toBe('');
     expect(x.placeholder).toBe('Mixed');
     expect(y.value).not.toBe('');
@@ -153,32 +153,6 @@ describe('MultiEditPanelComponent', () => {
       'angle',
       Math.PI / 2
     );
-  });
-
-  it('keeps mixed joint/link selections to shared safe controls', () => {
-    const a = new RevJoint('A', 0, 0);
-    const b = new RevJoint('B', S, 0);
-    const ab = new RealLink('AB', [a, b]);
-    mechanism.joints = [a, b];
-    mechanism.links = [ab];
-    active.restorePartSelection(
-      {
-        refs: [
-          { kind: 'joint', id: 'A' },
-          { kind: 'link', id: 'AB' },
-        ],
-      },
-      mechanism.joints,
-      mechanism.links
-    );
-
-    const element = render();
-    expect(element.textContent.replace(/\u00a0/g, ' ')).toContain('1 Joint and 1 Link Selected');
-    expect(element.querySelector('[data-field="x"]')).toBeNull();
-    expect(element.querySelector('[data-field="length"]')).toBeNull();
-    expect(element.querySelector('[data-action="duplicate"]')).not.toBeNull();
-    expect(headerLock(element)).not.toBeNull();
-    expect(headerDelete(element)).not.toBeNull();
   });
 
   it('renders differing lock state as Mixed and applies one requested state', () => {

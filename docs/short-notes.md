@@ -3214,3 +3214,11 @@ map as the joints, so a scale grip stretched the arrow and a turn or squash turn
 (#295). A Grid force stays still even when the reader picks a body up and turns it: turning it then
 too, as if bolted on, was tried in #295 and taken back, because the bearing the reader typed is the
 one the analysis uses.
+
+### A selection is one kind of part (#295)
+
+Joints, links or forces, never a mix. `PartSelectionState.toggle` (`model/selection.ts`) starts a
+new selection when a part of another kind is added, and `restore` keeps only the primary part's
+kind, so a hand-written snapshot cannot bring a mix back. The mixed groups offered a menu and a
+panel of whatever the kinds happened to share, and a box whose grips moved some of the selection
+and carried the rest. The Edit panel heads a group "Edit 2 Joints" from `selectionCount`.

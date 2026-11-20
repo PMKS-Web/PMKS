@@ -151,20 +151,20 @@ check(
   JSON.stringify(await selection())
 );
 
+await clickWith('#joint_C', 'Control');
+check(
+  'a joint group is headed by its kind and count',
+  (await page.locator('app-multi-edit-panel').innerText())
+    .replace(/\u00a0/g, ' ')
+    .includes('Edit 2 Joints')
+);
+// One kind at a time (#295 review): a link Control-clicked onto joints starts
+// a selection of its own rather than joining them.
 await clickWith('#ACT', 'Control');
 check(
-  'Control-click can add a link to make a typed mixed joint/link selection',
-  JSON.stringify(await selection()) === JSON.stringify(['joint:A', 'link:ACT']),
+  'Control-click on a link while joints are selected starts a link selection',
+  JSON.stringify(await selection()) === JSON.stringify(['link:ACT']),
   JSON.stringify(await selection())
-);
-check(
-  'a mixed joint/link selection exposes shared actions without geometry fields',
-  // The note says what a mixed group can do, for any mix of kinds.
-  (await page.locator('app-multi-edit-panel').innerText()).includes(
-    'A field shows only when every part has it.'
-  ) &&
-    (await page.locator('app-multi-edit-panel [data-field="x"]').count()) === 0 &&
-    (await page.locator('app-multi-edit-panel [data-field="length"]').count()) === 0
 );
 await page.click('#joint_C');
 check(

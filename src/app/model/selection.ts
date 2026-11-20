@@ -124,7 +124,21 @@ export class PartSelectionState {
     this.primarySelection = partRef(part);
   }
 
+  /**
+   * Add a part, or take it out again -- among parts of its own kind.
+   *
+   * A selection is joints, or links, or forces, never a mix: the mixed groups
+   * offered a menu and a panel of whatever the kinds happened to share, and a
+   * box whose grips moved some of what was selected and carried the rest
+   * (#295 review). So a part of another kind starts a new selection rather
+   * than joining this one.
+   */
   toggle(part: SelectedPart): void {
+    const kind = partRef(part).kind;
+    if (this.chosen.some((candidate) => partRef(candidate).kind !== kind)) {
+      this.replace(part);
+      return;
+    }
     const key = partRefKey(partRef(part));
     const index = this.chosen.findIndex((candidate) => partRefKey(partRef(candidate)) === key);
     this.chosen =
@@ -159,14 +173,18 @@ export class PartSelectionState {
     links: readonly Link[],
     forces: readonly Force[] = []
   ): void {
-    this.chosen = resolveSelectedParts(snapshot.refs, joints, links, forces);
-    const surviving = new Set(this.chosen.map((part) => partRefKey(partRef(part))));
+    const resolved = resolveSelectedParts(snapshot.refs, joints, links, forces);
+    const surviving = new Set(resolved.map((part) => partRefKey(partRef(part))));
     this.primarySelection =
       snapshot.primary && surviving.has(partRefKey(snapshot.primary))
         ? { ...snapshot.primary }
-        : this.chosen.length > 0
-          ? partRef(this.chosen[this.chosen.length - 1])
+        : resolved.length > 0
+          ? partRef(resolved[resolved.length - 1])
           : undefined;
+    // One kind, as `toggle` keeps it: a snapshot written by hand, or before
+    // the rule, comes back as the primary part's kind alone.
+    const kind = this.primarySelection?.kind;
+    this.chosen = resolved.filter((part) => partRef(part).kind === kind);
   }
 }
 

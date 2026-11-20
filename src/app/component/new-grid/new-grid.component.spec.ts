@@ -827,18 +827,22 @@ describe('NewGridComponent typed multi-selection', () => {
   }
 
   it('Meta-click toggles typed parts on macOS and plain click replaces them', () => {
-    const { component, active, a, link } = setUpSelection();
+    const { component, active, a, b, link } = setUpSelection();
     const oldPlatform = navigator.platform;
     Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' });
     try {
       component.setLastLeftClick(a, new MouseEvent('pointerdown', { metaKey: true }));
-      component.setLastLeftClick(link, new MouseEvent('pointerdown', { metaKey: true }));
+      component.setLastLeftClick(b, new MouseEvent('pointerdown', { metaKey: true }));
       expect(active.selectedPartRefs).toEqual([
         { kind: 'joint', id: 'A' },
-        { kind: 'link', id: 'A' },
+        { kind: 'joint', id: 'B' },
       ]);
 
       component.setLastLeftClick(a, new MouseEvent('pointerdown', { metaKey: true }));
+      expect(active.selectedPartRefs).toEqual([{ kind: 'joint', id: 'B' }]);
+
+      // A link is another kind, so it starts a selection of its own.
+      component.setLastLeftClick(link, new MouseEvent('pointerdown', { metaKey: true }));
       expect(active.selectedPartRefs).toEqual([{ kind: 'link', id: 'A' }]);
 
       component.setLastLeftClick(a, new MouseEvent('pointerdown'));
@@ -920,19 +924,18 @@ describe('NewGridComponent typed multi-selection', () => {
     expect(fixture.nativeElement.querySelector('.selectionBounds')).toBeNull();
   });
 
-  it('draws no box round one joint and a force, and a box once a second joint joins', () => {
-    const { fixture, component, active, mechanism, link, a, b } = setUpSelection();
-    const f1 = new Force('F1', link, new Coord(MODEL_SCALE, 0), new Coord(0, MODEL_SCALE));
-    mechanism.forces = [f1];
-
+  it('draws no box round joints that all sit on one spot', () => {
+    const { fixture, component, active, a, b } = setUpSelection();
+    b.x = a.x;
+    b.y = a.y;
     active.replacePartSelection(a);
-    active.togglePartSelection(f1);
+    active.togglePartSelection(b);
     fixture.detectChanges();
-    // A box round one point is zero wide, and every grip lands on that joint.
+    // A box round one point is zero wide, and every grip lands on that point.
     expect(component.selectionBounds()).toBeUndefined();
     expect(fixture.nativeElement.querySelector('.selectionBounds')).toBeNull();
 
-    active.togglePartSelection(b);
+    b.x = 2 * MODEL_SCALE;
     fixture.detectChanges();
     expect(component.selectionBounds()).toBeDefined();
   });
@@ -956,7 +959,7 @@ describe('NewGridComponent typed multi-selection', () => {
   it('preserves an existing multi-selection for an inside right-click and replaces it outside', () => {
     const { component, active, a, b, link } = setUpSelection();
     active.replacePartSelection(a);
-    active.togglePartSelection(link);
+    active.togglePartSelection(b);
     const oldPlatform = navigator.platform;
     Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' });
     try {
@@ -966,8 +969,8 @@ describe('NewGridComponent typed multi-selection', () => {
       component.mouseUp(new MouseEvent('mouseup', { button: 0, ctrlKey: true }));
       expect(active.selectedPartRefs).toHaveLength(2);
 
-      component.setLastRightClick(b, new MouseEvent('contextmenu', { ctrlKey: true }));
-      expect(active.selectedPartRefs).toEqual([{ kind: 'joint', id: 'B' }]);
+      component.setLastRightClick(link, new MouseEvent('contextmenu', { ctrlKey: true }));
+      expect(active.selectedPartRefs).toEqual([{ kind: 'link', id: 'A' }]);
     } finally {
       Object.defineProperty(navigator, 'platform', { configurable: true, value: oldPlatform });
     }
