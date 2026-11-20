@@ -5,6 +5,10 @@ import { buildMechanism, MechanismFixture } from '../../test-utils/verification/
 import { RATE_TOLERANCE, velocityAgreesWithPositions } from '../../test-utils/verification/rates';
 import { solveDynamics, solveKinematics } from '../../test-utils/verification/solve';
 import { MODEL_SCALE } from '../../app/model/render-scale';
+import { frameFirstLoneCrankFixture } from '../../test-utils/verification/mobility-fixtures';
+import { partitionMechanisms } from '../../app/model/mechanism/mechanism-partition';
+import { Mechanism } from '../../app/model/mechanism/mechanism';
+import { KinematicsSolver } from '../../app/model/mechanism/kinematic-solver';
 
 /**
  * A four-bar whose frame bar was drawn before its crank.
@@ -77,5 +81,37 @@ describe('a four-bar whose frame was drawn before its crank', () => {
     for (let step = 0; step < frameFirst.steps; step += 7) {
       expect(frameFirst.torque[step], `torque at ${step}`).toBeCloseTo(crankFirst.torque[step], 6);
     }
+  });
+});
+
+describe('a lone crank whose frame was drawn before it', () => {
+  it('gives the crank and its free joint their rates, with no loop to solve', () => {
+    // The loopless path took the pivot's first link, the frame plate, so B
+    // had no velocity and the crank no CoM rate (#336). Partitioned as the
+    // app does it, so the frame plate stays first.
+    const built = buildMechanism(frameFirstLoneCrankFixture());
+    const [partition] = partitionMechanisms(built.joints, built.links, built.forces).mechanisms;
+    expect(partition.links[0].id).toBe('ACE');
+    const mechanism = new Mechanism(
+      partition.joints,
+      partition.links,
+      partition.forces,
+      [],
+      false,
+      'cm',
+      1,
+      'adaptive',
+      new Set(partition.ownJoints.map((joint) => joint.id))
+    );
+    expect(mechanism.requiredLoops.length).toBe(0);
+    KinematicsSolver.resetVariables();
+    KinematicsSolver.requiredLoops = mechanism.requiredLoops;
+    KinematicsSolver.determineKinematics(
+      mechanism.joints[0],
+      mechanism.links[0],
+      mechanism.inputAngularVelocities[0]
+    );
+    expect(KinematicsSolver.jointVelMap.get('B')?.every(Number.isFinite)).toBe(true);
+    expect(KinematicsSolver.linkVelMap.get('AB')?.every(Number.isFinite)).toBe(true);
   });
 });
