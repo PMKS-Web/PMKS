@@ -159,7 +159,9 @@ try {
 
   // Zoomed out until the marks are small, a part is thinner than its 12px
   // grab band (#linkGrabHolder, issue #273). A press on the band, outside every
-  // part's fill, must still pick the part on the second click.
+  // part's fill, must still reach the body -- and, like a press on the fill,
+  // keep it on the second click, because a welded bar is edited from its
+  // joints (#279).
   await grid((g) => {
     g.activeObjService.clearPartSelection();
     for (let i = 0; i < 40 && g.settings.drawingScale * g.svgGrid.getZoom() > 15.01; i++) {
@@ -181,8 +183,8 @@ try {
   await page.mouse.click(band.x, band.y);
   const bandSecond = await grid((g) => g.activeObjService.selectedLink?.id);
   check(
-    "zoomed far out, a press on a thin part's grab band picks the body, then the part",
-    band.under === 'CDE__wideHit' && bandFirst === 'CDE' && bandSecond === 'CD',
+    "zoomed far out, a press on a thin part's grab band picks the body, and a second keeps it",
+    band.under === 'CDE__wideHit' && bandFirst === 'CDE' && bandSecond === 'CDE',
     { band, bandFirst, bandSecond }
   );
   await grid((g) => g.svgGrid.scaleToFitLinkage(false));
