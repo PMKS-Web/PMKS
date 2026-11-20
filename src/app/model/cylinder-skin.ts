@@ -139,11 +139,10 @@ export function cylinderSkinFrame(cylinder: Cylinder, r: number): CylinderSkinFr
  * ordinary link — which is every link but two, and for which this is a plain
  * assignment.
  *
- * A **welded** member is a third case, and the color lands on the body rather
- * than on the member (decision S16). The member is part of that body's one
- * outline; writing the color onto the leaf would store a number nothing draws
- * and leave the row doing nothing anyone can see, which is the opposite of
- * what fusing the two was for.
+ * A **welded** member is a third case, and the color lands on the body
+ * (decision S16): the member is part of that body's one outline, so writing
+ * the color onto the leaf alone would leave the row doing nothing anyone can
+ * see. The leaf is given it as well, for the day the weld is split.
  */
 export function paintCylinderMember(
   link: RealLink,
@@ -161,7 +160,19 @@ export function paintCylinderMember(
       cylinder.rod.ownColor = true;
     }
   }
-  paintedBody(link, cylinder).fill = color;
+  const painted = paintedBody(link, cylinder);
+  painted.fill = color;
+  // A welded member is drawn in its body's ink, but an unweld puts it back on
+  // its own record: keep the choice there too, or splitting the weld showed
+  // the palette color it was created with (#348).
+  if (painted !== link) {
+    link.fill = color;
+    // The record the skin reads, should the caller hold a copy of the bar.
+    if (cylinder?.rod.id === link.id) cylinder.rod.fill = color;
+    if (cylinder?.barrel.id === link.id && cylinder.barrel instanceof RealLink) {
+      cylinder.barrel.fill = color;
+    }
+  }
 }
 
 /** The body a recolor of this one writes to: its own, or the one holding it. */
