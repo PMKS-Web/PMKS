@@ -303,4 +303,14 @@ describe('a slot cut along a plate', () => {
       carrierIds: ['D', 'E'],
     });
   });
+
+  it('measures from the slot’s first end, whatever order the carrier lists them in', () => {
+    // A welded carrier can list them backwards, and the transport then said
+    // Backward of a block driven forward.
+    const c = new RevJoint('C', 0, 0);
+    const d = new RevJoint('D', 4, 0);
+    const slider = new PrisJoint('S', 2, 0);
+    slider.slideOn(new RealLink('DC', [d, c]), c, d);
+    expect(slotCoordinateRuleFor(slider)?.carrierIds).toEqual(['C', 'D']);
+  });
 });
