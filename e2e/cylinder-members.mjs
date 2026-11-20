@@ -555,8 +555,8 @@ check(
   JSON.stringify(sealOutline)
 );
 
-// A selection that closes over the whole part lights all three, as bars in a
-// selection do.
+// A selection of both members lights both, as bars in a selection do. A
+// selection is one kind of part (#295), so the seal, a joint, is not in it.
 const closed = await inAngular(
   page,
   (where) => {
@@ -567,19 +567,16 @@ const closed = await inAngular(
     grid.activeObjService.togglePartSelection(
       grid.mechanismSrv.links.find((link) => link.id === where.rod)
     );
-    grid.activeObjService.togglePartSelection(
-      grid.mechanismSrv.joints.find((joint) => joint.id === where.s)
-    );
     return grid.activeObjService.objType;
   },
   ids
 );
 await page.waitForTimeout(250);
-const allThree = await litUp();
+const bothMembers = await litUp();
 check(
-  'a multi-selection over the whole part lights all three',
-  allThree.barrel && allThree.rod && allThree.seal,
-  JSON.stringify({ closed, allThree })
+  'a multi-selection of the barrel and the rod lights both',
+  closed === 'MultiSelection' && bothMembers.barrel && bothMembers.rod,
+  JSON.stringify({ closed, bothMembers })
 );
 await page.screenshot({
   path: `${OUT}/whole-part-selected.png`,
