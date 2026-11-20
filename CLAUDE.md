@@ -219,9 +219,10 @@ The **modes are tabs in the top strip, not a left rail**, and there are four of 
 - `AppComponent` is just a shell that registers SVG icons; `component/new-grid/new-grid.component.ts` is the real center — the SVG canvas handling the mouse/touch interaction state machine, with pan/zoom via `SvgGridService` (svg-pan-zoom + hammerjs).
 - The right-click menu is **built in a service, not in the canvas**: `services/context-menu-builder.service.ts` turns whatever was right-clicked, plus the current mode, into a `ContextMenuModel` (`component/BLOCKS/context-menu/menu-model.ts`), and `component/BLOCKS/context-menu/` renders it. Every grayed row quotes the model that enforces it — `describeActuatorRefusal` in `model/actuator.ts`, `refuseJointOperation` in `model/joint-operation-permission.ts`, `refuseJointType` in `model/joint-type.ts`, `locksHolding` in `model/lock-set.ts` — rather than restating the rule, so the menu, the panel and the drag ring cannot disagree. A joint's card opens with the **Joint Type** choice (`MenuChoice`), whose four values are CDK radio menu items so the arrow keys reach them; the Slider and Welded rows it replaced are gone from State. New rows belong in the builder; the canvas only supplies the gesture handlers (`MenuHandlers`).
 - **The analysis modes read the motion; they barely edit it.** At any paused pose a reader may drag
-  joints, links and forces; at the start pose they may also add or delete tracer points and
-  forces; traces switch anywhere. Nothing else (no structure, locks, holds, typed fields, nudges,
-  force flips). See
+  joints, links and forces, and change a force's load -- its magnitude and Flip Force, which read
+  the same at every pose; at the start pose they may also add or delete tracer points and forces;
+  traces switch anywhere. Nothing else (no structure, locks, holds, other typed fields, nudges).
+  See
   [`docs/editing-rules.md`](docs/editing-rules.md). Grab a joint and every open graph lays the
   curve from before the gesture under the one following your hand, with the peak said as two
   numbers. `docs/analysis-mode-editing-plan.md` is the history; `e2e/analysis-editing.mjs` is the

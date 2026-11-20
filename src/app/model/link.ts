@@ -953,6 +953,18 @@ export class RealLink extends Link {
   }
 
   /**
+   * The center and radius of the disc this link is drawn as, or nothing while
+   * it is drawn as a bar. A disc has no edges, so a click inside one is found
+   * from these rather than from its outline's lines.
+   */
+  discShape(): { center: Joint; radius: number } | undefined {
+    const center = this.discCenter();
+    if (center === undefined) return undefined;
+    const reach = this.joints.reduce((far, joint) => Math.max(far, getDistance(center, joint)), 0);
+    return { center, radius: reach + barHalfWidth(this.artworkScale) };
+  }
+
+  /**
    * The disc a circular link is drawn as, or nothing when it is not one.
    *
    * Centered on the ground pin, and wide enough to reach the outermost joint's
@@ -960,11 +972,10 @@ export class RealLink extends Link {
    * exactly the ground the bar covered and no pin ends up outside its own link.
    */
   private circularOutline(): string | undefined {
-    const center = this.discCenter();
-    if (center === undefined) return undefined;
-    const reach = this.joints.reduce((far, joint) => Math.max(far, getDistance(center, joint)), 0);
-    const radius = reach + barHalfWidth(this.artworkScale);
-    const { x, y } = center;
+    const disc = this.discShape();
+    if (disc === undefined) return undefined;
+    const { radius } = disc;
+    const { x, y } = disc.center;
     return (
       `M ${x - radius} ${y} A ${radius} ${radius} 0 0 1 ${x + radius} ${y} ` +
       `A ${radius} ${radius} 0 0 1 ${x - radius} ${y} Z `

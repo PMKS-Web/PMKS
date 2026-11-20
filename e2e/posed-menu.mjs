@@ -133,7 +133,12 @@ const refused = async (label, reason) => {
   const before = await snapshot();
   await row(label).click({ force: true });
   await page.waitForTimeout(80);
-  preserves(`${label}: refused click`, before, await snapshot());
+  const after = await snapshot();
+  preserves(`${label}: refused click`, before, after);
+  // Nothing else either: a grayed Locked row that still toggled the lock, or a
+  // hold, a disc or a force that changed, leaves every coordinate where it was.
+  const property = (s) => JSON.stringify([s.links, s.locked, s.forces]);
+  check(`${label}: refused click changes no property`, property(before) === property(after));
 };
 const loadAtStart = async (mode = 'Kinematic Analysis') => {
   await openMechanism(page, `${BASE}/?${TEMPLATE_LINKAGES['4-Bar']}`);

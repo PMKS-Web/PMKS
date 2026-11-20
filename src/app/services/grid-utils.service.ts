@@ -14,6 +14,7 @@ import {
 } from '../model/link-holds';
 import { Joint, PrisJoint, RealJoint, RevJoint } from '../model/joint';
 import {
+  getDistance,
   jointStates,
   linkStates,
   roundNumber,
@@ -1879,6 +1880,9 @@ export class GridUtilsService {
   }
 
   isPointInsideLink(startPosition: Coord, link: RealLink) {
+    // A disc has no outline lines to cross, so it is a distance from its pin.
+    const disc = link.discShape();
+    if (disc) return getDistance(startPosition, disc.center) <= disc.radius;
     //Check if the point is inside of the shape created by the lines
     //First, draw a line that is infinitely long and check if it intersects with the shape an odd number of times
     const infiniteLine = new Line(startPosition, new Coord(10000, startPosition.y));
