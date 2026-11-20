@@ -432,11 +432,11 @@ export class KinematicsSolver {
     const inputJoint = simJoints.find(
       (joint): joint is RealJoint => joint instanceof RealJoint && joint.input
     );
+    // The actuator's driven body, as the loop path asks: the first link at the
+    // pivot is the frame bar whenever that was drawn first (#336).
+    const driven = inputJoint && drivenLink(inputJoint);
     const inputLink = simLinks.find(
-      (link): link is RealLink =>
-        link instanceof RealLink &&
-        inputJoint !== undefined &&
-        link.joints.some((joint) => joint.id === inputJoint.id)
+      (link): link is RealLink => link instanceof RealLink && link.id === driven?.id
     );
     if (!inputJoint || !inputLink) return;
 

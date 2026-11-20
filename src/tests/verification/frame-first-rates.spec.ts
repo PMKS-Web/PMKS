@@ -79,3 +79,26 @@ describe('a four-bar whose frame was drawn before its crank', () => {
     }
   });
 });
+
+describe('a lone crank whose frame was drawn before it', () => {
+  it('moves at the rate its positions imply, with no loop to solve', () => {
+    // The loopless path took the pivot's first link, the frame, so B had no
+    // velocity at all (#336).
+    const S = MODEL_SCALE;
+    const agreement = velocityAgreesWithPositions(
+      buildMechanism({
+        joints: [
+          { id: 'A', x: 0, y: 0, ground: true, input: true },
+          { id: 'C', x: 3 * S, y: 0, ground: true },
+          { id: 'B', x: 0, y: 1 * S },
+        ],
+        links: [{ joints: 'AC' }, { joints: 'AB' }],
+        inputAngVel: 1,
+      })
+    );
+
+    expect(agreement.unsolved).toEqual([]);
+    expect(agreement.compared).toBeGreaterThan(100);
+    expect(agreement.worst).toBeLessThan(RATE_TOLERANCE);
+  });
+});
