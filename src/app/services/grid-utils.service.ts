@@ -869,6 +869,20 @@ export class GridUtilsService {
       if (l.joints.length == 2) {
         // special binary link case, maintain ratio
         let linkDistance = this.getPointDistance(jointA[0], jointA[1], jointB[0], jointB[1]);
+        // A reshape: the bar turns about its other end, so a Local force keeps
+        // its angle to it and a Grid force its bearing; see `carryForce`.
+        const turned = reshapeTurn(
+          frameTurn(
+            [
+              { x: jointA[0], y: jointA[1] },
+              { x: jointB[0], y: jointB[1] },
+            ],
+            [
+              { x: newJointA[0], y: newJointA[1] },
+              { x: newJointB[0], y: newJointB[1] },
+            ]
+          )
+        );
 
         l.forces.forEach((f) => {
           // calculate ratio to be maintained
@@ -884,7 +898,8 @@ export class GridUtilsService {
           let newX = newJointA[0] + (newJointB[0] - newJointA[0]) * ratio;
           let newY = newJointA[1] + (newJointB[1] - newJointA[1]) * ratio;
 
-          f.moveForceTo(newX, newY);
+          const arrow = { x: f.endCoord.x - f.startCoord.x, y: f.endCoord.y - f.startCoord.y };
+          carryForce(f, { x: newX, y: newY }, arrow, turned);
         });
       } else if (jointInHull) {
         l.forces.forEach((f) => {

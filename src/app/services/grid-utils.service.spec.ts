@@ -187,6 +187,30 @@ describe('GridUtilsService.dragLink', () => {
   });
 });
 
+describe('GridUtilsService.dragJoint on a bar', () => {
+  it('turns a Local force with the bar a dragged joint swings, and keeps a Grid one’s bearing', () => {
+    const scene = createFourBar();
+    // On AB at its middle, pointing -x: square to the bar, which stands on +y.
+    const local = new Force('F1', scene.ab, new Coord(0, 1), new Coord(-1, 1), true, true, 10);
+    const grid = new Force('F2', scene.ab, new Coord(0, 1), new Coord(-1, 1), false, true, 10);
+    scene.ab.forces.push(local, grid);
+    scene.service.forces.push(local, grid);
+
+    // B swings a quarter turn clockwise about A, so AB now lies along +x.
+    scene.grid.dragJoint(scene.b, new Coord(2, 0));
+
+    expect(local.startCoord.x).toBeCloseTo(1, 6);
+    expect(local.startCoord.y).toBeCloseTo(0, 6);
+    // Still square to the bar, on the same side: it points +y now.
+    expect(local.endCoord.x - local.startCoord.x).toBeCloseTo(0, 6);
+    expect(local.endCoord.y - local.startCoord.y).toBeCloseTo(1, 6);
+    // A reshape is no turn of the grid, so the Grid force still points -x.
+    expect(grid.endCoord.x - grid.startCoord.x).toBeCloseTo(-1, 6);
+    expect(grid.endCoord.y - grid.startCoord.y).toBeCloseTo(0, 6);
+    expect([local.mag, grid.mag]).toEqual([10, 10]);
+  });
+});
+
 describe('GridUtilsService.dragJoint on a slider', () => {
   it('rebuilds the rider it carries, which a pin used to do for it', () => {
     // `dragJoint` switched on `RevJoint`, because a slider was dragged by the
