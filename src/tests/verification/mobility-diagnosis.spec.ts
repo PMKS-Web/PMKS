@@ -106,6 +106,29 @@ describe('which part is loose, and what would fix it', () => {
     });
   });
 
+  it('blames a carrier sliding under a still pin, not the pin or its crank', () => {
+    // Held still, crank AB holds B where it is, and the carrier CD slides
+    // along B's slot under it. B was read at the carrier's speed (#344).
+    const { partition } = built({
+      joints: [
+        { id: 'A', x: 0, y: 0, ground: true, input: true },
+        { id: 'B', x: 4, y: 0 },
+        { id: 'C', x: 2, y: 0 },
+        { id: 'D', x: 6, y: 0 },
+      ],
+      links: [{ joints: 'AB' }, { joints: 'CD' }],
+      sliders: [
+        { at: 'C', angleRad: 0 },
+        { at: 'B', on: { carrier: 'CD', a: 'C', b: 'D' } },
+      ],
+      welds: ['C'],
+      inputAngVel: 10,
+    });
+    const diagnosis = diagnoseMobility(partition);
+    expect(diagnosis.looseLinks.map((link) => link.id)).toEqual(['CD']);
+    expect(diagnosis.looseJoints.map((joint) => joint.id).sort()).toEqual(['C', 'D']);
+  });
+
   describe('none, or fewer', () => {
     it('finds the brace', () => {
       const { partition } = built(bracedFourBarFixture());
