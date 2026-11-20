@@ -108,6 +108,21 @@
         fill: var(--mat-warning-color);
       }
     }
+
+    // Disabled keeps its ink and fades, the way the whole card fades while
+    // the mechanism plays: Material's gray label beside a red border and a
+    // red trash can read as a third, broken state.
+    &:disabled {
+      opacity: 0.55;
+    }
+
+    &.blue:disabled {
+      color: mat.m2-get-color-from-palette($primary-palette, 500);
+    }
+
+    &.red:disabled {
+      color: var(--mat-warning-color);
+    }
   }
 }
 
