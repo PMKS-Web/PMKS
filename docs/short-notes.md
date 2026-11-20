@@ -3200,3 +3200,13 @@ end with padlocks, and a body's menu has **Delete Link CD** for the link under t
 row reads `lastSelectedSublink`, which the canvas sets on every press of a compound, not on
 selection. Distance to Joints lists neighbors only -- the far end of each bar, the rest of a plate
 -- so a chain of bars never offers a padlock between its two far ends.
+
+### Welding a held bar keeps the hold, and says where it went (#279)
+
+A weld keeps a bar's Fixed Length or Fixed Angle, because a joint drag still reshapes a welded
+body and the hold is what keeps that bar's number. But a welded bar is no longer selected on its
+own, so the padlocks the reader set it with are out of reach, and in review the kept padlock read
+as a leftover. `weldJoint` now says so as news (`model/weld-hold-notice.ts`): which bars keep
+which hold, and that it is changed from Distance to Joints on one of the bar's joints. It speaks
+only for bars the weld put inside a body: a compound already welded was told about before, and a
+Slide on one rider makes no body.

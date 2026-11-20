@@ -146,6 +146,7 @@ import { redundantlyHeldJointSets } from '../model/rigid-bodies';
 import { reseatEndJoint } from '../model/slot-reseat';
 import { MODEL_SCALE } from '../model/render-scale';
 import { labelForBody, visibleBodyName as nameOfBody } from '../model/body-label';
+import { weldHoldNotice } from '../model/weld-hold-notice';
 import { renameAnchors } from '../model/force-anchor-name';
 import { SynthesisBuilderService } from './synthesis/synthesis-builder.service';
 
@@ -7628,8 +7629,14 @@ export class MechanismService {
     // A drag that lands on the same geometry is refused instead, because
     // dropping a joint somewhere is far more easily done by accident.
     const created = this.weldWouldPinTwice(joint);
+    const bars = this.realLinksAt(joint).filter((link) => link.subset.length === 0);
 
     if (!this.weldTopology(joint)) return;
+    const kept = weldHoldNotice(
+      bars.filter((bar) => this.rootLinkOwning(bar) !== bar),
+      (bar) => nameOfBody(bar, this.sealedStructures())
+    );
+    if (kept) this.notify.news('weld.holds-kept', kept);
     if (created) {
       this.notify.warning(
         'weld.pinned-twice',
