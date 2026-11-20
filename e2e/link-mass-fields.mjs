@@ -257,6 +257,9 @@ for (const mode of [1, 2, 3]) {
           const link = s.links.find((l) => l.id === id);
           const desired = g.svgGrid.screenToModelFromXY(target.x, target.y);
           const com = { x: link.CoM.x, y: link.CoM.y };
+          // Before either seek: a seek re-poses the joints, so a drag that had
+          // moved them would read as having left them alone.
+          const joints = s.joints.map((j) => ({ id: j.id, x: j.x, y: j.y }));
           s.seekMechanism(0, 0);
           s.seekMechanism(0, seconds);
           return {
@@ -264,7 +267,7 @@ for (const mode of [1, 2, 3]) {
             desired: { x: desired.x, y: desired.y },
             restored: { x: link.CoM.x, y: link.CoM.y },
             start: s.mechanisms[0].joints[0].map((j) => ({ id: j.id, x: j.x, y: j.y })),
-            joints: s.joints.map((j) => ({ id: j.id, x: j.x, y: j.y })),
+            joints,
             depth: g.saveHistoryService.history.length,
             custom: link.comIsCustom,
           };

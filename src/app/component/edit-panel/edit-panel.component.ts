@@ -199,7 +199,8 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
   distanceRows: DistanceNeighbor[] = [];
   distanceBarForms: (FormGroup | undefined)[] = [];
   private currentlyOpenJointID: string = '';
-  private shownDistanceRowsKey = '';
+  /** The joint whose Distance to Joints rows are shown. */
+  private shownDistanceJoint: RealJoint | undefined;
 
   /** Whether each collapsible section is open, kept for the session rather
    *  than on this component, which every switch into Edit mounts afresh. */
@@ -1985,12 +1986,13 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
           // A new joint, or the same one after a weld or an unweld changed
           // which bars it is measured along: the rows are rebuilt either way,
           // or a typed length went through the row kind from before the weld.
-          const rowsKey = this.distanceRowsKey(
-            this.getOtherJointsInLink(this.activeSrv.selectedJoint)
-          );
+          // Compared by object, not by id: an undo rebuilds every joint and bar
+          // under the same ids, and rows kept from before it type into parts
+          // that are no longer in the drawing.
           if (
             this.currentlyOpenJointID != this.activeSrv.selectedJoint.id ||
-            rowsKey !== this.shownDistanceRowsKey
+            this.shownDistanceJoint !== this.activeSrv.selectedJoint ||
+            !this.sameDistanceRows(this.getOtherJointsInLink(this.activeSrv.selectedJoint))
           ) {
             this.listOfOtherJoints = [];
             setTimeout(() => {
@@ -2665,14 +2667,19 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
     return solved;
   }
 
-  /** Which rows Distance to Joints shows, as a string to compare. */
-  private distanceRowsKey(rows: readonly DistanceNeighbor[]): string {
-    return rows.map((row) => `${row.joint.id}:${row.bar?.id ?? ''}`).join(',');
+  /** Whether these are the rows Distance to Joints shows, part for part. */
+  private sameDistanceRows(rows: readonly DistanceNeighbor[]): boolean {
+    return (
+      rows.length === this.distanceRows.length &&
+      rows.every(
+        (row, i) => row.joint === this.distanceRows[i].joint && row.bar === this.distanceRows[i].bar
+      )
+    );
   }
 
   private reloadOtherJointForm() {
     this.distanceRows = this.getOtherJointsInLink(this.activeSrv.selectedJoint);
-    this.shownDistanceRowsKey = this.distanceRowsKey(this.distanceRows);
+    this.shownDistanceJoint = this.activeSrv.selectedJoint;
     this.listOfOtherJoints = this.distanceRows.map((row) => row.joint);
     this.jointForm.controls['otherJoints'] = this.fb.array([]);
     this.otherJoitnsSubscriptions.forEach((subscription) => subscription.unsubscribe());
@@ -2707,6 +2714,8 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
             }
             if (solved === 'unheld') {
               this.updateDistanceBetweenJoints(this.activeSrv.selectedJoint, joint, value);
+              // A drag does not save, so the typed number is its own undo step here.
+              this.mechanismService.save();
             }
             this.mechanismService.onMechUpdateState.next(2);
             this.otherJoints.controls[i * 2].patchValue(
@@ -2755,6 +2764,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
             }
             if (solved === 'unheld') {
               this.updateAngleBetweenJoints(this.activeSrv.selectedJoint, joint, radians);
+              this.mechanismService.save();
             }
             this.mechanismService.onMechUpdateState.next(2);
             this.otherJoints.controls[i * 2 + 1].patchValue(

@@ -86,14 +86,16 @@ export class MultiEditPanelComponent implements OnInit, DoCheck {
    * angle are pose-bound, and each writes through `valueChanges`.
    *
    * Locks, holds, mass and traces change the authored drawing without moving
-   * it. A force's size, direction and frame are typed geometry, so they wait
-   * for the start like X and Y (`docs/editing-rules.md`).
+   * it. A force's direction and frame are typed geometry, so they wait for the
+   * start like X and Y; its magnitude is Load, which reads the same at every
+   * pose and stays typeable (`docs/editing-rules.md`).
    */
   ngDoCheck(): void {
     const placementFrozen = !this.permission.may('placement');
     const safeFrozen = this.panelIsFrozen();
     const structureFrozen = this.structureIsFrozen();
     const forceFrozen = !this.permission.may('properties');
+    const loadFrozen = !this.permission.may('load');
     Object.entries(this.form.controls).forEach(([name, control]) => {
       // A Lock on a force holds which way it points, which is what its drag
       // handles edit; how big it is stays typeable, the same rule the one-force
@@ -103,9 +105,11 @@ export class MultiEditPanelComponent implements OnInit, DoCheck {
         ? placementFrozen
         : name === 'ground'
           ? structureFrozen
-          : ['magnitude', 'forceAngle', 'isGlobal'].includes(name)
-            ? forceFrozen
-            : safeFrozen;
+          : name === 'magnitude'
+            ? loadFrozen
+            : ['forceAngle', 'isGlobal'].includes(name)
+              ? forceFrozen
+              : safeFrozen;
       const off = frozen || held;
       if (off === control.disabled) return;
       if (off) control.disable({ emitEvent: false });
