@@ -1,5 +1,6 @@
 import { Cylinder, cylindersEnclosing } from './cylinder';
 import { Force } from './force';
+import { renameAnchors } from './force-anchor-name';
 import { PrisJoint, RealJoint, RevJoint } from './joint';
 import { nextFreeLetter } from './joint-letters';
 import { Link, RealLink } from './link';
@@ -119,9 +120,7 @@ function renameLink(link: Link, from: string, to: string, forces: Force[]): void
       link.comAnchor = { joint: to };
     }
   }
-  forces.forEach((force) => {
-    if (force.anchoredTo === oldId) force.anchoredTo = link.id;
-  });
+  renameAnchors(forces, oldId, link.id);
 }
 
 function replaceInBody(

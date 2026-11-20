@@ -11,6 +11,7 @@ import {
 } from './transcoding/stored-settings';
 import { StringTranscoder } from './transcoding/string-transcoder';
 import { Force } from '../model/force';
+import { anchorToWrite } from '../model/force-anchor-name';
 import { Joint, RealJoint, RevJoint, PrisJoint } from '../model/joint';
 import {
   JointData,
@@ -147,7 +148,7 @@ export class UrlGenerationService {
     encoder.addForce(
       new ForceData(
         force.id,
-        force.anchoredTo ?? force.link.id,
+        anchorToWrite(force, this.mechanism.links),
         force.name,
         force.startCoord.x / MODEL_SCALE,
         force.startCoord.y / MODEL_SCALE,

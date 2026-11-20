@@ -436,6 +436,34 @@ describe('MechanismService joint merging', () => {
       scene.service.joints.map((joint) => [joint.x, joint.y])
     );
   });
+
+  // #322: the bar is renamed after its new joints, and a force that still
+  // remembered the old name made every URL written afterwards unreadable --
+  // so the undo entries after the merge refused to open.
+  it('carries a force on the renamed bar through the merge and the URL', () => {
+    const scene = createOpenFourBar();
+    const de = scene.service.links.find((link) => link.id === 'DE') as RealLink;
+    const force = new Force('F1', de, new Coord(4.5, 1), new Coord(4.5, 2), false, true, 10);
+    force.anchoredTo = 'DE';
+    de.forces.push(force);
+    scene.service.forces = [force];
+
+    scene.service.mergeJoints(scene.e, scene.c);
+
+    expect(force.anchoredTo).toBe('CD');
+    const decoder = new StringTranscoder();
+    expect(() => decoder.decodeURL(encodeUrlOf(scene.service, scene.settings))).not.toThrow();
+    const restored = {
+      joints: [],
+      links: [],
+      forces: [],
+      mechanismTimeStep: 0,
+    } as unknown as MechanismService;
+    new MechanismBuilder(restored, decoder, new SettingsService(), new ActiveObjService()).build(
+      true
+    );
+    expect(restored.forces.map((one) => one.link.id)).toEqual(['CD']);
+  });
 });
 
 /**
