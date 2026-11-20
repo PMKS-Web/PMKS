@@ -219,12 +219,20 @@ function sliders(ctx: RelationContext): FamilyMatch[] {
       }
     } else if (rider.ground) {
       for (const rod of ctx.bodies.filter((b) => jointsOf(ctx, b).includes(rider))) {
-        const pin = jointsOf(ctx, rod).find((j) => j !== rider && !isGroundPin(j));
-        const crank =
-          pin &&
+        const crankAt = (pin: Joint) =>
           ctx.bodies.find(
             (b) => b !== rod && jointsOf(ctx, b).includes(pin) && jointsOf(ctx, b).some(isGroundPin)
           );
+        const free = jointsOf(ctx, rod).filter((j) => j !== rider && !isGroundPin(j));
+        // A fully turning crank at any free pin on the rod, not only the first:
+        // a tracer point listed ahead of the crank pin hid a real slider-crank
+        // (#351). The walking beam below still reads the first pin only.
+        const turning = free.find((j) => {
+          const found = crankAt(j);
+          return found !== undefined && turnsFully(ctx, found);
+        });
+        const pin = turning ?? free[0];
+        const crank = pin && crankAt(pin);
         if (!crank || !pin) continue;
         const beam = beamArms(ctx, crank);
         if (turnsFully(ctx, crank)) {
