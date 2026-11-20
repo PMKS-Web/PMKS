@@ -1040,6 +1040,22 @@ describe('NewGridComponent typed multi-selection', () => {
     expect(b.y).toBeCloseTo(-2 * MODEL_SCALE);
   });
 
+  it('does not spin the box round a group a Lock holds still', () => {
+    const { component, fixture, active, a, b } = setUpSelection();
+    b.locked = true;
+    active.replacePartSelection(a);
+    active.togglePartSelection(b);
+    fixture.detectChanges();
+
+    component['beginSelectionGesture']('rotate', new Coord(MODEL_SCALE, MODEL_SCALE));
+    component['timeMouseDown'] = 0;
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 2 * MODEL_SCALE, clientY: 0 }));
+    // The turn was refused, so the box stays square on parts that did not move.
+    expect(component.selectionSpin()).toBeNull();
+    expect([a.x, a.y, b.x, b.y]).toEqual([0, 0, 2 * MODEL_SCALE, 0]);
+    component.mouseUp(new MouseEvent('mouseup', { clientX: 2 * MODEL_SCALE, clientY: 0 }));
+  });
+
   it('turns in fifteen-degree steps, and freely while Alt is held', () => {
     const { component, fixture, active, a, b } = setUpSelection();
     active.replacePartSelection(a);

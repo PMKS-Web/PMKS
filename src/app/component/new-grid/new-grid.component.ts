@@ -1531,7 +1531,6 @@ export class NewGridComponent implements OnDestroy {
       const rotation = event.altKey
         ? turned
         : Math.round(turned / ROTATION_SNAP_RAD) * ROTATION_SNAP_RAD;
-      gesture.liveRotation = rotation;
       transform = { rotation };
     } else if (gesture.grip) {
       // Away from the opposite corner or edge, which is the point that holds
@@ -1582,6 +1581,9 @@ export class NewGridComponent implements OnDestroy {
       return true;
     }
     gesture.changed = true;
+    // Only a turn that landed spins the box: a Lock refuses the turn, and a box
+    // that swung anyway showed the group turning while every part held still.
+    if (transform.rotation !== undefined) gesture.liveRotation = transform.rotation;
     this.mechanismSrv.reseatFloatingSliders();
     this.mechanismSrv.updateMechanism(false);
     this.mechanismSrv.onMechUpdateState.next(2);
