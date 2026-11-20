@@ -137,7 +137,9 @@ const refused = async (label, reason) => {
   preserves(`${label}: refused click`, before, after);
   // Nothing else either: a grayed Locked row that still toggled the lock, or a
   // hold, a disc or a force that changed, leaves every coordinate where it was.
-  const property = (s) => JSON.stringify([s.links, s.locked, s.forces]);
+  // Nor a part added: `drift` measures only the joints there before, so a new
+  // tracer point would slip past it; the ids are compared as well.
+  const property = (s) => JSON.stringify([Object.keys(s.pose).sort(), s.links, s.locked, s.forces]);
   check(`${label}: refused click changes no property`, property(before) === property(after));
 };
 const loadAtStart = async (mode = 'Kinematic Analysis') => {
