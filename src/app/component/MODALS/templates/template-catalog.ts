@@ -134,7 +134,7 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
     name: 'Parallelogram',
     category: 'start',
     description:
-      'Opposite links are equal, so the coupler never tilts as the crank turns. A desk lamp’s arm uses this to keep its head level.',
+      'Opposite links are equal, so while it stays a parallelogram the coupler never tilts. A desk lamp’s arm uses this to keep its head level.',
     thumbnail: 'assets/gifs/parallelogram.png',
     animation: 'assets/gifs/parallelogram.gif',
   },

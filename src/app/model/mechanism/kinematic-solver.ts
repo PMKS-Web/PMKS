@@ -167,8 +167,8 @@ export class KinematicsSolver {
    * A link pinned to ground at every one of its joints cannot move, so no route
    * above solves for it -- and the panel went on offering it the same graphs as
    * anything else, which came back as charts with no data in them. Four of them
-   * in `Four_Bar_Inversions` and two in `Slider_Crank_Inversions`, which draw
-   * their frames rather than leaving them implied: sixty empty series between
+   * in `Four_Bar_Inversions` and three in `Slider_Crank_Inversions`, which draw
+   * their frames rather than leaving them implied: seventy empty series between
    * them.
    *
    * Its kinematics are not missing, though. They are zero, and a flat line

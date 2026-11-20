@@ -164,10 +164,11 @@ const TEMPLATE_PARTS: Partial<Record<LibraryTemplateID, TemplateParts>> = {
   },
   // The one drawing where color carries an argument rather than a structure.
   // It is the same four bars four times, and what changes is which one is
-  // held still — so a bar keeps its color across all four, and the missing
-  // color in each is the bar being held. The anchored/floating rule would say
-  // the opposite: it would repaint a bar every time its job changed, which is
-  // exactly the thing this drawing exists to say does not make it a new bar.
+  // held still — so a bar keeps its color across all four, the held one
+  // included, and only the ground hatching moves. The anchored/floating rule
+  // would say the opposite: it would repaint a bar every time its job changed,
+  // which is exactly the thing this drawing exists to say does not make it a
+  // new bar.
   Four_Bar_Inversions: {
     machines: [
       ['AB', 'BC', 'CD', 'AD'],
@@ -199,26 +200,29 @@ const TEMPLATE_PARTS: Partial<Record<LibraryTemplateID, TemplateParts>> = {
     },
   },
   // The same argument as the four-bar set, for the chain with a slider in it.
-  // L1 indigo, L2 teal, L3 navy, wherever each turns up; L4 is the block,
-  // which is drawn black and is nobody's color.
+  // L1 indigo, L2 teal, L3 navy and L4 dark teal, wherever each turns up, as in the
+  // four-bar set; where L4 is the block it is drawn black, as blocks are.
   Slider_Crank_Inversions: {
     machines: [
-      ['AB', 'BC'],
+      ['AB', 'BC', 'AD'],
       ['FG', 'EH', 'EF'],
-      ['JK', 'MN', 'JM'],
-      ['PQ', 'QR'],
+      ['IJ', 'IK', 'KLM', 'JN'],
+      ['OP', 'PQ', 'QR'],
     ],
     fixed: {
       AB: 4,
       BC: 2,
+      AD: 1,
       FG: 2,
       EH: 1,
       EF: 4,
-      JK: 4,
-      MN: 1,
-      JM: 2,
-      PQ: 2,
-      QR: 4,
+      IJ: 4,
+      IK: 2,
+      KLM: 5,
+      JN: 1,
+      OP: 2,
+      PQ: 4,
+      QR: 1,
     },
   },
   Pumping_Field: {
