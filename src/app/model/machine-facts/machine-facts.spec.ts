@@ -51,28 +51,37 @@ describe('what PMKS recognizes in a machine', () => {
     // Crank AB drives two loops: the parallelogram ABEF, and the crank-rocker
     // ABCD. The side the two loops share is the crank, which turns fully, so
     // this is not a crank-rocker whose rocker swings a parallelogram.
-    const { joints, links, forces, mechanism } = buildMechanism({
-      joints: [
-        { id: 'A', x: 0, y: 0, ground: true, input: true },
-        { id: 'B', x: 1, y: 0 },
-        { id: 'C', x: 3.6667, y: 2.9814 },
-        { id: 'D', x: 4, y: 0, ground: true },
-        { id: 'E', x: 1, y: -3 },
-        { id: 'F', x: 0, y: -3, ground: true },
-      ],
-      links: [
-        { joints: 'AB' },
-        { joints: 'BC' },
-        { joints: 'CD' },
-        { joints: 'BE' },
-        { joints: 'EF' },
-      ],
-      inputAngVel: 1,
-    });
-    expect(mechanism.isMechanismValid()).toBe(true);
-    const [partition] = partitionMechanisms(joints, links, forces).mechanisms;
-    const families = machineFacts(partition, mechanism)!.family.map((match) => match.family);
-    expect(families).not.toContain('crank-rocker driving a parallelogram');
+    const familiesDrivenAt = (input: 'A' | 'D') => {
+      const { joints, links, forces, mechanism } = buildMechanism({
+        joints: [
+          { id: 'A', x: 0, y: 0, ground: true, input: input === 'A' },
+          { id: 'B', x: 1, y: 0 },
+          { id: 'C', x: 3.6667, y: 2.9814 },
+          { id: 'D', x: 4, y: 0, ground: true, input: input === 'D' },
+          { id: 'E', x: 1, y: -3 },
+          { id: 'F', x: 0, y: -3, ground: true },
+        ],
+        links: [
+          { joints: 'AB' },
+          { joints: 'BC' },
+          { joints: 'CD' },
+          { joints: 'BE' },
+          { joints: 'EF' },
+        ],
+        inputAngVel: 1,
+      });
+      expect(mechanism.isMechanismValid()).toBe(true);
+      const [partition] = partitionMechanisms(joints, links, forces).mechanisms;
+      return machineFacts(partition, mechanism)!.family.map((match) => match.family);
+    };
+    // Driven from the rocker the input reverses, and nothing turns fully.
+    for (const input of ['A', 'D'] as const) {
+      expect(familiesDrivenAt(input)).not.toContain('crank-rocker driving a parallelogram');
+    }
+  });
+
+  it('still names a crank-rocker whose rocker swings a parallelogram', () => {
+    expect(familiesOf('Windshield_Wiper')).toEqual(['crank-rocker driving a parallelogram']);
   });
 
   it('has nothing to say about a machine that does not run', () => {
