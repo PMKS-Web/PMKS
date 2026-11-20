@@ -278,10 +278,17 @@ function looseParts(
     return { looseLinks: [], looseJoints: [] };
   }
 
+  // A slider is where its block is, so only the block's bodies say whether it
+  // moves: a carrier sliding under a still block is caught at its own joints,
+  // and read here it made the block and its crank loose too (#344).
+  const bodiesMoving = (joint: RealJoint): Iterable<string> =>
+    joint instanceof PrisJoint
+      ? new Set(joint.links.map((link) => assignment.bodyOf(link)))
+      : assignment.bodiesAt(joint);
   const speedOf = (joint: RealJoint, direction: number[]): number =>
     Math.max(
       0,
-      ...[...assignment.bodiesAt(joint)]
+      ...[...bodiesMoving(joint)]
         .filter((body) => body !== WORLD)
         .map((body) => {
           const motion = pointMotion(system.bodyAt(body), joint, direction);

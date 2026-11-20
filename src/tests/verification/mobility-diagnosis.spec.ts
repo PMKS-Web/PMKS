@@ -20,6 +20,7 @@ import {
   stuckInputFixture,
   ungroundedPivotFourBarFixture,
 } from '../../test-utils/verification/mobility-fixtures';
+import { crankLockedAtASlotPinFixture } from '../../test-utils/verification/student-mistake-fixtures';
 
 /**
  * "This mechanism has 2 degrees of freedom" is where the app used to stop. These
@@ -104,6 +105,14 @@ describe('which part is loose, and what would fix it', () => {
       // N is the barrel's buried inner end and P the square the rod slides on.
       expect([check.summary, ...check.fixes].join(' ')).not.toMatch(/\b[NP]\b/);
     });
+  });
+
+  it('blames a carrier sliding under a still pin, not the pin or its crank', () => {
+    // Held still, crank HI and bar IJ hold pin I where it is, and the carrier
+    // BDE slides along I's slot under it. I was read at the carrier's speed,
+    // and HI and IJ came out loose with it (#344).
+    const diagnosis = diagnoseMobility(built(crankLockedAtASlotPinFixture()).partition);
+    expect(diagnosis.looseLinks.map((link) => link.id)).toEqual(['BDE', 'EF']);
   });
 
   describe('none, or fewer', () => {
