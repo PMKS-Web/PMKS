@@ -6,15 +6,16 @@
 # board all that time. Closing it here lets the board's own "Item closed" rule
 # move it to Done.
 #
-# `pull_request_target` runs this file as it stands on `staging`, the base
-# branch, so it works as soon as it merges there, and its token can close
-# issues for a pull request from a fork too. It checks out no code, so the
-# pull request's own changes never run with that token.
+# `pull_request` reads this file from the pull request's own branch, so it
+# works for every branch cut from `staging` once it merges there.
+# `pull_request_target` would read it from `main` instead, and do nothing
+# until a release carried it across. The cost is a pull request from a fork,
+# whose token cannot write: close its issues by hand.
 
 name: Close fixed issues
 
 on:
-  pull_request_target:
+  pull_request:
     types: [closed]
     branches: [staging]
 
@@ -34,7 +35,15 @@ jobs:
             const keyword = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+#(\d+)\b/gi;
             const numbers = new Set([...(pr.body ?? '').matchAll(keyword)].map((m) => Number(m[1])));
             for (const issue_number of numbers) {
-              const { data: issue } = await github.rest.issues.get({ ...context.repo, issue_number });
+              let issue;
+              try {
+                ({ data: issue } = await github.rest.issues.get({ ...context.repo, issue_number }));
+              } catch (error) {
+                // A mistyped or deleted number should not stop the ones after it.
+                if (error.status !== 404 && error.status !== 410) throw error;
+                core.warning(`#${issue_number} does not exist; skipped`);
+                continue;
+              }
               if (issue.pull_request || issue.state === 'closed') continue;
               await github.rest.issues.createComment({
                 ...context.repo,
