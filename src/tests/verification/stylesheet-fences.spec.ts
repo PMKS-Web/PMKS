@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 import { PHONE_MAX_WIDTH } from '../../app/services/viewport.service';
 
 /**
@@ -18,12 +18,16 @@ const TOKENS = 'src/styles/_tokens.scss';
 
 const read = (path: string) => readFileSync(resolve(ROOT, path), 'utf8');
 
-/** Every stylesheet under src, as a path relative to the repository root. */
+/**
+ * Every stylesheet under src, as a path relative to the repository root,
+ * written with forward slashes on every system: Windows hands back
+ * backslashes, and the token file then never matched `TOKENS` (#285).
+ */
 function stylesheets(dir = resolve(ROOT, 'src')): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
     if (statSync(path).isDirectory()) return stylesheets(path);
-    return name.endsWith('.scss') ? [relative(ROOT, path)] : [];
+    return name.endsWith('.scss') ? [relative(ROOT, path).split(sep).join('/')] : [];
   });
 }
 
