@@ -1,6 +1,8 @@
 # Editing in Analysis mode — tuning a mechanism against its own curves
 
 > **Status:** Built, then redesigned — Phases A, B and C shipped and `e2e/analysis-editing.mjs` guards them; the panel was redesigned afterwards.
+>
+> **Narrowed since:** [editing-rules.md](editing-rules.md) is now the rule. The analysis modes drag joints, links and forces at any paused pose and add or delete tracer points and forces at the start; structure, locks, holds and typed fields are Edit's.
 
 The visual language below (a dashed *live* curve, a peak pill) was
 the first version; the panel was redesigned afterwards — one card of rows, a Magnitude / X & Y

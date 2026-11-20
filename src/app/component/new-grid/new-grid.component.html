@@ -2353,7 +2353,7 @@
         <g
           appForceMark
           [force]="force"
-          [selected]="forceIsSelected(force)"
+          [selected]="activeObjService.holdsForce(force)"
           [paused]="!mechanismSrv.isPlaying"
           [ink]="forceInkOf(force)"
           pointer-events="none"
@@ -2720,11 +2720,16 @@
           [attr.width]="10"
           style="overflow: visible; text-anchor: middle"
         >
+          <!-- With names on, every force wears its name, playback included, as
+               every joint does: two forces on one link are otherwise told apart
+               only by pointing at each (#330). With names off, the name still
+               answers a hover or a selection, but not while the machine runs. -->
           @if (
-            !mechanismSrv.isPlaying &&
-            (force.showHighlight ||
-              (this.activeObjService.selectedForce == force &&
-                this.activeObjService.objType == 'Force'))
+            settings.isShowID.value ||
+            (!mechanismSrv.isPlaying &&
+              (force.showHighlight ||
+                (this.activeObjService.selectedForce == force &&
+                  this.activeObjService.objType == 'Force')))
           ) {
             <text
               class="forceLabel"

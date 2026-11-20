@@ -3,6 +3,7 @@ import { Force } from './force';
 import { carryForce, frameTurn } from './force-carry';
 import { Joint, PrisJoint } from './joint';
 import { Link, RealLink } from './link';
+import { derivedCenterOfMass } from './link-body';
 import { SelectedPart, selectableLinks } from './selection';
 import { CanonicalSelectionClosure, canonicalSelectionClosure } from './selection-closure';
 
@@ -221,9 +222,7 @@ export class SelectionTransformSnapshot {
     body.forces.forEach(({ force, start, end, angle }) =>
       carryForce(force, place(start), { x: end.x - start.x, y: end.y - start.y }, linkTurn, angle)
     );
-    const com = body.link.comIsCustom
-      ? place(body.com)
-      : RealLink.determineCenterOfMass(body.link.joints);
+    const com = body.link.comIsCustom ? place(body.com) : derivedCenterOfMass(body.link);
     body.link.CoM = new Coord(com.x, com.y);
     if (body.link.comIsCustom) body.link.captureComOffset();
     body.link.updateCoMDs();

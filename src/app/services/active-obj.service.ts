@@ -238,6 +238,21 @@ export class ActiveObjService {
     return this.partSelection.contains(partOrRef);
   }
 
+  /**
+   * Whether this force wears the selected mark: the one selected force, or any
+   * force in a group.
+   *
+   * A lone force is held in `selectedForce` and not in the part selection,
+   * while a group holds every member there, so both have to be asked. Asking
+   * only `selectedForce` marked one arrow of a group and left the rest looking
+   * unselected, which is the rule joints and links already follow through
+   * `containsPart`.
+   */
+  holdsForce(force: Force): boolean {
+    if (this.objType === 'Force') return this.selectedForce === force;
+    return this.objType === 'MultiSelection' && this.containsPart(force);
+  }
+
   clearPartSelection(nextType: 'Grid' | 'Nothing' = 'Grid'): void {
     this.prevSelectedJoint = this.selectedJoint;
     this.resetPartSelection();

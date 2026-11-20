@@ -40,7 +40,7 @@
 
       <button class="viewRow" [disabled]="noJointExists()" (click)="onShowIDPressed()">
         <mat-icon [svgIcon]="isShowingIDs() ? 'abc' : 'abc_off'"></mat-icon>
-        <span class="viewRowName">Joint names</span>
+        <span class="viewRowName">Joint and force names</span>
         <span class="viewRowSwitch" [class.on]="isShowingIDs()"></span>
       </button>
 
@@ -87,7 +87,7 @@
       (pressed)="showCenterOfMass()"
     />
     <app-view-button
-      noun="Joint names"
+      noun="Joint and force names"
       shownIcon="abc"
       hiddenIcon="abc_off"
       [shown]="isShowingIDs()"

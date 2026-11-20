@@ -12,7 +12,10 @@ import { MechanismService } from '../../app/services/mechanism.service';
 import { SettingsService } from '../../app/services/settings.service';
 import { LengthUnit } from '../../app/model/utils';
 import { coordinateRuleFor, coordinatesAcross } from '../../app/model/mechanism/anchor';
-import { nearlyNonGrashofFixture } from '../../test-utils/verification/fixtures';
+import {
+  fourBarDrivenAtFixture,
+  nearlyNonGrashofFixture,
+} from '../../test-utils/verification/fixtures';
 import { MechanismFixture, buildMechanism } from '../../test-utils/verification/fixture';
 import { encodeUrlOf } from '../../test-utils/url-encoding';
 import { StringTranscoder } from '../../app/services/transcoding/string-transcoder';
@@ -510,6 +513,28 @@ describe('editing at a displaced pose', () => {
       short: 'fixed angle AB',
       long: 'Starting here would turn fixed angle AB. Turn off its Fixed Angle first.',
     });
+    expect(service.setCurrentPoseAsStart(joints[1])).toBe(false);
+    expect(startPoses(service)).toBe(was);
+  });
+
+  it("will not move the start where it would turn a welded bar's fixed angle", () => {
+    // A bar welded into a body is in no partition's list -- the body is -- so
+    // asking the partitions about the bar itself dropped its padlock, and the
+    // start moved under an angle the canvas still showed as fixed.
+    const { service } = createMechanismHarness();
+    const fixture = fourBarDrivenAtFixture('A');
+    fixture.joints.push({ id: 'U', x: 2.6, y: 4.4 });
+    fixture.links.push({ joints: 'TU' });
+    const joints = buildFixtureInto(service, fixture);
+    const arm = service.links.find((link) => link.id === 'TU') as RealLink;
+    arm.hold = 'angle';
+    service.weldJoint(joints.find((joint) => joint.id === 'T')!);
+    service.updateMechanism();
+    expect(service.links.includes(arm)).toBe(false);
+    displace(service);
+    const was = startPoses(service);
+
+    expect(service.startMoveRefusal(0)?.short).toBe('fixed angle TU');
     expect(service.setCurrentPoseAsStart(joints[1])).toBe(false);
     expect(startPoses(service)).toBe(was);
   });
@@ -1091,6 +1116,26 @@ describe('editing at a displaced pose', () => {
     expect(service.forces).toHaveLength(0);
     expect(startPoses(service)).toBe(start);
     expect(joints.map((joint) => [joint.x, joint.y])).toEqual(shown);
+  });
+
+  // #262: the magnitude field goes through the same door as Flip Force, so a
+  // load typed mid-cycle reaches the design and leaves the pose on screen.
+  it('retains a force magnitude typed at a paused pose', () => {
+    const { service, joints, links } = oneBar();
+    const force = service.createForce(new Coord(1.5, 1.5), new Coord(1.5, 2.5), links[1])!;
+    const start = startPoses(service);
+    displace(service);
+    const shown = joints.map((joint) => [joint.x, joint.y]);
+    const tail = { x: force.startCoord.x, y: force.startCoord.y };
+
+    expect(service.editForcesAtPose([force], () => force.setMagnitude(7))).toBe(true);
+
+    expect(force.mag).toBeCloseTo(7, 6);
+    expect(service.mechanisms[0].forces[0][0].mag).toBeCloseTo(7, 6);
+    expect(force.startCoord.x).toBeCloseTo(tail.x, 6);
+    expect(force.startCoord.y).toBeCloseTo(tail.y, 6);
+    expect(joints.map((joint) => [joint.x, joint.y])).toEqual(shown);
+    expect(startPoses(service)).toBe(start);
   });
 
   it('keeps paused locks, shape and hold changes independent of mode and geometry', () => {

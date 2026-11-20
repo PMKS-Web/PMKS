@@ -69,7 +69,8 @@ describe('MechanismService welded links and force ownership', () => {
     harness.links[1].mass = 1;
     harness.links[1].massMoI = 4;
     harness.links[1].CoM = new Coord(1.5, 0);
-    // Chosen values, so the auto pass leaves them alone — as the panel flags.
+    // Chosen values on the members, which since #279 the compound ignores: it
+    // has one mass, shared by length, and its own shape decides the rest.
     for (const link of [harness.links[0], harness.links[1]]) {
       (link as RealLink).moiIsCustom = true;
       (link as RealLink).comIsCustom = true;
@@ -84,20 +85,18 @@ describe('MechanismService welded links and force ownership', () => {
     expect(compound.fill).toBe('#112233');
     expect(compound.subset.map((link) => link.id).sort()).toEqual(['AB', 'BC']);
     expect(compound.mass).toBe(3);
-    expect(compound.CoM.x).toBeCloseTo(5 / 6, 12);
+    // Two bars of one length, so half the mass each: the middle of the chain.
+    expect(compound.CoM.x).toBeCloseTo(1, 12);
     expect(compound.CoM.y).toBe(0);
-    // Parallel axis in *stored* units: distances here are model coordinates
-    // (MODEL_SCALE user units) and the metric store is kg·cm² against gram
-    // masses, so each m·d² term carries 0.001 / MODEL_SCALE². The old
-    // expectation (23/3) baked in the unconverted sum — the bug that welded
-    // two 1 g bars into tens of thousands of kg·cm².
+    // One uniform 3 g rod two long: m·L²/12 = 1, in *stored* units. Distances
+    // here are model coordinates (MODEL_SCALE user units) and the metric store
+    // is kg·cm² against gram masses, so the term carries 0.001 / MODEL_SCALE²
+    // -- the conversion whose absence once welded two 1 g bars into tens of
+    // thousands of kg·cm².
     const parallelAxis = 0.001 / MODEL_SCALE ** 2;
-    expect(compound.massMoI).toBeCloseTo(
-      3 + 4 + (2 * (0.5 - 5 / 6) ** 2 + 1 * (1.5 - 5 / 6) ** 2) * parallelAxis,
-      12
-    );
+    expect(compound.massMoI).toBeCloseTo(1 * parallelAxis, 12);
     compound.reComputeDPath();
-    expect(compound.CoM.x).toBeCloseTo(5 / 6, 12);
+    expect(compound.CoM.x).toBeCloseTo(1, 12);
     expect(force.link).toBe(compound);
     expect(compound.forces).toEqual([force]);
     expect(harness.links.every((link) => link.forces.length === 0)).toBe(true);

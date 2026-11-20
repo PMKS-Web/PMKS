@@ -167,9 +167,14 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
   },
 
   // Real Machines: each traced by hand over a picture of the machine,
-  // and each card opens on that picture. The placements are the ones the
-  // drawings were made at, in centimeters, which the backdrop service
-  // converts into whatever unit the payload opens in.
+  // and each card opens on that picture. The placements are in centimeters,
+  // which the backdrop service converts into whatever unit the payload opens
+  // in. The landing gear and the hood hinge are drawn at the machine's own
+  // size (#308): the gear about two meters tall, read in meters, and the hinge
+  // about forty centimeters. They were traced forty and four times smaller, and
+  // their placements are those tracings' numbers times the same factors. The
+  // excavator is still at its traced size: drawn larger, its rates near a
+  // toggle leave the numerical oracle's budget (see template-baseline.ts).
   {
     id: 'Aircraft_Landing_Gear',
     name: 'Aircraft Landing Gear',
@@ -180,9 +185,9 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
     animation: 'assets/gifs/aircraft-landing-gear.gif',
     backdrop: {
       src: 'assets/backdrops/aircraft-landing-gear.png',
-      width: 14.35,
-      centerX: 2.81,
-      centerY: 6.22,
+      width: 574,
+      centerX: 112.4,
+      centerY: 248.8,
       opacity: 0.8,
     },
   },
@@ -196,9 +201,9 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
     animation: 'assets/gifs/hood-hinge.gif',
     backdrop: {
       src: 'assets/backdrops/hood-hinge.jpg',
-      width: 14.36,
-      centerX: 1.53,
-      centerY: 0.09,
+      width: 57.44,
+      centerX: 6.12,
+      centerY: 0.36,
       opacity: 1,
     },
   },

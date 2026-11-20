@@ -69,6 +69,7 @@ import {
 import { Force } from '../../model/force';
 import { NotificationService } from '../../services/notification.service';
 import { ForceRefusalNotice } from './force-refusal-notice';
+import { DeleteWaysOut, sayWhyNotDeleted } from './delete-refusal';
 import { BackgroundImageService, MIN_WIDTH } from '../../services/background-image.service';
 import { CdkContextMenuTrigger } from '@angular/cdk/menu';
 import { MatDialog } from '@angular/material/dialog';
@@ -136,7 +137,7 @@ import { SnapLine, snapToLines } from '../../model/line-snap';
 import { placementLines, tracerSnapTargets } from '../../model/tracer-lines';
 import { drawDepths } from '../../model/draw-order';
 import { MODEL_SCALE } from '../../model/render-scale';
-import { uniformBodyOf } from '../../model/uniform-body';
+import { derivedCenterOfMass } from '../../model/link-body';
 import { buildCompoundPath } from '../../model/compound-link-path';
 
 import { angleReference, GROUND_BODY, resolveActuator } from '../../model/actuator';
@@ -419,8 +420,10 @@ export class NewGridComponent implements OnDestroy {
     // What an arrow means depends on whether there is anything here to move.
     // The service asks; the answer is this canvas's to give, because the rules
     // about when a drawing may be edited already live here.
+    // A nudge is typed geometry, not a gesture (docs/editing-rules.md): an
+    // arrow key steps a coordinate, so it waits for Edit at the start pose.
     this.shortcuts.whenArrowsNudge(
-      () => this.canEditNow() && this.activeObjService.selectedParts.length > 0
+      () => this.permission.may('placement') && this.activeObjService.selectedParts.length > 0
     );
     // Handed back when this canvas goes away. The service holds the predicate
     // for as long as it is given one, so without this a torn-down canvas keeps
@@ -1300,9 +1303,8 @@ export class NewGridComponent implements OnDestroy {
       this.mechanismSrv.links
     );
     // No box around a single point -- forces alone, or joints all on one spot:
-    // there is nothing to turn or scale, and the grips all landed on that one
-    // point, stacked on top of each other (#295 review). A drag still moves
-    // the group.
+    // nothing to turn or scale, and every grip stacked on that one point
+    // (#295 review). A drag still moves the group.
     if (new Set(closure.joints.map((joint) => `${joint.x},${joint.y}`)).size < 2) return undefined;
     const xs = closure.joints.map((joint) => joint.x);
     const ys = closure.joints.map((joint) => joint.y);
@@ -1502,9 +1504,8 @@ export class NewGridComponent implements OnDestroy {
     if (!gesture) return false;
     if (!this.canEditNow() || !this.pastDragThreshold(event)) return true;
     gesture.attempted = true;
-    // A group of nothing but forces carries no geometry to move: each force
-    // goes where its body goes. Applying the empty transform reported success
-    // and saved an undo entry for a drag that changed nothing.
+    // A group of nothing but forces carries no geometry to move. Applying the
+    // empty transform saved an undo entry for a drag that changed nothing.
     if (gesture.snapshot.jointIds.size === 0) return true;
 
     let transform: SelectionAffineTransform;
@@ -1608,7 +1609,7 @@ export class NewGridComponent implements OnDestroy {
    * and the arrow keys are named for the drawing.
    */
   private nudgeSelection(dx: number, dy: number, coarse: boolean): void {
-    if (!this.canEditNow()) return;
+    if (!this.permission.may('placement')) return;
     const selected = this.activeObjService.selectedParts;
     // Nothing but forces is nothing to move (see `moveSelectionGesture`), and
     // an empty nudge would still have saved an undo entry.
@@ -1876,9 +1877,8 @@ export class NewGridComponent implements OnDestroy {
     // it dragged that one end to the pointer instead of the whole arrow.
     //
     // Only the marks are cleared. Which forces are selected is
-    // `setLastLeftClick`'s to decide, on the same press: replacing the
-    // selection here first left a Cmd/Ctrl-click nothing to add to, so forces
-    // could not join a group.
+    // `setLastLeftClick`'s to decide: replacing the selection here first left a
+    // Cmd/Ctrl-click nothing to add to, so forces could not join a group.
     force.isStartSelected = false;
     force.isEndSelected = false;
     const at = this.svgGrid.screenToModelFromXY(event.clientX, event.clientY);
@@ -2817,8 +2817,14 @@ export class NewGridComponent implements OnDestroy {
     };
   }
 
+  /** Where a refused Delete key points the reader. */
+  private readonly deleteWaysOut: DeleteWaysOut = {
+    toEdit: () => this.tabService.setTab(TabID.EDIT),
+    toStart: () => this.goToStart(),
+  };
+
   /** Press the picture of the start pose to go there. */
-  goToStart(ghost: StartPoseGhost): void {
+  goToStart(_ghost?: StartPoseGhost): void {
     this.mechanismSrv.pauseInPlace();
     this.settings.animating.next(false);
     this.mechanismSrv.easeToStart();
@@ -3390,8 +3396,8 @@ export class NewGridComponent implements OnDestroy {
     this.restoreSelectionAfterDrag(this.dragState.travelled);
     this.beforeDrag = undefined;
     this.linkCreateFrom = undefined;
+    // Which clears it: every way out of the gesture runs through its `up`.
     this.endComDrag?.(revert);
-    this.endComDrag = undefined;
     this.dragState.cancel();
     // Including a staged posed edit. This is the path a pinch and a long press
     // take, and staging left behind outlives the gesture -- the next ambient
@@ -4836,7 +4842,7 @@ export class NewGridComponent implements OnDestroy {
    */
   comCentroidDot(link: Link): { x: number; y: number } | null {
     if (!(link instanceof RealLink) || !link.comIsCustom) return null;
-    const centroid = uniformBodyOf(link.joints).centroid;
+    const centroid = derivedCenterOfMass(link);
     if (Math.hypot(centroid.x - link.CoM.x, centroid.y - link.CoM.y) < 1e-6) return null;
     return centroid;
   }
@@ -4847,12 +4853,7 @@ export class NewGridComponent implements OnDestroy {
   startComDrag(link: RealLink, event: PointerEvent): void {
     event.stopPropagation();
     event.preventDefault();
-    // A center of mass is a *property*, not geometry -- `applyMechanismPose`
-    // writes it back from solved frames, and the panel speaks it in three
-    // different frames -- so it is refused wherever the panel's CoM fields are
-    // rather than wherever a drag is. It asked for `drag`, which Phase 2 allows
-    // at a paused pose, and so stayed live beside its own frozen fields.
-    if (!this.permission.may('properties')) return;
+    if (!this.permission.may('drag')) return;
     if (this.mechanismSrv.memberInertiaIsDerived(link)) {
       const why = "'s center of mass is computed from its shape, so it cannot be moved.";
       this.notify.refusal('com.derived', this.mechanismSrv.bodyLabel(link) + why);
@@ -4864,7 +4865,8 @@ export class NewGridComponent implements OnDestroy {
       return;
     }
     this.draggingCoMLink = link;
-    const started = { x: link.CoM.x, y: link.CoM.y };
+    // Restored whole on a cancel, not re-placed: see `restoreComState`.
+    const started = link.comState();
     let moved = false;
     let savedElsewhere = false;
     const move = (e: PointerEvent) => {
@@ -4875,7 +4877,7 @@ export class NewGridComponent implements OnDestroy {
       // Both, every move. A Lock applied *during* the gesture -- the K key is
       // one press away -- left the panel showing Unlock and the lock marks
       // drawn while the mark kept following the pointer.
-      if (!this.permission.may('properties') || this.mechanismSrv.isLockedTarget(link)) {
+      if (!this.permission.may('drag') || this.mechanismSrv.isLockedTarget(link)) {
         // A Lock applied mid-gesture has already written the state it locked,
         // so the end of this gesture must not write it again: the two entries
         // were byte-identical, and the first Undo was a visible no-op that
@@ -4903,7 +4905,7 @@ export class NewGridComponent implements OnDestroy {
       if (!moved) return;
       // One undo step for the whole gesture, then the panel re-reads its
       // fields the same way a unit change makes it re-read them.
-      this.mechanismSrv.updateMechanism(!savedElsewhere);
+      this.gridUtils.commitCenterOfMass(link, !savedElsewhere);
       this.mechanismSrv.onMechUpdateState.next(2);
       this.activeObjService.fakeUpdateSelectedObj();
     };
@@ -4917,7 +4919,7 @@ export class NewGridComponent implements OnDestroy {
         // The gesture never finished, so nothing was decided. Same rule the
         // joints follow: what a view gesture moved on its way to being
         // recognized is put back, not committed.
-        link.placeCustomCoM({ x: started.x, y: started.y });
+        link.restoreComState(started);
         moved = false;
       }
       up();
@@ -4950,7 +4952,7 @@ export class NewGridComponent implements OnDestroy {
     let bestDist = this.svgGrid.scaleWithZoom(12);
     // The centroid outranks the lines: it is the point the whole feature is
     // an offset from, and a pointer near it means it exactly.
-    const centroid = uniformBodyOf(joints).centroid;
+    const centroid = derivedCenterOfMass(link);
     if (Math.hypot(pos.x - centroid.x, pos.y - centroid.y) < bestDist) {
       return centroid;
     }
@@ -5443,23 +5445,7 @@ export class NewGridComponent implements OnDestroy {
 
   forceInkOf(force: Force): string | null {
     if (this.mechanismSrv.isPartInert(force.link)) return null;
-    return forceInk(force, this.forceIsSelected(force), this.mechanismSrv.isPlaying);
-  }
-
-  /**
-   * Whether this force wears the selected mark: the one selected force, or any
-   * force in a group.
-   *
-   * A lone force is held in `selectedForce` and not in the part selection,
-   * while a group holds every member there, so both have to be asked. Asking
-   * only `selectedForce` marked one arrow of a group and left the rest looking
-   * unselected, which is the rule joints and links already follow through
-   * `containsPart`.
-   */
-  forceIsSelected(force: Force): boolean {
-    const active = this.activeObjService;
-    if (active.objType === 'Force') return active.selectedForce === force;
-    return active.objType === 'MultiSelection' && active.containsPart(force);
+    return forceInk(force, this.activeObjService.holdsForce(force), this.mechanismSrv.isPlaying);
   }
 
   /**
@@ -6190,32 +6176,29 @@ export class NewGridComponent implements OnDestroy {
       case 'edit.deselect':
         this.activeObjService.updateSelectedObj(undefined);
         return;
-      case 'edit.delete':
-        // The permission model, not the mode alone. Naming the mode caught an
-        // analysis mode -- which is a reading of a finished mechanism, and
-        // Delete was going through it, removing a joint from a drawing the
-        // reader was measuring with no way back short of leaving the mode --
-        // but it missed a running mechanism entirely: with the canvas, the
-        // panel, the menu and undo all refusing, Backspace still deleted the
-        // selection. A key is a control like any other and asks the same
-        // question the button beside it asks.
-        // The model allows restructuring at an analysis mode's start pose,
-        // and the menu offers it there. The key does not: a reader measuring
-        // a drawing who presses Backspace is far more often reaching for a
-        // typed number than for a joint, and a joint gone from under a graph
-        // is a loss with no way back short of leaving the mode. Said, with
-        // the way out on the message, rather than swallowed.
-        if (this.tabService.isAnalysisMode()) {
-          this.notify.refusal('delete.analysis', 'Deleting is an Edit change.', {
-            actions: [{ label: 'Switch to Edit', run: () => this.tabService.setTab(TabID.EDIT) }],
-          });
-          return;
-        }
-        if (!this.permission.may('structure')) return;
+      case 'edit.delete': {
+        // A key is a control like any other, and asks the question the menu
+        // row and the panel's Delete ask about the same selection
+        // (docs/editing-rules.md, principle 5). An analysis mode deletes a
+        // tracer point or a force at the start, and nothing else; where the
+        // way out is Edit, it is said with the way out on the message rather
+        // than swallowed.
+        const refused = this.permission.deleteSelectionRefusal(
+          this.activeObjService.objType,
+          this.activeObjService.selectedJoint
+        );
+        if (refused) return sayWhyNotDeleted(this.notify, refused, this.deleteWaysOut);
         this.deleteSelection();
         return;
+      }
       case 'edit.lock':
-        if (this.permission.menuRefusal('preserve')) return;
+        if (this.permission.menuRefusal('safe')) return;
+        // A center of mass mid-drag is committed first, through its own
+        // release. Locked under it, the lock's rebuild re-derived the point
+        // from the offset the drag had captured in the displayed frame, so
+        // the entry it saved could put the center somewhere it was never
+        // dragged to.
+        this.endComDrag?.();
         this.toggleLockOnSelection();
         return;
       case 'history.undo':

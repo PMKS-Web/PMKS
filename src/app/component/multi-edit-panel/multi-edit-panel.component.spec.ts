@@ -210,9 +210,10 @@ describe('MultiEditPanelComponent', () => {
     expect(multi.setJointType).toHaveBeenCalledWith(active.selectedPartRefs, 'welded');
   });
 
+  /** Edit, paused away from the start: where a group panel can be edited. */
   function posedState(): EditState {
     return {
-      mode: 'analysis',
+      mode: 'edit',
       playing: false,
       atStart: false,
       sharedStepZero: false,
@@ -249,8 +250,8 @@ describe('MultiEditPanelComponent', () => {
     vi.spyOn(TestBed.inject(EditPermissionService), 'state').mockReturnValue(state);
     const element = render();
     const panel = fixture.componentInstance;
-    for (const mode of ['edit', 'analysis'] as const) {
-      state.mode = mode;
+    // docs/editing-rules.md: Edit, paused mid-cycle, keeps the safe properties.
+    {
       fixture.detectChanges();
       expect(element.querySelector('[inert]')).toBeNull();
       expect(headerLock(element)!.disabled).toBe(false);
@@ -289,7 +290,7 @@ describe('MultiEditPanelComponent', () => {
     expect(element.querySelector('segmented-block .segmented')?.classList).toContain('disabled');
   });
 
-  it('enables mapped force values and frame while respecting a force direction lock', () => {
+  it('waits for the start to aim a force, keeps its size typeable, and respects its direction lock', () => {
     const { ab, bc } = selectBars();
     mechanism.forces = [ab, bc].map(
       (link, index) => new Force(`F${index + 1}`, link, new Coord(S, S), new Coord(S, 2 * S))
@@ -305,9 +306,18 @@ describe('MultiEditPanelComponent', () => {
       mechanism.links,
       mechanism.forces
     );
-    vi.spyOn(TestBed.inject(EditPermissionService), 'state').mockReturnValue(posedState());
+    const state = posedState();
+    vi.spyOn(TestBed.inject(EditPermissionService), 'state').mockReturnValue(state);
     const element = render();
     const controls = fixture.componentInstance.form.controls;
+    // A force's direction and frame are typed geometry: mid-cycle they wait for
+    // the start, as the menu's Global Frame row does. Its size is the load,
+    // the same at every pose, so it stays typeable as on the one-force panel.
+    expect(controls.magnitude.enabled).toBe(true);
+    expect(controls.forceAngle.disabled).toBe(true);
+    expect(controls.isGlobal.disabled).toBe(true);
+    state.atStart = true;
+    fixture.detectChanges();
     expect(controls.magnitude.enabled).toBe(true);
     expect(controls.forceAngle.enabled).toBe(true);
     expect(controls.isGlobal.enabled).toBe(true);

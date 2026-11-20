@@ -299,6 +299,23 @@ describe('MultiEditService', () => {
     expect(update).toHaveBeenCalledTimes(1);
   });
 
+  it('refuses a mass for a selection holding a welded member, naming it, and changes nothing', () => {
+    const { ab, cd } = twoBars();
+    ab.mass = 1;
+    cd.mass = 2;
+    // A cylinder's barrel welded into a body is the one welded member a click
+    // still reaches; its mass is its share of the body's.
+    vi.spyOn(mechanism, 'isWeldedMember').mockImplementation((link) => link === cd);
+    const update = vi.spyOn(mechanism, 'updateMechanism');
+
+    const result = service.assignLinkMass(refs('link:AB', 'link:CD'), 3.5);
+
+    expect(result.ok).toBe(false);
+    expect(result.ok ? '' : result.refusal.message).toContain(mechanism.bodyLabel(cd));
+    expect([ab.mass, cd.mass]).toEqual([1, 2]);
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('grounds a whole selection in one edit, and saves once for it', () => {
     const { a, c } = twoBars();
     const save = historyWrites();

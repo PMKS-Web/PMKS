@@ -130,8 +130,9 @@ describe('a repair that invalidates what an earlier repair just fixed', () => {
 describe('a body that goes on being the same body', () => {
   for (const reversed of [false, true]) {
     it(`keeps what somebody chose for it, members listed ${reversed ? 'backwards' : 'forwards'}`, () => {
-      // Mass survived this already, because it is a sum of the members. The
-      // things that are the *root's own* did not: an inertia and a center of
+      // Mass is the members' shares added up, and a part that leaves takes its
+      // share with it: one density, so less material weighs less (#279). The
+      // things that are the *root's own* did not survive at all: an inertia and a center of
       // mass typed onto the body, the anchor they were placed against, the
       // name, and the paint. Rebuilt from its leaves, the body came back under
       // a generated id with a computed aggregate in place of the numbers.
@@ -143,13 +144,13 @@ describe('a body that goes on being the same body', () => {
       h.root.moiIsCustom = true;
       h.root.comAnchor = 'grid';
       h.root.placeCustomCoM(new Coord(4 * S, 0.6 * S));
-      const massBefore = h.root.mass;
+      const staying = h.leaves.reduce((sum, leaf) => sum + leaf.mass, 0);
 
       h.service.deleteCylinder(cylindersIn(h.service.joints)[0]);
 
       const survivor = rootOf(h.service)!;
       expect(survivor, 'still one body').toBeDefined();
-      expect(survivor.mass, 'a massless part carried no mass away').toBe(massBefore);
+      expect(survivor.mass, 'the ram took its share away').toBeCloseTo(staying, 9);
       expect(survivor.moiIsCustom).toBe(true);
       expect(survivor.massMoI).toBe(0.005);
       expect(survivor.comIsCustom).toBe(true);
@@ -174,27 +175,22 @@ describe('a body that goes on being the same body', () => {
     expect(rootOf(h.service)!.fill).toBe('#123456');
   });
 
-  it('stays derived when its members are a mix of typed and automatic', () => {
+  it('stays derived, and ignores an inertia typed on one of its members', () => {
     // `custom` on a root means somebody overrode *this body*, not that one of
-    // its parts was overridden. Read the other way it froze the aggregate
-    // against the only derivation that reads a member's shape -- so an
-    // automatic bar's contribution was whatever number was last left on it,
-    // and removing an unrelated massless part dropped it entirely.
+    // its parts was overridden. And since #279 a member's own numbers are not
+    // inputs: the body has one density, so a member's inertia follows its
+    // shape and its share of the mass.
     const h = weldedBody(2);
-    // On a *bracket* bar, not on the ram's own leaf: the ram is about to be
-    // deleted, and a number typed onto something that is leaving proves
-    // nothing about what stays.
+    h.service.updateMechanism(false);
+    const derived = h.root.massMoI;
     const typed = h.leaves[0];
     typed.massMoI = 0.0001;
     typed.moiIsCustom = true;
+
     h.service.updateMechanism(false);
-    const before = h.root.massMoI;
 
-    h.service.deleteCylinder(cylindersIn(h.service.joints)[0]);
-
-    const survivor = rootOf(h.service)!;
-    expect(survivor.moiIsCustom, 'a body of members is derived from them').toBe(false);
-    expect(survivor.massMoI, 'and nothing was dropped').toBeCloseTo(before, 9);
+    expect(h.root.moiIsCustom, 'a body of members is derived from them').toBe(false);
+    expect(h.root.massMoI, 'and the typed member changed nothing').toBeCloseTo(derived, 12);
   });
 });
 
