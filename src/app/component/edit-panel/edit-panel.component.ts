@@ -186,6 +186,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
   distanceRows: DistanceNeighbor[] = [];
   distanceBarForms: (FormGroup | undefined)[] = [];
   private currentlyOpenJointID: string = '';
+  private shownDistanceRowsKey = '';
 
   /** Whether each collapsible section is open, kept for the session rather
    *  than on this component, which every switch into Edit mounts afresh. */
@@ -1921,8 +1922,16 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
     this.onDestroySubscriptions.push(
       this.activeSrv.onActiveObjChange.subscribe((newObjType: string) => {
         if (newObjType == 'Joint') {
-          //Is this a real change where the form needs to get updated?
-          if (this.currentlyOpenJointID != this.activeSrv.selectedJoint.id) {
+          // A new joint, or the same one after a weld or an unweld changed
+          // which bars it is measured along: the rows are rebuilt either way,
+          // or a typed length went through the row kind from before the weld.
+          const rowsKey = this.distanceRowsKey(
+            this.getOtherJointsInLink(this.activeSrv.selectedJoint)
+          );
+          if (
+            this.currentlyOpenJointID != this.activeSrv.selectedJoint.id ||
+            rowsKey !== this.shownDistanceRowsKey
+          ) {
             this.listOfOtherJoints = [];
             setTimeout(() => {
               this.reloadOtherJointForm();
@@ -2591,8 +2600,14 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
     return solved;
   }
 
+  /** Which rows Distance to Joints shows, as a string to compare. */
+  private distanceRowsKey(rows: readonly DistanceNeighbor[]): string {
+    return rows.map((row) => `${row.joint.id}:${row.bar?.id ?? ''}`).join(',');
+  }
+
   private reloadOtherJointForm() {
     this.distanceRows = this.getOtherJointsInLink(this.activeSrv.selectedJoint);
+    this.shownDistanceRowsKey = this.distanceRowsKey(this.distanceRows);
     this.listOfOtherJoints = this.distanceRows.map((row) => row.joint);
     this.jointForm.controls['otherJoints'] = this.fb.array([]);
     this.otherJoitnsSubscriptions.forEach((subscription) => subscription.unsubscribe());

@@ -3173,9 +3173,10 @@ mapped to that path replaces Storybook's own pink one. `.storybook/main.ts` maps
 ### The templates' centers of mass are all placed by hand
 
 Every link in the library templates arrives with `comIsCustom` set, its CoM stored at the bar's
-middle. So nothing that derives an automatic CoM reaches a template untouched: adding a tracer,
-welding, or Drawn as a Disc leaves the mark where it was until the reader presses "Back to the
-shape's centroid". `e2e/center-of-mass.mjs` clears the flag before it tests anything. The
+middle. So nothing that derives an automatic CoM reaches a template untouched: adding a tracer or
+Drawn as a Disc leaves the mark where it was until the reader presses "Back to the shape's
+centroid". Welding is the exception: a new welded body derives its CoM from its shape, and only a
+weld that continues a body whose CoM was placed by hand keeps that point. `e2e/center-of-mass.mjs` clears the flag before it tests anything. The
 verification fixtures do the same on purpose (`buildFixtureLink` in
 `test-utils/verification/fixture.ts`), and their unstated CoM is the mean of the joints written out
 there, because the `RealLink` constructor's seed is now the shape's centroid and fixture data must

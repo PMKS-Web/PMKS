@@ -1,4 +1,4 @@
-import { convexHull } from './uniform-body';
+import { convexHull, hullIsDegenerate } from './uniform-body';
 
 /**
  * One density for a whole compound: how its single mass is shared among the
@@ -36,7 +36,7 @@ export function materialOfShape(joints: readonly Point[], discCenter?: Point): n
   const points = distinct(joints);
   if (points.length >= 3) {
     const hull = convexHull(points);
-    if (hull.length >= 3 && !collinear(hull)) return perimeter(hull);
+    if (hull.length >= 3 && !hullIsDegenerate(hull)) return perimeter(hull);
   }
   return longestSpan(points);
 }
@@ -75,16 +75,4 @@ function longestSpan(points: readonly { x: number; y: number }[]): number {
 
 function perimeter(hull: readonly { x: number; y: number }[]): number {
   return hull.reduce((sum, point, i) => sum + distance(point, hull[(i + 1) % hull.length]), 0);
-}
-
-/** A hull with next to no area for its size is a bar with a tracer on its axis. */
-function collinear(hull: readonly { x: number; y: number }[]): boolean {
-  let area2 = 0;
-  for (let i = 0; i < hull.length; i++) {
-    const p = hull[i];
-    const q = hull[(i + 1) % hull.length];
-    area2 += p.x * q.y - q.x * p.y;
-  }
-  const span = longestSpan(hull);
-  return Math.abs(area2) < 1e-9 * Math.max(span * span, 1);
 }

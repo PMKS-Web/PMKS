@@ -2590,6 +2590,12 @@ export class MechanismService {
         if (other.id !== joint.id) joint.connectedJoints.push(other);
       });
     });
+    // A disc's offset is measured from its ground pin, and the copy is
+    // ungrounded and so a bar: the same offset from its middle put the point
+    // half a bar away. The source's point, carried by the step, is the copy's.
+    if (link.comIsCustom && link.comAnchor === 'centroid') {
+      copy.placeCustomCoM({ x: link.CoM.x + step.x, y: link.CoM.y + step.y });
+    }
     this.joints.push(...made);
     this.links.push(copy);
     this.activeObjService.updateSelectedObj(copy);
@@ -6979,8 +6985,11 @@ export class MechanismService {
   startMoveRefusal(index: number): StartMoveRefusal | undefined {
     const start = this.mechanisms[index]?.joints[0];
     if (!start) return undefined;
+    // A bar welded into a body is in no partition's list, its body is: ask
+    // the body, or a welded bar's Fixed Angle would be dropped here.
     const own = holdChips(this.links, this.sealedStructures()).filter(
-      (chip) => this.indexOfMechanismContaining(chip.link) === index
+      (chip) =>
+        this.indexOfMechanismContaining(this.rootLinkOwning(chip.link) ?? chip.link) === index
     );
     return refuseMovingStart(
       anglesTurnedSince(own, start).map((chip) => chip.link),
@@ -7630,10 +7639,14 @@ export class MechanismService {
     // dropping a joint somewhere is far more easily done by accident.
     const created = this.weldWouldPinTwice(joint);
     const bars = this.realLinksAt(joint).filter((link) => link.subset.length === 0);
+    // A cylinder's barrel and rod are still selected on their own, padlocks
+    // and all, so a hold on one has not gone anywhere that needs saying. Asked
+    // before the weld, while each member is still a link of its own.
+    const members = new Set(bars.filter((bar) => this.cylinderAt(bar)));
 
     if (!this.weldTopology(joint)) return;
     const kept = weldHoldNotice(
-      bars.filter((bar) => this.rootLinkOwning(bar) !== bar),
+      bars.filter((bar) => this.rootLinkOwning(bar) !== bar && !members.has(bar)),
       (bar) => nameOfBody(bar, this.sealedStructures())
     );
     if (kept) this.notify.news('weld.holds-kept', kept);

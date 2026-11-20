@@ -1,3 +1,4 @@
+import { uniformBodyOf } from './uniform-body';
 import { materialOfShape, sharesOf } from './weld-density';
 
 describe('weld density', () => {
@@ -27,6 +28,18 @@ describe('weld density', () => {
       { x: 6, y: 0 },
     ];
     expect(materialOfShape(onAxis)).toBeCloseTo(6, 9);
+  });
+
+  // The plate test is uniformBodyOf's own: a tracer a hair off the axis that
+  // shapes the body as a rod cannot double the bar's share of a weld's mass.
+  it('measures a bar with a point a hair off its axis by its length, as its shape does', () => {
+    const nearlyOnAxis = [
+      { x: 0, y: 0 },
+      { x: 800, y: 0 },
+      { x: 400, y: 0.000001 },
+    ];
+    expect(uniformBodyOf(nearlyOnAxis).gyrationSq).toBeCloseTo((800 * 800) / 12, 3);
+    expect(materialOfShape(nearlyOnAxis)).toBeCloseTo(800, 6);
   });
 
   it('measures a disc by its rim', () => {

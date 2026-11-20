@@ -278,6 +278,22 @@ describe('a link drawn as a disc', () => {
     expect(at(h.crank.CoM), 'grounded again').toEqual([1, 0.5]);
   });
 
+  it('copies a point placed by hand on a disc to the same spot on the duplicate', () => {
+    const h = disc();
+    h.crank.placeCustomCoM(new Coord(0, 0.5 * S));
+    h.service.updateMechanism(false);
+    const was = at(h.crank.CoM);
+
+    h.service.duplicateLink(h.crank);
+    const copy = h.service.links.find((link) => link !== h.crank) as RealLink;
+    // The copy is ungrounded, so a bar: the disc's offset from its pin, read
+    // from the bar's middle, put the point one along the bar.
+    const shift = [copy.joints[0].x - h.a.x, copy.joints[0].y - h.a.y].map((d) => d / S);
+    expect(copy.comIsCustom).toBe(true);
+    expect(at(copy.CoM)[0]).toBeCloseTo(was[0] + shift[0], 9);
+    expect(at(copy.CoM)[1]).toBeCloseTo(was[1] + shift[1], 9);
+  });
+
   it('holds a point placed by hand against the pin, the frame the panel shows', () => {
     const h = disc();
     h.crank.placeCustomCoM(new Coord(1 * S, 0));

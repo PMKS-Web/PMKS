@@ -98,13 +98,7 @@ function platedPolygon(points: { x: number; y: number }[]): UniformBody | undefi
     cy += (p.y + q.y) * cross;
     inertia += cross * (p.x * p.x + p.x * q.x + q.x * q.x + p.y * p.y + p.y * q.y + q.y * q.y);
   }
-  const area = area2 / 2;
-  const span = hull.reduce(
-    (widest, p) => Math.max(widest, Math.abs(p.x - hull[0].x), Math.abs(p.y - hull[0].y)),
-    0
-  );
-  // Degenerate: the hull encloses next to nothing compared to its own reach.
-  if (Math.abs(area) < 1e-9 * Math.max(span * span, 1)) return undefined;
+  if (degenerate(hull, area2 / 2)) return undefined;
 
   const centroidX = cx / (3 * area2);
   const centroidY = cy / (3 * area2);
@@ -116,6 +110,29 @@ function platedPolygon(points: { x: number; y: number }[]): UniformBody | undefi
     centroid: new Coord(centroidX + origin.x, centroidY + origin.y),
     gyrationSq: Math.max(gyrationSq, 0),
   };
+}
+
+/**
+ * Whether a convex hull is a bar rather than a plate: a tracer just off a
+ * bar's axis encloses next to nothing for its reach. The one test for it, so a
+ * body's shape and its share of a weld's mass cannot disagree about which it is.
+ */
+export function hullIsDegenerate(hull: readonly { x: number; y: number }[]): boolean {
+  let area2 = 0;
+  for (let i = 0; i < hull.length; i++) {
+    const p = hull[i];
+    const q = hull[(i + 1) % hull.length];
+    area2 += (p.x - hull[0].x) * (q.y - hull[0].y) - (q.x - hull[0].x) * (p.y - hull[0].y);
+  }
+  return degenerate(hull, area2 / 2);
+}
+
+function degenerate(hull: readonly { x: number; y: number }[], area: number): boolean {
+  const span = hull.reduce(
+    (widest, p) => Math.max(widest, Math.abs(p.x - hull[0].x), Math.abs(p.y - hull[0].y)),
+    0
+  );
+  return Math.abs(area) < 1e-9 * Math.max(span * span, 1);
 }
 
 /** Andrew's monotone chain; returns the hull counterclockwise. */
