@@ -110,3 +110,17 @@ describe('the canvas is told to repaint', () => {
     expect(RealLink.paintRevision).toBeGreaterThan(before);
   });
 });
+
+describe('a welded member recolored, and then unwelded', () => {
+  it('keeps the color the reader chose once the weld is split (#348)', () => {
+    const { parts, cylinder } = withAStrayRodColor();
+    // Welded at its mount: the rod is a leaf of a body, which takes the color.
+    const body = new RealLink('body', [...parts.rod.joints]);
+    const welded = { ...cylinder, rodRoot: body };
+    paintCylinderMember(parts.rod, PALE, welded);
+    expect(body.fill).toBe(PALE);
+
+    // Split: the rod is its own root again and is drawn from its own record.
+    expect(rodFillOf(cylinder)).toBe(PALE);
+  });
+});
