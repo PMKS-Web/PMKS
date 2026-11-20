@@ -219,12 +219,14 @@ function sliders(ctx: RelationContext): FamilyMatch[] {
       }
     } else if (rider.ground) {
       for (const rod of ctx.bodies.filter((b) => jointsOf(ctx, b).includes(rider))) {
-        const pin = jointsOf(ctx, rod).find((j) => j !== rider && !isGroundPin(j));
-        const crank =
-          pin &&
+        // Every free pin on the rod, not only the first: a tracer point listed
+        // ahead of the crank pin hid a real slider-crank (#351).
+        const crankAt = (pin: Joint) =>
           ctx.bodies.find(
             (b) => b !== rod && jointsOf(ctx, b).includes(pin) && jointsOf(ctx, b).some(isGroundPin)
           );
+        const pin = jointsOf(ctx, rod).find((j) => j !== rider && !isGroundPin(j) && crankAt(j));
+        const crank = pin && crankAt(pin);
         if (!crank || !pin) continue;
         const beam = beamArms(ctx, crank);
         if (turnsFully(ctx, crank)) {

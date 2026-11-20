@@ -1,6 +1,9 @@
 import '../joint';
 import { TEMPLATE_LINKAGES } from '../../component/MODALS/templates/template-linkages';
 import { solvedDrawing } from '../../../test-utils/machine-facts/drawing';
+import { buildMechanism } from '../../../test-utils/verification/fixture';
+import { sliderCrankTracerFixture } from '../../../test-utils/verification/fixtures';
+import { partitionMechanisms } from '../mechanism/mechanism-partition';
 import { machineFacts } from './machine-facts';
 import { panelRole } from './roles';
 
@@ -43,6 +46,19 @@ describe('what PMKS recognizes in a machine', () => {
     const { partitions, mechanisms } = solvedDrawing(TEMPLATE_LINKAGES['4-Bar']);
     const jobs = machineFacts(partitions[0], mechanisms[0])!.jobs.map(panelRole);
     expect(jobs).toEqual(expect.arrayContaining(['Input crank', 'Coupler', 'Rocker']));
+  });
+
+  it('recognizes a slider-crank whatever order its rod lists its joints in (#351)', () => {
+    const familyWithRod = (rod: string) => {
+      const fixture = sliderCrankTracerFixture();
+      fixture.links[1].joints = rod;
+      const { joints, links, forces, mechanism } = buildMechanism(fixture);
+      const [partition] = partitionMechanisms(joints, links, forces).mechanisms;
+      return machineFacts(partition, mechanism)?.family[0]?.family;
+    };
+    // Tracer point D listed ahead of crank pin B on the connecting rod.
+    expect(familyWithRod('DCB')).toBe(familyWithRod('BCD'));
+    expect(familyWithRod('DCB')).toContain('slider-crank');
   });
 
   it('has nothing to say about a machine that does not run', () => {
