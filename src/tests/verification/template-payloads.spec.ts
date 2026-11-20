@@ -12,6 +12,7 @@ import { fixturePayload } from '../../test-utils/verification/fixture-gallery';
 import {
   FORCE_STUDY_TEMPLATES,
   LIBRARY_TEMPLATE_NAMES,
+  LIBRARY_TEMPLATE_SIZES,
   libraryTemplateEntry,
   libraryTemplateMasses,
 } from '../../test-utils/verification/template-fixtures';
@@ -43,10 +44,12 @@ const END = '  // </generated>';
 function generatedBlock(): string {
   const entries = LIBRARY_TEMPLATE_IDS.map((id) => {
     const entry = libraryTemplateEntry(id);
-    // The same payload the published gallery links to, drawing scale included:
-    // the card and the doc row are the same picture of the same mechanism.
-    // Mass is the one thing the library decides for itself — a doc link opens
-    // the mechanism a spec asserts on, and a template opens a lesson.
+    const size = LIBRARY_TEMPLATE_SIZES[id];
+    // The same mechanism the published gallery links to: the card and the doc
+    // row are the same picture of it. Mass is one thing the library decides
+    // for itself — a doc link opens the mechanism a spec asserts on, and a
+    // template opens a lesson — and size is another: a template is drawn at
+    // the size of the machine it is named after.
     const payload = fixturePayload(
       entry.fixture,
       entry.objectScale,
@@ -55,10 +58,11 @@ function generatedBlock(): string {
       // Color is the other thing the library decides for itself: a gallery
       // link is a mechanism to check, a template is a mechanism to read.
       libraryTemplateFills(id, entry.fixture),
-      entry.lengthUnit,
+      size?.unit ?? entry.lengthUnit,
       // And what the machines are called: a gallery link opens M1, a
       // template opens a pumpjack.
-      LIBRARY_TEMPLATE_NAMES[id]
+      LIBRARY_TEMPLATE_NAMES[id],
+      size?.factor
     );
     return `  ${id}:\n    '${payload}',`;
   });
