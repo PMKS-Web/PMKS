@@ -3,7 +3,7 @@ import { Coord } from './coord';
 import { Force } from './force';
 import { RevJoint } from './joint';
 import { RealLink } from './link';
-import { carryForce, frameTurn, reshapeTurn, solidTurn } from './force-carry';
+import { carryForce, frameTurn } from './force-carry';
 
 function forceOn(local: boolean, end = new Coord(1, 1)): Force {
   const link = new RealLink('AB', [new RevJoint('A', 0, 0), new RevJoint('B', 2, 0)]);
@@ -11,9 +11,9 @@ function forceOn(local: boolean, end = new Coord(1, 1)): Force {
 }
 
 describe('carrying a force with its body', () => {
-  it('moves a Grid force’s point through a reshape and keeps its bearing, arrow and magnitude', () => {
+  it('moves a Grid force’s point and keeps its bearing, arrow and magnitude', () => {
     const force = forceOn(false);
-    carryForce(force, { x: 5, y: 5 }, { x: 0, y: 1 }, reshapeTurn(Math.PI / 2));
+    carryForce(force, { x: 5, y: 5 }, { x: 0, y: 1 }, Math.PI / 2);
     expect([force.startCoord.x, force.startCoord.y]).toEqual([5, 5]);
     expect(force.endCoord.x).toBeCloseTo(5, 12);
     expect(force.endCoord.y).toBeCloseTo(6, 12);
@@ -23,32 +23,17 @@ describe('carrying a force with its body', () => {
 
   it('turns a Local force by however far its link turned, keeping its arrow’s length', () => {
     const force = forceOn(true);
-    carryForce(force, { x: 5, y: 5 }, { x: 0, y: 1 }, reshapeTurn(Math.PI / 2));
+    carryForce(force, { x: 5, y: 5 }, { x: 0, y: 1 }, Math.PI / 2);
     expect(force.endCoord.x).toBeCloseTo(4, 12);
     expect(force.endCoord.y).toBeCloseTo(5, 12);
     expect(force.angleRad).toBeCloseTo(Math.PI, 12);
     expect(force.mag).toBe(6);
   });
 
-  it('turns a Grid force too when the whole body is turned as one piece', () => {
-    // A load bolted to a part turns when the part is picked up and turned,
-    // whichever frame its angle is written in.
-    const grid = forceOn(false);
-    const local = forceOn(true);
-    carryForce(grid, { x: 5, y: 5 }, { x: 0, y: 1 }, solidTurn(Math.PI / 2));
-    carryForce(local, { x: 5, y: 5 }, { x: 0, y: 1 }, solidTurn(Math.PI / 2));
-    [grid, local].forEach((force) => {
-      expect(force.endCoord.x).toBeCloseTo(4, 12);
-      expect(force.endCoord.y).toBeCloseTo(5, 12);
-      expect(force.angleRad).toBeCloseTo(Math.PI, 12);
-      expect(force.mag).toBe(6);
-    });
-  });
-
   it('turns the stored direction of a Local force whose arrow has no length', () => {
     const force = forceOn(true);
     force.moveDirectionHandle(new Coord(1, 0));
-    carryForce(force, { x: 2, y: 0 }, { x: 0, y: 0 }, reshapeTurn(Math.PI / 2));
+    carryForce(force, { x: 2, y: 0 }, { x: 0, y: 0 }, Math.PI / 2);
     expect(force.angleRad).toBeCloseTo(Math.PI, 12);
     // Still no arrow: the turn is the stored direction's, not a new handle's.
     expect([force.endCoord.x, force.endCoord.y]).toEqual([2, 0]);
@@ -61,8 +46,8 @@ describe('carrying a force with its body', () => {
     const force = forceOn(true);
     force.moveDirectionHandle(new Coord(1, 0));
     const began = force.angleRad;
-    carryForce(force, { x: 1, y: 0 }, { x: 0, y: 0 }, reshapeTurn(0.25), began);
-    carryForce(force, { x: 1, y: 0 }, { x: 0, y: 0 }, reshapeTurn(0.5), began);
+    carryForce(force, { x: 1, y: 0 }, { x: 0, y: 0 }, 0.25, began);
+    carryForce(force, { x: 1, y: 0 }, { x: 0, y: 0 }, 0.5, began);
     expect(force.angleRad).toBeCloseTo(began + 0.5, 12);
   });
 
@@ -75,7 +60,7 @@ describe('carrying a force with its body', () => {
     force.moveDirectionHandle(new Coord(0.13, 0));
     const began = force.angleRad;
     const at = { x: 2 + (0.13 - 2) * Math.cos(Math.PI / 2), y: (0.13 - 2) * Math.sin(Math.PI / 2) };
-    carryForce(force, at, { x: 0, y: 0 }, reshapeTurn(Math.PI / 2), began);
+    carryForce(force, at, { x: 0, y: 0 }, Math.PI / 2, began);
     expect(force.angleRad).toBeCloseTo(began + Math.PI / 2, 12);
     expect([force.endCoord.x, force.endCoord.y]).toEqual([force.startCoord.x, force.startCoord.y]);
   });

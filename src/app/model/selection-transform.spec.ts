@@ -131,7 +131,7 @@ describe('selection affine snapshot', () => {
     expect(scene.c.y).toBeCloseTo(4, 10);
   });
 
-  it('turns every force on a body the box turns whole, but never scales its load', () => {
+  it('carries a body force’s point and custom CoM through the map, but not its load', () => {
     const scene = twoBars();
     const force = new Force('F1', scene.ab, new Coord(1, 0), new Coord(1, 1), false, true, 7);
     const local = new Force('F2', scene.ab, new Coord(1, 0), new Coord(1, 1), true, true, 7);
@@ -141,36 +141,21 @@ describe('selection affine snapshot', () => {
 
     snapshot.apply({ rotation: Math.PI / 2, scale: 2 });
 
-    // The point stays where it was on the body. The box turned the body as one
-    // piece, so both forces turn with it, Grid as well as Local, the way a load
-    // fastened to the part would; neither is scaled.
-    [force, local].forEach((one) => {
-      expect(one.startCoord.x).toBeCloseTo(1, 10);
-      expect(one.startCoord.y).toBeCloseTo(0, 10);
-      expect(one.endCoord.x).toBeCloseTo(0, 10);
-      expect(one.endCoord.y).toBeCloseTo(0, 10);
-      expect(one.angleRad).toBeCloseTo(Math.PI, 10);
-      expect(one.mag).toBe(7);
-    });
+    // The point stays where it was on the body. A Grid force keeps its bearing
+    // and a Local one turns with its link; neither is scaled.
+    expect(force.startCoord.x).toBeCloseTo(1, 10);
+    expect(force.startCoord.y).toBeCloseTo(0, 10);
+    expect(force.endCoord.x).toBeCloseTo(1, 10);
+    expect(force.endCoord.y).toBeCloseTo(1, 10);
+    expect(local.endCoord.x).toBeCloseTo(0, 10);
+    expect(local.endCoord.y).toBeCloseTo(0, 10);
+    expect([force.mag, local.mag]).toEqual([7, 7]);
+    expect(force.angleRad).toBeCloseTo(Math.PI / 2, 10);
+    expect(local.angleRad).toBeCloseTo(Math.PI, 10);
     expect(scene.ab.CoM.x).toBeCloseTo(0, 10);
     expect(scene.ab.CoM.y).toBeCloseTo(0, 10);
     expect(scene.ab.customCoMFromOffset()!.x).toBeCloseTo(0, 10);
     expect(scene.ab.customCoMFromOffset()!.y).toBeCloseTo(0, 10);
-  });
-
-  it('turns a collapsed Grid force on a turned body by the box’s turn', () => {
-    const scene = twoBars();
-    const force = new Force('F1', scene.ab, new Coord(1, 0), new Coord(1, 1), false, true, 7);
-    force.moveDirectionHandle(new Coord(1, 0));
-    scene.ab.forces.push(force);
-    const began = force.angleRad;
-    const snapshot = captureSelectionTransform([scene.ab], scene.joints, scene.links);
-
-    snapshot.apply({ rotation: 0.25 });
-    snapshot.apply({ rotation: 0.5 });
-
-    expect(force.angleRad).toBeCloseTo(began + 0.5, 10);
-    expect([force.endCoord.x, force.endCoord.y]).toEqual([force.startCoord.x, force.startCoord.y]);
   });
 
   it('reframes semantic geometry on a neighboring link deformed by a selected joint', () => {

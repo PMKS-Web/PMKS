@@ -1,6 +1,6 @@
 import { Coord } from './coord';
 import { Force } from './force';
-import { CarryTurn, carryForce, frameTurn } from './force-carry';
+import { carryForce, frameTurn } from './force-carry';
 import { Joint, PrisJoint } from './joint';
 import { Link, RealLink } from './link';
 import { SelectedPart, selectableLinks } from './selection';
@@ -197,11 +197,7 @@ export class SelectionTransformSnapshot {
       const alongY = scaleY * Math.sin(angle);
       slot.angle_rad = Math.atan2(alongX * sin + alongY * cos, alongX * cos - alongY * sin);
     });
-    // The box's own turn, which a body it moves whole turns by as a solid. Both
-    // axes flipped is a half turn more; one flipped is a mirror, which no
-    // force could follow and stay the same load, so it adds nothing.
-    const boxTurn = rotation + (scaleX < 0 && scaleY < 0 ? Math.PI : 0);
-    this.bodies.forEach((body) => this.applyBody(body, mapPoint, boxTurn));
+    this.bodies.forEach((body) => this.applyBody(body, mapPoint));
     this.visualOrder
       .filter((link) => link.joints.some((joint) => this.jointIds.has(joint.id)))
       .forEach((link) => link.reComputeDPath());
@@ -210,26 +206,20 @@ export class SelectionTransformSnapshot {
 
   private applyBody(
     body: BodySnapshot,
-    mapPoint: (point: { x: number; y: number }) => { x: number; y: number },
-    boxTurn: number
+    mapPoint: (point: { x: number; y: number }) => { x: number; y: number }
   ): void {
     if (!body.link.joints.some((joint) => this.jointIds.has(joint.id))) return;
     const place = (point: { x: number; y: number }) =>
       body.allJointsMove ? mapPoint(point) : pointThroughFrame(point, body.from, body.link.joints);
-    // The application point stays where it was on the body, and the load is
-    // not the box's to scale or squash. A body the box moves whole is turned as
-    // a solid, so every force on it turns with it; one it only bends, by moving
-    // some of its joints, is reshaped -- see `carryForce`.
+    // The application point stays where it was on the body; the load itself is
+    // not the box's to scale, squash or turn -- see `carryForce`.
     const [first, second] = body.link.joints;
-    const turned: CarryTurn = {
-      link:
-        body.from.length === 2 && first && second
-          ? frameTurn([body.from[0], body.from[1]], [first, second])
-          : 0,
-      solid: body.allJointsMove ? boxTurn : 0,
-    };
+    const linkTurn =
+      body.from.length === 2 && first && second
+        ? frameTurn([body.from[0], body.from[1]], [first, second])
+        : 0;
     body.forces.forEach(({ force, start, end, angle }) =>
-      carryForce(force, place(start), { x: end.x - start.x, y: end.y - start.y }, turned, angle)
+      carryForce(force, place(start), { x: end.x - start.x, y: end.y - start.y }, linkTurn, angle)
     );
     const com = body.link.comIsCustom
       ? place(body.com)
