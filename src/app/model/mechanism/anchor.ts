@@ -167,7 +167,14 @@ export function slotCoordinateRuleFor(joint: Joint): CoordinateRule | undefined 
   if (!(joint instanceof PrisJoint)) return undefined;
   const carrier = joint.carrier;
   if (carrier) {
-    const ends = carrier.joints.filter((member) => member.id !== joint.id);
+    const others = carrier.joints.filter((member) => member.id !== joint.id);
+    // The slot's own two ends, in the carrier's order: on a plate the first
+    // two joints can run across the slot, and then the whole stroke read as
+    // one value (#339).
+    const slot = others.filter(
+      (member) => member.id === joint.slotJointA?.id || member.id === joint.slotJointB?.id
+    );
+    const ends = slot.length === 2 ? slot : others;
     if (ends.length >= 2) {
       return { jointId: joint.id, kind: 'length', carrierIds: [ends[0].id, ends[1].id] };
     }

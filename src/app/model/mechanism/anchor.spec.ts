@@ -4,7 +4,8 @@ import {
   wideSwingRockerFixture,
 } from '../../../test-utils/verification/fixtures';
 import { cylinderBoomFixture } from '../../../test-utils/verification/slot-fixtures';
-import { RealJoint } from '../joint';
+import { PrisJoint, RealJoint, RevJoint } from '../joint';
+import { RealLink } from '../link';
 import {
   anchorFrom,
   anchorStillNames,
@@ -12,6 +13,7 @@ import {
   coordinateRuleFor,
   coordinatesAcross,
   reachAnchor,
+  slotCoordinateRuleFor,
   topologyOf,
 } from './anchor';
 
@@ -283,5 +285,22 @@ describe('the start-pose anchor', () => {
     const fewer = topologyOf(built.joints.slice(0, -1));
     expect(all).not.toBe(fewer);
     expect(all.split(',')).toEqual([...all.split(',')].sort());
+  });
+});
+
+describe('a slot cut along a plate', () => {
+  it('measures along the slot, not along the first two joints of the plate', () => {
+    // Plate CDE, the slot along its edge DE; C to D runs across it (#339).
+    const c = new RevJoint('C', 0, 0);
+    const d = new RevJoint('D', 0, 4);
+    const e = new RevJoint('E', 4, 4);
+    const slider = new PrisJoint('S', 2, 4);
+    const plate = new RealLink('CDE', [c, d, e]);
+    slider.slideOn(plate, d, e);
+    expect(slotCoordinateRuleFor(slider)).toEqual({
+      jointId: 'S',
+      kind: 'length',
+      carrierIds: ['D', 'E'],
+    });
   });
 });
