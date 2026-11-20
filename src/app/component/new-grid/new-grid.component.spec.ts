@@ -920,6 +920,23 @@ describe('NewGridComponent typed multi-selection', () => {
     expect(fixture.nativeElement.querySelector('.selectionBounds')).toBeNull();
   });
 
+  it('draws no box round one joint and a force, and a box once a second joint joins', () => {
+    const { fixture, component, active, mechanism, link, a, b } = setUpSelection();
+    const f1 = new Force('F1', link, new Coord(MODEL_SCALE, 0), new Coord(0, MODEL_SCALE));
+    mechanism.forces = [f1];
+
+    active.replacePartSelection(a);
+    active.togglePartSelection(f1);
+    fixture.detectChanges();
+    // A box round one point is zero wide, and every grip lands on that joint.
+    expect(component.selectionBounds()).toBeUndefined();
+    expect(fixture.nativeElement.querySelector('.selectionBounds')).toBeNull();
+
+    active.togglePartSelection(b);
+    fixture.detectChanges();
+    expect(component.selectionBounds()).toBeDefined();
+  });
+
   it('a body press clears a force handle mark left from an earlier grab', () => {
     const { component, active, mechanism, link } = setUpSelection();
     const f1 = new Force('F1', link, new Coord(0, 0), new Coord(0, MODEL_SCALE));
