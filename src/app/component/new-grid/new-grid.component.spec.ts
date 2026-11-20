@@ -17,11 +17,16 @@ import { SynthesisBuilderService } from '../../services/synthesis/synthesis-buil
 import { NotificationService } from '../../services/notification.service';
 import { EditPermissionService } from '../../services/edit-permission.service';
 import { Coord } from '../../model/coord';
+import { Force } from '../../model/force';
 import { SaveHistoryService } from '../../services/save-history.service';
 import { LONGEST_ARROW_FRACTION } from '../../model/vector-trace';
 import { CYLINDER, MARK, slideMarkPath } from '../../model/joint-marks';
 import { ColorService } from '../../services/color.service';
 import { CanvasLabelsService } from '../../services/canvas-labels.service';
+import { StringTranscoder } from '../../services/transcoding/string-transcoder';
+import { MechanismBuilder } from '../../services/transcoding/mechanism-builder';
+import { fixturePayload } from '../../../test-utils/verification/fixture-gallery';
+import { fourBarDrivenAtFixture } from '../../../test-utils/verification/fixtures';
 
 /**
  * NewGridComponent renders through svg-pan-zoom, which needs real SVG layout;
@@ -766,15 +771,18 @@ describe('NewGridComponent drag gestures', () => {
 
   // What it still refuses is changing what the mechanism is made of, which is
   // where the graphs' own subject would go out from under them.
-  it('allows restructuring in an analysis mode at the start', () => {
+  it('lets an analysis mode drag and annotate, and leaves structure to Edit', () => {
+    // docs/editing-rules.md: the analysis modes read the motion.
     const { component } = setUp();
     TestBed.inject(SelectedTabService).setTab(TabID.ANALYZE);
     const permission = TestBed.inject(EditPermissionService);
     expect(permission.may('drag')).toBe(true);
     expect(permission.may('history')).toBe(true);
-    expect(permission.may('structure')).toBe(true);
-    expect(permission.may('build')).toBe(true);
-    expect(component.structureLocked).toBe(false);
+    expect(permission.may('annotate')).toBe(true);
+    expect(permission.may('structure')).toBe(false);
+    expect(permission.may('build')).toBe(false);
+    expect(permission.may('placement')).toBe(false);
+    expect(component.structureLocked).toBe(true);
   });
 
   // "the refusal a fixed geometry earns" was here -- five tests around the
@@ -1101,6 +1109,46 @@ describe('NewGridComponent keyboard shortcuts', () => {
     expect(builder.getAllPoses().length).toBe(0);
   });
 
+  // A position is a note beside the mechanism, so its menu row clears it in
+  // every mode. The key used to ask the structure question instead, which
+  // Synthesis always refuses -- the one mode a position is placed in.
+  it('takes away a synthesis position in Synthesis, as its menu row does', () => {
+    const component = setUp();
+    const builder = TestBed.inject(SynthesisBuilderService);
+    vi.spyOn(TestBed.inject(MechanismService), 'save').mockImplementation(() => {});
+    builder.placePose(new Coord(1, 1));
+    TestBed.inject(SelectedTabService).setTab(TabID.SYNTHESIZE);
+    TestBed.inject(ActiveObjService).updateSelectedObj(builder.getPose(1));
+
+    component['onShortcut']('edit.delete');
+
+    expect(builder.getAllPoses().length).toBe(0);
+  });
+
+  // Playing or parked mid-cycle, the key used to do nothing and say nothing,
+  // while the same refusal in an analysis mode was announced.
+  it('says why Delete is refused while playing, with the way back to the start', () => {
+    const component = setUp();
+    const refusal = vi.spyOn(TestBed.inject(NotificationService), 'refusal');
+    const deleting = vi.spyOn(component as never, 'deleteSelection' as never);
+    vi.spyOn(TestBed.inject(EditPermissionService), 'deleteSelectionRefusal').mockReturnValue({
+      short: 'animation running',
+      long: 'Pause the animation to change the mechanism.',
+      lead: 'Pause the animation to change the mechanism.',
+      glyph: 'play_circle',
+      backToStartHelps: true,
+    });
+
+    component['onShortcut']('edit.delete');
+
+    expect(deleting).not.toHaveBeenCalled();
+    expect(refusal).toHaveBeenCalledWith(
+      'delete.pose',
+      'Pause the animation to change the mechanism.',
+      { actions: [expect.objectContaining({ label: 'Return to start' })] }
+    );
+  });
+
   // `getSelectedObj` throws for everything it has no case for, so asking it
   // before checking the type turned "there is nothing to lock" into an uncaught
   // error on a fresh grid.
@@ -1265,3 +1313,127 @@ function shaftLengths(d: string): number[] {
       return Math.hypot(x2 - x1, y2 - y1);
     });
 }
+
+describe('NewGridComponent force names', () => {
+  beforeEach(configureGridTestBed);
+
+  /** The two bars, each carrying one force, drawn by a fresh canvas. */
+  function twoForces() {
+    const mechanism = TestBed.inject(MechanismService);
+    const scene = twoBars(mechanism);
+    const f1 = new Force('F1', scene.ab, new Coord(2, 2), new Coord(2, 4));
+    const f2 = new Force('F2', scene.cd, new Coord(25, 20), new Coord(25, 22));
+    scene.ab.forces.push(f1);
+    scene.cd.forces.push(f2);
+    mechanism.forces = [f1, f2];
+    const fixture = TestBed.createComponent(NewGridComponent);
+    const names = () => {
+      fixture.detectChanges();
+      return [...fixture.nativeElement.querySelectorAll('#forceTagHolder .forceLabel')].map(
+        (text: Element) => text.textContent?.trim()
+      );
+    };
+    return { mechanism, settings: TestBed.inject(SettingsService), f1, names };
+  }
+
+  it('names every force while names are shown, with nothing pointed at (#330)', () => {
+    const { settings, names } = twoForces();
+    settings.isShowID.next(true);
+    expect(names()).toEqual(['F1', 'F2']);
+  });
+
+  it('keeps every name on while the machine plays, as the joints keep theirs', () => {
+    const { mechanism, settings, names } = twoForces();
+    settings.isShowID.next(true);
+    mechanism.isPlaying = true;
+    expect(names()).toEqual(['F1', 'F2']);
+  });
+
+  it('names only the force pointed at while names are hidden, and none during playback', () => {
+    const { mechanism, settings, f1, names } = twoForces();
+    settings.isShowID.next(false);
+    expect(names()).toEqual([]);
+    f1.showHighlight = true;
+    expect(names()).toEqual(['F1']);
+    mechanism.isPlaying = true;
+    expect(names()).toEqual([]);
+  });
+});
+
+/**
+ * A center of mass dragged at a paused pose, and the two ways a gesture can
+ * end other than by its own release. Both used to write a point measured in
+ * the displayed frame, which the next rebuild read at the start pose.
+ */
+describe('NewGridComponent center of mass drag at a paused pose', () => {
+  beforeEach(configureGridTestBed);
+
+  function pausedFourBar() {
+    const mechanism = TestBed.inject(MechanismService);
+    const decoder = new StringTranscoder();
+    decoder.decodeURL(fixturePayload(fourBarDrivenAtFixture('A')));
+    new MechanismBuilder(
+      mechanism,
+      decoder,
+      TestBed.inject(SettingsService),
+      TestBed.inject(ActiveObjService)
+    ).build();
+    const link = mechanism.links.find((one) => one.id === 'ACT') as RealLink;
+    // An automatic center, anchored to the grid: the case a re-placed start
+    // point turned custom and measured in the displayed frame.
+    link.comIsCustom = false;
+    link.comAnchor = 'grid';
+    mechanism.updateMechanism();
+    const fixture = TestBed.createComponent(NewGridComponent);
+    fixture.detectChanges();
+    const startCoM = new Coord(link.CoM.x, link.CoM.y);
+    mechanism.seekMechanism(0, mechanism.mechanisms[0].cyclePeriod * 0.217);
+    TestBed.inject(ActiveObjService).updateSelectedObj(link);
+    return { mechanism, link, startCoM, component: fixture.componentInstance };
+  }
+
+  function grabAndMove(component: NewGridComponent, link: RealLink): void {
+    component.startComDrag(link, new PointerEvent('pointerdown', { button: 0 }));
+    expect(component.draggingCoMLink, 'the drag began').toBe(link);
+    window.dispatchEvent(
+      new PointerEvent('pointermove', {
+        clientX: link.CoM.x + 30,
+        clientY: link.CoM.y - 20,
+        altKey: true,
+      })
+    );
+  }
+
+  it('puts back an automatic center as automatic when the gesture is cancelled', () => {
+    const { mechanism, link, startCoM, component } = pausedFourBar();
+    expect(link.comIsCustom).toBe(false);
+    const saved = vi.spyOn(mechanism, 'save');
+
+    grabAndMove(component, link);
+    component['endComDrag']!(true);
+
+    expect(link.comIsCustom).toBe(false);
+    mechanism.seekMechanism(0, 0);
+    mechanism.updateMechanism();
+    expect(link.CoM.x).toBeCloseTo(startCoM.x, 6);
+    expect(link.CoM.y).toBeCloseTo(startCoM.y, 6);
+    expect(saved).not.toHaveBeenCalled();
+  });
+
+  it('commits a center of mass mid-drag before the lock key locks its link', () => {
+    const { mechanism, link, component } = pausedFourBar();
+    const commit = vi.spyOn(TestBed.inject(GridUtilsService), 'commitCenterOfMass');
+    const lock = vi.spyOn(
+      component as unknown as { toggleLockOnSelection(): void },
+      'toggleLockOnSelection'
+    );
+
+    grabAndMove(component, link);
+    component['onShortcut']('edit.lock');
+
+    expect(commit).toHaveBeenCalledWith(link, true);
+    expect(commit.mock.invocationCallOrder[0]).toBeLessThan(lock.mock.invocationCallOrder[0]);
+    expect(component.draggingCoMLink).toBeUndefined();
+    expect(mechanism.isLockedTarget(link)).toBe(true);
+  });
+});

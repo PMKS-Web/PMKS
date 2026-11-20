@@ -2688,6 +2688,16 @@ takes the pointer while its member is selected (`comGrabbable`), and `startComDr
 refusal rather than a drag. Left transparent to the pointer, the grab fell through to the member
 and dragged the whole cylinder.
 
+### A dragged center of mass commits through its body's start frame
+
+The CoM handle follows the `drag` permission, even where its typed fields are refused. Simply
+opening that gate mid-cycle is not enough: a rebuild restores solved CoMs as well as joints,
+overwriting the point under the pointer. `GridUtilsService.commitCenterOfMass` captures the point and body
+frame before rewinding, places it on the authored body, and recaptures both CoM offsets there.
+That last step matters for joint and grid references, whose offsets use world axes while editing
+but still ride the body during playback. `link-mass-fields.mjs` checks all three references in
+Edit and both analysis modes, through a reset, Undo and Redo.
+
 ### The start ghost's own rule takes the stroke off every body
 
 `.startGhost .ghostBody { stroke: none }` is right for a filled ghost and fatal for a schematic one,
@@ -3003,6 +3013,10 @@ entries in place. This is a metadata operation separate from rebasing the branch
 the groups does not replace the code checks. The [Stacks API](https://docs.github.com/en/rest/pulls/stacks)
 describes the endpoints.
 
+- **Compound attachments and tracer drags (#256, 2026-11-07).** The panel’s Add Tracer Point / Add Force buttons now ask `EditPermissionService.linkAttachmentRefusal`, sharing the menu’s compound-pick and pose guards. A compound with a remembered primitive hit is eligible; clear `lastSelectedSublink` when testing the fillet refusal. Force drift came from `GridUtilsService.dragJoint` translating all loads by a fraction of a hull joint’s displacement. Reshaping a multi-joint body now leaves anchors fixed, with the existing rebuild clamp handling anchors outside the new body; whole-body drags still carry loads rigidly.
+
+- **Held body drags carry loads too (#262, then #261).** `moveLinkRigidly` has a hold-solving branch that writes joints individually and returns before the ordinary body transport. #262 snapshotted force endpoints before those writes (`heldBodyLoads`); #261 then solved the dragged body's shape together with the holds and commits it through `commitHeldBody`, which carries loads by the solved rigid map. That replaced the snapshot, which is gone. `grid-utils.held-loads.spec.ts` still holds the behavior: an anchor left inside a translated plate is carried, not left behind.
+
 ### A neighboring hold used to stretch a whole-link drag (#259)
 
 `moveLinkRigidly` gave each endpoint an independent goal. With AB holding its length or angle, B followed that constraint and C followed its own translated goal, changing BC's length. Because the canvas calculated each new translation from B's already constrained position, C accumulated the shortfall on every pointer event. A four-bar drag of 120px right and 80px down shortened BC by 17.4% beside a fixed length, or lengthened it by 139.2% beside a fixed angle. Solve temporary body distances with the real holds, use targets from `beforeDrag.joints`, and commit the whole placement through the existing edit plan. That also preserves the carried body's load direction and custom center. The new `constrained-link-drag` suite captures both failures and repeated pointer events at the same location.
@@ -3169,6 +3183,15 @@ Storybook 10's manager has no favicon option: it links `/favicon.svg`, and a `st
 mapped to that path replaces Storybook's own pink one. `.storybook/main.ts` maps
 `src/assets/brand/favicon.svg` there. The sidebar logo is separate: `brandImage` in
 `.storybook/manager.ts`.
+
+### The names switch names forces too, and a name it shows stays through playback (#330)
+
+`settings.isShowID` (the view controls' Joint and force names switch, key L) used to reach joints
+only: a force's name was drawn on a hover or a selection and nowhere else, so two forces on one
+link were told apart by pointing at each. `#forceTagHolder` now draws every force's name while the
+switch is on, playback included, because a joint's name stays on through playback too. With the
+switch off, a hovered or selected force still shows its name, but not while the machine runs, as
+before. The setting rides the URL as `IS_SHOW_ID`, so no new flag was added.
 
 ### The templates' centers of mass are all placed by hand
 
