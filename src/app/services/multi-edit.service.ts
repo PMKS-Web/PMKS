@@ -199,6 +199,19 @@ export class MultiEditService {
     if (!Number.isFinite(value) || value < 0) {
       return this.refusal('selection.invalid-mass', 'not a mass', 'Mass must be zero or greater.');
     }
+    // A barrel or rod welded into a body weighs its share of the body, which
+    // `assignBodyMass` will not overwrite; refused as a whole rather than
+    // reported as done for the links it skipped.
+    const members = links.filter((link) => this.mechanism.isWeldedMember(link));
+    if (members.length > 0) {
+      const names = members.map((link) => this.mechanism.bodyLabel(link)).join(', ');
+      return this.refusal(
+        'selection.welded-mass',
+        'welded member',
+        `${names} ${members.length === 1 ? 'weighs its' : 'weigh their'} share of a welded ` +
+          'body. Select the body to set its mass. No links were changed.'
+      );
+    }
     this.mechanism.editingAtStartPose(() => {
       links.forEach((link) => this.mechanism.assignBodyMass(link, value));
       this.mechanism.updateMechanism(true);

@@ -5,6 +5,7 @@ import { Coord } from '../model/coord';
 import { Force } from '../model/force';
 import { PrisJoint, RevJoint } from '../model/joint';
 import { RealLink } from '../model/link';
+import { barHalfWidth } from '../model/joint-marks';
 import { ActiveObjService } from './active-obj.service';
 import { ColorService } from './color.service';
 import { GridUtilsService } from './grid-utils.service';
@@ -273,5 +274,25 @@ describe('GridUtilsService.rotateLink', () => {
 
     expect([scene.c.x, scene.c.y]).toEqual([4, 3]);
     expect(rebuild).not.toHaveBeenCalled();
+  });
+});
+
+describe('GridUtilsService.isPointInsideLink', () => {
+  it('finds a click inside a disc, which has no outline lines to cross (#315 review)', () => {
+    const { grid } = createHarness();
+    // A long crank, so the disc it sweeps dwarfs the bar's own width.
+    const reach = 50 * barHalfWidth(SettingsService.objectScale);
+    const crank = new RealLink('AB', [
+      new RevJoint('A', 0, 0, false, true),
+      new RevJoint('B', 0.6 * reach, 0.8 * reach),
+    ]);
+    crank.isCircle = true;
+    crank.reComputeDPath();
+    expect(crank.initialExternalLines).toEqual([]);
+
+    // Inside the disc but far from the bar between A and B: the part of a
+    // welded disc a reader clicks to hang a new link or force on it.
+    expect(grid.isPointInsideLink(new Coord(-0.6 * reach, 0), crank)).toBe(true);
+    expect(grid.isPointInsideLink(new Coord(2 * reach, 0), crank)).toBe(false);
   });
 });

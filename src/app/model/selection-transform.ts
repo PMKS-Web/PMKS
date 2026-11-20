@@ -2,6 +2,7 @@ import { Coord } from './coord';
 import { Force } from './force';
 import { Joint, PrisJoint } from './joint';
 import { Link, RealLink } from './link';
+import { derivedCenterOfMass } from './link-body';
 import { SelectedPart, selectableLinks } from './selection';
 import { CanonicalSelectionClosure, canonicalSelectionClosure } from './selection-closure';
 
@@ -213,9 +214,7 @@ export class SelectionTransformSnapshot {
       force.moveAnchor(new Coord(nextStart.x, nextStart.y));
       force.moveDirectionHandle(new Coord(nextEnd.x, nextEnd.y));
     });
-    const com = body.link.comIsCustom
-      ? place(body.com)
-      : RealLink.determineCenterOfMass(body.link.joints);
+    const com = body.link.comIsCustom ? place(body.com) : derivedCenterOfMass(body.link);
     body.link.CoM = new Coord(com.x, com.y);
     if (body.link.comIsCustom) body.link.captureComOffset();
     body.link.updateCoMDs();

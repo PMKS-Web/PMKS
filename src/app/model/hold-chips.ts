@@ -20,6 +20,7 @@ import { Cylinder } from './cylinder';
 import { Joint } from './joint';
 import { heldValues, Link, RealLink } from './link';
 import { cylinderAngleCarrier, holdOf, memberHoldReads } from './link-holds';
+import { selectableLinks } from './selection';
 
 /** One held value, and the span it labels. */
 export interface HoldChip {
@@ -46,8 +47,11 @@ export function holdChips(links: readonly Link[], cylinders: readonly Cylinder[]
   const memberIds = new Set(cylinders.flatMap((one) => [one.barrel.id, one.rod.id]));
   const chips: HoldChip[] = [];
 
-  for (const link of links) {
-    if (!(link instanceof RealLink) || memberIds.has(link.id)) continue;
+  // Every bar, a bar welded into a body included: its padlock is in the joint
+  // panel's Distance to Joints, and a fixed length there is as fixed as on a
+  // bar of its own.
+  for (const link of selectableLinks([...links])) {
+    if (memberIds.has(link.id)) continue;
     const [a, b] = link.joints;
     if (!a || !b) continue;
     // A chip per value held, so a bar keeping both wears both (#309).

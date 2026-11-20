@@ -3192,3 +3192,45 @@ link were told apart by pointing at each. `#forceTagHolder` now draws every forc
 switch is on, playback included, because a joint's name stays on through playback too. With the
 switch off, a hovered or selected force still shows its name, but not while the machine runs, as
 before. The setting rides the URL as `IS_SHOW_ID`, so no new flag was added.
+
+### The templates' centers of mass are all placed by hand
+
+Every link in the library templates arrives with `comIsCustom` set, its CoM stored at the bar's
+middle. So nothing that derives an automatic CoM reaches a template untouched: adding a tracer or
+Drawn as a Disc leaves the mark where it was until the reader presses "Back to the shape's
+centroid". Welding is the exception: a new welded body derives its CoM from its shape, and only a
+weld that continues a body whose CoM was placed by hand keeps that point. `e2e/center-of-mass.mjs` clears the flag before it tests anything. The
+verification fixtures do the same on purpose (`buildFixtureLink` in
+`test-utils/verification/fixture.ts`), and their unstated CoM is the mean of the joints written out
+there, because the `RealLink` constructor's seed is now the shape's centroid and fixture data must
+not move with it (#156).
+
+### A welded member's `mass` is written, never read
+
+Since #279 a compound's one mass is shared among its members by length (`model/weld-density.ts`),
+and the property pass writes each member's share onto `member.mass` on every rebuild. Setting a
+member's mass by hand does nothing that lasts: the next pass overwrites it, and `assignBodyMass`
+refuses it outright. Set the compound's mass instead. A spec that builds a compound by hand and
+wants a particular member to weigh more has to make that member longer.
+
+### A welded link is edited from its joints, not by a second click (#279)
+
+A click on a welded body used to select the body, and a second click the link under the pointer.
+Once a body had one density there was nothing on a link worth selecting it for except its length
+and angle, and its Fixed Length did nothing: `heldBars` was handed the top-level links and never
+saw a leaf. So the second click went (a cylinder's barrel and rod keep it, their lengths not being
+a distance between two joints), the joint panel's Distance to Joints draws each welded bar's far
+end with padlocks, and a body's menu has **Delete Link CD** for the link under the pointer. That
+row reads `lastSelectedSublink`, which the canvas sets on every press of a compound, not on
+selection. Distance to Joints lists neighbors only -- the far end of each bar, the rest of a plate
+-- so a chain of bars never offers a padlock between its two far ends.
+
+### Welding a held bar keeps the hold, and says where it went (#279)
+
+A weld keeps a bar's Fixed Length or Fixed Angle, because a joint drag still reshapes a welded
+body and the hold is what keeps that bar's number. But a welded bar is no longer selected on its
+own, so the padlocks the reader set it with are out of reach, and in review the kept padlock read
+as a leftover. `weldJoint` now says so as news (`model/weld-hold-notice.ts`): which bars keep
+which hold, and that it is changed from Distance to Joints on one of the bar's joints. It speaks
+only for bars the weld put inside a body: a compound already welded was told about before, and a
+Slide on one rider makes no body.

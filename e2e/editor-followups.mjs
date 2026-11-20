@@ -128,22 +128,12 @@ try {
   });
   await page.mouse.click(at.x, at.y);
   await page.mouse.click(at.x, at.y);
-  // The part's own solid edge, not the dashed one round the body it belongs to.
-  const outline = await page.locator('#primitiveSelection .link-selected').evaluate((el) => {
-    const g = ng.getComponent(document.querySelector('app-new-grid'));
-    const hex = getComputedStyle(el).getPropertyValue('--canvas-selection').trim();
-    const [r, gr, b] = hex.match(/[\da-f]{2}/gi).map((h) => parseInt(h, 16));
-    return {
-      d: el.getAttribute('d'),
-      part: g.objectDisplay.path(g.activeObjService.selectedLink),
-      stroke: getComputedStyle(el).stroke,
-      selection: `rgb(${r}, ${gr}, ${b})`,
-    };
-  });
+  // A welded link is not selected on its own any more: its length and angle
+  // are in its joints' Distance to Joints, so a second click keeps the body.
   check(
-    'selected primitive has a visible yellow outline',
-    outline.d.length > 10 && outline.d === outline.part && outline.stroke === outline.selection,
-    outline
+    'a second click on a welded link keeps its body selected, outlining no part of it',
+    (await grid((g) => g.activeObjService.selectedLink?.id)) === 'CDE' &&
+      (await page.locator('#primitiveSelection .link-selected').count()) === 0
   );
   await page.screenshot({ path: `${OUT}/primitive-selection.png` });
   await page.locator('#joint_C').click({ button: 'right' });

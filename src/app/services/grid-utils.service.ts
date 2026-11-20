@@ -14,6 +14,7 @@ import {
 } from '../model/link-holds';
 import { Joint, PrisJoint, RealJoint, RevJoint } from '../model/joint';
 import {
+  getDistance,
   jointStates,
   linkStates,
   roundNumber,
@@ -72,6 +73,7 @@ import { SynthesisPose } from './synthesis/synthesis-util';
 import { SynthesisBuilderService } from './synthesis/synthesis-builder.service';
 import { SvgGridService } from './svg-grid.service';
 import { ColorService } from './color.service';
+import { derivedCenterOfMass } from '../model/link-body';
 
 /**
  * Map a point from one two-joint frame to another, letting the frame stretch.
@@ -843,7 +845,7 @@ export class GridUtilsService {
       // there is no rigid motion to carry it, and guessing would move a
       // number somebody chose.
       if (!l.comIsCustom) {
-        l.CoM = RealLink.determineCenterOfMass(l.joints);
+        l.CoM = derivedCenterOfMass(l);
         l.updateCoMDs();
       }
       l.updateLengthAndAngle();
@@ -854,7 +856,7 @@ export class GridUtilsService {
           // Same rule as the root: a member's hand-placed center survives
           // for the unweld that will one day restore it.
           if (!subLink.comIsCustom) {
-            subLink.CoM = RealLink.determineCenterOfMass(subLink.joints);
+            subLink.CoM = derivedCenterOfMass(subLink);
             subLink.updateCoMDs();
           }
           subLink.updateLengthAndAngle();
@@ -1624,7 +1626,7 @@ export class GridUtilsService {
         link.CoM = new Coord(comX, comY);
       }
     } else {
-      link.CoM = RealLink.determineCenterOfMass(link.joints);
+      link.CoM = derivedCenterOfMass(link);
     }
     link.updateCoMDs();
     link.updateLengthAndAngle();
@@ -1637,7 +1639,7 @@ export class GridUtilsService {
           subLink.CoM = new Coord(subX, subY);
         }
       } else {
-        subLink.CoM = RealLink.determineCenterOfMass(subLink.joints);
+        subLink.CoM = derivedCenterOfMass(subLink);
       }
       subLink.updateCoMDs();
       subLink.updateLengthAndAngle();
@@ -1833,7 +1835,13 @@ export class GridUtilsService {
       return skeleton !== '';
     };
     const pick = (inside: (leaf: RealLink) => boolean) =>
-      pickLink(this.mechanismSrv.links, link, selected, inside);
+      pickLink(
+        this.mechanismSrv.links,
+        link,
+        selected,
+        inside,
+        (leaf) => this.mechanismSrv.cylinderOfBar(leaf) !== undefined
+      );
     try {
       const picked = pick((leaf) =>
         drawn(leaf) ? hit.isPointInStroke(at()) : hit.isPointInFill(at())
@@ -1872,6 +1880,9 @@ export class GridUtilsService {
   }
 
   isPointInsideLink(startPosition: Coord, link: RealLink) {
+    // A disc has no outline lines to cross, so it is a distance from its pin.
+    const disc = link.discShape();
+    if (disc) return getDistance(startPosition, disc.center) <= disc.radius;
     //Check if the point is inside of the shape created by the lines
     //First, draw a line that is infinitely long and check if it intersects with the shape an odd number of times
     const infiniteLine = new Line(startPosition, new Coord(10000, startPosition.y));
