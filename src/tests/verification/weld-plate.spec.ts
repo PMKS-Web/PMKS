@@ -6,7 +6,7 @@ import { RealLink } from '../../app/model/link';
 import { MARK } from '../../app/model/joint-marks';
 import { SliderMarkService } from '../../app/services/slider-mark.service';
 import { SettingsService } from '../../app/services/settings.service';
-import { createMechanismHarness } from '../../test-utils/mechanism-harness';
+import { createMechanismHarness, wireGraph } from '../../test-utils/mechanism-harness';
 import { MODEL_SCALE } from '../../app/model/render-scale';
 
 // Geometry is built in internal model units (user units x MODEL_SCALE) so the
@@ -184,6 +184,40 @@ describe('the weld plate', () => {
     expect(subpaths(path).length).toBe(1);
     const along = points(path).map(([x]) => x);
     expect(Math.max(...along) - Math.min(...along)).toBeGreaterThan(4 * S);
+  });
+
+  it('plates a Slide whose rider an earlier Pin-in-slot also rides', () => {
+    // The Pin-in-slot came first and took the rider, leaving the Slide with
+    // nothing to fuse (#347).
+    const harness = createMechanismHarness();
+    const a = new RevJoint('A', 0, 0);
+    const b = new RevJoint('B', 8 * S, 0);
+    const rider = new RevJoint('R', 2 * S, 0);
+    const far = new RevJoint('F', 6 * S, 0);
+    const carrier = new RealLink('AB', [a, b]);
+    const bar = new RealLink('RF', [rider, far]);
+    harness.service.joints = [a, b, rider, far];
+    harness.service.links = [carrier, bar];
+    wireGraph(harness.service);
+
+    for (const pin of [rider, far]) {
+      harness.active.updateSelectedObj(pin);
+      harness.service.toggleSlider();
+      const slider = harness.service.joints.find(
+        (joint): joint is PrisJoint => joint instanceof PrisJoint && joint.id === pin.id
+      )!;
+      slider.slideOn(carrier, a, b);
+      if (pin === far) harness.service.weldJoint(slider);
+    }
+    harness.service.finishStructuralEdit(false);
+
+    const marks = new SliderMarkService().marks(harness.service.joints, radius());
+    expect(marks.map((mark) => [mark.id, mark.welded])).toEqual([
+      ['R', false],
+      ['F', true],
+    ]);
+    expect(marks[1].plate?.links.map((link) => link.id)).toEqual(['RF']);
+    expect(marks[0].riders).toEqual([]);
   });
 
   it('stays a single finite outline for a rider at any angle', () => {

@@ -226,7 +226,8 @@ const checks = [
     'a Length that cannot be fully had stops short, says so, and the box reads what landed',
     out.short.barrel < out.beforeShort.barrel &&
       out.short.barrel > 0.001 &&
-      out.short.length === `${(out.short.barrel / 200).toFixed(2)} cm` &&
+      // Cylinder Boom is published in meters (LIBRARY_TEMPLATE_SIZES, #308).
+      out.short.length === `${(out.short.barrel / 200).toFixed(2)} m` &&
       out.short.said.some((text) => /stopped at/i.test(text) && /no travel left in it/i.test(text)),
   ],
   [

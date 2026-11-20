@@ -4,6 +4,7 @@ import '../joint';
 import { partitionKey, partitionMechanisms } from './mechanism-partition';
 import { Mechanism } from './mechanism';
 import { buildMechanism, MechanismFixture } from '../../../test-utils/verification/fixture';
+import { ellipticalTrammelFixture } from '../../../test-utils/verification/slot-fixtures';
 
 /**
  * Which machine is which, across a rebuild.
@@ -81,6 +82,12 @@ describe('naming a machine so it survives a rebuild', () => {
     });
 
     expect(mechanisms.map(partitionKey)).toEqual(['B', 'F']);
+  });
+
+  it('names a trammel by its sliders, which travel though they are grounded', () => {
+    // Two grounded sliders and a bar: it was named by its ordinal (#341).
+    const { mechanisms } = split(ellipticalTrammelFixture());
+    expect(mechanisms.map(partitionKey)).toEqual(['A']);
   });
 });
 
