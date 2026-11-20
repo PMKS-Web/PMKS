@@ -3183,3 +3183,12 @@ Storybook 10's manager has no favicon option: it links `/favicon.svg`, and a `st
 mapped to that path replaces Storybook's own pink one. `.storybook/main.ts` maps
 `src/assets/brand/favicon.svg` there. The sidebar logo is separate: `brandImage` in
 `.storybook/manager.ts`.
+
+### The names switch names forces too, and a name it shows stays through playback (#330)
+
+`settings.isShowID` (the view controls' Joint and force names switch, key L) used to reach joints
+only: a force's name was drawn on a hover or a selection and nowhere else, so two forces on one
+link were told apart by pointing at each. `#forceTagHolder` now draws every force's name while the
+switch is on, playback included, because a joint's name stays on through playback too. With the
+switch off, a hovered or selected force still shows its name, but not while the machine runs, as
+before. The setting rides the URL as `IS_SHOW_ID`, so no new flag was added.

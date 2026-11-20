@@ -17,6 +17,7 @@ import { SynthesisBuilderService } from '../../services/synthesis/synthesis-buil
 import { NotificationService } from '../../services/notification.service';
 import { EditPermissionService } from '../../services/edit-permission.service';
 import { Coord } from '../../model/coord';
+import { Force } from '../../model/force';
 import { SaveHistoryService } from '../../services/save-history.service';
 import { LONGEST_ARROW_FRACTION } from '../../model/vector-trace';
 import { CYLINDER, MARK, slideMarkPath } from '../../model/joint-marks';
@@ -1312,6 +1313,52 @@ function shaftLengths(d: string): number[] {
       return Math.hypot(x2 - x1, y2 - y1);
     });
 }
+
+describe('NewGridComponent force names', () => {
+  beforeEach(configureGridTestBed);
+
+  /** The two bars, each carrying one force, drawn by a fresh canvas. */
+  function twoForces() {
+    const mechanism = TestBed.inject(MechanismService);
+    const scene = twoBars(mechanism);
+    const f1 = new Force('F1', scene.ab, new Coord(2, 2), new Coord(2, 4));
+    const f2 = new Force('F2', scene.cd, new Coord(25, 20), new Coord(25, 22));
+    scene.ab.forces.push(f1);
+    scene.cd.forces.push(f2);
+    mechanism.forces = [f1, f2];
+    const fixture = TestBed.createComponent(NewGridComponent);
+    const names = () => {
+      fixture.detectChanges();
+      return [...fixture.nativeElement.querySelectorAll('#forceTagHolder .forceLabel')].map(
+        (text: Element) => text.textContent?.trim()
+      );
+    };
+    return { mechanism, settings: TestBed.inject(SettingsService), f1, names };
+  }
+
+  it('names every force while names are shown, with nothing pointed at (#330)', () => {
+    const { settings, names } = twoForces();
+    settings.isShowID.next(true);
+    expect(names()).toEqual(['F1', 'F2']);
+  });
+
+  it('keeps every name on while the machine plays, as the joints keep theirs', () => {
+    const { mechanism, settings, names } = twoForces();
+    settings.isShowID.next(true);
+    mechanism.isPlaying = true;
+    expect(names()).toEqual(['F1', 'F2']);
+  });
+
+  it('names only the force pointed at while names are hidden, and none during playback', () => {
+    const { mechanism, settings, f1, names } = twoForces();
+    settings.isShowID.next(false);
+    expect(names()).toEqual([]);
+    f1.showHighlight = true;
+    expect(names()).toEqual(['F1']);
+    mechanism.isPlaying = true;
+    expect(names()).toEqual([]);
+  });
+});
 
 /**
  * A center of mass dragged at a paused pose, and the two ways a gesture can
