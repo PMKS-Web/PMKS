@@ -1,4 +1,5 @@
 import { refuseForceOnJoint } from '../model/force-on-joint';
+import { compoundAttachmentRefusal } from '../model/link-attachment';
 import { LinkTraceService } from './link-trace.service';
 import { Injectable, inject } from '@angular/core';
 import { NumberUnitParserService } from './number-unit-parser.service';
@@ -145,7 +146,7 @@ export class ContextMenuBuilderService {
             ...this.selectionStateRows(refs, parts).filter((row) => !row.alwaysAllowed),
             new MenuRow({
               label: 'Locked',
-              posePolicy: 'preserve',
+              posePolicy: 'safe',
               icon: 'lock',
               kind: 'toggle',
               checked: allLocked,
@@ -268,7 +269,6 @@ export class ContextMenuBuilderService {
       rows.push(
         new MenuRow({
           label: 'Global Frame',
-          posePolicy: 'preserve',
           icon: 'public',
           material: true,
           kind: 'toggle',
@@ -286,7 +286,7 @@ export class ContextMenuBuilderService {
         rows.push(
           new MenuRow({
             label: which === 'length' ? 'Fixed Length' : 'Fixed Angle',
-            posePolicy: 'preserve',
+            posePolicy: 'safe',
             icon: which === 'length' ? 'straighten' : 'architecture',
             material: true,
             kind: 'toggle',
@@ -322,7 +322,7 @@ export class ContextMenuBuilderService {
         }),
         new MenuRow({
           label: 'Background Image',
-          posePolicy: 'preserve',
+          posePolicy: 'safe',
           icon: 'background_image',
           action: () => handlers.backgroundImage(),
         }),
@@ -358,7 +358,7 @@ export class ContextMenuBuilderService {
     return [
       new MenuRow({
         label: 'Lock All',
-        posePolicy: 'preserve',
+        posePolicy: 'safe',
         icon: 'lock',
         action: () => this.mechanism.setAllLocks(true),
         hint: counts.open > 0 ? `${counts.open} open` : undefined,
@@ -372,7 +372,7 @@ export class ContextMenuBuilderService {
       }),
       new MenuRow({
         label: 'Unlock All',
-        posePolicy: 'preserve',
+        posePolicy: 'safe',
         icon: 'unlock',
         action: () => this.mechanism.setAllLocks(false),
         hint: counts.locked > 0 ? `${counts.locked} locked` : undefined,
@@ -532,8 +532,7 @@ export class ContextMenuBuilderService {
       new MenuRow({
         label: 'Force',
         icon: 'add_force',
-        posePolicy: 'attachment',
-        poseGuard: () => (bar ? this.attachmentRefusal(bar) : undefined),
+        posePolicy: 'annotation',
         action: () => {
           if (bar) handlers.attachForce(bar);
         },
@@ -615,7 +614,7 @@ export class ContextMenuBuilderService {
       // does, so a paused Edit pose re-anchors correctly (`joint-type.mjs` §4).
       // Asking anything narrower here would gray on the card what is live in
       // the panel, for one control with one name.
-      posePolicy: 'structure',
+      posePolicy: 'design',
       // The one thing about a slot the drawing cannot show, said on the chosen
       // value's hover rather than printed under the grid.
       fault: choice.invalid
@@ -777,14 +776,8 @@ export class ContextMenuBuilderService {
     return new MenuRow({
       label: 'Delete Joint',
       detail: detail || undefined,
-      posePolicy: this.mechanism.canDeleteTracerAtPose(joint) ? 'attachment' : 'start',
-      poseGuard: () =>
-        this.mechanism.canDeleteTracerAtPose(joint)
-          ? undefined
-          : {
-              short: 'return to the start',
-              long: 'This joint constrains the mechanism. Return to the start before deleting it.',
-            },
+      // A tracer point is an annotation; any other joint is structure.
+      posePolicy: this.mechanism.isTracerPoint(joint) ? 'annotation' : 'design',
       icon: 'remove',
       destructive: true,
       shortcut: this.keys.keysFor('edit.delete'),
@@ -797,7 +790,7 @@ export class ContextMenuBuilderService {
     return new MenuRow({
       label: 'Split Joint',
       icon: 'joint_split',
-      posePolicy: 'structure',
+      posePolicy: 'design',
       hint: choice.refusal
         ? choice.short
         : `${choice.count} ${choice.count === 1 ? 'link' : 'links'}`,
@@ -958,7 +951,13 @@ export class ContextMenuBuilderService {
         { label: 'State', rows: this.linkStateRows(bar) },
         { label: 'Traces', rows: [this.traceRow(bar), ...this.vectorRows(bar)] },
         { rows: this.positionRows(handlers, undefined) },
-        { rows: [this.deleteLinkRow(bar), this.deleteMechanismRow(bar)] },
+        {
+          rows: [
+            this.deleteLinkRow(bar),
+            ...this.deleteMemberRow(bar),
+            this.deleteMechanismRow(bar),
+          ],
+        },
       ],
     };
   }
@@ -1012,13 +1011,7 @@ export class ContextMenuBuilderService {
   private linkAttachRows(link: RealLink, handlers: MenuHandlers): MenuRow[] {
     // A welded compound is several links; clicking its fillet rather than one
     // of them says which body the new member should join.
-    const fillet: MenuRefusal | undefined =
-      link.isWelded && link.lastSelectedSublink == null
-        ? {
-            short: 'pick a sub-link',
-            long: 'This is a welded compound. Click one of the links it is made of, so the new member knows which body it joins.',
-          }
-        : undefined;
+    const fillet = compoundAttachmentRefusal(link);
     // A lock holds the link where it is, and attaching a new part to it moves
     // nothing that is held -- the new link, block, tracer or force is built
     // onto the link as it stands. So the lock refuses none of these.
@@ -1039,19 +1032,17 @@ export class ContextMenuBuilderService {
       }),
       new MenuRow({
         label: 'Tracer Point',
-        posePolicy: 'attachment',
-        poseGuard: () => this.attachmentRefusal(link),
+        posePolicy: 'annotation',
         icon: 'add_tracer',
         action: () => handlers.attachTracerPoint(),
-        refusal: fillet,
+        refusal: this.permission.linkAttachmentRefusal(link),
       }),
       new MenuRow({
         label: 'Force',
         icon: 'add_force',
-        posePolicy: 'attachment',
-        poseGuard: () => this.attachmentRefusal(link),
+        posePolicy: 'annotation',
         action: () => handlers.attachForce(link),
-        refusal: fillet,
+        refusal: this.permission.linkAttachmentRefusal(link),
       }),
     ];
     rows.push(
@@ -1080,7 +1071,7 @@ export class ContextMenuBuilderService {
     return [
       new MenuRow({
         label: 'Drawn as a Disc',
-        posePolicy: 'preserve',
+        posePolicy: 'safe',
         icon: 'make_circular',
         kind: 'toggle',
         checked: link.isCircle,
@@ -1127,7 +1118,7 @@ export class ContextMenuBuilderService {
       const on = this.mechanism.memberHoldOf(member, which);
       return new MenuRow({
         label,
-        posePolicy: 'preserve',
+        posePolicy: 'safe',
         icon,
         material: true,
         kind: 'toggle',
@@ -1190,7 +1181,7 @@ export class ContextMenuBuilderService {
       const both = !on && held !== undefined;
       return new MenuRow({
         label,
-        posePolicy: 'preserve',
+        posePolicy: 'safe',
         icon,
         material: true,
         kind: 'toggle',
@@ -1233,6 +1224,32 @@ export class ContextMenuBuilderService {
       this.nup.convertAngle(degrees, AngleUnit.DEGREE, this.settings.angleUnit.getValue()),
       this.settings.angleUnit.getValue()
     );
+  }
+
+  /**
+   * On a welded body, a row to delete just the link under the pointer.
+   *
+   * A click selects the whole body, so Delete takes the whole body. Taking one
+   * link out of it used to need a second click to select that link first; the
+   * second click went (a welded link's length and angle are in its joints'
+   * Distance to Joints now), and this is where deleting one link went.
+   */
+  private deleteMemberRow(body: RealLink): MenuRow[] {
+    const leaf = body.lastSelectedSublink;
+    if (!body.isCompound || !(leaf instanceof RealLink) || leaf.isCompound) return [];
+    if (this.mechanism.cylinderOfBar(leaf)) return [];
+    return [
+      new MenuRow({
+        label: `Delete Link ${this.mechanism.visibleBodyName(leaf)}`,
+        detail: 'Only this link of the body',
+        icon: 'remove',
+        destructive: true,
+        action: () => {
+          this.activeObj.updateSelectedObj(leaf);
+          this.mechanism.deleteLink();
+        },
+      }),
+    ];
   }
 
   private deleteLinkRow(link: RealLink): MenuRow {
@@ -1300,8 +1317,6 @@ export class ContextMenuBuilderService {
           rows: [
             new MenuRow({
               label: 'Flip Force',
-              posePolicy: 'attachment',
-              poseGuard: () => this.attachmentRefusal(force.link),
               refusal: force.locked
                 ? {
                     short: 'locked direction',
@@ -1309,7 +1324,9 @@ export class ContextMenuBuilderService {
                   }
                 : undefined,
               icon: 'switch_force_dir',
-              // A property of the force, not of the linkage's shape.
+              // A property of the force, not of the linkage's shape, and the
+              // same at every pose -- so it is offered wherever a pause is.
+              posePolicy: 'load',
               action: () => {
                 if (!force.locked) this.mechanism.changeForceDirection();
               },
@@ -1323,8 +1340,6 @@ export class ContextMenuBuilderService {
             // used. The frame is a state, so it reads as one.
             new MenuRow({
               label: 'Global Frame',
-              posePolicy: 'attachment',
-              poseGuard: () => this.attachmentRefusal(force.link),
               // The app's own force_global glyph carries its own colors, so
               // it stays blue on an unticked row and reads as already on --
               // the one icon in the menu that does not take the row's color.
@@ -1342,7 +1357,7 @@ export class ContextMenuBuilderService {
           rows: [
             new MenuRow({
               label: 'Delete Force',
-              posePolicy: 'preserve',
+              posePolicy: 'annotation',
               icon: 'remove',
               destructive: true,
               shortcut: this.keys.keysFor('edit.delete'),
@@ -1412,7 +1427,7 @@ export class ContextMenuBuilderService {
     const held = joint && !locked ? this.heldRefusal(joint) : undefined;
     return new MenuRow({
       label: 'Locked',
-      posePolicy: 'preserve',
+      posePolicy: 'safe',
       icon: 'lock',
       kind: 'toggle',
       checked: locked || !!held,
@@ -1494,21 +1509,8 @@ export class ContextMenuBuilderService {
     };
   }
 
-  /** Attaching needs a known rigid-body transform between this pose and t=0. */
-  private attachmentRefusal(link: RealLink): MenuRefusal | undefined {
-    return this.mechanism.canAttachAtPose(link)
-      ? undefined
-      : {
-          short: 'return to the start',
-          long: 'This body has no reliable mapping to its start pose. Return to the start to attach a point or force.',
-        };
-  }
-
   private rowPoseRefusal(row: MenuRow): MenuRefusal | null {
-    return (
-      this.permission.menuRefusal(row.alwaysAllowed ? 'view' : row.posePolicy) ??
-      (!this.mechanism.isAtStartPose() ? (row.poseGuard?.() ?? null) : null)
-    );
+    return this.permission.menuRefusal(row.alwaysAllowed ? 'view' : row.posePolicy);
   }
 
   /** Apply the same pose-preservation rules in every mode, including at activation. */

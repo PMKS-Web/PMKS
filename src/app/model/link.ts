@@ -1,5 +1,6 @@
 import { Joint, PrisJoint, RealJoint } from './joint';
 import { uniformBodyOf } from './uniform-body';
+import { derivedCenterOfMass } from './link-body';
 import { Coord } from './coord';
 import { Force } from './force';
 import { degToRad, determineSlope, getAngle, getDistance, radToDeg } from './utils';
@@ -29,6 +30,14 @@ export enum Shape {
   infinityShape = 'infinityShape',
   eightShape = 'eightShape',
   customShape = 'customShape',
+}
+
+/** A snapshot of a link's center of mass, taken and restored by `RealLink`. */
+export interface RealLinkComState {
+  at: Coord;
+  custom: boolean;
+  offset?: { along: number; across: number; frame: [string, string] };
+  anchorOffset?: { dx: number; dy: number };
 }
 
 /**
@@ -368,7 +377,18 @@ export class RealLink extends Link {
    * a world coordinate goes stale the moment the mechanism moves. The URL
    * still carries the global coordinate; this is re-captured at decode.
    */
-  public comOffset?: { along: number; across: number; frame: [string, string] };
+  public comOffset?: {
+    along: number;
+    across: number;
+    frame: [string, string];
+    /**
+     * The pin a disc was centered on when this was captured, if it was a disc.
+     * The offset is measured from the shape's centroid, which for a disc is
+     * that pin and for a bar its middle: a change of shape moves the origin
+     * under the point, so `customCoMFromOffset` rebases rather than follow it.
+     */
+    disc?: string;
+  };
 
   /**
    * What a hand-placed center of mass is held against while the mechanism is
@@ -408,11 +428,16 @@ export class RealLink extends Link {
   }
 
   /**
-   * The link's own frame: origin at the uniform centroid, x̂ along the two
+   * The link's own frame: origin at the shape's centroid, x̂ along the two
    * *named* joints — the farthest pair at capture time, so the axis is never
    * degenerate by accident and never silently reinterpreted when the joints
    * array reorders. `ok` is false when a named joint has left the link, which
    * tells the caller to rebase rather than trust a different pair.
+   *
+   * The origin is `derivedCenterOfMass`, the same point the Edit panel calls
+   * "Shape's centroid" and the canvas marks. Measured from the bar's centroid
+   * instead, a disc's placed point drifted off the frame the panel showed it
+   * in as soon as the far joint moved, because the disc's centroid is its pin.
    */
   private comFrame(pair?: [string, string]): {
     origin: Coord;
@@ -421,7 +446,7 @@ export class RealLink extends Link {
     pair: [string, string];
     ok: boolean;
   } {
-    const origin = uniformBodyOf(this.joints).centroid;
+    const origin = derivedCenterOfMass(this);
     let a = pair ? this.joints.find((joint) => joint.id === pair[0]) : undefined;
     let b = pair ? this.joints.find((joint) => joint.id === pair[1]) : undefined;
     const named = !!(a && b);
@@ -461,6 +486,29 @@ export class RealLink extends Link {
     this.updateCoMDs();
   }
 
+  /** Everything a placed center of mass is made of, for `restoreComState` to put back. */
+  comState(): RealLinkComState {
+    return {
+      at: new Coord(this._CoM.x, this._CoM.y),
+      custom: this.comIsCustom,
+      offset: this.comOffset && { ...this.comOffset },
+      anchorOffset: this.comAnchorOffset && { ...this.comAnchorOffset },
+    };
+  }
+
+  /**
+   * Put a center of mass back exactly as `comState` found it. Not by placing
+   * the point again: that marks an automatic center custom, and at a paused
+   * pose captures a grid or joint anchor's offset in the displayed frame.
+   */
+  restoreComState(state: RealLinkComState): void {
+    this.comIsCustom = state.custom;
+    this.comOffset = state.offset && { ...state.offset };
+    this.comAnchorOffset = state.anchorOffset && { ...state.anchorOffset };
+    this._CoM = new Coord(state.at.x, state.at.y);
+    this.updateCoMDs();
+  }
+
   /** Re-read the local offset from wherever the CoM currently is. */
   captureComOffset(): void {
     // Both are captured every time, whichever anchor is in force: switching
@@ -473,6 +521,7 @@ export class RealLink extends Link {
       along: dx * frame.ux + dy * frame.uy,
       across: -dx * frame.uy + dy * frame.ux,
       frame: frame.pair,
+      disc: this.discCenter()?.id,
     };
     const anchor = this.anchorPoint();
     this.comAnchorOffset = anchor
@@ -496,7 +545,12 @@ export class RealLink extends Link {
     }
     if (!this.comOffset) return undefined;
     const frame = this.comFrame(this.comOffset.frame);
-    if (!frame.ok) {
+    // Or the shape changed between a bar and a disc -- switched in the panel,
+    // or a disc's pin grounded or freed. The origin moved and the point did not, so the same rebase holds it. Asked
+    // here, in the rebuild after the start pose is restored, rather than at
+    // the switch: a grid or joint anchor's offset captured at a paused pose
+    // would be measured in the displayed frame.
+    if (!frame.ok || this.comOffset.disc !== this.discCenter()?.id) {
       // A frame joint left the link (deleted, merged away). The point itself
       // is still where it was, so rebase: keep the CoM, re-anchor the offset
       // to the pair the link has now, rather than silently reading the old
@@ -534,7 +588,9 @@ export class RealLink extends Link {
     } else {
       this.subset = subSet;
     }
-    this._CoM = CoM !== undefined ? CoM : RealLink.determineCenterOfMass(joints);
+    // A seed only: the property pass in `updateMechanism` asks `derivedBodyOf`,
+    // which also knows about discs and welded members, before anything reads it.
+    this._CoM = CoM !== undefined ? CoM : uniformBodyOf(joints).centroid;
     // Before the path is built, because being drawn as a disc is what decides
     // what that path is. `visualSource` is the link this one is a copy of, so
     // every solved timestep inherits the choice without each cloning site
@@ -1165,17 +1221,6 @@ export class RealLink extends Link {
       vectorStartToCenter.x * vectorEndToCenter.y - vectorStartToCenter.y * vectorEndToCenter.x;
 
     return crossProduct > 0;
-  }
-
-  static determineCenterOfMass(joints: Joint[]) {
-    let com_x = 0;
-    let com_y = 0;
-    // TODO: Logic isn't exactly right but can change this once other logic is fully finished
-    joints.forEach((j) => {
-      com_x += j.x;
-      com_y += j.y;
-    });
-    return new Coord(com_x / joints.length, com_y / joints.length);
   }
 
   get d(): string {

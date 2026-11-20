@@ -148,8 +148,8 @@ try {
   );
   await page.mouse.click(bodyPoint.x, bodyPoint.y);
   check(
-    'second click selects the primitive under the pointer',
-    await grid((g) => g.activeObjService.selectedLink.id === 'CD')
+    'a second click keeps the compound: a welded bar is edited from its joints',
+    await grid((g) => g.activeObjService.selectedLink.id === 'CDE')
   );
   check(
     'compound settings and Unweld All are absent',
@@ -159,7 +159,9 @@ try {
 
   // Zoomed out until the marks are small, a part is thinner than its 12px
   // grab band (#linkGrabHolder, issue #273). A press on the band, outside every
-  // part's fill, must still pick the part on the second click.
+  // part's fill, must still reach the body -- and, like a press on the fill,
+  // keep it on the second click, because a welded bar is edited from its
+  // joints (#279).
   await grid((g) => {
     g.activeObjService.clearPartSelection();
     for (let i = 0; i < 40 && g.settings.drawingScale * g.svgGrid.getZoom() > 15.01; i++) {
@@ -181,8 +183,8 @@ try {
   await page.mouse.click(band.x, band.y);
   const bandSecond = await grid((g) => g.activeObjService.selectedLink?.id);
   check(
-    "zoomed far out, a press on a thin part's grab band picks the body, then the part",
-    band.under === 'CDE__wideHit' && bandFirst === 'CDE' && bandSecond === 'CD',
+    "zoomed far out, a press on a thin part's grab band picks the body, and a second keeps it",
+    band.under === 'CDE__wideHit' && bandFirst === 'CDE' && bandSecond === 'CDE',
     { band, bandFirst, bandSecond }
   );
   await grid((g) => g.svgGrid.scaleToFitLinkage(false));
@@ -195,11 +197,10 @@ try {
   await page.getByRole('tab', { name: 'Center of mass', exact: true }).click();
   await page.locator('app-view-button[data-switch="traces"] button').click();
   check(
-    'a massless primitive link has a CoM path and mark',
+    'the selected body has a CoM path and mark',
     await grid((g) => {
       const link = g.activeObjService.selectedLink;
       return (
-        link.mass === 0 &&
         g.linkTraces.paths(g.mechanismSrv).some((t) => t.id === link.id && t.d.length > 30) &&
         g.showsCoM(link)
       );

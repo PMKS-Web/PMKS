@@ -4,13 +4,12 @@
        clears it. The words come from the permission model, so the banner, the
        grayed menu rows and the canvas cannot describe the same rule
        differently. -->
-  <!-- Two levels, because the answers differ. Playing or in an analysis mode
-       nothing here may be touched, and `inert` takes the whole subtree out of
-       pointer, keyboard and focus reach in one attribute. Merely paused away
-       from the start, the structural half is live -- Grounded, Driven Input,
-       Joint Type, Rename, Delete apply to the design without needing the pose -- and
-       only the pose-bound fields are frozen, which the component does on the
-       controls themselves. The numbers stay readable either way: watching a
+  <!-- Two levels, because the answers differ. Playing nothing here may be
+       touched, and `inert` takes the whole subtree out of pointer, keyboard and
+       focus reach in one attribute. Merely paused away from the start, the safe
+       properties stay live -- mass, name, color, Lock, the holds -- while
+       structure and typed geometry are grayed control by control, with the
+       context menu's reasons (docs/editing-rules.md). The numbers stay readable either way: watching a
        joint's coordinates tick is the reason the panel stays at all. -->
   <div class="editBody" [class.frozen]="panelIsFrozen()">
     @if (this.activeSrv.objType == 'MultiSelection') {
@@ -30,7 +29,11 @@
         <!-- Not inert as a whole while the mechanism plays: picking a machine
              or going back to the list is selection, not an edit. Only what
              edits is frozen, inside the panel. -->
-        <app-mechanism-panel [editable]="true" [frozen]="panelIsFrozen()">
+        <app-mechanism-panel
+          [editable]="true"
+          [frozen]="panelIsFrozen()"
+          [structureFrozen]="structureRefused()"
+        >
           <ng-container *ngTemplateOutlet="buildHints" />
         </app-mechanism-panel>
       } @else {
@@ -178,7 +181,10 @@
     <!--  JOINT PANEL-->
     @if (this.activeSrv.objType == 'Joint') {
       <panel-section [frozen]="panelIsFrozen()">
-        <editable-title-block [deleteAction]="deleteJoint.bind(this)">
+        <editable-title-block
+          [deleteAction]="deleteJoint.bind(this)"
+          [deleteDisabled]="jointDeleteRefused()"
+        >
           Edit Joint
         </editable-title-block>
         <app-edit-banner panelAttached />
@@ -297,13 +303,15 @@
               gridUtils.isVisuallyInput(activeSrv.selectedJoint) ? 'Remove Input' : 'Add Input'
             "
             but1WidthText="Remove Input"
-            [btn1Disabled]="!canToggleInput(activeSrv.selectedJoint)"
+            [btn1Disabled]="structureRefused() || !canToggleInput(activeSrv.selectedJoint)"
             [btn1Tooltip]="inputRefusal()"
             [but1Action]="mechanismService.adjustInput.bind(mechanismService)"
             but2Icon="joint_split"
             but2Text="Split Joint"
-            [btn2Disabled]="!!splitJoints.choiceFor(activeSrv.selectedJoint).refusal"
-            [btn2Tooltip]="splitJoints.choiceFor(activeSrv.selectedJoint).long"
+            [btn2Disabled]="
+              structureRefused() || !!splitJoints.choiceFor(activeSrv.selectedJoint).refusal
+            "
+            [btn2Tooltip]="structureReason() ?? splitJoints.choiceFor(activeSrv.selectedJoint).long"
             [but2Action]="splitJoints.split.bind(splitJoints, activeSrv.selectedJoint)"
           ></dual-button>
         </collapsible-subsection>
@@ -402,23 +410,43 @@
             (closed)="sectionExpanded['JDistToJ'] = false"
           >
             @for (joint of listOfOtherJoints; track joint; let i = $index) {
-              <div>
-                <!-- The repeated alias template -->
-                <dual-input-block
-                  label1="D"
-                  label2="⊾"
-                  tooltip="How far this joint is from that one, and in what direction. Editing either moves that joint."
-                  [formGroup]="jointForm"
-                  formSubGroup="otherJoints"
-                  [formControl1]="(i * 2).toString()"
-                  [formControl2]="(i * 2 + 1).toString()"
-                  (field1Entry)="setShowLinkLengthOverlay($event)"
-                  (field2Entry)="setShowLinkAngleOverlay($event)"
-                  [emitterOutputID]="i"
-                >
-                  Joint {{ joint!.name }}</dual-input-block
-                >
-              </div>
+              <!-- A neighbor at the other end of a welded bar: that bar's
+                   length and angle, with the Link panel's own fields and
+                   padlocks. Only the two ends of one bar are offered a hold,
+                   so the padlock always means "this bar keeps its length". -->
+              @if (distanceRows[i]?.bar && distanceBarForms[i]) {
+                <div class="distance-bar" [attr.data-distance-bar]="distanceRows[i].bar!.id">
+                  <div class="row">
+                    <span class="label">Joint {{ joint!.name }}</span>
+                  </div>
+                  <hold-field-block
+                    [formGroup]="distanceBarForms[i]!"
+                    [link]="distanceRows[i].bar!"
+                    [lengthHelp]="distanceBarHelp(distanceRows[i])"
+                    [angleHelp]="distanceBarAngleHelp(distanceRows[i])"
+                    (lengthEntry)="setShowLinkLengthOverlay($event === -1 ? i : $event)"
+                    (angleEntry)="setShowLinkAngleOverlay($event === -1 ? i : $event)"
+                  ></hold-field-block>
+                </div>
+              } @else {
+                <div>
+                  <!-- The repeated alias template -->
+                  <dual-input-block
+                    label1="D"
+                    label2="⊾"
+                    tooltip="How far this joint is from that one, and in what direction. Editing either moves that joint."
+                    [formGroup]="jointForm"
+                    formSubGroup="otherJoints"
+                    [formControl1]="(i * 2).toString()"
+                    [formControl2]="(i * 2 + 1).toString()"
+                    (field1Entry)="setShowLinkLengthOverlay($event)"
+                    (field2Entry)="setShowLinkAngleOverlay($event)"
+                    [emitterOutputID]="i"
+                  >
+                    Joint {{ joint!.name }}</dual-input-block
+                  >
+                </div>
+              }
             }
           </collapsible-subsection>
         }
@@ -437,6 +465,7 @@
              the icon cannot say on its own, so the hover says it. -->
         <editable-title-block
           [deleteAction]="deleteLink.bind(this)"
+          [deleteDisabled]="structureRefused()"
           [displayName]="bodyName"
           [deleteHint]="selectedCylinder ? 'Delete Cylinder' : undefined"
         >
@@ -466,13 +495,18 @@
             (angleEntry)="setShowLinkAngleOverlay($event)"
           ></hold-field-block>
           @if (!selectedCylinder) {
+            @let attachmentRefusal = permission.linkAttachmentRefusal(activeSrv.selectedLink);
             <dual-button
               but1Text="Add Tracer Point"
               but1Icon="add_tracer"
               but2Text="Add Force"
               but2Icon="add_force"
-              [but1Action]="mechanismService.addJointAtCOM.bind(mechanismService)"
-              [but2Action]="mechanismService.createForceAtCOM.bind(mechanismService)"
+              [btn1Disabled]="!!attachmentRefusal"
+              [btn2Disabled]="!!attachmentRefusal"
+              [btn1Tooltip]="attachmentRefusal?.long"
+              [btn2Tooltip]="attachmentRefusal?.long"
+              [but1Action]="addTracerAtCOM"
+              [but2Action]="addForceAtCOM"
             >
             </dual-button>
           }
@@ -522,7 +556,7 @@
               [formGroup]="linkForm"
               _formControl="drawAsDisc"
               [disabled]="!canDrawAsDisc()"
-              tooltip="Draw this link as the disc it sweeps, centered on its fixed pin. Its mass and rotational inertia are unchanged."
+              tooltip="Draw this link as the disc it sweeps, centered on its fixed pin. It is then treated as a solid disc: its mass is unchanged, and its center of mass and rotational inertia come from the disc."
             >
               Draw as a Disc
             </toggle-block>
@@ -554,7 +588,17 @@
              so where the two fields would otherwise be. The sentence is the one
              the retired Edit Cylinder panel carried, because it is the same
              promise. -->
-            @if (memberMassDerived()) {
+            <!-- A link welded into a compound shares the compound's one mass by
+             length (#279): the field shows its share and is read-only, and its
+             own center and inertia are not inputs to anything any more. -->
+            @if (weldedInto(); as compound) {
+              <p class="massNote">
+                Welded into
+                <part-link [part]="compound">{{ mechanismService.bodyLabel(compound) }}</part-link
+                >. A compound has one mass, shared among its links by length. Set it on the
+                compound.
+              </p>
+            } @else if (memberMassDerived()) {
               <p class="massNote">
                 Each part's rotational inertia and center of mass are computed from its own shape
                 and the mass you give it.
@@ -676,14 +720,14 @@
                   }
                 </span>
               </input-block>
-              <!-- Drawing a crank as a disc is a picture, not a declaration that the
-               part is one. Said here, next to the two numbers it would otherwise
-               be reasonable to assume it had changed — and only here, because
-               with no mass there are no such numbers to mislead anyone. -->
+              <!-- A crank drawn as a disc is treated as a solid disc on its ground
+               pin (#156), which moves both numbers above off the bar's values.
+               Said here, next to them, so the change has a reason in view -- and
+               only here, because with no mass there are no such numbers. -->
               @if (drawnAsDisc()) {
                 <p class="shapeNote">
-                  Drawn as a disc. These two still follow the link's joints, not the circle — set
-                  Inertia by hand for a real flywheel.
+                  Drawn as a disc, so it is treated as a solid disc on its ground pin: the shape's
+                  centroid is the pin.
                 </p>
               }
             }
@@ -696,7 +740,9 @@
 
     @if (this.activeSrv.objType == 'Force') {
       <panel-section [frozen]="panelIsFrozen()">
-        <editable-title-block [deleteAction]="deleteForce.bind(this)"
+        <editable-title-block
+          [deleteAction]="deleteForce.bind(this)"
+          [deleteDisabled]="forceDeleteRefused()"
           >Edit Force</editable-title-block
         >
         <app-edit-banner panelAttached />
@@ -720,10 +766,7 @@
           </dual-input-block>
           <button-block
             customIcon="switch_force_dir"
-            [disabled]="
-              activeSrv.selectedForce.locked ||
-              !mechanismService.canAttachAtPose(activeSrv.selectedForce.link)
-            "
+            [disabled]="activeSrv.selectedForce.locked || forceLoadRefused()"
             (pressed)="flipForce()"
             tooltip="Reverse the force at the same endpoints, keeping its application point in place."
             >Flip Force</button-block

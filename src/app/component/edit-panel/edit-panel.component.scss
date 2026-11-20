@@ -514,3 +514,12 @@
 .massArea #input-block.state-input-host .customInputForm .mat-mdc-text-field-wrapper {
   width: 80px;
 }
+
+// A welded bar's row in Distance to Joints: the neighbor's name over the Link
+// panel's own Length and Angle fields, so it reads as one entry.
+.distance-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
