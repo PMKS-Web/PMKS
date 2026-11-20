@@ -31,9 +31,6 @@ export enum Shape {
   customShape = 'customShape',
 }
 
-/**
- * What a hand-placed center of mass is held against. See RealLink.comAnchor.
- */
 /** A snapshot of a link's center of mass, taken and restored by `RealLink`. */
 export interface RealLinkComState {
   at: Coord;
@@ -42,6 +39,9 @@ export interface RealLinkComState {
   anchorOffset?: { dx: number; dy: number };
 }
 
+/**
+ * What a hand-placed center of mass is held against. See RealLink.comAnchor.
+ */
 export type ComAnchor = 'centroid' | 'grid' | { joint: string };
 
 export interface Bound {
