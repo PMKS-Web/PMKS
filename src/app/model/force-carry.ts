@@ -4,18 +4,39 @@ import { Force } from './force';
 type Point = { x: number; y: number };
 
 /**
+ * How far an edit turned a force's body, read two ways.
+ *
+ * `solid` is the part of the turn that moved the body as one piece -- the
+ * group box's rotate grip, a body dragged or turned on its own -- and every
+ * force follows it, Grid or Local, the way a load bolted to a part turns when
+ * the part is picked up and turned. `link` is how far the force's own link
+ * turned, solid turn and reshape together; only a Local force follows that,
+ * because a Grid force's bearing is the grid's and a bar bent or stretched
+ * into a new angle has not turned the grid.
+ */
+export interface CarryTurn {
+  link: number;
+  solid: number;
+}
+
+/** A turn that moved the body as one piece, which both kinds of force follow. */
+export const solidTurn = (angle: number): CarryTurn => ({ link: angle, solid: angle });
+
+/** A reshape: the link turned, but nothing was turned as a solid. */
+export const reshapeTurn = (linkAngle: number): CarryTurn => ({ link: linkAngle, solid: 0 });
+
+/**
  * Put a force where an edit carried its body, without changing the load.
  *
  * The application point goes wherever the edit sends it. Nothing else about
  * the force is the edit's to change: not its magnitude, and not the length its
  * arrow is drawn at, which a group's scale grips used to stretch along with the
- * links. Which way it points depends on its frame, as it does in the solver: a
- * Grid force keeps its bearing on the grid, and a Local force keeps its angle
- * to its own link, so it turns by however far the edit turned that link.
+ * links. Which way it points is `CarryTurn`'s to say: a turn of the whole body
+ * turns every force on it, and a reshape turns only a Local force, which keeps
+ * its angle to its own link.
  *
  * @param arrow the arrow from its application point to its tip, as it was
  * before the edit.
- * @param linkTurn how far the edit turned the force's link, in radians.
  * @param direction the force's direction when `arrow` was read. An edit
  * replayed from a snapshot on every pointer move passes the snapshot's, so a
  * collapsed arrow's turn is added to where it began rather than to where the
@@ -25,10 +46,10 @@ export function carryForce(
   force: Force,
   at: Point,
   arrow: Point,
-  linkTurn: number,
+  turned: CarryTurn,
   direction = force.angleRad
 ): void {
-  const turn = force.local ? linkTurn : 0;
+  const turn = force.local ? turned.link : turned.solid;
   const cos = Math.cos(turn);
   const sin = Math.sin(turn);
   force.moveAnchor(new Coord(at.x, at.y));

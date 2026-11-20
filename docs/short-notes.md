@@ -3206,8 +3206,16 @@ before adding it again.
 Every edit that moves a body moves its forces through `carryForce` (`model/force-carry.ts`): the
 group box's transform, a body drag or turn (`transformLinkBody`), and the reframe of a bar a joint
 drag reshapes (`reframeDeformedLink`). The application point goes where the edit sends it. The
-magnitude and the arrow's drawn length never change, and the direction follows the force's frame
-the way the solver does while the mechanism runs: a Grid force keeps its bearing, a Local force
-keeps its angle to its link. Before this, the box pushed the arrow's tip through the same affine
-map as the joints, so a scale grip stretched the arrow and a turn or squash turned a Grid force
-(#295).
+magnitude and the arrow's drawn length never change. Which way the arrow points depends on how the
+body moved, which `CarryTurn` says in two numbers:
+
+- **A body turned as one piece** -- the group box's rotate grip on a body it moves whole, a body
+  dragged or turned on its own, a held bar pivoting a dragged body -- turns every force on it, Grid
+  and Local alike, as a load bolted to the part would (`solidTurn`).
+- **A body reshaped** -- a resize, or a bar a moved joint bends to a new angle -- turns only a Local
+  force, which keeps its angle to its link; a Grid force keeps its bearing (`reshapeTurn`).
+
+The frames differ while the mechanism runs, and in a reshape. They do not differ when the reader
+picks a part up and turns it: a first version kept a Grid force's bearing through that too, and the
+arrow sat still while its body spun under it (#295). Before `carryForce`, the box pushed the
+arrow's tip through the same affine map as the joints, so a scale grip stretched the arrow.

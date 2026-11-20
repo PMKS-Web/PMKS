@@ -268,10 +268,11 @@ describe('dragging against a held bar', () => {
     );
     expect(Math.sin(direction - Math.PI / 2 - turn)).toBeCloseTo(0, 6);
     expect(Math.cos(direction - Math.PI / 2 - turn)).toBeCloseTo(1, 6);
-    // A Grid force is carried to the same point and keeps pointing up.
+    // The body moved as one piece, so a Grid force is carried to the same
+    // point and turns with it just as far: it is fastened to the body too.
     expect(onGrid.startCoord.x).toBeCloseTo(force.startCoord.x, 6);
-    expect(onGrid.endCoord.x - onGrid.startCoord.x).toBeCloseTo(0, 6);
-    expect(onGrid.endCoord.y - onGrid.startCoord.y).toBeCloseTo(S, 6);
+    expect(onGrid.endCoord.x).toBeCloseTo(force.endCoord.x, 6);
+    expect(onGrid.endCoord.y).toBeCloseTo(force.endCoord.y, 6);
   });
 
   it('preserves the shape across welded leaves when a neighbor holds an endpoint', () => {
