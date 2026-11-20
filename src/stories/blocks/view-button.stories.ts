@@ -77,7 +77,7 @@ export const TheStrip: Story = {
     template: `
       <div class="sb-view-controls">
         <app-view-button noun="Center of Mass" shownIcon="com" hiddenIcon="com_off" [shown]="false"></app-view-button>
-        <app-view-button noun="Joint IDs" shownIcon="abc" hiddenIcon="abc_off" [shown]="true"></app-view-button>
+        <app-view-button noun="Joint and force names" shownIcon="abc" hiddenIcon="abc_off" [shown]="true"></app-view-button>
         <app-view-button noun="Traced Paths" shownIcon="show_path" hiddenIcon="hide_path" [shown]="false"></app-view-button>
         <app-view-button icon="zoom_out" tooltip="Zoom Out"></app-view-button>
         <app-view-button icon="zoom_in" tooltip="Zoom In"></app-view-button>

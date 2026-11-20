@@ -227,7 +227,13 @@ export class KeyboardShortcutsService {
       keys: 'M',
       match: ['m'],
     },
-    { id: 'view.jointIds', section: 'View', label: 'Joint names', keys: 'L', match: ['l'] },
+    {
+      id: 'view.jointIds',
+      section: 'View',
+      label: 'Joint and force names',
+      keys: 'L',
+      match: ['l'],
+    },
     { id: 'view.paths', section: 'View', label: 'Traced paths', keys: 'P', match: ['p'] },
 
     {
