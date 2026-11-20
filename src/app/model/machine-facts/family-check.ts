@@ -264,9 +264,13 @@ function crankRockerIntoParallelogram(
   const kinds = loops.map((loop) => ({ loop, kind: grashofKind(ctx, loop).kind }));
   for (const drive of kinds.filter((k) => k.kind === 'crank-rocker four-bar')) {
     for (const par of kinds.filter((k) => k.kind === 'parallelogram four-bar')) {
-      const shared = [drive.loop.left, drive.loop.right].find(
-        (b) => b === par.loop.left || b === par.loop.right
-      );
+      // The shared side has to be the crank-rocker's rocker, which is the
+      // longer side: the shortest is the crank. Asked of the lengths, not the
+      // motion, so a reversing input -- under which nothing turns fully --
+      // cannot let the crank be called a rocker either (#352).
+      const { a, c } = lengthsOf(ctx, drive.loop);
+      const rocker = a < c ? drive.loop.right : drive.loop.left;
+      const shared = rocker === par.loop.left || rocker === par.loop.right ? rocker : undefined;
       if (!shared) continue;
       const partner = shared === par.loop.left ? par.loop.right : par.loop.left;
       return {
