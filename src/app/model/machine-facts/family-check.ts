@@ -264,8 +264,11 @@ function crankRockerIntoParallelogram(
   const kinds = loops.map((loop) => ({ loop, kind: grashofKind(ctx, loop).kind }));
   for (const drive of kinds.filter((k) => k.kind === 'crank-rocker four-bar')) {
     for (const par of kinds.filter((k) => k.kind === 'parallelogram four-bar')) {
+      // The shared side has to be the crank-rocker's rocker: a crank shared
+      // with the parallelogram turns fully, and the sentence below would call
+      // it a rocker swinging in step (#352).
       const shared = [drive.loop.left, drive.loop.right].find(
-        (b) => b === par.loop.left || b === par.loop.right
+        (b) => (b === par.loop.left || b === par.loop.right) && !turnsFully(ctx, b)
       );
       if (!shared) continue;
       const partner = shared === par.loop.left ? par.loop.right : par.loop.left;
