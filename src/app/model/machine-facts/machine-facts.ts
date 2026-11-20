@@ -33,6 +33,33 @@ export function machineFacts(
   partition: MechanismPartition,
   mechanism: Mechanism | undefined
 ): MachineFacts | undefined {
+  const machine = machineContext(partition, mechanism);
+  if (!machine) return undefined;
+  const { ctx, driven, drivenBody } = machine;
+  // A frame drawn as a bar between two pivots is the ground, not a fifth
+  // link: counted as one, a four-bar with its frame drawn matched nothing.
+  return {
+    family: familyCheck(movingOnly(ctx)).matches,
+    jobs: linkJobs(ctx, drivenBody, driven, inputSeries(ctx, driven)),
+  };
+}
+
+/** A solved machine as the recognition reads it: its parts, its samples and what drives it. */
+export interface MachineContext {
+  ctx: RelationContext;
+  driven: RealJoint | undefined;
+  /** The body the input turns or pushes, when it is not the ground. */
+  drivenBody: Link | undefined;
+}
+
+/**
+ * The parts of one solved machine a reader can see, and where each of them
+ * goes over the cycle. Undefined for a machine that does not run.
+ */
+export function machineContext(
+  partition: MechanismPartition,
+  mechanism: Mechanism | undefined
+): MachineContext | undefined {
   if (!mechanism?.isMechanismValid() || mechanism.joints.length < 2) return undefined;
 
   const own = new Set(partition.ownJoints.map((joint) => joint.id));
@@ -64,14 +91,16 @@ export function machineFacts(
 
   // The speed only times the cycle, which neither the family nor a job reads.
   const samples = cycleSamples(mechanism, driven, 1);
-  const ctx: RelationContext = { bodies, visible, hidden, samples, cylinders, label, bodyLabel };
-  // A frame drawn as a bar between two pivots is the ground, not a fifth
-  // link: counted as one, a four-bar with its frame drawn matched nothing.
-  const moving = { ...ctx, bodies: bodies.filter((body) => !isFrameBar(body)) };
   return {
-    family: familyCheck(moving).matches,
-    jobs: linkJobs(ctx, drivenBody, driven, inputSeries(ctx, driven)),
+    ctx: { bodies, visible, hidden, samples, cylinders, label, bodyLabel },
+    driven,
+    drivenBody,
   };
+}
+
+/** The machine without a frame drawn as a bar, which is the ground and not one more link. */
+export function movingOnly(ctx: RelationContext): RelationContext {
+  return { ...ctx, bodies: ctx.bodies.filter((body) => !isFrameBar(body)) };
 }
 
 /** What the Family row says: a family PMKS matched, a count, or that it has neither. */
