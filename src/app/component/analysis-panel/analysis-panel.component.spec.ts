@@ -16,6 +16,9 @@ import {
 import { TEMPLATE_LINKAGES } from '../MODALS/templates/template-linkages';
 import { AnalysisPanelStateService } from '../../services/analysis-panel-state.service';
 import { AnalysisPanelComponent } from './analysis-panel.component';
+import { Force } from '../../model/force';
+import { RealLink } from '../../model/link';
+import { Coord } from '../../model/coord';
 
 async function createPanel(payload: string, selectedId: string, mode: TabID = TabID.ANALYZE) {
   const fixtureData = buildMechanismFixture(payload);
@@ -181,6 +184,31 @@ describe('AnalysisPanelComponent welded mechanism regression', () => {
     const titles = sectionLabels(fixture);
     expect(titles).toContain('Force at Joint B');
     expect(titles).toContain('Force at Joint C');
+    fixture.destroy();
+  });
+
+  it('shows a selected force as the reactions of the link that carries it', async () => {
+    // Issue #305: a force is a load on a link, and what Force Analysis can say
+    // about it is what it does to that link. The panel shows that link's rows
+    // under a head that names the force, with the force still selected, so a
+    // drag of it compares those rows the way a drag of the link does.
+    const { fixture, fixtureData } = await createPanel(
+      TEMPLATE_LINKAGES['4-Bar'],
+      'BC',
+      TabID.FORCE
+    );
+    const link = fixtureData.service.links.find((candidate) => candidate.id === 'BC')!;
+    const force = new Force('F1', link as RealLink, new Coord(0, 0), new Coord(0, 1));
+    fixtureData.active.updateSelectedObj(force);
+    fixture.detectChanges();
+
+    expect(fixtureData.active.objType).toBe('Force');
+    expect(fixture.nativeElement.querySelector('.panelTitleText').textContent.trim()).toBe(
+      `Force ${force.name} on ${fixtureData.service.bodyLabel(link as RealLink)}`
+    );
+    expect(fixture.componentInstance.linkForceRows().map((row) => row.jointId)).toEqual(['B', 'C']);
+    expect(sectionLabels(fixture)).toContain('Force at Joint B');
+    expect(fixture.nativeElement.querySelector('.forceRedirectAction')).toBeNull();
     fixture.destroy();
   });
 

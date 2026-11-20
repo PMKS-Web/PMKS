@@ -1910,7 +1910,7 @@ export class NewGridComponent implements OnDestroy {
     } else {
       this.forceRefusal.clearRing();
     }
-    this.gridUtils.dragForce(force, at, how);
+    this.gridUtils.dragForceLive(force, at, how);
     // So that the panel values update continuously.
     this.activeObjService.fakeUpdateSelectedObj();
     // Credited only while it is somewhere else: back where the gesture found
@@ -1921,7 +1921,8 @@ export class NewGridComponent implements OnDestroy {
       force.startCoord.x === was.sx &&
       force.startCoord.y === was.sy &&
       force.endCoord.x === was.ex &&
-      force.endCoord.y === was.ey;
+      force.endCoord.y === was.ey &&
+      force.angleRad === was.angle;
     if (restored) this.dragState.noteMechanismRestored();
     else this.dragState.noteMechanismModified();
   }
@@ -2237,7 +2238,11 @@ export class NewGridComponent implements OnDestroy {
           return;
         }
         //The 3rd params could be this.selectedFroceEndPoint == 'startPoint'
-        this.gridUtils.dragForce(this.activeObjService.selectedForce, mousePosInSvg, 'direction');
+        this.gridUtils.dragForceLive(
+          this.activeObjService.selectedForce,
+          mousePosInSvg,
+          'direction'
+        );
         //So that the panel values update continously
         this.activeObjService.fakeUpdateSelectedObj();
         this.dragState.noteMechanismModified();
@@ -3291,7 +3296,7 @@ export class NewGridComponent implements OnDestroy {
      * every force where the drag had dragged it, and a phone's view gesture
      * moved sample zero by a hundred and sixty units with nothing to undo it.
      */
-    forces: { id: string; sx: number; sy: number; ex: number; ey: number }[];
+    forces: { id: string; sx: number; sy: number; ex: number; ey: number; angle: number }[];
   };
 
   private rememberBeforeDrag(): void {
@@ -3307,6 +3312,7 @@ export class NewGridComponent implements OnDestroy {
         sy: force.startCoord.y,
         ex: force.endCoord.x,
         ey: force.endCoord.y,
+        angle: force.angleRad,
       })),
     };
   }
@@ -3328,13 +3334,13 @@ export class NewGridComponent implements OnDestroy {
     this.mechanismSrv.forces.forEach((force) => {
       const back = forces.get(force.id);
       if (!back) return;
-      if (force.startCoord.x !== back.sx || force.startCoord.y !== back.sy) moved = true;
-      force.startCoord.x = back.sx;
-      force.startCoord.y = back.sy;
-      force.endCoord.x = back.ex;
-      force.endCoord.y = back.ey;
-      force.forceLine = force.createForceLine(force.startCoord, force.endCoord);
-      force.forceArrow = force.createForceArrow(force.startCoord, force.endCoord);
+      // Either end, and the direction: a drag of the arrowhead alone moves
+      // nothing at the anchor and still turns the load.
+      const { sx, sy, ex, ey, angle } = back;
+      const { startCoord: s, endCoord: e } = force;
+      if (s.x !== sx || s.y !== sy || e.x !== ex || e.y !== ey || force.angleRad !== angle)
+        moved = true;
+      force.restorePlacement(new Coord(sx, sy), new Coord(ex, ey), angle);
     });
     // Only where something actually moved: a press that never travelled -- a
     // pinch that began on a joint and simply zoomed -- must not be "restored"
@@ -3359,6 +3365,9 @@ export class NewGridComponent implements OnDestroy {
    * than committed.
    */
   private letGoOfEverything(revert = false): void {
+    // First, while the gesture still looks like a drag: `putBackTheDrag` only
+    // restores a drag that is still in progress.
+    if (revert) this.putBackTheDrag();
     // The red ring a force drag put on a pin goes with the drag.
     this.forceRefusal.forget();
     // The preview is rendered independently of the drag state, so canceling
@@ -3408,7 +3417,6 @@ export class NewGridComponent implements OnDestroy {
     //
     // After `setLastRightClick`, which the element under the pointer fires
     // first, so the menu still knows what it is about.
-    this.putBackTheDrag();
     this.letGoOfEverything(true);
   }
 
@@ -3443,7 +3451,6 @@ export class NewGridComponent implements OnDestroy {
     // it has already moved something, and letting go merely settled that onto
     // the anchor: an edit the reader never asked for, and could not undo,
     // because a view gesture mints no entry to undo with.
-    this.putBackTheDrag();
     this.letGoOfEverything(true);
   }
 
@@ -3453,7 +3460,6 @@ export class NewGridComponent implements OnDestroy {
     // with placing armed opened the menu and then dropped a position under it
     // on the way out. Spent by the release that follows.
     this.pressBecameMenu = true;
-    this.putBackTheDrag();
     this.letGoOfEverything(true);
     // Aimed at whatever is under the finger *now*, not at the node the press
     // began on. Letting go of the gesture above re-renders the canvas, and
@@ -3842,7 +3848,6 @@ export class NewGridComponent implements OnDestroy {
       //
       // Then everything is put down, which also stops the canvas believing a
       // finger is still held -- the flag the stale-staging guard reads.
-      this.putBackTheDrag();
       this.letGoOfEverything(true);
     }
   }
@@ -4078,10 +4083,9 @@ export class NewGridComponent implements OnDestroy {
     // staged the machine. Cancelling the drag state alone left the moved
     // geometry standing, and the next rebuild settled it onto the anchor as
     // though it had been asked for: an edit nobody made, with nothing to undo
-    // it, because an abandoned gesture mints no entry. The same two lines the
+    // it, because an abandoned gesture mints no entry. The same teardown the
     // pinch and the long press already run, for the same reason.
     if ($event.button === 1 || $event.button === 2) {
-      this.putBackTheDrag();
       this.letGoOfEverything(true);
       if ($event.button === 1) return;
     }
@@ -6132,6 +6136,8 @@ export class NewGridComponent implements OnDestroy {
       this.dragState.grid === gridStates.createForce ||
       this.dragState.isDragging;
     if (!armed) return;
+    // Reverting, as a pinch does: a force drag rebuilds as it goes, and
+    // letting go alone kept the moved load with no entry to undo it by.
     this.letGoOfEverything(true);
     this.mechanismSrv.onMechUpdateState.next(3);
   }

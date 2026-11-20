@@ -155,6 +155,23 @@ export class Force {
     this.refreshVisuals();
   }
 
+  /**
+   * Put both handles and the direction back exactly as a snapshot held them.
+   *
+   * For a gesture that is cancelled rather than committed. The direction is
+   * restored with the handles rather than re-derived from them, because a
+   * handle the drag collapsed onto its anchor no longer says which way the
+   * load pointed.
+   */
+  restorePlacement(start: Coord, end: Coord, angleRad: number) {
+    this.startCoord.x = start.x;
+    this.startCoord.y = start.y;
+    this.endCoord.x = end.x;
+    this.endCoord.y = end.y;
+    if (Number.isFinite(angleRad)) this._angleRad = angleRad;
+    this.refreshVisuals();
+  }
+
   private physicalAngle(): number {
     return this.normalizeAngle(
       this.updateAngle(this.startCoord, this.endCoord) + (this.arrowOutward ? 0 : Math.PI)

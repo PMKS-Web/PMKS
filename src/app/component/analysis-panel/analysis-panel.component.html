@@ -381,39 +381,26 @@
     </panel-section>
   }
 
-  <!-- Forces Arrows-->
+  <!-- A force in Kinematic Analysis. In Force Analysis a selected force shows
+       the reactions of the link it acts on, as that link would (#305). -->
   @if (validMechanisms() && shownType == 'Force') {
     <panel-section id="analysis-panel">
       <!-- Why there is nothing here is the subtitle; what to do about it is
            the hint row under the rule, in the shape every "click something
-           else" in the app has. "There are no analysis graphs for forces" was
-           true and unhelpful: it left the reader to work out that the answer
-           they came for is one click away, on the part this force pushes. The
-           way there is a control rather than an instruction -- a panel that
-           can name the link can select it. -->
+           else" in the app has. This mode has no force graphs at all, so the
+           way to what this load does is the other mode. -->
       <title-block
         description="A force is an input, so it has no curve of its own. It shows up in the reactions on the part it acts on."
         >{{ modeNoun }} for Force {{ shownForce.name }}</title-block
       >
       <div class="helpRule"></div>
-      <!-- Which way out depends on where the reader is standing. In Force
-           Analysis the reactions this load causes are one click away, on the
-           link that carries it. In Kinematic Analysis they are not: that mode
-           has no force graphs at all, so "Graph BC" led to a page of velocities
-           with nothing about the force on it. The door there is the mode. -->
       <div class="helpHint forceRedirect" role="status">
-        <mat-icon>{{ inForceAnalysis ? 'touch_app' : 'balance' }}</mat-icon>
+        <mat-icon>balance</mat-icon>
         <span>
-          @if (inForceAnalysis) {
-            <button type="button" class="forceRedirectAction" (click)="graphTheLinkUnder()">
-              Graph {{ forceBodyLabel }}</button
-            >, which carries it.
-          } @else {
-            <button type="button" class="forceRedirectAction" (click)="goToForceAnalysis()">
-              Switch to Force Analysis
-            </button>
-            to read what it does to {{ forceBodyLabel }}.
-          }
+          <button type="button" class="forceRedirectAction" (click)="goToForceAnalysis()">
+            Switch to Force Analysis
+          </button>
+          to read what it does to {{ forceBodyLabel }}.
         </span>
       </div>
     </panel-section>
