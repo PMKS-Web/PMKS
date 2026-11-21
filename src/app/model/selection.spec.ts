@@ -2,6 +2,7 @@ import { RevJoint } from './joint';
 import { RealLink } from './link';
 import {
   aggregateCommonValue,
+  getsSelectionBox,
   isAdditiveSelectionGesture,
   partRef,
   resolveSelectedParts,
@@ -65,5 +66,22 @@ describe('common-value aggregation', () => {
 
   it('distinguishes no applicable values from a mixed value', () => {
     expect(aggregateCommonValue([])).toEqual({ kind: 'empty' });
+  });
+});
+
+describe('getsSelectionBox', () => {
+  const a = new RevJoint('A', 0, 0);
+  const b = new RevJoint('B', 1, 0);
+  const ab = new RealLink('AB', [a, b]);
+
+  it('boxes two parts, and one link only when Cmd/Ctrl picked it', () => {
+    expect(getsSelectionBox([a, b], false)).toBe(true);
+    expect(getsSelectionBox([ab], true)).toBe(true);
+    expect(getsSelectionBox([ab], false)).toBe(false);
+  });
+
+  it('never boxes a lone joint or nothing', () => {
+    expect(getsSelectionBox([a], true)).toBe(false);
+    expect(getsSelectionBox([], true)).toBe(false);
   });
 });

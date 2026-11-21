@@ -68,6 +68,7 @@ import { refuseForceOnJoint } from '../model/force-on-joint';
 import { constrainForceAnchor } from '../model/force-anchor';
 import { PositionSolver } from '../model/mechanism/position-solver';
 import { Force } from '../model/force';
+import { carryForce, frameTurn } from '../model/force-carry';
 import { Arc, Line } from '../model/line';
 import { SynthesisPose } from './synthesis/synthesis-util';
 import { SynthesisBuilderService } from './synthesis/synthesis-builder.service';
@@ -883,6 +884,18 @@ export class GridUtilsService {
       if (l.joints.length == 2) {
         // special binary link case, maintain ratio
         let linkDistance = this.getPointDistance(jointA[0], jointA[1], jointB[0], jointB[1]);
+        // The bar turns about its other end: a Local force keeps its angle to
+        // it and a Grid force its bearing; see `carryForce`.
+        const linkTurn = frameTurn(
+          [
+            { x: jointA[0], y: jointA[1] },
+            { x: jointB[0], y: jointB[1] },
+          ],
+          [
+            { x: newJointA[0], y: newJointA[1] },
+            { x: newJointB[0], y: newJointB[1] },
+          ]
+        );
 
         l.forces.forEach((f) => {
           // calculate ratio to be maintained
@@ -898,7 +911,8 @@ export class GridUtilsService {
           let newX = newJointA[0] + (newJointB[0] - newJointA[0]) * ratio;
           let newY = newJointA[1] + (newJointB[1] - newJointA[1]) * ratio;
 
-          f.moveForceTo(newX, newY);
+          const arrow = { x: f.endCoord.x - f.startCoord.x, y: f.endCoord.y - f.startCoord.y };
+          carryForce(f, { x: newX, y: newY }, arrow, linkTurn);
         });
       }
     });
@@ -1615,9 +1629,15 @@ export class GridUtilsService {
     const [start, end] = frame;
     const transportable = from.length === 2 && !!start && !!end;
     if (transportable) {
+      // A Local force keeps its angle to the bar as the bar turns; see `carryForce`.
+      const linkTurn = frameTurn([from[0], from[1]], [start, end]);
       link.forces.forEach((force) => {
         const [x, y] = pointThroughFrame(force.startCoord, from[0], from[1], start, end);
-        force.moveForceTo(x, y);
+        const arrow = {
+          x: force.endCoord.x - force.startCoord.x,
+          y: force.endCoord.y - force.startCoord.y,
+        };
+        carryForce(force, { x, y }, arrow, linkTurn);
       });
     }
     if (link.comIsCustom) {
@@ -1651,14 +1671,16 @@ export class GridUtilsService {
     link: Link,
     mapPoint: (x: number, y: number) => { x: number; y: number }
   ) {
-    // Both endpoints through the map, not just the anchor: a load is fixed to
-    // the body it acts on, so a body that turns takes the arrow's direction
-    // round with it — under a pure translation this collapses to the old move.
+    // The point goes with the body. Its direction turns with the body only for a
+    // Local force; a Grid force keeps its bearing however the body turns, which
+    // is what it does when the mechanism runs. See `carryForce`.
     link.forces.forEach((force) => {
-      const start = mapPoint(force.startCoord.x, force.startCoord.y);
-      const end = mapPoint(force.endCoord.x, force.endCoord.y);
-      force.moveAnchor(new Coord(start.x, start.y));
-      force.moveDirectionHandle(new Coord(end.x, end.y));
+      const { x, y } = force.startCoord;
+      const at = mapPoint(x, y);
+      const ahead = mapPoint(x + 1, y);
+      const linkTurn = Math.atan2(ahead.y - at.y, ahead.x - at.x);
+      const arrow = { x: force.endCoord.x - x, y: force.endCoord.y - y };
+      carryForce(force, at, arrow, linkTurn);
     });
     if (!(link instanceof RealLink)) return;
     const center = mapPoint(link.CoM.x, link.CoM.y);

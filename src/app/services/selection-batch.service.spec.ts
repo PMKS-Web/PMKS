@@ -108,6 +108,139 @@ describe('SelectionBatchService duplication', () => {
     expect(copiedForce.locked).toBe(false);
   });
 
+  function withForces(h: ReturnType<typeof chain>) {
+    const onAB = new Force('F1', h.links[0], new Coord(25, 0), new Coord(25, 50), true, false, 7);
+    onAB.name = 'Load';
+    onAB.color = '#654321';
+    onAB.anchoredTo = 'AB';
+    const onCD = new Force('F2', h.links[2], new Coord(250, 0), new Coord(250, -40));
+    for (const force of [onAB, onCD]) {
+      force.link.forces.push(force);
+      h.service.forces.push(force);
+    }
+    return { onAB, onCD };
+  }
+
+  it('copies a group of forces onto the links they act on and selects the copies', () => {
+    const h = chain();
+    const { onAB, onCD } = withForces(h);
+    const linksBefore = h.service.links.length;
+    const jointsBefore = h.service.joints.length;
+
+    expect(
+      h.batch.duplicateRefusal([
+        { kind: 'force', id: 'F1' },
+        { kind: 'force', id: 'F2' },
+      ])
+    ).toBeUndefined();
+    const result = h.batch.duplicateSelected(
+      [
+        { kind: 'force', id: 'F1' },
+        { kind: 'force', id: 'F2' },
+      ],
+      { x: 10, y: 5 }
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(h.service.links).toHaveLength(linksBefore);
+    expect(h.service.joints).toHaveLength(jointsBefore);
+    expect(h.service.forces).toHaveLength(4);
+    const copyOf = (source: Force) => source.link.forces.find((force) => force !== source)!;
+    const abCopy = copyOf(onAB);
+    const cdCopy = copyOf(onCD);
+    // Kept on the bar: the step's part along AB is what moves it.
+    expect(abCopy.startCoord).toEqual(new Coord(35, 0));
+    expect(abCopy.endCoord).toEqual(new Coord(35, 50));
+    expect(cdCopy.startCoord).toEqual(new Coord(260, 0));
+    expect(abCopy.local).toBe(true);
+    expect(abCopy.arrowOutward).toBe(false);
+    expect(abCopy.mag).toBe(7);
+    expect(abCopy.color).toBe('#654321');
+    expect(abCopy.name).toBe('Load Copy');
+    expect(abCopy.anchoredTo).toBe('AB');
+    expect(h.links[0].forces).toContain(abCopy);
+    expect(h.links[2].forces).toContain(cdCopy);
+    expect(result.selection).toEqual([
+      { kind: 'force', id: abCopy.id },
+      { kind: 'force', id: cdCopy.id },
+    ]);
+    expect(h.saveCount()).toBe(1);
+  });
+
+  it('steps a copied force back along its bar when the step would run off the end', () => {
+    const h = chain(2);
+    const atEnd = new Force('F1', h.links[0], new Coord(100, 0), new Coord(100, 30));
+    h.links[0].forces.push(atEnd);
+    h.service.forces.push(atEnd);
+
+    const result = h.batch.duplicateSelected([{ kind: 'force', id: 'F1' }], { x: 10, y: 10 });
+
+    expect(result.ok).toBe(true);
+    const copy = h.links[0].forces.find((force) => force !== atEnd)!;
+    expect(copy.startCoord).toEqual(new Coord(90, 0));
+    expect(copy.endCoord).toEqual(new Coord(90, 30));
+  });
+
+  it('copies a force whose direction handle sits on its anchor with its stored direction', () => {
+    const h = chain(2);
+    const collapsed = new Force(
+      'F1',
+      h.links[0],
+      new Coord(50, 0),
+      new Coord(50, 30),
+      false,
+      true,
+      4
+    );
+    // Straight down, then the handle dragged back onto the anchor: the stored
+    // direction is kept, and the two ends no longer say what it is.
+    collapsed.angleRad = -Math.PI / 2;
+    collapsed.moveDirectionHandle(new Coord(50, 0));
+    h.links[0].forces.push(collapsed);
+    h.service.forces.push(collapsed);
+
+    const result = h.batch.duplicateSelected([{ kind: 'force', id: 'F1' }], { x: 10, y: 10 });
+
+    expect(result.ok).toBe(true);
+    const copy = h.links[0].forces.find((force) => force !== collapsed)!;
+    expect(copy.mag).toBe(4);
+    expect(copy.yComp).toBeCloseTo(collapsed.yComp, 9);
+    expect(copy.yComp).toBeLessThan(0);
+    expect(copy.endCoord.x - copy.startCoord.x).toBe(0);
+    expect(copy.endCoord.y - copy.startCoord.y).toBe(0);
+  });
+
+  it('copies a force with its selected link once, and a force on an unselected link onto that link', () => {
+    const h = chain();
+    const { onCD } = withForces(h);
+
+    const result = h.batch.duplicateSelected(
+      [
+        { kind: 'link', id: 'AB' },
+        { kind: 'force', id: 'F1' },
+        { kind: 'force', id: 'F2' },
+      ],
+      { x: 0, y: 100 }
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // F1 rides with the copy of AB, F2 is copied onto CD: one copy each.
+    expect(h.service.forces).toHaveLength(4);
+    const abCopy = h.service.links.find((link) =>
+      link.joints.every((joint) => joint.y === 100)
+    ) as RealLink;
+    expect(abCopy.forces).toHaveLength(1);
+    expect(h.links[0].forces).toHaveLength(1);
+    expect(h.links[2].forces).toHaveLength(2);
+    const cdCopy = h.links[2].forces.find((force) => force !== onCD)!;
+    expect(result.selection).toEqual([
+      { kind: 'link', id: abCopy.id },
+      { kind: 'force', id: cdCopy.id },
+    ]);
+  });
+
   it('uses typed references when a joint and link have the same id', () => {
     const h = createMechanismHarness();
     const same = new RevJoint('AB', 5, 7);

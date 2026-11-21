@@ -2353,9 +2353,7 @@
         <g
           appForceMark
           [force]="force"
-          [selected]="
-            activeObjService.selectedForce === force && activeObjService.objType === 'Force'
-          "
+          [selected]="activeObjService.holdsForce(force)"
           [paused]="!mechanismSrv.isPlaying"
           [ink]="forceInkOf(force)"
           pointer-events="none"

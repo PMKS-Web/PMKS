@@ -239,12 +239,21 @@ describe('dragging against a held bar', () => {
       parts.bc,
       new Coord(S, (7 / 3) * S),
       new Coord(S, (10 / 3) * S),
+      true,
+      true,
+      10
+    );
+    const onGrid = new Force(
+      'F2',
+      parts.bc,
+      new Coord(S, (7 / 3) * S),
+      new Coord(S, (10 / 3) * S),
       false,
       true,
       10
     );
-    parts.bc.forces.push(force);
-    service.forces.push(force);
+    parts.bc.forces.push(force, onGrid);
+    service.forces.push(force, onGrid);
     const oldAngle = Math.atan2(parts.c.y - parts.b.y, parts.c.x - parts.b.x);
     const radius = dist(parts.b, parts.bc.CoM);
     grid.dragLink(parts.bc, S, -S / 2);
@@ -259,6 +268,10 @@ describe('dragging against a held bar', () => {
     );
     expect(Math.sin(direction - Math.PI / 2 - turn)).toBeCloseTo(0, 6);
     expect(Math.cos(direction - Math.PI / 2 - turn)).toBeCloseTo(1, 6);
+    // A Grid force is carried to the same point and keeps pointing up.
+    expect(onGrid.startCoord.x).toBeCloseTo(force.startCoord.x, 6);
+    expect(onGrid.endCoord.x - onGrid.startCoord.x).toBeCloseTo(0, 6);
+    expect(onGrid.endCoord.y - onGrid.startCoord.y).toBeCloseTo(S, 6);
   });
 
   it('preserves the shape across welded leaves when a neighbor holds an endpoint', () => {

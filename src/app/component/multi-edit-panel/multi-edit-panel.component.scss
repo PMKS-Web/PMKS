@@ -1,12 +1,19 @@
 .multiNote {
   margin: 0 0 10px;
-  padding: 8px 10px;
+  // Room on the left for the bullets, which hang outside the text.
+  padding: 8px 10px 8px 24px;
   border-radius: 4px;
   background: var(--surface-field);
   color: var(--text-secondary);
   font-size: 12px;
   line-height: 17px;
-  text-wrap: pretty;
+  // No `text-wrap: pretty`. Safari evens out every line of a paragraph, not
+  // only the last few, so in a 200px box it broke lines early and left a
+  // ragged gap down the right side.
+
+  li + li {
+    margin-top: 4px;
+  }
 }
 
 .multiActions {

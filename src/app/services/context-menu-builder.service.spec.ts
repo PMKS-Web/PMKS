@@ -143,8 +143,8 @@ describe('the right-click menu', () => {
   describe('multi-selection target', () => {
     it('preserves group scope and offers count-aware atomic actions', () => {
       const parts = fourBar(harness.mechanism);
-      harness.active.replacePartSelection(parts.a);
-      harness.active.togglePartSelection(parts.coupler);
+      harness.active.replacePartSelection(parts.o);
+      harness.active.togglePartSelection(parts.a);
       const duplicateSelected = vi.fn();
       const deleteSelected = vi.fn();
       const model = harness.builder.build(parts.a, {
@@ -168,8 +168,8 @@ describe('the right-click menu', () => {
       const parts = fourBar(harness.mechanism);
       parts.a.locked = true;
       harness.mechanism.updateMechanism(false);
-      harness.active.replacePartSelection(parts.a);
-      harness.active.togglePartSelection(parts.coupler);
+      harness.active.replacePartSelection(parts.o);
+      harness.active.togglePartSelection(parts.a);
 
       const model = harness.builder.build(parts.a, noHandlers);
 

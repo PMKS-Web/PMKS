@@ -424,14 +424,48 @@ rails; it was the wrong motion -- the residual barely moved -- and the diagnosis
 right one was the left null vector, labeled by body row. When a drawing refuses force analysis
 everywhere with a large residual, look for the motion, not for a bad pose.
 
-### A body grab selects the force, or the last-pressed handle drags instead
+### A body grab clears the force's handle marks, or the last-pressed handle drags instead
 
-`beginDraggingForceBody` now calls `updateSelectedObj(force)` before recording the grab offset. A
-press on the base or the head leaves that end selected (`isStartSelected` / `isEndSelected`), and
-the body's pointerdown never re-selected the force, so the drag state machine at the press saw a
-selected handle and dragged that one end to the pointer instead of carrying the arrow whole.
+A press on a force's base or head leaves that end selected (`isStartSelected` /
+`isEndSelected`). If a later grab on the arrow's body kept the mark, the drag state machine saw a
+selected handle and dragged that one end to the pointer instead of carrying the arrow whole, so
+`beginDraggingForceBody` clears both marks before recording the grab offset. It clears only the
+marks and leaves the selection to `setLastLeftClick`, the path joints and links take.
 `e2e/force-edit.mjs` presses the base, then grabs the arrow, and requires both ends to move
 together at the same length.
+
+### Cmd/Ctrl on a force is a plain click; one link picked with it gets the box
+
+A group is what the selection box moves, turns and resizes, and a force brings none of that, so
+`setLastLeftClick` never toggles a force into a group: Cmd/Ctrl on one selects it alone (#295
+review). The code that handles a group of forces -- the marks, Duplicate onto the same link, the
+empty drag -- is kept for when forces get a group of their own, but nothing on the canvas builds
+one. The other way round, one link picked with Cmd/Ctrl does get the box, where one picked plainly
+does not: `ActiveObjService.selectedTogether` remembers how the selection was built. A joint alone
+never does. A turn or resize that would change a held length or angle is refused whole, naming the
+Fixed Length or Fixed Angle to turn off (`groupHoldRefusal`); a move changes neither and goes
+through.
+
+### A lone selected force is `selectedForce`; a group's forces are in the part selection
+
+`updateSelectedObj(force)` sets `objType = 'Force'` and `selectedForce`, and empties the part
+selection. A group (`MultiSelection`) holds every member in the part selection, and
+`selectedForce` names only the last one. So asking `selectedForce === force` marked one arrow of a
+group and left the rest looking unselected. `NewGridComponent.forceIsSelected` asks both, the way
+joints and links ask `containsPart`. A selected force also draws its dashed frame datum inside its
+own `#F<n>` group, which widens that group's box: an e2e suite that clicks the center of `#F1`
+can land on the link beside the arrow, so aim at `#F1 .forceLine`.
+
+### A force copied on its own lands on its own link, and the step can bounce back
+
+`SelectionBatchService.duplicateSelected` used to skip a selected force and copy only bodies, so a
+group of forces copied nothing, said nothing, and still saved an undo entry; the panel's button
+never asked `duplicateRefusal`, the menu's did. A force whose link is not being copied is now copied
+onto that same link (`loneForces`). Its anchor is kept on the body at the next rebuild
+(`keepForcesOnTheirLinks`), so the grid step can be pulled straight back onto the original -- a
+force at a bar's end, stepped past it -- and `loneForceShift` tries the other diagonals first. A
+selection that is restored after a batch edit needs `mechanism.forces` passed in, or force refs
+are dropped.
 
 ### A force anchor refuses a shared pin out loud
 
@@ -3212,6 +3246,36 @@ Storybook 10's manager has no favicon option: it links `/favicon.svg`, and a `st
 mapped to that path replaces Storybook's own pink one. `.storybook/main.ts` maps
 `src/assets/brand/favicon.svg` there. The sidebar logo is separate: `brandImage` in
 `.storybook/manager.ts`.
+
+### `text-wrap: pretty` leaves a ragged right edge in Safari
+
+Chromium applies `pretty` to the last few lines of a paragraph. Safari evens out every line, so in
+a narrow box such as a 200px panel note it breaks lines early and leaves a wide gap down the right:
+measured in Playwright's WebKit, every line of the old note stopped near 160px of 200, while
+Chromium laid it out exactly as without `pretty`. The multi-selection note dropped it. Check a panel paragraph in Safari
+before adding it again.
+
+### An edit carries a force's point, never its load: `carryForce`
+
+Every edit that moves a body moves its forces through `carryForce` (`model/force-carry.ts`): the
+group box's transform, a body drag or turn (`transformLinkBody`), the reframe of a bar a joint
+drag reshapes (`reframeDeformedLink`), and `dragJoint`'s own two-joint branch, which used to slide
+a Local force along its bar without turning it. The application point goes where the edit sends it. The
+magnitude and the arrow's drawn length never change, and the direction follows the force's frame
+the way the solver does while the mechanism runs: a Grid force keeps its bearing, a Local force
+keeps its angle to its link. Before this, the box pushed the arrow's tip through the same affine
+map as the joints, so a scale grip stretched the arrow and a turn or squash turned a Grid force
+(#295). A Grid force stays still even when the reader picks a body up and turns it: turning it then
+too, as if bolted on, was tried in #295 and taken back, because the bearing the reader typed is the
+one the analysis uses.
+
+### A selection is one kind of part (#295)
+
+Joints, links or forces, never a mix. `PartSelectionState.toggle` (`model/selection.ts`) starts a
+new selection when a part of another kind is added, and `restore` keeps only the primary part's
+kind, so a hand-written snapshot cannot bring a mix back. The mixed groups offered a menu and a
+panel of whatever the kinds happened to share, and a box whose grips moved some of the selection
+and carried the rest. The Edit panel heads a group "Edit 2 Joints" from `selectionCount`.
 
 ### The names switch names forces too, and a name it shows stays through playback (#330)
 

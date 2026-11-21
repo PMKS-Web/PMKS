@@ -188,6 +188,30 @@ describe('GridUtilsService.dragLink', () => {
   });
 });
 
+describe('GridUtilsService.dragJoint on a bar', () => {
+  it('turns a Local force with the bar a dragged joint swings, and keeps a Grid one’s bearing', () => {
+    const scene = createFourBar();
+    // On AB at its middle, pointing -x: square to the bar, which stands on +y.
+    const local = new Force('F1', scene.ab, new Coord(0, 1), new Coord(-1, 1), true, true, 10);
+    const grid = new Force('F2', scene.ab, new Coord(0, 1), new Coord(-1, 1), false, true, 10);
+    scene.ab.forces.push(local, grid);
+    scene.service.forces.push(local, grid);
+
+    // B swings a quarter turn clockwise about A, so AB now lies along +x.
+    scene.grid.dragJoint(scene.b, new Coord(2, 0));
+
+    expect(local.startCoord.x).toBeCloseTo(1, 6);
+    expect(local.startCoord.y).toBeCloseTo(0, 6);
+    // Still square to the bar, on the same side: it points +y now.
+    expect(local.endCoord.x - local.startCoord.x).toBeCloseTo(0, 6);
+    expect(local.endCoord.y - local.startCoord.y).toBeCloseTo(1, 6);
+    // A reshape is no turn of the grid, so the Grid force still points -x.
+    expect(grid.endCoord.x - grid.startCoord.x).toBeCloseTo(-1, 6);
+    expect(grid.endCoord.y - grid.startCoord.y).toBeCloseTo(0, 6);
+    expect([local.mag, grid.mag]).toEqual([10, 10]);
+  });
+});
+
 describe('GridUtilsService.dragJoint on a slider', () => {
   it('rebuilds the rider it carries, which a pin used to do for it', () => {
     // `dragJoint` switched on `RevJoint`, because a slider was dragged by the
@@ -240,20 +264,25 @@ describe('GridUtilsService.rotateLink', () => {
     expect(Math.hypot(scene.c.x - scene.b.x, scene.c.y - scene.b.y)).toBeCloseTo(before, 6);
   });
 
-  it('turns a force on the body with the body, direction included', () => {
+  it('turns a Local force with the body and leaves a Grid force’s bearing alone', () => {
     const scene = createFourBar();
     const force = new Force('F1', scene.bc, new Coord(2, 2.5), new Coord(3, 2.5), false, true, 10);
-    scene.bc.forces.push(force);
-    scene.service.forces.push(force);
+    const local = new Force('F2', scene.bc, new Coord(2, 2.5), new Coord(3, 2.5), true, true, 10);
+    scene.bc.forces.push(force, local);
+    scene.service.forces.push(force, local);
 
     scene.grid.rotateLink(scene.bc, new Coord(scene.b.x, scene.b.y), QUARTER);
 
     // (2,2.5) is (2,0.5) from B(0,2); a quarter turn lands it at (-0.5,2) from B.
     expect(force.startCoord.x).toBeCloseTo(-0.5, 6);
     expect(force.startCoord.y).toBeCloseTo(4, 6);
-    // The arrow pointed +x along the body; after a quarter turn it points +y.
-    expect(force.endCoord.x - force.startCoord.x).toBeCloseTo(0, 6);
-    expect(force.endCoord.y - force.startCoord.y).toBeCloseTo(1, 6);
+    // A Grid force still points +x, as it would while the mechanism runs.
+    expect(force.endCoord.x - force.startCoord.x).toBeCloseTo(1, 6);
+    expect(force.endCoord.y - force.startCoord.y).toBeCloseTo(0, 6);
+    // A Local one pointed +x along the body; after a quarter turn it points +y.
+    expect(local.endCoord.x - local.startCoord.x).toBeCloseTo(0, 6);
+    expect(local.endCoord.y - local.startCoord.y).toBeCloseTo(1, 6);
+    expect([force.mag, local.mag]).toEqual([10, 10]);
   });
 
   it('deforms the neighbors rather than carrying them', () => {

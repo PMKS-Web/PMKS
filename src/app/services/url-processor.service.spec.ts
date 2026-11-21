@@ -160,23 +160,25 @@ describe('transient multi-selection through URL-backed history', () => {
   });
 
   it('reconstructs every typed selection identity against newly decoded objects', () => {
-    const joint = mechanism.joints.find(
-      (candidate): candidate is RealJoint => candidate instanceof RealJoint
-    )!;
-    const link = mechanism.links.find(
-      (candidate): candidate is RealLink => candidate instanceof RealLink
-    )!;
-    active.togglePartSelection(joint);
-    active.togglePartSelection(link);
-    const before = active.selectedParts;
-    const refs = active.selectedPartRefs;
+    // A selection holds one kind at a time, so each kind is asked on its own.
+    const kinds = [
+      () => mechanism.joints.filter((one): one is RealJoint => one instanceof RealJoint),
+      () => mechanism.links.filter((one): one is RealLink => one instanceof RealLink),
+    ];
+    for (const partsOfKind of kinds) {
+      const [first, second] = partsOfKind();
+      active.replacePartSelection(first);
+      active.togglePartSelection(second);
+      const before = active.selectedParts;
+      const refs = active.selectedPartRefs;
 
-    urls.updateFromURL(FOUR_BAR, false, true, false, true);
+      urls.updateFromURL(FOUR_BAR, false, true, false, true);
 
-    expect(active.selectedPartRefs).toEqual(refs);
-    expect(active.selectedParts).toHaveLength(2);
-    expect(active.selectedParts[0]).not.toBe(before[0]);
-    expect(active.selectedParts[1]).not.toBe(before[1]);
-    expect(active.objType).toBe('MultiSelection');
+      expect(active.selectedPartRefs).toEqual(refs);
+      expect(active.selectedParts).toHaveLength(2);
+      expect(active.selectedParts[0]).not.toBe(before[0]);
+      expect(active.selectedParts[1]).not.toBe(before[1]);
+      expect(active.objType).toBe('MultiSelection');
+    }
   });
 });

@@ -134,6 +134,20 @@ export class Force {
     this.refreshVisuals();
   }
 
+  /**
+   * Set the direction a force stands for while its arrow has no length.
+   *
+   * `setDirectionRadians` lays the handle along the new direction, and a
+   * handle collapsed onto its anchor comes back one unit long: an edit that
+   * only carried or copied such a force grew it an arrow it never had. A force
+   * with an arrow is left alone, because its arrow is what says its direction.
+   */
+  setCollapsedDirection(value: number) {
+    if (!Number.isFinite(value) || this.handleLength() > 0) return;
+    this._angleRad = this.normalizeAngle(value);
+    this.refreshVisuals();
+  }
+
   setComponents(x: number, y: number) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     this._mag = Math.hypot(x, y);

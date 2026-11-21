@@ -1,6 +1,7 @@
 import { refuseForceOnJoint } from '../model/force-on-joint';
 import { compoundAttachmentRefusal } from '../model/link-attachment';
 import { LinkTraceService } from './link-trace.service';
+import { selectionCount } from '../model/selection-count';
 import { Injectable, inject } from '@angular/core';
 import { NumberUnitParserService } from './number-unit-parser.service';
 import { AngleUnit } from '../model/utils';
@@ -136,7 +137,7 @@ export class ContextMenuBuilderService {
     return {
       header: {
         title: `${count} selected objects`,
-        subtitle: this.selectionSubtitle(parts),
+        subtitle: selectionCount(parts),
       },
       choice: this.selectionJointTypeChoice(refs),
       groups: [
@@ -185,19 +186,6 @@ export class ContextMenuBuilderService {
         },
       ],
     };
-  }
-
-  /** "2 joints · 1 force": only the kinds the selection actually holds. */
-  private selectionSubtitle(parts: readonly SelectedPart[]): string {
-    const counted: [number, string, string][] = [
-      [parts.filter((part) => part instanceof RealJoint).length, 'joint', 'joints'],
-      [parts.filter((part) => part instanceof RealLink).length, 'link', 'links'],
-      [parts.filter((part) => part instanceof Force).length, 'force', 'forces'],
-    ];
-    return counted
-      .filter(([howMany]) => howMany > 0)
-      .map(([howMany, one, many]) => `${howMany} ${howMany === 1 ? one : many}`)
-      .join(' · ');
   }
 
   /**

@@ -131,19 +131,27 @@ describe('selection affine snapshot', () => {
     expect(scene.c.y).toBeCloseTo(4, 10);
   });
 
-  it('carries a selected body force and custom CoM through the same affine map', () => {
+  it('carries a body force’s point and custom CoM through the map, but not its load', () => {
     const scene = twoBars();
-    const force = new Force('F1', scene.ab, new Coord(1, 0), new Coord(1, 1));
-    scene.ab.forces.push(force);
+    const force = new Force('F1', scene.ab, new Coord(1, 0), new Coord(1, 1), false, true, 7);
+    const local = new Force('F2', scene.ab, new Coord(1, 0), new Coord(1, 1), true, true, 7);
+    scene.ab.forces.push(force, local);
     scene.ab.placeCustomCoM({ x: 1, y: 0.5 });
     const snapshot = captureSelectionTransform([scene.ab], scene.joints, scene.links);
 
     snapshot.apply({ rotation: Math.PI / 2, scale: 2 });
 
+    // The point stays where it was on the body. A Grid force keeps its bearing
+    // and a Local one turns with its link; neither is scaled.
     expect(force.startCoord.x).toBeCloseTo(1, 10);
     expect(force.startCoord.y).toBeCloseTo(0, 10);
-    expect(force.endCoord.x).toBeCloseTo(-1, 10);
-    expect(force.endCoord.y).toBeCloseTo(0, 10);
+    expect(force.endCoord.x).toBeCloseTo(1, 10);
+    expect(force.endCoord.y).toBeCloseTo(1, 10);
+    expect(local.endCoord.x).toBeCloseTo(0, 10);
+    expect(local.endCoord.y).toBeCloseTo(0, 10);
+    expect([force.mag, local.mag]).toEqual([7, 7]);
+    expect(force.angleRad).toBeCloseTo(Math.PI / 2, 10);
+    expect(local.angleRad).toBeCloseTo(Math.PI, 10);
     expect(scene.ab.CoM.x).toBeCloseTo(0, 10);
     expect(scene.ab.CoM.y).toBeCloseTo(0, 10);
     expect(scene.ab.customCoMFromOffset()!.x).toBeCloseTo(0, 10);
@@ -153,7 +161,8 @@ describe('selection affine snapshot', () => {
   it('reframes semantic geometry on a neighboring link deformed by a selected joint', () => {
     const scene = twoBars();
     const force = new Force('F1', scene.ab, new Coord(1, 0), new Coord(1, 1));
-    scene.ab.forces.push(force);
+    const local = new Force('F2', scene.ab, new Coord(1, 0), new Coord(1, 1), true);
+    scene.ab.forces.push(force, local);
     scene.ab.placeCustomCoM({ x: 1, y: 0.5 });
     const snapshot = captureSelectionTransform([scene.b], scene.joints, scene.links);
 
@@ -163,12 +172,69 @@ describe('selection affine snapshot', () => {
     expect([scene.b.x, scene.b.y]).toEqual([2, 2]);
     expect(force.startCoord.x).toBeCloseTo(1, 10);
     expect(force.startCoord.y).toBeCloseTo(1, 10);
-    expect(force.endCoord.x).toBeCloseTo(0, 10);
+    // The bar turned an eighth of a turn and stretched. The Grid force still
+    // points straight up; the Local one turned with the bar; both stay one long.
+    expect(force.endCoord.x).toBeCloseTo(1, 10);
     expect(force.endCoord.y).toBeCloseTo(2, 10);
+    expect(local.endCoord.x).toBeCloseTo(1 - Math.SQRT1_2, 10);
+    expect(local.endCoord.y).toBeCloseTo(1 + Math.SQRT1_2, 10);
     expect(scene.ab.CoM.x).toBeCloseTo(0.5, 10);
     expect(scene.ab.CoM.y).toBeCloseTo(1.5, 10);
     expect(scene.ab.customCoMFromOffset()!.x).toBeCloseTo(0.5, 10);
     expect(scene.ab.customCoMFromOffset()!.y).toBeCloseTo(1.5, 10);
+  });
+
+  it('leaves every force’s magnitude, bearing and arrow alone when the box resizes a link', () => {
+    const scene = twoBars();
+    const forces = [
+      new Force('F1', scene.ab, new Coord(1, 0), new Coord(1.6, 0.8), false, true, 12),
+      new Force('F2', scene.bc, new Coord(3, 0), new Coord(3, -1), false, false, 5),
+      new Force('F3', scene.ab, new Coord(0.5, 0), new Coord(0.5, 1), true, true, 9),
+    ];
+    scene.ab.forces.push(forces[0], forces[2]);
+    scene.bc.forces.push(forces[1]);
+    const before = forces.map((force) => ({
+      mag: force.mag,
+      angle: force.angleRad,
+      arrow: { x: force.endCoord.x - force.startCoord.x, y: force.endCoord.y - force.startCoord.y },
+    }));
+    const snapshot = captureSelectionTransform(
+      [scene.ab, scene.bc, ...forces],
+      scene.joints,
+      scene.links
+    );
+
+    // An edge grip: three times as wide, half as tall. The bars only lengthen.
+    snapshot.apply({ scale: { x: 3, y: 0.5 } });
+
+    expect(scene.ab.length).toBeCloseTo(6, 10);
+    forces.forEach((force, index) => {
+      expect(force.mag).toBe(before[index].mag);
+      expect(force.angleRad).toBeCloseTo(before[index].angle, 10);
+      expect(force.endCoord.x - force.startCoord.x).toBeCloseTo(before[index].arrow.x, 10);
+      expect(force.endCoord.y - force.startCoord.y).toBeCloseTo(before[index].arrow.y, 10);
+    });
+    // The points went where the bars took them.
+    expect(forces[0].startCoord.x).toBeCloseTo(3 * 1 - 2 * 2, 10);
+  });
+
+  it('turns a collapsed Local force once by the whole turn, however many moves it took', () => {
+    // A drag replays the gesture-start snapshot on every move. A force whose
+    // arrow sits on its anchor took its direction from the force each time,
+    // which already held the last move's turn: 15 degrees then 30 came out 45.
+    const scene = twoBars();
+    const force = new Force('F1', scene.ab, new Coord(1, 0), new Coord(1, 1), true, true, 3);
+    force.moveDirectionHandle(new Coord(1, 0));
+    scene.ab.forces.push(force);
+    const began = force.angleRad;
+    const snapshot = captureSelectionTransform([scene.ab, force], scene.joints, scene.links);
+
+    snapshot.apply({ rotation: Math.PI / 12 });
+    snapshot.apply({ rotation: Math.PI / 6 });
+
+    expect(force.angleRad).toBeCloseTo(began + Math.PI / 6, 10);
+    expect(force.endCoord.x).toBe(force.startCoord.x);
+    expect(force.endCoord.y).toBe(force.startCoord.y);
   });
 
   it('refuses atomically when the closure intersects existing lock consequences', () => {
@@ -180,6 +246,40 @@ describe('selection affine snapshot', () => {
 
     expect(result).toEqual({ applied: false, lockedJointIds: ['B'] });
     expect([scene.a.x, scene.a.y, scene.b.x, scene.b.y]).toEqual([0, 0, 2, 0]);
+  });
+
+  it('refuses a resize that would change a held length, and a turn that would change a held angle', () => {
+    const scene = twoBars();
+    scene.ab.hold = 'length';
+    scene.bc.hold = 'angle';
+    const snapshot = captureSelectionTransform([scene.ab, scene.bc], scene.joints, scene.links);
+
+    // Unlock first (#295 review): the box does not bend what a bar holds.
+    const resized = snapshot.apply({ scale: 2 });
+    expect(resized.applied).toBe(false);
+    expect(!resized.applied && resized.reason).toBe('held');
+    expect(
+      !resized.applied && resized.brokenHolds?.map((hold) => [hold.link.id, hold.values.join(',')])
+    ).toEqual([['AB', 'length']]);
+    expect([scene.b.x, scene.c.x]).toEqual([2, 4]);
+
+    const turned = snapshot.apply({ rotation: Math.PI / 4 });
+    expect(
+      !turned.applied && turned.brokenHolds?.map((hold) => [hold.link.id, hold.values.join(',')])
+    ).toEqual([['BC', 'angle']]);
+    expect([scene.b.y, scene.c.y]).toEqual([0, 0]);
+
+    // A move changes neither, so it goes through.
+    expect(snapshot.apply({ translation: { x: 1, y: 1 } }).applied).toBe(true);
+  });
+
+  it('refuses a held bar stretched by moving only one of its joints', () => {
+    const scene = twoBars();
+    scene.bc.hold = 'length';
+    const snapshot = captureSelectionTransform([scene.ab], scene.joints, scene.links);
+
+    const result = snapshot.apply({ scale: 2, pivot: { x: 0, y: 0 } });
+    expect(!result.applied && result.brokenHolds?.map((hold) => hold.link.id)).toEqual(['BC']);
   });
 
   it('moves a selected slider like any other joint', () => {

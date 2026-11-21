@@ -109,14 +109,19 @@
       }
     }
 
-    // A refused Delete has to look refused: drawn in warning red it read as
-    // live while the panel grayed every control beside it.
-    &.red:disabled {
-      border-color: var(--border-divider);
+    // Disabled keeps its ink and fades, the way the whole card fades while
+    // the mechanism plays: Material's gray label beside a red border and a
+    // red trash can read as a third, broken state.
+    &:disabled {
+      opacity: 0.55;
+    }
 
-      svg > path {
-        fill: var(--text-disabled);
-      }
+    &.blue:disabled {
+      color: mat.m2-get-color-from-palette($primary-palette, 500);
+    }
+
+    &.red:disabled {
+      color: var(--mat-warning-color);
     }
   }
 }

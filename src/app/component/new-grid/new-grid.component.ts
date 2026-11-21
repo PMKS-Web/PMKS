@@ -52,6 +52,7 @@ import {
   MenuHandlers,
 } from '../../services/context-menu-builder.service';
 import { holdsValue, Link, RealLink } from '../../model/link';
+import { groupTransformRefusal } from '../../model/group-transform-refusal';
 import { Lockable } from '../../model/lock-set';
 import { Joint, PrisJoint, RealJoint, RevJoint } from '../../model/joint';
 import { Coord } from '../../model/coord';
@@ -158,7 +159,7 @@ import { KeyboardShortcutsService, ShortcutId } from '../../services/keyboard-sh
 import { INK_FLIPS_AT, luminanceOf } from '../../model/contrast';
 import { CanvasLabel, CanvasLabelsService } from '../../services/canvas-labels.service';
 import { SELECTION_RING } from '../../model/joint-colors';
-import { isAdditiveSelectionGesture, SelectedPart } from '../../model/selection';
+import { getsSelectionBox, isAdditiveSelectionGesture, SelectedPart } from '../../model/selection';
 import {
   captureSelectionTransform,
   canonicalSelectionClosure,
@@ -1174,15 +1175,16 @@ export class NewGridComponent implements OnDestroy {
     if (event && event.button !== 0) return;
     if (
       this.tabService.getCurrentTab() === TabID.EDIT &&
-      // A force is one of them: eight of them can be given one magnitude, one
-      // frame or one color in a single press, which is the whole reason a
-      // group selection exists. What it does not join is the geometry -- where
-      // a force is, is decided by the body it is on.
+      // A force is selected through the part selection too, alone: see below.
       (clickedObj instanceof RealJoint ||
         clickedObj instanceof RealLink ||
         clickedObj instanceof Force)
     ) {
       if (
+        // A force does not join a group from the canvas: a group is what the
+        // box moves, turns and resizes, and a force brings none of that, so
+        // Cmd/Ctrl on one is a plain click (#295 review).
+        !(clickedObj instanceof Force) &&
         isAdditiveSelectionGesture(
           { ctrlKey: event?.ctrlKey ?? false, metaKey: event?.metaKey ?? false },
           navigator.platform
@@ -1294,7 +1296,8 @@ export class NewGridComponent implements OnDestroy {
     // `mechanismTimeStep` was the shared clock, which reads zero while an
     // unsynced machine is parked mid-cycle -- so the handles appeared over a
     // displaced drawing and every other surface disagreed with them.
-    if (this.activeObjService.selectedParts.length < 2 || !this.permission.may('drag')) {
+    const { selectedParts, selectedTogether } = this.activeObjService;
+    if (!getsSelectionBox(selectedParts, selectedTogether) || !this.permission.may('drag')) {
       return undefined;
     }
     const closure = canonicalSelectionClosure(
@@ -1302,7 +1305,10 @@ export class NewGridComponent implements OnDestroy {
       this.mechanismSrv.joints,
       this.mechanismSrv.links
     );
-    if (closure.joints.length === 0) return undefined;
+    // No box around a single point -- forces alone, or joints all on one spot:
+    // nothing to turn or scale, and every grip stacked on that one point
+    // (#295 review). A drag still moves the group.
+    if (new Set(closure.joints.map((joint) => `${joint.x},${joint.y}`)).size < 2) return undefined;
     const xs = closure.joints.map((joint) => joint.x);
     const ys = closure.joints.map((joint) => joint.y);
     return {
@@ -1477,7 +1483,11 @@ export class NewGridComponent implements OnDestroy {
     // A selection spanning machines is refused its staging outright. What that
     // means for the reader is that a group across two machines is edited at the
     // start pose, as it was before any of this existed.
-    if (!this.stageSelection()) return;
+    //
+    // A group of nothing but forces is not staged at all: it has no geometry
+    // to move, and refusing its press across two machines also swallowed the
+    // plain click that should select the force under it.
+    if (snapshot.jointIds.size > 0 && !this.stageSelection()) return;
     this.selectionGesture = {
       snapshot,
       mode,
@@ -1497,6 +1507,9 @@ export class NewGridComponent implements OnDestroy {
     if (!gesture) return false;
     if (!this.canEditNow() || !this.pastDragThreshold(event)) return true;
     gesture.attempted = true;
+    // A group of nothing but forces carries no geometry to move. Applying the
+    // empty transform saved an undo entry for a drag that changed nothing.
+    if (gesture.snapshot.jointIds.size === 0) return true;
 
     let transform: SelectionAffineTransform;
     if (gesture.mode === 'translate') {
@@ -1522,7 +1535,6 @@ export class NewGridComponent implements OnDestroy {
       const rotation = event.altKey
         ? turned
         : Math.round(turned / ROTATION_SNAP_RAD) * ROTATION_SNAP_RAD;
-      gesture.liveRotation = rotation;
       transform = { rotation };
     } else if (gesture.grip) {
       // Away from the opposite corner or edge, which is the point that holds
@@ -1564,15 +1576,15 @@ export class NewGridComponent implements OnDestroy {
     if (!result.applied) {
       if (!gesture.refusalShown) {
         gesture.refusalShown = true;
-        const names = result.lockedJointIds.join(', ');
-        this.notify.refusal(
-          'selection.transform-locked',
-          `The selection is held by ${names || 'a Lock'}. Unlock it before transforming the group.`
-        );
+        const refusal = groupTransformRefusal(result, gesture.mode, this.mechanismSrv.joints);
+        this.notify.refusal(refusal.key, refusal.text);
       }
       return true;
     }
     gesture.changed = true;
+    // Only a turn that landed spins the box: a Lock refuses the turn, and a box
+    // that swung anyway showed the group turning while every part held still.
+    if (transform.rotation !== undefined) gesture.liveRotation = transform.rotation;
     this.mechanismSrv.reseatFloatingSliders();
     this.mechanismSrv.updateMechanism(false);
     this.mechanismSrv.onMechUpdateState.next(2);
@@ -1599,7 +1611,9 @@ export class NewGridComponent implements OnDestroy {
   private nudgeSelection(dx: number, dy: number, coarse: boolean): void {
     if (!this.permission.may('placement')) return;
     const selected = this.activeObjService.selectedParts;
-    if (selected.length === 0) return;
+    // Nothing but forces is nothing to move (see `moveSelectionGesture`), and
+    // an empty nudge would still have saved an undo entry.
+    if (selected.every((part) => part instanceof Force)) return;
     const step = coarse ? this.svgGrid.majorCellSize : this.svgGrid.minorCellSize;
     if (!(step > 0)) return;
     // Before anything moves. Staging is where a selection spanning two machines
@@ -1861,7 +1875,11 @@ export class NewGridComponent implements OnDestroy {
     // The arrow itself was grabbed, so neither handle is: a press on the
     // base or the head leaves that end selected, and a body grab that kept
     // it dragged that one end to the pointer instead of the whole arrow.
-    this.activeObjService.updateSelectedObj(force);
+    //
+    // Only the marks are cleared. Which part is selected is `setLastLeftClick`'s
+    // to decide, the same path joints and links take.
+    force.isStartSelected = false;
+    force.isEndSelected = false;
     const at = this.svgGrid.screenToModelFromXY(event.clientX, event.clientY);
     this.forceGrabOffset = new Coord(at.x - force.startCoord.x, at.y - force.startCoord.y);
   }
@@ -5426,11 +5444,7 @@ export class NewGridComponent implements OnDestroy {
 
   forceInkOf(force: Force): string | null {
     if (this.mechanismSrv.isPartInert(force.link)) return null;
-    return forceInk(
-      force,
-      this.activeObjService.objType === 'Force' && this.activeObjService.selectedForce === force,
-      this.mechanismSrv.isPlaying
-    );
+    return forceInk(force, this.activeObjService.holdsForce(force), this.mechanismSrv.isPlaying);
   }
 
   /**

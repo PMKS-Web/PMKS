@@ -1,7 +1,8 @@
 import { Coord } from './coord';
 import { Force } from './force';
+import { carryForce, frameTurn } from './force-carry';
 import { Joint, PrisJoint } from './joint';
-import { Link, RealLink } from './link';
+import { HeldValue, Link, RealLink, holdsAngle, holdsLength } from './link';
 import { derivedCenterOfMass } from './link-body';
 import { SelectedPart, selectableLinks } from './selection';
 import { CanonicalSelectionClosure, canonicalSelectionClosure } from './selection-closure';
@@ -31,9 +32,20 @@ export interface SelectionAffineTransform {
   pivot?: { x: number; y: number };
 }
 
+/** A bar whose held length or angle a transform would change, and which of the two. */
+export interface BrokenHold {
+  link: RealLink;
+  values: HeldValue[];
+}
+
 export type SelectionTransformResult =
   | { applied: true; lockedJointIds: [] }
-  | { applied: false; lockedJointIds: string[]; reason?: 'invalid-transform' };
+  | {
+      applied: false;
+      lockedJointIds: string[];
+      reason?: 'invalid-transform' | 'held';
+      brokenHolds?: BrokenHold[];
+    };
 
 interface BodySnapshot {
   link: RealLink;
@@ -47,6 +59,8 @@ interface ForceSnapshot {
   force: Force;
   start: { x: number; y: number };
   end: { x: number; y: number };
+  /** Its direction at the grab, which a collapsed arrow cannot be read for. */
+  angle: number;
 }
 
 function pointThroughFrame(
@@ -137,6 +151,7 @@ export class SelectionTransformSnapshot {
           force,
           start: { x: force.startCoord.x, y: force.startCoord.y },
           end: { x: force.endCoord.x, y: force.endCoord.y },
+          angle: force.angleRad,
         })),
       allJointsMove:
         link.joints.length > 0 && link.joints.every((joint) => this.jointIds.has(joint.id)),
@@ -178,6 +193,13 @@ export class SelectionTransformSnapshot {
         y: pivot.y + x * sin + y * cos + translation.y,
       };
     };
+    // A held length or angle is the reader's to release, not the box's to
+    // change: a turn or a resize that would change one is refused whole, and
+    // the refusal names the hold (#295 review). A move changes neither.
+    const brokenHolds = this.holdsBrokenBy(mapPoint);
+    if (brokenHolds.length > 0) {
+      return { applied: false, lockedJointIds: [], reason: 'held', brokenHolds };
+    }
 
     this.closure.joints.forEach((joint) => {
       const start = this.jointStarts.get(joint.id)!;
@@ -201,6 +223,38 @@ export class SelectionTransformSnapshot {
     return { applied: true, lockedJointIds: [] };
   }
 
+  /** The holding bars this map would stretch or turn, measured from the grab. */
+  private holdsBrokenBy(
+    mapPoint: (point: { x: number; y: number }) => { x: number; y: number }
+  ): BrokenHold[] {
+    const broken: BrokenHold[] = [];
+    for (const body of this.bodies) {
+      const hold = body.link.hold;
+      const [first, second] = body.link.joints;
+      if (!hold || !first || !second || body.from.length < 2) continue;
+      const moves = [first, second].map((joint) => this.jointIds.has(joint.id));
+      if (!moves[0] && !moves[1]) continue;
+      const before = body.from;
+      const after = before.map((point, index) => (moves[index] ? mapPoint(point) : point));
+      const length = (ends: { x: number; y: number }[]) =>
+        Math.hypot(ends[1].x - ends[0].x, ends[1].y - ends[0].y);
+      const lengthBefore = length(before);
+      const tolerance = 1e-9 * Math.max(1, lengthBefore);
+      const values: HeldValue[] = [];
+      if (holdsLength(hold) && Math.abs(length(after) - lengthBefore) > tolerance) {
+        values.push('length');
+      }
+      if (
+        holdsAngle(hold) &&
+        Math.abs(frameTurn([before[0], before[1]], [after[0], after[1]])) > 1e-9
+      ) {
+        values.push('angle');
+      }
+      if (values.length > 0) broken.push({ link: body.link, values });
+    }
+    return broken;
+  }
+
   private applyBody(
     body: BodySnapshot,
     mapPoint: (point: { x: number; y: number }) => { x: number; y: number }
@@ -208,12 +262,16 @@ export class SelectionTransformSnapshot {
     if (!body.link.joints.some((joint) => this.jointIds.has(joint.id))) return;
     const place = (point: { x: number; y: number }) =>
       body.allJointsMove ? mapPoint(point) : pointThroughFrame(point, body.from, body.link.joints);
-    body.forces.forEach(({ force, start, end }) => {
-      const nextStart = place(start);
-      const nextEnd = place(end);
-      force.moveAnchor(new Coord(nextStart.x, nextStart.y));
-      force.moveDirectionHandle(new Coord(nextEnd.x, nextEnd.y));
-    });
+    // The application point stays where it was on the body; the load itself is
+    // not the box's to scale, squash or turn -- see `carryForce`.
+    const [first, second] = body.link.joints;
+    const linkTurn =
+      body.from.length === 2 && first && second
+        ? frameTurn([body.from[0], body.from[1]], [first, second])
+        : 0;
+    body.forces.forEach(({ force, start, end, angle }) =>
+      carryForce(force, place(start), { x: end.x - start.x, y: end.y - start.y }, linkTurn, angle)
+    );
     const com = body.link.comIsCustom ? place(body.com) : derivedCenterOfMass(body.link);
     body.link.CoM = new Coord(com.x, com.y);
     if (body.link.comIsCustom) body.link.captureComOffset();

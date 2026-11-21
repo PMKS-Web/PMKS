@@ -46,19 +46,22 @@ describe('loads on a body dragged through neighboring holds', () => {
     });
   });
 
-  it('turns the force with a permitted rigid rotation', () => {
+  it('carries the force point through a permitted rigid rotation, keeping a Grid bearing', () => {
+    // The application point turns with the plate; a Grid force keeps the
+    // bearing it was given, so its arrow keeps its direction (#295).
     const { plate, neighbor, force, grid } = scene();
     neighbor.hold = 'length';
     const pivot = new Coord(neighbor.joints[0].x, neighbor.joints[0].y);
-    const before = endpoints(force);
+    const [start, end] = endpoints(force);
     const theta = 0.02;
     grid.rotateLink(plate, pivot, theta);
-    endpoints(force).forEach((point, index) => {
-      const dx = before[index].x - pivot.x;
-      const dy = before[index].y - pivot.y;
-      expect(point.x).toBeCloseTo(pivot.x + dx * Math.cos(theta) - dy * Math.sin(theta), 4);
-      expect(point.y).toBeCloseTo(pivot.y + dx * Math.sin(theta) + dy * Math.cos(theta), 4);
-    });
+    const [movedStart, movedEnd] = endpoints(force);
+    const dx = start.x - pivot.x;
+    const dy = start.y - pivot.y;
+    expect(movedStart.x).toBeCloseTo(pivot.x + dx * Math.cos(theta) - dy * Math.sin(theta), 4);
+    expect(movedStart.y).toBeCloseTo(pivot.y + dx * Math.sin(theta) + dy * Math.cos(theta), 4);
+    expect(movedEnd.x - movedStart.x).toBeCloseTo(end.x - start.x, 4);
+    expect(movedEnd.y - movedStart.y).toBeCloseTo(end.y - start.y, 4);
   });
 
   it('carries a binary link load once despite intermediate per-joint writes', () => {
@@ -84,9 +87,11 @@ describe('loads on a body dragged through neighboring holds', () => {
     const { plate, neighbor, force, grid } = scene();
     neighbor.hold = 'angle';
     (neighbor.joints[0] as RealJoint).locked = true;
+    // The application point keeps its place on the plate. The tip is not on
+    // the plate: a Grid force keeps its bearing however the plate moves (#295).
     const reach = () =>
-      plate.joints.flatMap((joint) =>
-        endpoints(force).map((point) => Math.hypot(point.x - joint.x, point.y - joint.y))
+      plate.joints.map((joint) =>
+        Math.hypot(force.startCoord.x - joint.x, force.startCoord.y - joint.y)
       );
     const span = () =>
       Math.hypot(plate.joints[1].x - plate.joints[0].x, plate.joints[1].y - plate.joints[0].y);
