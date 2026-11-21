@@ -13,7 +13,7 @@ and this page needs a fix.
 
 ## Principles
 
-The four principles are in the README's [Philosophy](../README.md#philosophy) section, written as
+The four principles are in the README's [Design Principles](../README.md#design-principles) section, written as
 the concrete rules they amount to in the code. Everything below follows from them. Read that
 section first.
 
