@@ -73,7 +73,7 @@ const seen = (page, selector) =>
   // meets, and more than five puts the way out below the fold.
   check('Every note is rendered, and the card stays five', notes === 5, `${notes} notes`);
   // Which is the point of five. A reader who has to scroll to find "Start
-  // using it" has been handed a document rather than a welcome.
+  // Using PMKS" has been handed a document rather than a welcome.
   const room = await page.evaluate(() => {
     const body = document.querySelector('#whatsNew .wnBody');
     return { need: Math.round(body.scrollHeight), have: Math.round(body.clientHeight) };
@@ -81,14 +81,41 @@ const seen = (page, selector) =>
   check('and it fits without scrolling on a desktop', room.need <= room.have + 1, room);
   await page.screenshot({ path: `${OUT}/whats-new.png` });
 
+  // A returning PMKS+ reader who still needs the old version is told where to ask.
+  const legacy = page.locator('#whatsNew .wnLegacy a[href^="mailto:help@pmksplus.com"]');
+  check('The previous-version contact link is visible', await legacy.isVisible());
+
   // Closed is read, and it stays read across a reload.
   await page.locator('#whatsNew .wnGo').click();
   await page.waitForTimeout(500);
-  check('Start using it closes the notes', !(await seen(page, '#whatsNew')));
+  check('Start Using PMKS closes the notes', !(await seen(page, '#whatsNew')));
   await page.reload({ waitUntil: 'domcontentloaded' });
   await waitForReady(page);
   await page.waitForTimeout(1200);
   check('Once closed, they do not come back', !(await seen(page, '#whatsNew')));
+  await context.close();
+}
+
+// A phone on its side: the picture gives way so the notes keep room to read.
+{
+  const { context, page } = await arrive({ tutorialSeen: 'true' });
+  await page.setViewportSize({ width: 568, height: 320 });
+  await page.waitForTimeout(400);
+  check('Short window: the picture is hidden', !(await seen(page, '#whatsNew .wnMap')));
+  const body = await page.evaluate(() =>
+    Math.round(document.querySelector('#whatsNew .wnBody').clientHeight)
+  );
+  check('Short window: the notes keep room to read', body >= 140, `${body}px`);
+  const overlap = await page.evaluate(() => {
+    const close = document.querySelector('#whatsNew .wnClose').getBoundingClientRect();
+    const title = document.querySelector('#whatsNew .wnTitle').getBoundingClientRect();
+    const lead = document.querySelector('#whatsNew .wnLead').getBoundingClientRect();
+    const hits = (r) =>
+      r.left < close.right && close.left < r.right && r.top < close.bottom && close.top < r.bottom;
+    return hits(title) || hits(lead);
+  });
+  check('Short window: the close button covers no words', !overlap);
+  await page.screenshot({ path: `${OUT}/short-window.png` });
   await context.close();
 }
 
