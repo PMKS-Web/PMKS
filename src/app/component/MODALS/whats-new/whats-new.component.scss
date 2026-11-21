@@ -561,4 +561,38 @@
       width: 100%;
     }
   }
+
+  // A short window -- a phone on its side -- cannot spare the picture: with it,
+  // head and foot leave the notes almost no height. Comes after the phone rules
+  // so it wins over their head offset.
+  @media (max-height: 480px) {
+    .wnMap {
+      display: none;
+    }
+
+    // No picture to rise into, and the close button now sits beside the title.
+    .wnHead {
+      margin-top: 0;
+      padding-top: 16px;
+      padding-right: 56px;
+    }
+  }
+
+  // Short and wide enough, the foot's two parts go back side by side, and every
+  // line the foot gives back goes to the notes.
+  @media (max-height: 480px) and (min-width: 480px) {
+    .wnFoot {
+      flex-direction: row;
+      align-items: center;
+      padding: 8px 16px;
+    }
+
+    .wnLegacy {
+      text-align: left;
+    }
+
+    .wnGo {
+      width: auto;
+    }
+  }
 }

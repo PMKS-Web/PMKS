@@ -96,6 +96,29 @@ const seen = (page, selector) =>
   await context.close();
 }
 
+// A phone on its side: the picture gives way so the notes keep room to read.
+{
+  const { context, page } = await arrive({ tutorialSeen: 'true' });
+  await page.setViewportSize({ width: 568, height: 320 });
+  await page.waitForTimeout(400);
+  check('Short window: the picture is hidden', !(await seen(page, '#whatsNew .wnMap')));
+  const body = await page.evaluate(() =>
+    Math.round(document.querySelector('#whatsNew .wnBody').clientHeight)
+  );
+  check('Short window: the notes keep room to read', body >= 140, `${body}px`);
+  const overlap = await page.evaluate(() => {
+    const close = document.querySelector('#whatsNew .wnClose').getBoundingClientRect();
+    const title = document.querySelector('#whatsNew .wnTitle').getBoundingClientRect();
+    const lead = document.querySelector('#whatsNew .wnLead').getBoundingClientRect();
+    const hits = (r) =>
+      r.left < close.right && close.left < r.right && r.top < close.bottom && close.top < r.bottom;
+    return hits(title) || hits(lead);
+  });
+  check('Short window: the close button covers no words', !overlap);
+  await page.screenshot({ path: `${OUT}/short-window.png` });
+  await context.close();
+}
+
 // Closing by the backdrop counts too -- any way out is a decision.
 {
   const { context, page } = await arrive({ tutorialSeen: 'true' });
