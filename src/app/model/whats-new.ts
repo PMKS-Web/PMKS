@@ -32,41 +32,44 @@ export interface ReleaseNote {
  */
 export const WHATS_NEW_VERSION = '2026.09';
 
+// Each em dash is glued to the word before it with a word joiner (U+2060), so a
+// line may break after the dash but never start with one.
 export const WHATS_NEW: ReleaseNote[] = [
   {
     icon: 'tab',
-    title: 'Four modes, along the top',
+    title: 'Four modes, now along the top',
     body:
-      'The rail down the left is gone. Synthesis, Edit, Kinematic Analysis and Force Analysis are ' +
-      'tabs in the top strip, each with a chip saying whether it can run.',
+      'The left rail is gone. Synthesis, Edit, Kinematic Analysis, and Force Analysis live in ' +
+      'the top bar\u2060—each with a chip showing when your mechanism is ready to solve.',
   },
   {
     icon: 'balance',
-    title: 'Force analysis',
+    title: 'Static and dynamic force analysis',
     body:
-      'Give the bodies mass, hang loads on them, and read the reaction on each body at each ' +
-      'joint. Static holds the mechanism still, and In-motion includes inertia.',
+      'Add masses and applied forces to see per-link joint reactions and required input torque ' +
+      'or force. Switch between Static and In-motion (dynamic), or overlay live vectors on the ' +
+      'canvas.',
   },
   {
     icon: 'compress',
-    title: 'Cylinders, sliders and slots',
+    title: 'Cylinders, sliders, and floating slots',
     body:
-      'A hydraulic ram is a part you add from the menu and can drive directly. A slot can be cut ' +
-      'into a moving link rather than only into the frame.',
+      'Add drivable hydraulic cylinders directly from the menu, cut slots into moving links as ' +
+      'well as ground, weld links into rigid bodies, and fix link lengths or angles.',
   },
   {
     icon: 'account_tree',
-    title: 'Several mechanisms in one drawing',
+    title: 'Multiple mechanisms in one drawing',
     body:
-      'Each independent mechanism on the grid is solved on its own, with its own driven joint, ' +
-      'its own speed, and its own row in the playback bar.',
+      'Draw up to four independent mechanisms on the same grid\u2060—each with its own input speed, ' +
+      'direction, and playback scrubber.',
   },
   {
     icon: 'download',
-    title: 'Export data and drawings',
+    title: 'Export data, reports, and CAD drawings',
     body:
-      'The numbers as a CSV or an Excel workbook, the graphs as a printable report, and the ' +
-      'geometry as DXF or SVG with a table of joints and links, for CAD.',
+      'Export CSV or Excel tables, printable PDF reports, and DXF/SVG drawings for ' +
+      'fabrication\u2060—plus browse an expanded 48-mechanism library.',
   },
 ];
 
