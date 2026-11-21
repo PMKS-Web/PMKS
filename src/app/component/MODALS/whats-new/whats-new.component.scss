@@ -19,27 +19,271 @@
   }
 
   #whatsNew {
+    position: relative;
     display: flex;
     flex-direction: column;
     min-height: 0;
     // Tall enough to be worth opening, never taller than the window.
     max-height: min(78dvh, 760px);
-    width: 560px;
+    // Wide enough for two tiles side by side.
+    width: 720px;
     max-width: 100%;
     background: var(--card-surface);
   }
 
-  .wnHead {
+  // Its cards keep the text's own margin, so the picture lines up with the
+  // title and the tiles under it.
+  //
+  // The map of today's screen: the canvas runs edge to edge across the top of
+  // the card, with the top strip, the left card and the playback bar drawn on
+  // it as small cards, and dissolves into the card above the title, so the
+  // picture and the words read as one piece.
+  .wnMap {
+    position: relative;
     flex: 0 0 auto;
-    padding: 20px 20px 14px 24px;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1) 58%, rgba(0, 0, 0, 0));
+    mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 1) 58%, rgba(0, 0, 0, 0));
   }
 
-  .wnTitleRow {
+  // A white glow in the bottom-left corner, where the title comes up into the
+  // picture: the grid gives way to the card behind the words, so they read at
+  // full contrast and the picture and the head feel like one piece.
+  .wnMap::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(
+      ellipse 380px 80px at 0% 100%,
+      var(--card-surface) 35%,
+      transparent
+    );
+  }
+
+  .wnScreen {
+    position: relative;
+    height: 146px;
+    overflow: hidden;
+    background-color: var(--brand-wash);
+    background-image:
+      linear-gradient(var(--brand-tint) 1px, transparent 1px),
+      linear-gradient(90deg, var(--brand-tint) 1px, transparent 1px);
+    background-size: 10px 10px;
+
+    .mat-icon {
+      width: 14px;
+      height: 14px;
+      font-size: 14px;
+      line-height: 14px;
+      color: var(--text-secondary);
+    }
+  }
+
+  .wnCard {
+    position: absolute;
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 6px;
+    border-radius: 5px;
+    background: var(--card-surface);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
+  }
+
+  // Laid out as the real top strip is: the brand card, the mode tabs right
+  // beside it, and the history card on the far right.
+  .wnMenu {
+    top: 18px;
+    left: 24px;
+    gap: 4px;
+  }
+
+  .wnLogo {
+    display: block;
+    height: 11px;
+  }
+
+  .wnModes {
+    top: 18px;
+    left: 93px;
+    gap: 4px;
+    // The point of the picture.
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .wnTab {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 0 3px;
+    border-radius: 3px;
+    font-size: 9.5px;
+    line-height: 14px;
+    color: var(--text-primary);
+    white-space: nowrap;
+
+    &.wnOn {
+      color: $indigo-500;
+      background: var(--selection);
+      box-shadow: 0 0 0 1px var(--selection-border);
+
+      .mat-icon {
+        color: $indigo-500;
+      }
+    }
+  }
+
+  .wnUndo .wnTab {
+    color: var(--text-secondary);
+  }
+
+  .wnDivider {
+    width: 1px;
+    height: 12px;
+    background: var(--border-divider);
+  }
+
+  // Clear of the card's close button, which has the corner.
+  .wnUndo {
+    top: 18px;
+    right: 56px;
+  }
+
+  .wnTag {
+    position: absolute;
+    top: 47px;
+    left: 135px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 8px 2px 4px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: var(--text-strong);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 16px;
+    white-space: nowrap;
+
+    .mat-icon {
+      color: var(--text-strong);
+    }
+  }
+
+  .wnPanel {
+    top: 47px;
+    left: 24px;
+    bottom: 22px;
+    width: 92px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .wnLine {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border-divider);
+  }
+
+  .wnLineTitle {
+    width: 60%;
+    background: var(--brand-pale);
+  }
+
+  .wnLineShort {
+    width: 70%;
+  }
+
+  .wnLinkage {
+    position: absolute;
+    right: 81px;
+    top: 42px;
+    width: 110px;
+    height: 64px;
+  }
+
+  .wnBar {
+    stroke-width: 6;
+    stroke-linecap: round;
+  }
+
+  .wnCrank {
+    stroke: $indigo-500;
+  }
+
+  .wnRocker {
+    stroke: var(--brand-dark);
+  }
+
+  .wnCoupler {
+    fill: var(--brand-pale);
+    stroke: var(--brand-pale);
+    stroke-width: 6;
+    stroke-linejoin: round;
+  }
+
+  .wnGround {
+    fill: var(--brand-pale);
+    stroke: var(--canvas-ink);
+    stroke-width: 1.2;
+    stroke-linejoin: round;
+  }
+
+  .wnPin {
+    fill: var(--canvas-halo);
+    stroke: var(--canvas-ink);
+    stroke-width: 1.3;
+  }
+
+  .wnTracer {
+    fill: var(--accent);
+    stroke: var(--canvas-ink);
+    stroke-width: 1.3;
+  }
+
+  // The transport card and the scrub card, side by side at the bottom.
+  .wnTransport {
+    bottom: 30px;
+    left: 185px;
+  }
+
+  .wnPlay {
+    bottom: 30px;
+    left: 217px;
+    padding: 9px 8px;
+  }
+
+  .wnScrub {
+    display: block;
+    width: 150px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--brand-tint);
+  }
+
+  .wnView {
+    right: 24px;
+    bottom: 30px;
+  }
+
+  // Pulled up into the picture's fade, so there is no edge between them.
+  .wnHead {
+    flex: 0 0 auto;
+    margin-top: -26px;
+    padding: 0 24px 2px;
+  }
+
+  .wnClose {
+    position: absolute;
+    top: 13px;
+    right: 10px;
+    z-index: 1;
+    border-radius: 50%;
+    background: var(--card-surface);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
   }
 
   .wnTitle {
@@ -58,52 +302,65 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
-    padding: 8px 24px 4px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-content: start;
+    gap: 10px;
+    padding: 14px 24px 12px;
   }
 
-  // Icon in its own column so the sentences line up down the left whatever the
-  // glyph is: Material gives every icon the same box, and the titles sitting on
-  // a ragged left edge was the first thing wrong with this.
+  // Each note is a tile: the icon and title on one line, the sentence under
+  // both. The first note -- the one about where the modes went -- spans the
+  // grid; the other four share it two by two.
   .wnNote {
-    display: flex;
-    align-items: flex-start;
-    gap: 14px;
-    padding: 12px 0;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-content: start;
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 4px;
+    padding: 12px 14px 13px;
+    border-radius: 8px;
+    background: var(--brand-wash);
 
-    & + .wnNote {
-      border-top: 1px solid rgba(0, 0, 0, 0.05);
+    &:first-child {
+      grid-column: 1 / -1;
     }
   }
 
   .wnIcon {
-    flex: 0 0 auto;
-    width: 22px;
-    height: 22px;
-    font-size: 22px;
-    line-height: 22px;
-    margin-top: 1px;
+    width: 20px;
+    height: 20px;
+    font-size: 20px;
+    line-height: 20px;
     color: $indigo-500;
   }
 
+  // Out of the way, so the title and the sentence are the tile's own grid
+  // items and the sentence can run under the icon.
   .wnText {
-    min-width: 0;
+    display: contents;
   }
 
   .wnNoteTitle {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 500;
     line-height: 20px;
     color: var(--text-primary);
   }
 
   .wnNoteBody {
-    margin: 2px 0 0;
-    font-size: 13.5px;
-    line-height: 19px;
+    grid-column: 1 / -1;
+    margin: 0;
+    font-size: 13px;
+    line-height: 18.5px;
     color: var(--text-secondary);
+    // No note ends on a word of its own, whatever the width.
+    text-wrap: pretty;
   }
 
   .wnAlsoTitle {
+    grid-column: 1 / -1;
     padding: 16px 0 4px;
     font-size: 11px;
     font-weight: 500;
@@ -113,6 +370,7 @@
   }
 
   .wnAlso {
+    grid-column: 1 / -1;
     margin: 0;
     padding: 0 0 8px 18px;
 
@@ -127,7 +385,10 @@
   // A hint that the list keeps going, because the notes are taller than the
   // card and the scroll happens to land its cut on a divider: read without
   // this, the last note visible looks like the last note there is.
+  // Only on a phone, where the list scrolls; on a desktop all five are in view
+  // and the fade would only wash over the last row.
   .wnFoot::before {
+    display: none;
     content: '';
     position: absolute;
     left: 0;
@@ -142,13 +403,41 @@
     position: relative;
     flex: 0 0 auto;
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
     padding: 12px 24px 16px;
-    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    border-top: 1px solid var(--border-divider);
     background: var(--card-surface);
   }
 
+  // A quiet line for the few who still need the old app: secondary text, so the
+  // button beside it stays the obvious way out.
+  .wnLegacy {
+    margin: 0;
+    font-size: 12.5px;
+    line-height: 18px;
+    color: var(--text-secondary);
+  }
+
+  .wnLegacyLink {
+    color: $indigo-500;
+    text-decoration: none;
+    border-radius: 2px;
+
+    &:hover {
+      color: $indigo-700;
+      text-decoration: underline;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--brand);
+      outline-offset: 1px;
+    }
+  }
+
   .wnGo {
+    flex: 0 0 auto;
     border: none;
     border-radius: 6px;
     padding: 0 18px;
@@ -172,16 +461,100 @@
       max-height: 86dvh;
     }
 
+    // Narrower: the left card goes, and the canvas keeps the strip, the tag
+    // and the mechanism.
+    .wnScreen {
+      height: 130px;
+    }
+
+    // Sized to the phone's shorter title line, clear of the tag and the play
+    // button above it.
+    .wnMap::after {
+      background: radial-gradient(
+        ellipse 240px 60px at 0% 100%,
+        var(--card-surface) 35%,
+        transparent
+      );
+    }
+
+    .wnPanel {
+      display: none;
+    }
+
+    // Smaller, between the history corner and the view controls.
+    .wnLinkage {
+      top: 46px;
+      right: 69px;
+      width: 70px;
+      height: 41px;
+    }
+
+    // On a phone the real top strip is icons only, and so is this one.
+    .wnLogo,
+    .wnUndo {
+      display: none;
+    }
+
+    .wnTab {
+      font-size: 0;
+      gap: 0;
+    }
+
+    // The phone's text margin is 16px, and the picture keeps it too.
+    .wnMenu {
+      left: 16px;
+    }
+
+    .wnModes {
+      left: 47px;
+    }
+
+    .wnTag {
+      left: 39px;
+    }
+
+    .wnTransport {
+      left: 109px;
+    }
+
+    .wnPlay {
+      left: 141px;
+    }
+
+    .wnScrub {
+      width: 60px;
+    }
+
+    .wnView {
+      right: 16px;
+    }
+
+    .wnFoot::before {
+      display: block;
+    }
+
     .wnHead {
-      padding: 16px 12px 12px 16px;
+      margin-top: -22px;
+      padding: 0 16px 2px;
     }
 
+    // One column: the tiles stack, and the list scrolls between head and foot.
     .wnBody {
-      padding: 4px 16px;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      padding: 10px 16px;
     }
 
+    // Button first and full width, the note centered under it.
     .wnFoot {
+      flex-direction: column-reverse;
+      align-items: stretch;
+      gap: 10px;
       padding: 10px 16px 14px;
+    }
+
+    .wnLegacy {
+      text-align: center;
     }
 
     .wnGo {
