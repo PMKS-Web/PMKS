@@ -287,6 +287,18 @@
     }
   }
 
+  // A word about the drawing rather than about the step, in the warning colors
+  // the setup drawer uses for the same kind of news.
+  .warnHint {
+    align-items: flex-start;
+    background: var(--warning-bg);
+
+    mat-icon,
+    span {
+      color: var(--warning-text);
+    }
+  }
+
   // The quoted chip sits above its sentence's first line rather than centered
   // against a paragraph it is two lines shorter than.
   .chipHint {

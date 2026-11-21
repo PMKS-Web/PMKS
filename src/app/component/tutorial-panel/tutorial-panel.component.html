@@ -70,6 +70,27 @@
         </div>
       }
 
+      <!-- Off the script: the drawing still moves the steps on, but this is
+           what will stop it later, said now rather than at Play. -->
+      @if (tutorial.wrongMode()) {
+        <div class="hint warnHint">
+          <mat-icon>swap_horiz</mat-icon>
+          <span>This step is made in Edit, the second mode in the strip along the top.</span>
+        </div>
+      }
+      @if (!tutorial.viewingCompleted() && tutorial.viewedProgress().offScript; as offScript) {
+        <div class="hint warnHint">
+          <mat-icon>warning</mat-icon>
+          <span>{{ offScript }}</span>
+        </div>
+      }
+      @if (tutorial.viewedStep === 5 && tutorial.stuckReason(); as stuck) {
+        <div class="hint warnHint">
+          <mat-icon>warning</mat-icon>
+          <span>It can’t run yet: {{ stuck }}. Show What’s Missing lists the fix.</span>
+        </div>
+      }
+
       <!-- The one lesson about the app rather than about linkages, and it is a
            quotation: the chip says this whether or not the tutorial is running,
            so from here on it answers "why can't I?" on its own. -->
@@ -90,7 +111,13 @@
            already behind the student it would be a button to do something that
            is done. -->
       @if (!tutorial.viewingCompleted()) {
-        <button class="doItButton" (click)="doStepForMe()">Do This Step For Me</button>
+        <button class="doItButton" (click)="doStepForMe()">
+          {{
+            tutorial.viewedStep === 5 && tutorial.stuckReason()
+              ? 'Show What’s Missing'
+              : 'Do This Step For Me'
+          }}
+        </button>
       } @else {
         <span class="doneNote">{{ tutorial.settling ? 'Done' : 'Already done' }}</span>
       }
@@ -98,6 +125,12 @@
         <button class="nextButton" (click)="tutorial.goForward()">
           Next step<mat-icon>chevron_right</mat-icon>
         </button>
+      } @else if (tutorial.step() > 1) {
+        <!-- The way back from a drawing that has gone wrong. Do This Step For
+             Me cannot untangle somebody's branch or triangle, and without this
+             the only route to a clean start was the done card's own button,
+             which a stuck student never reaches. -->
+        <button class="quietButton startOver" (click)="restart()">Start Over</button>
       }
     </div>
   </div>
@@ -161,24 +194,3 @@
     </div>
   </div>
 }
-
-<!-- Running it again clears the grid, which is the one thing the tutorial does
-     that cannot be shrugged off. Closing it costs nothing and says so in a
-     snackbar instead; this asks, because there is work to lose. -->
-<ng-template #confirmRestart>
-  <div class="modal">
-    <h1 mat-dialog-title>Start the tutorial again?</h1>
-    <div mat-dialog-content>
-      <p>
-        This clears the grid and begins from step one, so the mechanism you have built will be
-        deleted.
-      </p>
-    </div>
-    <div mat-dialog-actions align="end">
-      <button mat-button mat-dialog-close>Cancel</button>
-      <button mat-button cdkFocusInitial [mat-dialog-close]="'restart'">
-        Clear and Start Again
-      </button>
-    </div>
-  </div>
-</ng-template>

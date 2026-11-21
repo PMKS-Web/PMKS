@@ -7,9 +7,10 @@ import { canDrive } from './actuator';
  * one is still outstanding.
  *
  * Read off the mechanism rather than counted by a Next button: a student who
- * grounds the wrong joint simply stays where they are, and one who arrives on a
- * half-built drawing starts at the first move it has not already made. That is
- * also what makes the tutorial replayable on somebody else's linkage.
+ * grounds the wrong joint simply stays where they are, and one who undoes a
+ * move is taken back to it. The tutorial always begins on a bare grid, though:
+ * read off somebody else's linkage, the steps were moves nobody took -- a
+ * six-bar arrived at "step 5 of 5, build a four-bar".
  */
 export type TutorialStepId = 1 | 2 | 3 | 4 | 5;
 
@@ -25,6 +26,15 @@ export interface TutorialProgress {
   alsoTarget?: RealJoint;
   /** What the *previous* step achieved, shown as the card's green line. */
   achieved?: string;
+  /**
+   * Where the drawing has left the script in a way that will stop it later,
+   * and what to do about it. The steps are read off the drawing, so a student
+   * who builds something else is never refused -- but a chain of four links or
+   * a triangle still satisfies "three links chained" and then cannot run, and
+   * finding that out two steps later with no word of why is the tutorial
+   * failing them.
+   */
+  offScript?: string;
 }
 
 const real = (joints: Joint[]): RealJoint[] =>
@@ -145,20 +155,29 @@ export function progressAt(joints: Joint[], links: Link[], step: TutorialStepId)
   const grounded = groundedAnchors(own);
   const input = own.find((joint) => joint.input);
 
+  const offScript = chain ? chainTrouble(chain, own, ends) : looseTrouble(links);
+
   switch (step) {
     case 1:
       return { step: 1 };
     case 2:
-      return { step: 2, achieved: 'First bar drawn' };
+      return { step: 2, achieved: 'First bar drawn', offScript };
     case 3: {
       const loose = ends.filter((joint) => !joint.ground);
       const named = loose.length > 0 ? loose : ends;
-      return { step: 3, target: named[0], alsoTarget: named[1], achieved: 'Three links chained' };
+      return {
+        step: 3,
+        target: named[0],
+        alsoTarget: named[1],
+        achieved: 'Three links chained',
+        offScript: offScript ?? middleGrounded(own),
+      };
     }
     case 4: {
       const drivable = grounded.filter((joint) => canDrive(joint));
       return {
         step: 4,
+        offScript,
         target: input ?? drivable[0] ?? grounded[0],
         achieved:
           grounded.length > 0
@@ -170,8 +189,55 @@ export function progressAt(joints: Joint[], links: Link[], step: TutorialStepId)
       return {
         step: 5,
         achieved: input ? `Joint ${nameOf(input)} is the input` : undefined,
+        offScript,
       };
   }
+}
+
+/**
+ * What is wrong with a chain that counts as three links joined up but is not
+ * the open chain of three a four-bar is built from.
+ *
+ * Each of these passes the step it was built in and fails at Play, which is
+ * the worst place to find out: a longer chain needs a second input, a branch
+ * leaves a link swinging loose, and a closed triangle is rigid.
+ */
+function chainTrouble(chain: Link[], own: RealJoint[], ends: RealJoint[]): string | undefined {
+  if (chain.length > 3) {
+    return `This chain has ${chain.length} links, and a four-bar uses three. Delete the extra links, or the mechanism will need more than one input to run.`;
+  }
+  if (ends.length === 0) {
+    return 'These three links close into a triangle, which cannot move. Delete one link and attach the three end to end.';
+  }
+  if (ends.length > 2) {
+    const hub = own.find((joint) => joint.links.length > 2);
+    return `This chain branches${hub ? ` at joint ${nameOf(hub)}` : ''}. A four-bar needs its three links end to end, so delete the odd one out and attach it to the far end instead.`;
+  }
+  return undefined;
+}
+
+/**
+ * Bars that never touch, which is what drawing Link from the bare grid three
+ * times leaves -- the commonest way off the script, and the reason the step
+ * names Attach. Said only once there are enough bars that a chain was
+ * plainly what was being attempted.
+ */
+function looseTrouble(links: Link[]): string | undefined {
+  if (links.length < 3) return undefined;
+  return `These ${links.length} bars do not touch. A new bar joins the chain only when you start it from a joint already there, under Attach.`;
+}
+
+/**
+ * A joint grounded in the middle of the chain: the step stays where it is, as
+ * it should, and the student is told why rather than left wondering.
+ */
+function middleGrounded(own: RealJoint[]): string | undefined {
+  const middle = own.filter((joint) => joint.ground && joint.links.length > 1);
+  const hasEnds = own.some((joint) => joint.links.length === 1);
+  if (middle.length === 0 || !hasEnds) return undefined;
+  const names = middle.map(nameOf).join(' and ');
+  const several = middle.length > 1;
+  return `${several ? 'Joints' : 'Joint'} ${names} ${several ? 'are' : 'is'} in the middle of the chain, so grounding ${several ? 'them' : 'it'} holds the chain still. Turn off Grounded for ${several ? 'joints' : 'joint'} ${names}, and ground the two ends instead.`;
 }
 
 /** A joint worth reading a velocity off: one that moves. */

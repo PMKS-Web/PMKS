@@ -27,6 +27,14 @@ change alters that it did not mean to alter shows up as a failing scene with a d
 
 Each entry is **where** it is, what it draws, and the block to use instead.
 
+- **Dialog action rows that are not `dialogButton` yet.** `MODALS/drawing-export` uses Material's
+  `mat-button` and `mat-flat-button`, and the release notes draw their own `.wnGo`. Both should
+  take the block's weights (quiet Cancel, filled action). The library's own suggestion form keeps
+  `.btnOutlined` / `.btnFilled` / `.btnQuiet` in `templates.component.scss`, the same three
+  weights with icons and a disabled state the block does not have yet: extend the block rather
+  than keep the copy. **Blocker:** a visible change to two dialogs, so it wants its own change with
+  before-and-after shots.
+
 - **`analysis-setup` and `mechanism-panel` should still adopt `collapsible-subsection`** for their
   foldable sections. The *duplication* between them is gone (see below), but the block remains the
   right home: it already has the `[headerActions]` slot these want. Doing it is a visible redesign

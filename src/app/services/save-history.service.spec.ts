@@ -87,4 +87,47 @@ describe('SaveHistoryService', () => {
 
     expect(calls).toEqual(['restore design', 'restore pose']);
   });
+
+  // The tutorial owns only the drawing it cleared the grid for, and asks the
+  // history whether that entry is still behind it. An index cannot answer: undo
+  // past it and edit, and the next save takes the index over for a different
+  // drawing.
+  it('names entries so that a branch cut off by a new edit is not mistaken for them', () => {
+    const history = withTestInjector(
+      [
+        { provide: UrlGenerationService, useValue: { generateUrlQuery: () => 'state' } },
+        { provide: UrlProcessorService, useValue: { updateFromURL: () => {} } },
+        {
+          provide: SelectedTabService,
+          useValue: { isAnalysisMode: () => false, getCurrentTab: () => 1, setTab: () => {} },
+        },
+        {
+          provide: MechanismService,
+          useValue: { capturePausedPose: () => ({ mechanisms: [] }), restorePausedPose: () => {} },
+        },
+      ],
+      () => new SaveHistoryService()
+    );
+    let restored = 0;
+    history.restored.subscribe(() => restored++);
+
+    history.save();
+    history.save();
+    const start = history.currentEntry()!;
+    history.save();
+    expect(history.standsOnOrPast(start)).toBe(true);
+
+    history.undo();
+    expect(history.standsOnOrPast(start)).toBe(true);
+    history.undo();
+    expect(history.standsOnOrPast(start)).toBe(false);
+    expect(restored).toBe(2);
+
+    history.redo();
+    expect(history.standsOnOrPast(start)).toBe(true);
+
+    history.undo();
+    history.save();
+    expect(history.standsOnOrPast(start)).toBe(false);
+  });
 });

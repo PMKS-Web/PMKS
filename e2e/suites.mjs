@@ -217,6 +217,7 @@ export const SUITES = [
   { name: 'fit-keeps-grid', seconds: 23, lanes: BOTH },
   { name: 'top-strip-states', seconds: 194, lanes: NIGHTLY },
   { name: 'tutorial', seconds: 52, lanes: NIGHTLY },
+  { name: 'tutorial-edge-cases', seconds: 60, lanes: NIGHTLY },
   { name: 'tracer-line-snap', seconds: 10, lanes: NIGHTLY },
   { name: 'scrub-to-start', seconds: 15, lanes: NIGHTLY },
   { name: 'two-mechanisms', seconds: 40, lanes: BOTH },

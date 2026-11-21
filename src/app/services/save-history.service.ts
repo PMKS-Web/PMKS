@@ -1,3 +1,4 @@
+import { Subject } from 'rxjs';
 import { Injectable, Injector, inject } from '@angular/core';
 import { UrlGenerationService } from './url-generation.service';
 import { UrlProcessorService } from './url-processor.service';
@@ -20,6 +21,18 @@ export class SaveHistoryService {
 
   private history: string[] = [];
 
+  /**
+   * A name for each entry that no later entry reuses, in step with `history`.
+   *
+   * An index is not one: undo back past an entry and then edit, and the next
+   * save takes that index over for a drawing that has nothing to do with the
+   * one it used to hold. Anything that wants to ask "is the state I started
+   * from still behind me?" -- the tutorial, which owns only the drawing it
+   * cleared the grid for -- needs a name that cannot be handed to someone else.
+   */
+  private ids: number[] = [];
+  private nextId = 0;
+
   // index of the current state in the history
   private index: number = -1;
 
@@ -38,11 +51,13 @@ export class SaveHistoryService {
     // delete all states after the current state
     if (this.index < this.history.length - 1) {
       this.history.splice(this.index + 1);
+      this.ids.splice(this.index + 1);
     }
 
     // add the new state to the end of the history
     let state = this.urlGenerationService.generateUrlQuery();
     this.history.push(state);
+    this.ids.push(this.nextId++);
 
     // update index to point to the new last state
     this.index = this.history.length - 1;
@@ -75,6 +90,23 @@ export class SaveHistoryService {
     this.history[this.index] = this.urlGenerationService.generateUrlQuery();
     this.remember();
   }
+
+  /** The name of the entry the drawing is standing on, if there is one. */
+  currentEntry(): number | undefined {
+    return this.index >= 0 ? this.ids[this.index] : undefined;
+  }
+
+  /**
+   * Whether an entry is the one the drawing stands on or one it was reached
+   * through: still in the history, and at or before where undo has left it.
+   */
+  standsOnOrPast(entry: number): boolean {
+    const at = this.ids.indexOf(entry);
+    return at !== -1 && at <= this.index;
+  }
+
+  /** Fires after an undo or redo has put a different state on the grid. */
+  readonly restored = new Subject<void>();
 
   /*
    * Return whether there is history before current state to undo to.
@@ -123,6 +155,7 @@ export class SaveHistoryService {
     // Undo and redo move where the reader is standing, so they move what a
     // reload would bring back.
     this.remember();
+    this.restored.next();
     console.log('update to state ' + this.index + ': ' + this.history[this.index]);
   }
 

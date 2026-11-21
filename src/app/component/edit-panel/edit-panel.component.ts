@@ -64,6 +64,7 @@ import { BackgroundImageService, MIN_WIDTH } from 'src/app/services/background-i
 import { NOT_A } from 'src/app/ui-text';
 import { MatIcon } from '@angular/material/icon';
 import { TutorialService } from '../../services/tutorial.service';
+import { TutorialEntryService } from '../../services/tutorial-entry.service';
 import { MechanismPanelComponent } from '../mechanism-panel/mechanism-panel.component';
 import { PanelSectionComponent } from '../BLOCKS/panel-section/panel-section.component';
 import { PanelFoldStateService } from '../../services/panel-fold-state.service';
@@ -188,6 +189,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
     return isOrphanedJoint(this.activeSrv.selectedJoint);
   }
   tutorial = inject(TutorialService);
+  private tutorialEntry = inject(TutorialEntryService);
 
   listOfOtherJoints: RealJoint[] = [];
   /**
@@ -2826,9 +2828,9 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
     );
   }
 
-  /** Open the tutorial where the drawing has got to, and show the drawer. */
+  /** Open the tutorial, or resume it, asking first if that clears the grid. */
   startTutorial(): void {
-    this.tutorial.start();
+    this.tutorialEntry.open();
   }
 
   /** Turn the offer down for good, and say where it went. */

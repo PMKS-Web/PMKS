@@ -1,0 +1,11 @@
+<h1 mat-dialog-title>{{ data.again ? 'Start the tutorial again?' : 'Start the tutorial?' }}</h1>
+<div mat-dialog-content>
+  <p>
+    The tutorial builds a four-bar from an empty grid, so starting it clears the grid. Your current
+    mechanism will be deleted. You can bring it back with Undo.
+  </p>
+</div>
+<div mat-dialog-actions align="end">
+  <button dialogButton="quiet" [mat-dialog-close]="false">Cancel</button>
+  <button dialogButton="filled" cdkFocusInitial [mat-dialog-close]="true">Clear and Start</button>
+</div>

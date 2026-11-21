@@ -1,3 +1,4 @@
+import { Subject } from 'rxjs';
 import { Injectable, Injector, inject } from '@angular/core';
 import { MechanismService } from './mechanism.service';
 import { recallDrawing } from './last-drawing';
@@ -213,6 +214,12 @@ export class UrlProcessorService {
     });
   }
 
+  /**
+   * A different drawing has replaced the one on the grid: a template, an
+   * opened file, a link. Not undo or redo, which are steps within one drawing.
+   */
+  readonly drawingReplaced = new Subject<void>();
+
   // Decode the url and update mechanism
   updateFromURL(
     url: string | null,
@@ -237,6 +244,7 @@ export class UrlProcessorService {
       // one is the new starting point, or the next edit would be credited
       // with what the undo did.
       mechanismSrv.arrived();
+      if (!continuingHistory) this.drawingReplaced.next();
     }
   }
 
