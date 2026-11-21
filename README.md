@@ -7,226 +7,229 @@
 
 ### Serious linkage analysis. Zero setup.
 
-**PMKS** is an open-source simulator for planar linkages, written for the kinematics and
-machine-dynamics classroom. It runs in any browser, needs no account, and stores nothing on a
-server.
+**PMKS** *(Planar Mechanism Kinematic Simulator, formerly PMKS+)* is a free, open-source linkage
+simulator for mechanical engineering education. Build four-bars, slider-cranks, six-bars, and
+multi-loop mechanisms in your browser, and plot positions, velocities, accelerations, and
+forces—with nothing to install, no account required, and nothing stored on a server.
 
-[**Open PMKS**](https://pmksplus.com) &nbsp;·&nbsp; [Mechanism library](#mechanism-library) &nbsp;·&nbsp; [Verification](#verification) &nbsp;·&nbsp; [Contributing](#contributing)
+[**Open PMKS**](https://app.pmksplus.com) &nbsp;·&nbsp; [**Website & Guides**](https://pmksplus.com) &nbsp;·&nbsp; [Mechanism Library](#mechanism-library) &nbsp;·&nbsp; [Verification](#verification) &nbsp;·&nbsp; [Contributing](#contributing)
 
-![License MIT](https://img.shields.io/badge/license-MIT-blue) ![Angular 22](https://img.shields.io/badge/Angular-22-dd0031) ![Node 22.22.3+](https://img.shields.io/badge/Node-22.22.3%20%C2%B7%2024.15%2B-5fa04e) ![No account needed](https://img.shields.io/badge/account-not%20required-brightgreen) ![Verified against MATLAB](https://img.shields.io/badge/solvers-verified%20against%20MATLAB-8a2be2)
+[![License MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE) ![Angular 22](https://img.shields.io/badge/Angular-22-dd0031) ![Node 22.22.3+](https://img.shields.io/badge/Node-22.22.3%20%C2%B7%2024.15%2B-5fa04e) ![No account needed](https://img.shields.io/badge/account-not%20required-brightgreen) [![Verified against Exudyn and MATLAB](https://img.shields.io/badge/solvers-verified%20against%20Exudyn%20%26%20MATLAB-8a2be2)](https://pmksplus.com/validation)
 
 </div>
 
-<img width="2982" height="1970" alt="frame_chrome_mac_light-110" src="https://github.com/user-attachments/assets/4d63252a-63fa-421e-a1b4-eb923cc6aeb7" />
+<img alt="PMKS in Kinematic Analysis: a Jansen leg tracing its paths, with the position graph for joint F in the left panel" src="docs/images/readme/hero-framed.png" />
 
 
 ---
 
 ## Contents
 
-**Using it**
+**Using PMKS**
 
-- [What PMKS is](#what-pmks-is)
-- [The interface](#the-interface)
-- [What you can build](#what-you-can-build)
-- [What you can measure](#what-you-can-measure)
-- [Readiness: the app says what is missing](#readiness-the-app-says-what-is-missing)
-- [Several machines in one drawing](#several-machines-in-one-drawing)
+- [Overview](#overview)
+- [Interface](#interface)
+- [Building Mechanisms](#building-mechanisms)
+- [Kinematic and Force Analysis](#kinematic-and-force-analysis)
+- [Readiness Checks](#readiness-checks)
+- [Multiple Mechanisms in One Drawing](#multiple-mechanisms-in-one-drawing)
 - [Synthesis](#synthesis)
-- [Getting the numbers out](#getting-the-numbers-out)
-- [A URL is the document](#a-url-is-the-document)
-- [Mechanism library](#mechanism-library)
-- [Units, settings and keyboard](#units-settings-and-keyboard)
+- [Exporting Data and Drawings](#exporting-data-and-drawings)
+- [Saving and Sharing via URL](#saving-and-sharing-via-url)
+- [Mechanism Library](#mechanism-library)
+- [Units, Settings, and Keyboard Shortcuts](#units-settings-and-keyboard-shortcuts)
 
-**Working on it**
+**Developing PMKS**
 
-- [Before your first change](#before-your-first-change)
+- [Before Your First Change](#before-your-first-change)
 - [Verification](#verification)
-- [Philosophy](#philosophy)
-- [How it works](#how-it-works)
+- [Design Principles](#design-principles)
+- [Architecture](#architecture)
 - [Development](#development)
 - [Contributing](#contributing)
-- [License and contact](#license-and-contact)
+- [License and Contact](#license-and-contact)
 - [Supporting PMKS](#supporting-pmks)
 - [Acknowledgements](#acknowledgements)
 
 ---
 
-## What PMKS is
+## Overview
 
-A **four-bar linkage** is the first machine most mechanical engineering students meet, and the
-first one whose behavior is genuinely hard to picture. PMKS exists for that moment: draw the
-bars, ground two joints, turn one of them, and the coupler curve appears.
+PMKS is a browser-based simulator for planar linkages, built for kinematics and machine-dynamics
+coursework. Sketch links on a grid, ground the frame joints, assign a driven input, and inspect the
+resulting motion, coupler curves, and reaction forces directly in the browser.
 
-It is a single-page web app. Nothing to install, no account, and no server holding your work. The
-whole mechanism packs into a link, so "share this with my TA" is a copy-and-paste.
+Everything runs client-side with no login or backend storage. Every mechanism encodes into a single
+URL, so sharing a problem setup or homework linkage is just copying and pasting a link.
 
-This version of PMKS succeeds the **original PMKS**, written by Prof. Matthew I. Campbell at
-Oregon State University, and is developed at **Worcester Polytechnic Institute** by undergraduate
-and graduate project teams.
+This version of PMKS (formerly **PMKS+**) succeeds the **original PMKS**, created by Prof.
+Matthew I. Campbell at Oregon State University, and is developed at **Worcester Polytechnic
+Institute** by undergraduate and graduate project teams.
 
 | | |
 | --- | --- |
-| **Try it** | [pmksplus.com](https://pmksplus.com) |
-| **Built for** | Kinematics and machine-dynamics coursework: four-bars, six-bars, slider-cranks, quick-returns, linkage-driven machines |
+| **App** | [app.pmksplus.com](https://app.pmksplus.com) (or [open the library directly](https://app.pmksplus.com/?library)) |
+| **Website & guides** | [pmksplus.com](https://pmksplus.com) — overview, [interactive calculators & mechanism guides](https://pmksplus.com/guides), and [solver validation](https://pmksplus.com/validation) |
+| **UI gallery** | [docs.pmksplus.com](https://docs.pmksplus.com) — Storybook component gallery and UI style guide |
+| **Built for** | Kinematics and machine-dynamics coursework: four-bars, slider-cranks, six-bars, quick-returns, and multi-loop linkages |
 | **Solves** | Position · velocity · acceleration · static and dynamic joint reactions · required input torque or force |
-| **Costs** | Nothing. MIT-licensed, no sign-in, runs in any modern desktop browser |
+| **License & cost** | Free and open source under MIT; no sign-in required; runs in any modern browser |
 
 ---
 
-## The interface
+## Interface
 
-The canvas is full-bleed and everything else floats over it, in cards.
+The full-screen SVG canvas sits underneath floating UI cards:
 
 ![The seven regions of the PMKS interface, labeled on a running four-bar](docs/images/readme/interface-map.png)
 
-| | Region | Holds |
+| | Region | Contents |
 | :-: | --- | --- |
-| **1** | **Top strip** | Project menu · the four **mode tabs**, the analysis two carrying a readiness chip once something is drawn · a corner card that is Undo/Redo while building and becomes **Export Data** in the analysis modes |
-| **2** | **Mode panel** | The current mode's panel: the Synthesis form, the Edit properties of what is selected, or that part's analysis graphs. 250px wide, widening to 400px in the analysis modes |
-| **3** | **Canvas** | The grid, right-click menus, dragging, pan and zoom. It runs under everything else, and the view frames the linkage into whatever the cards leave free |
-| **4** | **Playback** | Transport (speed · play/pause · return to the start pose) and a scrub card. Analysis modes only |
-| **5** | **View controls** | Centers of mass · joint IDs · traced paths ‖ zoom out · zoom in · reset view |
-| **6** | **Status strip** | Mode · what the mechanism is ready for · cursor position · units |
-| **7** | **Right drawer** | Settings · Help and feedback · either analysis's setup list · the Export flow. One at a time |
+| **1** | **Top bar** | Project menu, the four **mode tabs** (analysis tabs show readiness chips once a mechanism is drawn), and a right-hand action card (Undo/Redo in Edit mode; **Export Data** in analysis modes) |
+| **2** | **Mode panel** | Context panel for the active mode: Synthesis inputs, Edit properties for the selection, or analysis graphs (250px wide in Edit/Synthesis; 400px in analysis modes) |
+| **3** | **Canvas** | Interactive grid with right-click context menus, dragging, pan, and zoom; auto-framing fits the linkage into the unobstructed viewport area |
+| **4** | **Playback** | Transport controls (speed, play/pause, return to start pose) and timeline scrubber (analysis modes only) |
+| **5** | **View controls** | Toggles for center of mass, joint and force names, and traced paths; actions for Zoom Out, Zoom In, Fit to View, and Fit Full Motion |
+| **6** | **Status bar** | Active mode, readiness summary, cursor coordinates, and current units |
+| **7** | **Right drawer** | Settings, Help & Feedback, analysis setup checklists, and Export Data (one open at a time) |
 
-### The four modes
+### Modes
 
-| Mode | Key | What it is for |
+| Mode | Shortcut | Purpose |
 | --- | --- | --- |
-| **Synthesis** | <kbd>1</kbd> | Generate a linkage from three desired positions of a coupler |
-| **Edit** | <kbd>2</kbd> | Draw and change the mechanism. Only available while the animation is paused at the start pose |
-| **Kinematic Analysis** | <kbd>3</kbd> | Position, velocity and acceleration of a joint, or of a link and its center of mass |
-| **Force Analysis** | <kbd>4</kbd> | Joint reactions and the torque or force the input must supply |
+| **Synthesis** | <kbd>1</kbd> | Generate four-bar and six-bar linkages from three target coupler poses |
+| **Edit** | <kbd>2</kbd> | Build and modify mechanism geometry (available while paused at the start pose) |
+| **Kinematic Analysis** | <kbd>3</kbd> | Plot position, velocity, and acceleration for joints, links, and centers of mass |
+| **Force Analysis** | <kbd>4</kbd> | Plot per-link joint reactions and required input torque or force |
 
-The analysis modes are deliberately **read-only**. Playback lives with them, and editing lives
-outside them, because a half-solved mechanism being dragged mid-cycle is a graph that lies.
+Geometry edits are disabled during analysis modes so graphs always match the solved cycle, while
+non-geometric actions (adding tracer points or forces, dragging force anchors, toggling vectors and
+traces) remain available.
 
-On a phone the mode panel becomes a sheet along the bottom, pulled up by its handle when you want
-it and out of the way when you do not, and **a held finger opens the right-click menu**, so a
-linkage can be built with taps alone. The canvas pans and pinches as you would expect.
+On mobile screens, the mode panel collapses into a bottom sheet, the canvas supports standard pan
+and pinch-zoom gestures, and a long press opens the context menu.
 
 ---
 
-## What you can build
+## Building Mechanisms
 
-Everything is made by **right-clicking**: the grid to add, a part to attach.
+Right-click the grid to add new parts, or right-click an existing joint, link, or force to modify
+or attach to it.
 
-### The joint set
+### Joint types
 
-Weldedness and sliding are two independent properties of a joint, which gives a 2×2 rather than a
-list of joint types:
+Each joint has one **Joint Type**, chosen in the Edit panel or at the top of the joint's
+right-click menu:
 
-| | Not welded | Welded |
-| --- | --- | --- |
-| **No slider** | **Pin** (R): an ordinary revolute joint | A **rigid joint**, fusing what meets there into one compound link |
-| **Slider** | **Slot** (RP): a pin riding in a channel, and free to turn in it | **Slide** (P): a body that translates without turning. This is what a cylinder is built from |
-
-Each of those exists **grounded** (the slot is cut into the world) and **floating** (the slot is
-cut into another moving link). A pin, a slot or a slide can be the **driven input**; a weld cannot,
-because a weld is precisely the statement that two bodies do *not* move relative to each other.
-
-### The parts
-
-| Part | Notes |
+| Type | What it does |
 | --- | --- |
-| **Link** | Two or more joints. Length, mass, rotational inertia, center of mass, color, and a name |
-| **Compound link** | Weld joints together and the bars become one rigid body: a bell crank, a bucket, a scoop |
-| **Cylinder** | A first-class, menu-created part: barrel, rod and the sealed slide between them, drawn as the part and drivable as one. A slide you build by hand is an ordinary slide, not a cylinder |
-| **Slider** | On a joint that is free to take one, along a guide at any angle |
-| **Tracer point** | A point rigidly carried by a link, so you can graph a place that is not a pin |
-| **Force** | Applied at a joint or on a link, in the **global** frame or **local** to the body it acts on |
-| **Lock** | A mark that holds a joint (or a whole link) still against dragging, so a shared linkage can only be adjusted where its author intended |
-| **Background image** | A photograph or drawing pinned behind the grid, scaled and rotated, to build a linkage on top of a real machine. Never uploaded anywhere |
+| **Revolute** | A pin. The bodies that meet at the joint turn about it |
+| **Pin-in-slot** | A pin that rides a slot. It slides along the slot and turns in it |
+| **Prismatic** | A block fixed to the body that rides it. It slides along its slot and does not turn |
+| **Welded** | Fuses the links that meet at the joint into one rigid compound link |
+
+**Grounded** is a separate switch beside the type. A slot can be grounded (fixed to the frame) or
+floating (carried on a moving link). A Revolute, Pin-in-slot, or Prismatic joint can be the
+**driven input**. A Welded joint cannot, because it allows no relative motion.
+
+### Parts
+
+| Part | Details |
+| --- | --- |
+| **Link** | Connects two or more joints with configurable length, mass, mass moment of inertia, center of mass, color, and name. Two-joint links can hold a **Fixed Length**, **Fixed Angle**, or both while connected parts are dragged |
+| **Compound link** | Created by welding links together at shared joints so they move as a single rigid body (e.g., bell cranks, brackets, excavator buckets) |
+| **Cylinder** | Menu-created hydraulic/linear actuator consisting of a barrel, a rod, and a sealed Prismatic joint between them. It can be driven directly as a linear input |
+| **Slider** | Constrains a joint to move along a grounded or floating guide at any angle |
+| **Tracer point** | A point rigidly attached to a link for plotting paths, velocities, and accelerations away from pins |
+| **Force** | External load applied to a link in either the **Link** reference frame (rotates with the link) or the **Grid** reference frame (fixed to the grid) |
+| **Lock** | Locks a joint or link against dragging—useful when sharing a linkage that should only be adjusted at specific points |
+| **Background image** | Reference photo or drawing pinned behind the grid (scalable and rotatable) for tracing real machines; stays local to your browser and is never uploaded |
 
 ![The Edit panel open on a joint of a welded excavator bucket](docs/images/readme/edit-panel.png)
 
 ![An excavator bucket driven by a hydraulic cylinder, with the bucket's angular kinematics graphed](docs/images/readme/cylinders.png)
 
-A driven cylinder is a *linear* input, and the app knows it. The transport row reads
-**`Opening · Reverses`** and a distance rather than an angle; the scrub handle runs across the
-travel the cycle actually uses rather than around a clock (and the setup drawer warns when that is
-only part of the stroke you drew); and the speed is set in cm/s, under **Expansion Speed** in that
-cylinder's Edit panel.
+Driven cylinders act as linear inputs: the playback bar displays extension distance and reversal
+state, the scrubber spans the active stroke used by the cycle (with a setup warning if only part of
+the drawn stroke is reachable), and the drive speed is configured under **Input Speed** in your
+selected length unit per second.
 
 ---
 
-## What you can measure
+## Kinematic and Force Analysis
 
 ### Kinematic analysis
 
 ![Kinematic analysis of a Whitworth quick-return, with position and velocity graphed](docs/images/readme/kinematic-analysis.png)
 
-Select a **joint** for its position, velocity and acceleration. Select a **link** for its angle,
-angular velocity and angular acceleration, plus the same three for its center of mass. Each graph
-opens from a one-line read-out that always shows the value **at the pose currently on screen**, so
-scrubbing the handle moves the number.
+Select a **joint** to plot its position, velocity, and acceleration. Select a **link** to plot its
+angle, angular velocity, and angular acceleration, or switch to its **Center of Mass** tab for
+linear kinematics of the CoM. Each graph header displays a live readout at the current pose as you
+play or scrub.
 
-Velocity and acceleration can also be drawn **on the mechanism itself** as vectors, live, while it
-runs.
+Velocity, acceleration, and force vectors can also be displayed directly on the canvas during
+playback.
 
 ### Force analysis
 
 ![Force analysis of a toggle clamp: reaction forces on both links at the clamped joint](docs/images/readme/force-analysis.png)
 
-Two modes, chosen in the panel:
+Force Analysis supports two modes:
 
-- **Static (Equilibrium)**: the machine held at each pose, inertia ignored.
-- **In-motion (Dynamic)**: full Newton–Euler, with the mass and rotational inertia you gave each
-  link.
+- **Static (Equilibrium)**: solves quasi-static equilibrium at each pose, ignoring inertia.
+- **In-motion (Dynamic)**: solves full Newton–Euler dynamics using each link's mass and mass moment
+  of inertia.
 
-Forces are reported **per body at a joint**. The reaction on link *AB* and the reaction on link *BC*
-are two different answers to two different free-body diagrams, and PMKS gives you both rather than
-one merged number. It also reports the **input effort**: the torque a crank needs, or the force a
-ram needs.
+Reactions are reported **per link at each joint**—the force on link *AB* and the force on link *BC*
+are shown separately, matching their individual free-body diagrams—alongside the required **input
+torque** (rotary drive) or **input force** (linear drive).
 
-Gravity is on by default and can be switched off in Settings. A link left at zero mass is skipped
-by gravity and inertia rather than silently given a mass.
+Gravity is enabled by default and can be toggled in Settings. Links with zero mass contribute no
+weight or inertia.
 
-### Playback that measures the input, not the clock
+### Input-based playback
 
-The scrub handle answers *"where is the input, out of everything it can do"*, not *"what time is
-it"*:
+The scrubber tracks the driven input's full range of motion rather than arbitrary elapsed time:
 
-- A **ram or slider** runs from one end of its travel to the other.
-- A **rocking crank** runs between its two angular limits.
-- A **crank that goes all the way round** spans the whole cycle (one turn usually, two where a rod
-  swaps assembly branch at a slot tangency), with zero at the pose you drew.
+- A **cylinder or slider** spans from one end of its travel to the other.
+- A **rocking crank** spans between its two angular limits.
+- A **continuously rotating crank** spans a complete cycle (one revolution, or two when a link
+  crosses an assembly branch at a slot tangency), starting at zero in the drawn start pose.
 
-Time is still what the machine is *at*, and still what the readout shows. Animation advances by
-elapsed real time rather than one sample per frame, so at 1× a revolution takes 60/RPM seconds
-whatever the frame rate. (The transport also offers 2× and 4×.)
+Playback advances in real time (at 1× speed, one revolution takes `60 / RPM` seconds regardless of
+frame rate), with 2× and 4× speed options.
 
 ---
 
-## Readiness: the app says what is missing
+## Readiness Checks
 
 ![The Force Analysis setup drawer explaining that nothing loads the mechanism yet](docs/images/readme/readiness.png)
 
-Once there is something on the grid, each analysis tab carries a chip: **`Ready`**, or a count of
-what is in the way: **`2 fixes`** for kinematics, **`1 to set`** for forces. Pressing a tab that is
-not ready opens that mode's setup drawer instead of switching to it. The drawer separates:
+Once a mechanism is on the grid, each analysis tab displays a readiness badge (**`Ready`**, or a
+count such as **`2 fixes`** for kinematics or **`1 to set`** for forces). Clicking a tab that isn't
+ready opens its setup drawer, which groups items into:
 
-- **Blockers**: the mechanism cannot be solved at all until this is fixed.
-- **Warnings**: it solves, and there is something worth knowing before trusting the result.
+- **Blockers**: issues that prevent the solver from running.
+- **Warnings**: valid mechanisms with conditions worth checking before relying on the results.
 
-Most entries name the part at fault and offer to take you there. The Force setup drawer also holds
-a mass table for the whole mechanism, so a student can fill in every link's mass in one place
-instead of hunting for them on the canvas.
+Most items identify the specific joint or link and jump straight to it on click. The Force Analysis
+setup drawer also includes a **Masses** table so you can edit every link's mass and inertia in one
+place.
 
 ---
 
-## Several machines in one drawing
+## Multiple Mechanisms in One Drawing
 
 ![Three independent mechanisms on one grid, with the scrub card split into a row each](docs/images/readme/multi-machine.png)
 
-A drawing is not assumed to be one machine. PMKS **partitions** it into independently solvable
-mechanisms (`M1`, `M2`, `M3`), each with its own input, speed and direction. By default they share a
-clock and the scrub card shows a single **`All`** row; the toggle on the card splits it into one row
-per machine that solves, each with its own handle, angle and time readout.
+A single canvas can hold up to four independent mechanisms (`M1`–`M4`). PMKS automatically
+partitions connected components, solving each with its own driven joint, speed, and direction. By
+default they animate together under a single **`All`** scrubber row; toggling the view splits the
+scrubber into independent rows per mechanism, each with its own handle, angle/position, and time
+readout.
 
-This is why input speed lives **on the driven joint** rather than in global settings: a drawing
-with three machines needs three speeds.
+Because multiple mechanisms can coexist on one grid, input speed and direction belong to each
+driven joint rather than global settings.
 
 ---
 
@@ -234,80 +237,78 @@ with three machines needs three speeds.
 
 ![Motion synthesis: three coupler positions, a solved four-bar, and the Insert control](docs/images/readme/synthesis.png)
 
-Give PMKS three positions and orientations of a coupler and it searches for four-bars that pass
-through all three, offering up to eight distinct candidates. You steer that search by what you care
-about:
+Specify three target positions and orientations for a coupler link, and PMKS generates up to eight
+distinct four-bar candidates that pass through them. You can constrain the search by:
 
-- **Reaches all 3 positions on one assembly**: the mechanism never has to be taken apart.
-- **Coupler pinned at the link's ends**. Switch it off and the search tries other attachment points
-  along the end-effector link, and past its ends, which moves both ground pivots and produces
-  genuinely different, often better, machines.
-- **Ground pins inside a region** you draw.
+- **Reaching all 3 poses on one assembly branch** (no disassembly required between poses).
+- **Coupler attachment points**: restrict pins to the coupler's endpoints, or allow attachment
+  points along and beyond the link to explore additional ground-pivot layouts.
+- **Ground pivot region**: draw a bounding region where ground joints must land.
 
-Each candidate shows which positions it **reaches**, its assembly branch, which pin drives it, and a
-preview transport so you can watch it move before committing, with any position it cannot reach on
-that assembly marked rather than hidden. Where the geometry allows one, **Add driver** grafts on a
-second ground pin and coupler so an ordinary motor can turn the thing: a six-bar, sized in closed
-form so exactly one revolution walks the four-bar across its arc and back. **Insert into grid**
-drops the result into the drawing as an ordinary, editable mechanism, in a single undo step.
+Each candidate shows which poses it reaches, its assembly branch, which joint drives it, and a live
+preview scrubber. When a four-bar's input only rocks through an arc, **Add Input Link (Six-Bar)**
+attaches a continuously rotating driver dyad sized in closed form to sweep the exact arc. Clicking
+**Insert into Grid** places the chosen linkage onto the canvas as a normal editable mechanism in a
+single undo step.
 
 ---
 
-## Getting the numbers out
+## Exporting Data and Drawings
 
 ![The Export drawer, step one: choosing which parts to export](docs/images/readme/export.png)
 
-In either analysis mode, **Export Data** walks through the questions in order: which parts, which
-kinematic columns, which force columns, and how to write the file.
+In either analysis mode, **Export Data** walks through selecting parts, kinematic columns, force
+columns, and file output options:
 
-| Format | What arrives |
+| Format | Output |
 | --- | --- |
-| **CSV** | One file per table, or a `.zip` when there are more than two |
-| **Excel** | One `.xlsx` workbook, one sheet per table |
-| **Images** | Each graph as a PNG or SVG; a `.zip` past two of them |
-| **Report** | A print-ready document: the drawing, the facts about the machine, every graph, the data table, and a share URL that reopens the mechanism. It opens your browser's print dialog, so "Save as PDF" is one step away |
+| **CSV** | One `.csv` per table, or a `.zip` archive when exporting more than two tables |
+| **Excel** | A single `.xlsx` workbook with one sheet per table |
+| **Images** | Individual PNG or SVG plots (bundled as a `.zip` when exporting more than two) |
+| **Report** | A print-ready report containing the mechanism drawing, key properties, plots, data tables, and a share URL—ready to print or save as PDF |
 
-Numbers can be written to 2, 4 or 6 decimals, or at full solver precision.
+Numeric precision can be set to 2, 4, or 6 decimal places, or full solver precision. From the
+project menu, **CAD Export** also exports start-pose link geometry as **DXF** or **SVG**
+(optionally paired with a parts CSV) for laser cutting or CAD import.
 
 ---
 
-## A URL is the document
+## Saving and Sharing via URL
 
-| Menu item | What it does |
+| Project menu item | Action |
 | --- | --- |
-| **New Project** | A blank grid, in a new tab, so what you have open is never taken away |
-| **Open** | Load a saved PMKS file from disk |
-| **Templates** | The mechanism library |
-| **Save** | Download the current mechanism as a `.pmks` file |
-| **Share Project** | Copy a link that reopens exactly what you are looking at |
+| **New Project** | Opens a blank grid in a new tab without closing your current work |
+| **Open** | Loads a saved `.pmks` file from disk |
+| **Templates** | Opens the mechanism library |
+| **Save** | Downloads the current mechanism as a `.pmks` file |
+| **Share Project** | Copies a URL that reopens the drawing and its document settings. Background images and device preferences are not included |
 
-Undo and redo are the same mechanism: the history is an array of these strings, and stepping back
-re-decodes an earlier one. So an undo restores the whole drawing at once (geometry, welds, locks,
-masses, colors and the document's settings) rather than reversing one field.
+Undo and redo use the same URL encoding: each history entry is a serialized snapshot, so undoing
+restores the entire drawing state (geometry, welds, locks, masses, colors, and document settings)
+consistently.
 
-One address does not carry a mechanism: **`app.pmksplus.com/?library`** opens on an empty grid with
-the mechanism library already up. It is the link to hand somebody who wants to browse rather than
-to be shown one particular linkage.
+To share the mechanism library directly rather than a single linkage, link to
+**`app.pmksplus.com/?library`**.
 
 ---
 
-## Mechanism library
+## Mechanism Library
 
-**47 mechanisms**, in eight sections, each one a mechanism the verification suite already covers.
-The library filters by section and by name; opening one on an empty grid loads it in place, and
-opening one over existing work offers a new tab, a replace (which is undoable), or a cancel.
+The built-in library includes **48 mechanisms** across eight categories, all covered by the
+automated verification suite. You can filter by category or search by name. Opening a template on a
+blank grid loads it immediately; opening one over an existing drawing prompts to open in a new
+tab, replace the current drawing (undoable), or cancel.
 
 ![The Mechanism Library dialog, filtered to the Start Here section](docs/images/readme/templates.png)
 
-*The top row below is running; the rest are stills. In the app every card animates when you hover
-it.*
+*The top row below is animated; in the app, every library card animates on hover.*
 
 <table>
 <tr>
-<td align="center"><img src="docs/images/readme/library/four-bar.gif" width="190" alt="Four-Bar"><br><b>Four-Bar</b></td>
-<td align="center"><img src="docs/images/readme/library/slider-crank.gif" width="190" alt="Slider-Crank"><br><b>Slider-Crank</b></td>
-<td align="center"><img src="docs/images/readme/library/whitworth.gif" width="190" alt="Whitworth Quick-Return"><br><b>Whitworth Quick-Return</b></td>
-<td align="center"><img src="docs/images/readme/library/jansen-leg.gif" width="190" alt="Jansen Leg"><br><b>Jansen Leg</b></td>
+<td align="center"><img src="src/assets/gifs/four-bar.gif" width="190" alt="Four-Bar"><br><b>Four-Bar</b></td>
+<td align="center"><img src="src/assets/gifs/slider-crank.gif" width="190" alt="Slider-Crank"><br><b>Slider-Crank</b></td>
+<td align="center"><img src="src/assets/gifs/whitworth.gif" width="190" alt="Whitworth Quick-Return"><br><b>Whitworth Quick-Return</b></td>
+<td align="center"><img src="src/assets/gifs/jansen-leg.gif" width="190" alt="Jansen Leg"><br><b>Jansen Leg</b></td>
 </tr>
 <tr>
 <td align="center"><img src="src/assets/gifs/slider-crank-inversions.png" width="190" alt="Slider-Crank Inversions"><br><b>Slider-Crank Inversions</b></td>
@@ -354,173 +355,169 @@ it.*
 </table>
 
 <details>
-<summary><b>The full library, by section</b></summary>
+<summary><b>Full mechanism list by category</b></summary>
 
-| Section | Mechanisms |
+| Category | Mechanisms |
 | --- | --- |
 | **Start Here** | Four-Bar · Slider-Crank · Cylinder-Driven Boom · Parallelogram · Four-Bar with Fixed Lengths · Four-Bar Inversions · Slider-Crank Inversions |
 | **Real Machines** | Aircraft Landing Gear · Car Hood Hinge · Excavator Bucket · Car Steering · Locking Pliers · Double-Wishbone Suspension · Steam Locomotive |
 | **Back-and-Forth Motion** | Scotch Yoke · Engine with a Flywheel · Radial Engine · Whitworth Quick-Return · Shaper Quick-Return · Pumpjack |
-| **Swing, Lift and Grip** | Windshield Wiper · Oscillating Fan · Parallel Gripper · Scissor Lift · Bracketed Hatch |
+| **Swing, Lift, and Grip** | Windshield Wiper · Oscillating Fan · Parallel Gripper · Scissor Lift · Bracketed Hatch |
 | **Drawing a Path** | Chebyshev Straight-Line · Watt’s Straight-Line · Peaucellier-Lipkin · Elliptical Trammel · Pantograph · Jansen Leg |
 | **Forces** | Punch Press · Toggle Clamp (in inches) · Crane with Two Loads · Offset Load Rocker · Reciprocating Saw · Slotted Tool Drive |
-| **Six-Bars and Beyond** | Bell Crank · Six-Bar with a Dwell · Watt I · Watt II · Stephenson III · Elliptical Crank · Double Butterfly |
+| **Six-Bars and Beyond** | Bell Crank · Six-Bar with a Dwell · Watt I · Watt II · Stephenson III · Elliptical Crank · Double Butterfly · Running Horse |
 | **Multiple Mechanisms** | Walking Pair · Pumping Field · Approximate and Exact |
 
 </details>
 
-There is also a five-step **tutorial**: draw a bar, extend it into a chain, ground the ends, make
-one joint the input, play it and read a velocity. It works out which step you are on by looking at
-the drawing rather than counting clicks, so it can start on a half-built mechanism and follow an
-undo backwards.
+A five-step interactive **tutorial** walks new users through building a four-bar, grounding two
+joints, assigning an input, animating it, and reading a velocity plot. Progress is tracked from the
+mechanism state itself rather than click counts, so it stays in sync if you edit ahead or undo.
 
 ---
 
-## Units, settings and keyboard
+## Units, Settings, and Keyboard Shortcuts
 
 <table>
 <tr><th align="left">Length</th><td>in · cm · m</td></tr>
-<tr><th align="left">Angle</th><td>degrees · radians</td></tr>
-<tr><th align="left">Force</th><td>lbf · N</td></tr>
-<tr><th align="left">Mass · inertia</th><td>lbm, g, kg, paired with the length unit</td></tr>
+<tr><th align="left">Mass · inertia</th><td>g · kg (metric, chosen independently of cm/m) · lbm (with in), paired with length² for inertia</td></tr>
+<tr><th align="left">Force · torque</th><td>N · kgf (metric) · lbf (with in), paired with length for torque</td></tr>
+<tr><th align="left">Angle</th><td>degrees (°) · radians (rad)</td></tr>
 <tr><th align="left">Input speed</th><td>RPM · deg/s · rad/s, or length/second for a linear drive</td></tr>
-<tr><th align="left">Presets</th><td>English · Metric · SI</td></tr>
 </table>
 
-Settings also hold gravity, the major and minor grid, snap-to-grid, snap-to-alignment, and the
-scale objects are drawn at. Snapping preferences are remembered on the machine.
+Settings also control **Gravity**, major and minor **Grid** lines, **Snap to Grid**, **Snap to
+Alignment**, and **Drawing Style** (**Standard**, **Fine**, or **Schematic**—all scaling cleanly as
+you zoom without affecting dimensions or analysis). Local preferences like snapping are saved on
+your device.
 
 <details>
 <summary><b>Keyboard shortcuts</b></summary>
 
 | | |
 | --- | --- |
-| **Modes** | <kbd>1</kbd> Synthesis · <kbd>2</kbd> Edit · <kbd>3</kbd> Kinematic · <kbd>4</kbd> Force |
-| **Playback** | <kbd>Space</kbd> play/pause · <kbd>←</kbd> <kbd>→</kbd> step a frame · <kbd>S</kbd> cycle speed |
-| **View** | <kbd>+</kbd> <kbd>−</kbd> zoom · <kbd>0</kbd> reset view · <kbd>M</kbd> centers of mass · <kbd>L</kbd> joint IDs · <kbd>P</kbd> traced paths |
-| **Editing** | <kbd>K</kbd> lock/unlock · <kbd>Esc</kbd> deselect · <kbd>Delete</kbd> delete · <kbd>Ctrl/⌘ Z</kbd> undo · <kbd>Ctrl/⌘ ⇧ Z</kbd> redo |
-| **General** | <kbd>,</kbd> Settings · <kbd>?</kbd> Help, and this list |
+| **Modes** | <kbd>1</kbd> Synthesis · <kbd>2</kbd> Edit · <kbd>3</kbd> Kinematic Analysis · <kbd>4</kbd> Force Analysis |
+| **Animation** | <kbd>Space</kbd> play/pause · <kbd>R</kbd> return to start · <kbd>←</kbd> <kbd>→</kbd> step a frame · <kbd>S</kbd> cycle speed |
+| **View** | <kbd>+</kbd> <kbd>−</kbd> zoom · <kbd>0</kbd> fit to view · <kbd>M</kbd> center of mass · <kbd>L</kbd> joint and force names · <kbd>P</kbd> traced paths |
+| **Editing** | <kbd>K</kbd> lock/unlock · <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> nudge selection · <kbd>Esc</kbd> deselect · <kbd>Delete</kbd> delete · <kbd>Ctrl/⌘ Z</kbd> undo · <kbd>Ctrl/⌘ ⇧ Z</kbd> redo |
+| **Modifier keys** | <kbd>Ctrl/⌘ + click</kbd> multi-select · <kbd>Alt/Option + drag</kbd> bypass snapping · <kbd>Alt/Option + click</kbd> 15° steps · <kbd>Alt/Option + arrows</kbd> coarse nudge · <kbd>Shift + drag</kbd> fine-tune numeric fields |
+| **General** | <kbd>,</kbd> Settings · <kbd>?</kbd> Help and shortcuts |
 
-Each shortcut is defined once, in one table, and the tooltip on the control it doubles asks that
-table for its keys, so a hint can never drift from the key that fires it.
+All shortcuts are defined in a single registry (`KeyboardShortcutsService`), and control tooltips
+read directly from it so displayed hints always match active keybindings.
 
 </details>
 
 ---
 
-## Before your first change
+## Before Your First Change
 
-**Read [`docs/environment.md`](docs/environment.md) before your first change.** One rule
-from it applies to every line you write, so it is worth knowing up front: this codebase is
-[American English throughout](docs/code-style.md#spelling-american-everywhere) — `center`,
-`color`, `gray`, `analyze` — in identifiers as much as in prose, and the rule lives in
-[`docs/code-style.md`](docs/code-style.md#spelling-american-everywhere) with the word list.
-Between them, the four reference documents under `docs/` collect the surprises that have already
-cost somebody an afternoon; each one opens by saying which it covers.
-
-**Add to it as you learn.** A surprise nobody writes down is one the next person pays for again, so
-when something costs you an hour, spend two more minutes writing it into
+**Read [`docs/environment.md`](docs/environment.md) before making your first change.** One codebase
+convention applies everywhere: use
+[American English](docs/code-style.md#spelling-american-everywhere) (`center`, `color`, `gray`,
+`analyze`) in both identifiers and user-facing copy. The docs under `docs/` cover local setup, code
+style, UI conventions, and known gotchas—if you hit a non-obvious issue, please document it in
 [`docs/short-notes.md`](docs/short-notes.md).
 
 ---
 
 ## Verification
 
-The solvers are not trusted because they look right.
+See [**pmksplus.com/validation**](https://pmksplus.com/validation) and
+[`docs/numerical-oracle-plan.md`](docs/numerical-oracle-plan.md) for full methodology, tolerances,
+and known limits.
 
-**Against MATLAB.** Five mechanism configurations from the reviewed reference contract in
-[PMKS-Web/PMKS_Verification](https://github.com/PMKS-Web/PMKS_Verification), namely a slider-crank
-with a tracer, Stephenson III, Watt I and two teaching-lab cases, are rebuilt with the PMKS model
-classes and compared row by row against MATLAB output at **one-degree increments of the input
-crank**. Joint and angular kinematics are covered in all five; center-of-mass kinematics in three;
-full dynamics in two. The data is generated from a pinned commit and committed, so CI needs no
-network.
+- **Independent multibody oracle (Exudyn):** All **202 mechanisms** (every library template and
+  verification fixture) are evaluated independently from their raw shareable URLs using
+  [Exudyn](https://exudyn.readthedocs.io/), and both solvers agree on first- and second-order
+  degrees of freedom for every one. Of those, 154 are solved and compared in kinematics and forces
+  (250,000+ motion samples and nearly 160,000 force samples), 43 are mechanisms both solvers
+  agree cannot run, and 5 are documented exclusions. Reference outputs are committed so CI runs
+  every check without extra runtime dependencies.
+- **MATLAB reference suite:** Five mechanism configurations from
+  [PMKS-Web/PMKS_Verification](https://github.com/PMKS-Web/PMKS_Verification) (a slider-crank with
+  a tracer, Stephenson III, Watt I, and two teaching-lab cases) are compared row by row against
+  MATLAB output at 1° input-crank increments, covering joint/angular kinematics in all five, CoM
+  kinematics in three, and full dynamics in two.
+- **Analytical and invariant suites:** Over 100 verification specs assert closed-form kinematic
+  identities (Chebyshev straight-line midpoint, radial engine stroke, Jansen leg gait, etc.)
+  alongside power-balance, mobility, assembly-branch, slot-tangency, and redundant-constraint
+  checks.
+- **Browser E2E tests:** Playwright suites exercise context menus, drag and snap gestures,
+  wall-clock playback timing, and template graph consistency against finite-difference derivatives.
 
-**Against itself.** Around a hundred verification suites assert closed-form answers for named
-mechanisms: the Chebyshev midpoint really is straight, the radial engine's piston stroke really is
-twice the crank throw, the Jansen leg really walks. Alongside those sit mobility, assembly-branch,
-slot-tangency and redundant-constraint cases that are easy to get subtly wrong.
-
-**In a real browser.** Playwright suites drive the actual app: every context-menu action on every
-kind of part, drag gestures and snapping, playback timing measured against the wall clock, the
-graphs of every template cross-checked against difference quotients of the series above them.
-
-Measured September 2026:
+Measured November 2026:
 
 | | |
 | --- | --- |
-| Application source | ~79,000 lines of TypeScript |
-| Unit + verification specs | 232 files (~45,000 lines) |
-| Browser-driven scripts | every one in `e2e/`, listed with what it covers in [`e2e/README.md`](e2e/README.md) |
+| Application source | ~100,000 lines of TypeScript |
+| Unit + verification specs | 368 files (~71,000 lines) |
+| Exudyn oracle coverage | 202 mechanisms (154 verified · 43 unrunnable agreement · 5 documented exclusions) |
 | MATLAB reference cases | 5 |
-| Mechanisms published as links | every gallery fixture, in [`docs/fixture-urls.md`](docs/fixture-urls.md) |
+| Browser E2E scripts | Listed with coverage in [`e2e/README.md`](e2e/README.md) |
+| Published fixture links | Every gallery fixture in [`docs/fixture-urls.md`](docs/fixture-urls.md) |
 
-The gallery is published as URLs because a fixture is a TypeScript object and the app only speaks
-URLs. Without it, a reviewer has to rebuild a linkage by hand to see what a failing test is about. A
-spec fails if the generated file is stale, so adding a mechanism to the gallery without regenerating
-cannot slip through.
+Every verification gallery fixture is also published as a clickable URL in
+[`docs/fixture-urls.md`](docs/fixture-urls.md) so reviewers can open failing test cases directly in
+PMKS. A unit test fails if that generated file falls out of date.
+
+### Publications
+
+- [A Tool to Analyze and Synthesize Planar Mechanisms](https://peer.asee.org/a-tool-to-analyze-and-synthesize-planar-mechanisms) — *ASEE Annual Conference, 2022*
+- [Improving Features and User Experience of a Web-Based Linkage Analysis Tool Through User Studies](https://peer.asee.org/improving-features-and-user-experience-of-a-web-based-linkage-analysis-tool-through-user-studies) — *ASEE Annual Conference, 2025*
+- [Laboratory on Experimental Verification of Four-Bar and Crank-Slider Linkages in a Senior-Level Design and Modeling Course](https://peer.asee.org/laboratory-on-experimental-verification-of-four-bar-and-crank-slider-linkages-in-a-senior-level-design-and-modeling-course) — *ASEE Annual Conference, 2026*
 
 ---
 
-## Philosophy
+## Design Principles
 
-The project has named the same four principles since it started: **education, flexibility,
-collaboration, accessibility**. Stated like that they are a mission statement, and a mission
-statement explains nothing about a codebase. What they actually amount to, in the source, is four
-fairly specific rules, and between them those four explain most of the decisions in the sections
-either side of this one.
+Four engineering constraints shape most of the codebase:
 
 ### 1. A mechanism is a URL
 
-The whole mechanism packs into one compact URL-safe string: every joint, link, force, weld, lock,
-mass and color, plus the document settings that go with them. That one encoding does three jobs
-at once: **sharing**, **saving**, and **undo/redo** (an undo step *is* a previous URL, decoded
-again). Nothing is stored on a server, so nothing can be lost, expire, or require a login. Share
-Project hands you the link; the app decodes it on load and then clears it out of the address bar,
-so what you see there is never a stale copy of what is on the grid.
+Every joint, link, force, weld, lock, mass, color, and document setting serializes into one compact
+URL-safe string. That single representation powers **sharing**, **saving**, and **undo/redo**. When
+you open a shared link, PMKS decodes it and clears the query string from the address bar so the URL
+doesn't go stale as you edit.
 
-Two things deliberately stay outside it: a **background image**, which is a whole photograph, and
-the preferences that belong to *you* rather than to the drawing, such as snapping and centers of
-mass, which are remembered on the machine instead.
+Background images (which can be large photos) and device preferences (such as snapping and center
+of mass visibility) stay outside the URL.
 
-The consequence is a compatibility promise: **the encoding is a public surface**. Changing it
-breaks links other people already sent, so an older build refuses a link written by a newer one
-rather than silently misreading it, and every codec change is defended by round-trip tests.
+Because shared URLs are a public compatibility surface, codec changes are guarded by round-trip
+tests, and older builds reject links created by newer incompatible versions rather than misreading
+them.
 
-### 2. Say what is wrong, and say the way out
+### 2. Explain disabled actions
 
-A grayed-out button that will not explain itself is a dead end for a student. So a refusal in PMKS
-carries its reason in the same row. Wherever a rule is enforced somewhere real, the row quotes that
-code (`describeActuatorRefusal`, `weldRefusal`, `locksHolding`) rather than restating it, so the
-menu and the model cannot drift apart.
+Disabled controls should tell you why they're unavailable and what to do instead. Context-menu
+refusals read directly from the model rules (`describeActuatorRefusal`, `weldRefusal`,
+`locksHolding`) so the menu and the edit panel stay consistent.
 
-<img alt="Context menus showing refusals: 'unlock first', 'part is sealed'" src="docs/images/context-menu/refusals.png" width="820">
+<img alt="Three right-click menus with grayed rows and their reasons: '2 links share it', 'needs 2 links', 'inside a cylinder', 'ground an end joint instead'" src="docs/images/context-menu/refusals.png" width="820">
 
-The same rule governs the analysis modes. A mode that cannot run does not go quiet; its tab carries
-a **chip** counting what is missing, and pressing the tab opens a list of exactly what, usually with
-a button that takes you to the part at fault.
+Analysis tabs follow the same pattern: when a mode isn't ready, its badge shows the number of
+remaining issues, and clicking it opens a checklist linking directly to the affected parts.
 
-### 3. One thing, one name
+### 3. Consistent UI vocabulary
 
-There is a written vocabulary the whole UI is held to
-([`docs/ui-vocabulary.md`](docs/ui-vocabulary.md)): **Add** on the bare grid, **Attach** on an
-existing part, **Weld**/**Unweld**, **Delete** for everything that is removed. Controls are Title
-Case; everything else is a sentence written to the person, about *their* mechanism, not about the
-program.
+User-facing copy follows [`docs/ui-vocabulary.md`](docs/ui-vocabulary.md): **Add** on the blank
+grid, **Attach** on an existing part, **Delete** for removal, and one canonical term per concept
+(**Reference Frame** with **Link** / **Grid**, **Revolute** / **Prismatic** / **Pin-in-slot** / **Welded**,
+**Return to Start**). Control labels use Title Case; messages and tooltips use plain, direct
+sentences.
 
 > Instead of `Cannot edit while in Synthesis mode` → **`Switch to Edit mode to change the mechanism.`**
 
-### 4. Every claim is checkable
+### 4. Independently verified solvers
 
-Which is what the section above is for. Two things follow from taking it seriously. The solvers
-are held to numbers produced somewhere else, by something else: MATLAB, at one-degree increments,
-committed rather than fetched. And every mechanism the suite is built on is **published as a
-clickable link** ([`docs/fixture-urls.md`](docs/fixture-urls.md)), so a reviewer can open the
-exact machine a failing test is about instead of rebuilding it from coordinates in a spec file.
+Solver accuracy is tested against independent tools (Exudyn across 202 mechanisms, 154 of them
+solved and compared, and MATLAB across 5 reference cases), with reference outputs committed to the repo for CI. Every gallery fixture is
+also published as a clickable link in [`docs/fixture-urls.md`](docs/fixture-urls.md) for quick
+visual inspection.
 
 ---
 
-## How it works
+## Architecture
 
 ```
                     ┌──────────────────────────────────────┐
@@ -528,12 +525,13 @@ exact machine a failing test is about instead of rebuilding it from coordinates 
                     └───────────────────┬──────────────────┘
                                         │
                     ┌───────────────────▼──────────────────┐
-                    │  MechanismService                    │  the editable drawing:
+                    │  MechanismService                    │  editable drawing:
                     │  joints · links · forces at t = 0    │  create · delete · weld ·
                     └───────────────────┬──────────────────┘  ground · slider · drive
                                         │
                     ┌───────────────────▼──────────────────┐
-                    │  partition into independent machines │  M1, M2, M3…
+                    │  partition into independent          │  M1, M2, M3…
+                    │  mechanisms                          │
                     └───────────────────┬──────────────────┘
                                         │
       ┌───────────────┬─────────────────┼─────────────────┬──────────────────┐
@@ -547,24 +545,23 @@ exact machine a failing test is about instead of rebuilding it from coordinates 
                     └──────────────────────────────────────┘
 ```
 
-- **State lives in root services**, not in components. `MechanismService` owns the editable
-  drawing; each partition is deep-copied into a `Mechanism` which, if that machine solves, walks
-  its whole cycle up front so scrubbing is a lookup rather than a solve. A large drawing defers
-  that work while you are still editing, and picks it up when you ask for an analysis.
-- **Undo is a previous URL, re-decoded.** `SaveHistoryService` is an array of encoded strings.
-- **Angular 22, fully standalone.** No `NgModule` anywhere; components declare their own imports.
-- **The canvas is one SVG** with pan/zoom, and the right-click menu is built in a service from what
-  was clicked plus the current mode, so the menu, the properties panel and the drag ring cannot
-  disagree about what is allowed.
+- **State lives in root services.** `MechanismService` owns the editable drawing; each partition is
+  copied into a `Mechanism` that solves its full cycle up front so scrubbing is an instant lookup.
+  Large drawings defer full solves while editing and solve on demand when entering analysis.
+- **Undo/redo uses URL snapshots.** `SaveHistoryService` stores an array of encoded mechanism URLs.
+- **Standalone Angular 22.** No `NgModule`s; all components declare their own imports.
+- **Single SVG canvas with centralized permissions.** `ContextMenuBuilderService` builds menus from
+  the clicked target and active mode, sharing permission checks with the Edit panel and canvas
+  gestures.
 
-A fuller map of the codebase, and the conventions it is held to, is in
-[`CLAUDE.md`](CLAUDE.md) and [`AGENTS.md`](AGENTS.md).
+See [`CLAUDE.md`](CLAUDE.md) and [`AGENTS.md`](AGENTS.md) for a fuller map of the codebase and
+conventions.
 
 ---
 
 ## Development
 
-Requires **Node 22.22.3+, 24.15+ or 26+**, the range the Angular 22 toolchain declares.
+Requires **Node 22.22.3+, 24.15+, or 26+** (`.nvmrc` pins Node 24).
 
 ```bash
 git clone https://github.com/PMKS-Web/PMKS.git
@@ -573,99 +570,91 @@ npm ci
 npm start          # http://localhost:4200
 ```
 
-| Command | Does |
+| Command | Description |
 | --- | --- |
 | `npm start` | Dev server with live reload |
 | `npm run build` | Production build into `dist/pmksweb` |
-| `npm test -- --watch=false` | The Vitest suite (drop the flag for watch mode) |
-| `npm run check` | The three linters CI runs: ESLint, stylelint and Prettier |
-| `npm run format` | Prettier over everything it can read |
-| `npm run storybook` | The component gallery and the UI guides, at http://localhost:6006 |
+| `npm test -- --watch=false` | Run the Vitest suite (omit the flag for watch mode) |
+| `npm run check` | Run all CI linters: ESLint, stylelint, and Prettier |
+| `npm run format` | Format the repository with Prettier |
+| `npm run storybook` | Launch the component gallery and UI guides at `http://localhost:6006` |
 | `npm run fixture-urls` | Regenerate [`docs/fixture-urls.md`](docs/fixture-urls.md) |
-| `npm run template-payloads` | Regenerate the mechanism library's payloads |
-| `node e2e/readme-shots.mjs` | Regenerate the screenshots in this file |
+| `npm run template-payloads` | Regenerate mechanism library payloads |
+| `npm run brand` | Regenerate unified PMKS logos, icons, favicons, and social card (see [`docs/brand.md`](docs/brand.md)) |
+| `node e2e/readme-shots.mjs` | Regenerate the screenshots embedded in this README |
 
-Browser-driven suites live in [`e2e/`](e2e/README.md) and run under plain Node. Playwright is a
-devDependency; `netlify.toml` stops deploy installs from downloading a browser for it. Use `nvm use`
-first: `.nvmrc` pins Node 24.
-
-**On formatting:** everything Prettier can read is formatted, and CI checks it. Run
-`npm run format` before you push; `.editorconfig` keeps your editor in step.
-
-The rest of what is worth knowing before you start is in
-[`docs/environment.md`](docs/environment.md), linked above.
+Playwright E2E scripts live in [`e2e/`](e2e/README.md) and run directly with Node (`netlify.toml`
+skips Playwright browser downloads during Netlify deploys). Run `npm run format` before pushing so
+Prettier checks pass in CI. See [`docs/environment.md`](docs/environment.md) for additional setup
+notes.
 
 ### Branches and deploys
 
-- **Open pull requests against `staging`.** The team opens a release pull request from `staging`
-  to `main` by hand when a release is ready.
-- **Never push to `main`.** It is the production branch for
+- **Target `staging` for all pull requests.** Releases are promoted from `staging` to `main` via a
+  dedicated release PR.
+- **Do not push directly to `main`.** `main` is the production branch for
   [app.pmksplus.com](https://app.pmksplus.com).
-- **Automatic publishing to production is paused in Netlify.** Nothing reaches app.pmksplus.com
-  until someone publishes it by hand, so being on `main` does not mean being live.
-- A pull request into `staging` or `main` gets a preview at
+- **Production deploys are manual in Netlify.** Merging to `main` does not publish automatically
+  until a deploy is triggered in Netlify.
+- PRs into `staging` or `main` get deploy previews at
   `https://deploy-preview-NNN--pmksprod.netlify.app`, and `staging` publishes to
-  `https://staging--pmksprod.netlify.app`. Other branches are not deployed.
-- CI runs ESLint, stylelint, a Prettier check, the unit suite, the production build, the gallery
-  build and `git diff --check` on every pull request, and a pull request into `staging` or `main`
-  cannot merge until it passes.
-- The `version` in `package.json` is what Settings shows to a user; raise it in the PR that ships
-  a release.
+  `https://staging--pmksprod.netlify.app`.
+- CI runs ESLint, stylelint, Prettier, unit tests, the production build, Storybook build, and
+  `git diff --check` on every PR.
+- `package.json`'s `version` field is displayed in Settings; bump it in the release PR.
 
 ---
 
 ## Contributing
 
-Work happens on the [project board](https://github.com/orgs/PMKS-Web/projects/1). Fork, branch
-from `staging`, and open a pull request against `staging`; the template asks why, what changed
-and how it was verified.
+Tracked work lives on the [project board](https://github.com/orgs/PMKS-Web/projects/1). Fork,
+branch from `staging`, and open a PR targeting `staging` with a brief summary of why the change is
+needed, what changed, and how it was verified.
 
-What we ask of a change:
+Guidelines:
 
-1. **Comment *why*, not *how*.** The code should say what it does; the comment should say why it
-   had to be that way. Most files here open with a paragraph explaining the decision behind them;
-   match that.
-2. **Give each file one responsibility.** Split a file when it does two things, never to fit a
-   line count, and keep functions short. [docs/code-style.md](docs/code-style.md) has the full
-   guide, including how this codebase writes Angular; `npm run check` runs the linters.
-3. **Follow Angular naming**: `foo-bar.service.ts`, `FooBarComponent`, `app-` selector prefix.
-4. **Add the mechanism to the fixtures**, not to a spec. New linkages go in `FIXTURE_GALLERY` so
-   they get a published URL.
-5. **Do not change the URL codec casually.** Links other people have already sent are a
-   compatibility surface.
-6. **For anything a reader sees, follow the UI style guide.**
-   [docs/ui-style-guide.md](docs/ui-style-guide.md) says how a control behaves, moves and is
-   worded, [docs/ui-vocabulary.md](docs/ui-vocabulary.md) holds the words, and the gallery
-   (`npm run storybook`, hosted at [docs.pmksplus.com](https://docs.pmksplus.com)) shows the
-   blocks to build from. The pull request template carries the UI checklist.
+1. **Comment *why*, not *how*.** Keep code self-explanatory and use comments to explain design
+   constraints and trade-offs.
+2. **Keep files focused.** Split files by responsibility and keep functions concise. See
+   [`docs/code-style.md`](docs/code-style.md) for Angular and TypeScript conventions; run
+   `npm run check` to verify.
+3. **Follow Angular naming conventions:** `foo-bar.service.ts`, `FooBarComponent`, `app-` selector
+   prefix.
+4. **Add test mechanisms to `FIXTURE_GALLERY`** rather than inline in a spec so they automatically
+   get published URLs and oracle coverage.
+5. **Treat the URL codec as a public contract.** Avoid breaking existing shared links.
+6. **Follow the UI guides for user-facing changes:** [`docs/ui-style-guide.md`](docs/ui-style-guide.md)
+   covers interaction and layout rules, [`docs/ui-vocabulary.md`](docs/ui-vocabulary.md) defines UI
+   terminology, and Storybook (`npm run storybook` / [docs.pmksplus.com](https://docs.pmksplus.com))
+   documents reusable UI blocks.
 
 ---
 
-## License and contact
+## License and Contact
 
-MIT. The full text is in [LICENSE](LICENSE) at the root of this repository.
+MIT License — see [LICENSE](LICENSE) for the full text.
 
-Questions, bug reports and course-adoption enquiries: **help@pmksplus.com**, or the feedback form
-inside the app (Help / Feedback in the project menu).
+For questions, bug reports, or course-adoption inquiries, email **help@pmksplus.com** or use the
+in-app feedback form (**Help** in the project menu).
 
 ---
 
 ## Supporting PMKS
 
-PMKS is free and will stay free: no account, no paid tier, nothing held back. If it has been
-useful to you or your class, you can chip in at **[ko-fi.com/pmksapp](https://ko-fi.com/pmksapp)**.
-100% of donations, after the payment processor's fee, go toward funding PMKS: hosting,
-development, outreach and the like.
+PMKS is free and open source, with no accounts or paid tiers. If it has been helpful for you or
+your class, you can support hosting and maintenance at **[ko-fi.com/pmksapp](https://ko-fi.com/pmksapp)**.
+100% of donations (after payment-processor fees) go directly toward hosting, development, and
+outreach.
 
-Donations are received by the project's maintainer, not by Worcester Polytechnic Institute. They
-are not tax-deductible, and they buy nothing: every donor and non-donor gets the same app.
+Donations go to the project's maintainer rather than Worcester Polytechnic Institute, are not
+tax-deductible, and do not unlock extra features—everyone gets the same app.
 
 ---
 
 ## Acknowledgements
 
-PMKS is based on the **original PMKS**, developed by **Prof. Matthew I. Campbell**, Professor of Mechanical
-Engineering, Oregon State University.
+PMKS is based on the **original PMKS**, developed by **Prof. Matthew I. Campbell**, Professor of
+Mechanical Engineering, Oregon State University.
 
 ### Faculty
 
@@ -691,6 +680,6 @@ Engineering, Oregon State University.
 
 <div align="center">
 
-**[Open PMKS →](https://pmksplus.com)**
+**[Open PMKS →](https://app.pmksplus.com)** &nbsp;·&nbsp; **[pmksplus.com](https://pmksplus.com)**
 
 </div>

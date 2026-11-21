@@ -37,16 +37,24 @@ import { TEMPLATE_LINKAGES as payloads } from './template-payloads.mjs';
 
 /** One picture: what to open, what to do, and where to point the camera. */
 const SHOTS = [
+  // The README shows this one framed, as hero-framed.png: after retaking it,
+  // wrap it again at browserframe.com (Chrome · Mac · Light, default settings).
+  // A 1440x855 window at 2x is a laptop screen, and keeps the frame's toolbar
+  // as thin beside the app as it is in a real browser.
   {
     name: 'hero',
     template: 'Jansen_Leg',
-    width: 1600,
-    height: 950,
+    width: 1440,
+    height: 855,
+    scale: 2,
     steps: [
       ['tab', 'Kinematic'],
       ['traces'],
       ['play', 2200],
       ['selectJoint', 'F'],
+      // The foot's velocity, drawn along its path.
+      ['click', 'app-analysis-panel app-view-button[data-switch="velocity"] .viewButton'],
+      ['wait', 600],
       ['expandGraphs', 1],
       ['resetView'],
       ['park'],
@@ -284,7 +292,7 @@ for (const shot of SHOTS) {
   const context = await browser.newContext({
     viewport: { width: shot.width ?? 1500, height: shot.height ?? 950 },
     // Enough for a retina reader without a multi-megabyte file in the repo.
-    deviceScaleFactor: 1.2,
+    deviceScaleFactor: shot.scale ?? 1.2,
   });
   // The tutorial card is offered to a first-time reader and would otherwise sit
   // over the panel in every picture.
