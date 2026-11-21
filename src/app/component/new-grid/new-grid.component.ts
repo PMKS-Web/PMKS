@@ -52,6 +52,7 @@ import {
   MenuHandlers,
 } from '../../services/context-menu-builder.service';
 import { holdsValue, Link, RealLink } from '../../model/link';
+import { groupTransformRefusal } from '../../model/group-transform-refusal';
 import { Lockable } from '../../model/lock-set';
 import { Joint, PrisJoint, RealJoint, RevJoint } from '../../model/joint';
 import { Coord } from '../../model/coord';
@@ -158,7 +159,7 @@ import { KeyboardShortcutsService, ShortcutId } from '../../services/keyboard-sh
 import { INK_FLIPS_AT, luminanceOf } from '../../model/contrast';
 import { CanvasLabel, CanvasLabelsService } from '../../services/canvas-labels.service';
 import { SELECTION_RING } from '../../model/joint-colors';
-import { isAdditiveSelectionGesture, SelectedPart } from '../../model/selection';
+import { getsSelectionBox, isAdditiveSelectionGesture, SelectedPart } from '../../model/selection';
 import {
   captureSelectionTransform,
   canonicalSelectionClosure,
@@ -1174,15 +1175,16 @@ export class NewGridComponent implements OnDestroy {
     if (event && event.button !== 0) return;
     if (
       this.tabService.getCurrentTab() === TabID.EDIT &&
-      // A force is one of them: eight of them can be given one magnitude, one
-      // frame or one color in a single press, which is the whole reason a
-      // group selection exists. What it does not join is the geometry -- where
-      // a force is, is decided by the body it is on.
+      // A force is selected through the part selection too, alone: see below.
       (clickedObj instanceof RealJoint ||
         clickedObj instanceof RealLink ||
         clickedObj instanceof Force)
     ) {
       if (
+        // A force does not join a group from the canvas: a group is what the
+        // box moves, turns and resizes, and a force brings none of that, so
+        // Cmd/Ctrl on one is a plain click (#295 review).
+        !(clickedObj instanceof Force) &&
         isAdditiveSelectionGesture(
           { ctrlKey: event?.ctrlKey ?? false, metaKey: event?.metaKey ?? false },
           navigator.platform
@@ -1294,7 +1296,8 @@ export class NewGridComponent implements OnDestroy {
     // `mechanismTimeStep` was the shared clock, which reads zero while an
     // unsynced machine is parked mid-cycle -- so the handles appeared over a
     // displaced drawing and every other surface disagreed with them.
-    if (this.activeObjService.selectedParts.length < 2 || !this.permission.may('drag')) {
+    const { selectedParts, selectedTogether } = this.activeObjService;
+    if (!getsSelectionBox(selectedParts, selectedTogether) || !this.permission.may('drag')) {
       return undefined;
     }
     const closure = canonicalSelectionClosure(
@@ -1573,11 +1576,8 @@ export class NewGridComponent implements OnDestroy {
     if (!result.applied) {
       if (!gesture.refusalShown) {
         gesture.refusalShown = true;
-        const names = result.lockedJointIds.join(', ');
-        this.notify.refusal(
-          'selection.transform-locked',
-          `The selection is held by ${names || 'a Lock'}. Unlock it before transforming the group.`
-        );
+        const refusal = groupTransformRefusal(result, gesture.mode, this.mechanismSrv.joints);
+        this.notify.refusal(refusal.key, refusal.text);
       }
       return true;
     }
@@ -1876,9 +1876,8 @@ export class NewGridComponent implements OnDestroy {
     // base or the head leaves that end selected, and a body grab that kept
     // it dragged that one end to the pointer instead of the whole arrow.
     //
-    // Only the marks are cleared. Which forces are selected is
-    // `setLastLeftClick`'s to decide: replacing the selection here first left a
-    // Cmd/Ctrl-click nothing to add to, so forces could not join a group.
+    // Only the marks are cleared. Which part is selected is `setLastLeftClick`'s
+    // to decide, the same path joints and links take.
     force.isStartSelected = false;
     force.isEndSelected = false;
     const at = this.svgGrid.screenToModelFromXY(event.clientX, event.clientY);

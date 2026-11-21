@@ -859,8 +859,8 @@ describe('NewGridComponent typed multi-selection', () => {
     }
   });
 
-  it('Meta-click on a force body adds it to the selection instead of replacing it (#290)', () => {
-    const { component, active, mechanism, link } = setUpSelection();
+  it('treats Meta-click on a force as a plain click: a force does not join a group', () => {
+    const { component, active, mechanism, a, b, link } = setUpSelection();
     const force = (id: string, x: number) =>
       new Force(id, link, new Coord(x, 0), new Coord(x, MODEL_SCALE));
     const f1 = force('F1', 0.5 * MODEL_SCALE);
@@ -877,13 +877,41 @@ describe('NewGridComponent typed multi-selection', () => {
     try {
       press(f1, {});
       press(f2, { metaKey: true });
-      expect(active.selectedPartRefs).toEqual([
-        { kind: 'force', id: 'F1' },
-        { kind: 'force', id: 'F2' },
-      ]);
-
-      press(f1, { metaKey: true });
       expect(active.selectedPartRefs).toEqual([{ kind: 'force', id: 'F2' }]);
+      expect(active.objType).toBe('Force');
+
+      // Nor does it join, or end, a group of joints: it is selected on its own.
+      component.setLastLeftClick(a, new MouseEvent('pointerdown', { metaKey: true }));
+      component.setLastLeftClick(b, new MouseEvent('pointerdown', { metaKey: true }));
+      press(f1, { metaKey: true });
+      expect(active.selectedPartRefs).toEqual([{ kind: 'force', id: 'F1' }]);
+    } finally {
+      Object.defineProperty(navigator, 'platform', { configurable: true, value: oldPlatform });
+    }
+  });
+
+  it('draws the box round one link picked with Meta, but not one picked plainly or a lone joint', () => {
+    const { fixture, component, active, a, link } = setUpSelection();
+    const oldPlatform = navigator.platform;
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' });
+    try {
+      component.setLastLeftClick(link, new MouseEvent('pointerdown'));
+      fixture.detectChanges();
+      expect(component.selectionBounds()).toBeUndefined();
+
+      // Resizing a link should not need a second part beside it (#295 review).
+      component.setLastLeftClick(link, new MouseEvent('pointerdown', { metaKey: true }));
+      component.setLastLeftClick(link, new MouseEvent('pointerdown', { metaKey: true }));
+      fixture.detectChanges();
+      expect(active.selectedPartRefs).toEqual([{ kind: 'link', id: link.id }]);
+      expect(component.selectionBounds()).toBeDefined();
+      expect(fixture.nativeElement.querySelector('.selectionBounds')).not.toBeNull();
+
+      // A joint alone has nothing to turn or resize, Meta or not.
+      component.setLastLeftClick(a, new MouseEvent('pointerdown', { metaKey: true }));
+      fixture.detectChanges();
+      expect(active.selectedPartRefs).toEqual([{ kind: 'joint', id: 'A' }]);
+      expect(component.selectionBounds()).toBeUndefined();
     } finally {
       Object.defineProperty(navigator, 'platform', { configurable: true, value: oldPlatform });
     }

@@ -248,6 +248,40 @@ describe('selection affine snapshot', () => {
     expect([scene.a.x, scene.a.y, scene.b.x, scene.b.y]).toEqual([0, 0, 2, 0]);
   });
 
+  it('refuses a resize that would change a held length, and a turn that would change a held angle', () => {
+    const scene = twoBars();
+    scene.ab.hold = 'length';
+    scene.bc.hold = 'angle';
+    const snapshot = captureSelectionTransform([scene.ab, scene.bc], scene.joints, scene.links);
+
+    // Unlock first (#295 review): the box does not bend what a bar holds.
+    const resized = snapshot.apply({ scale: 2 });
+    expect(resized.applied).toBe(false);
+    expect(!resized.applied && resized.reason).toBe('held');
+    expect(
+      !resized.applied && resized.brokenHolds?.map((hold) => [hold.link.id, hold.values.join(',')])
+    ).toEqual([['AB', 'length']]);
+    expect([scene.b.x, scene.c.x]).toEqual([2, 4]);
+
+    const turned = snapshot.apply({ rotation: Math.PI / 4 });
+    expect(
+      !turned.applied && turned.brokenHolds?.map((hold) => [hold.link.id, hold.values.join(',')])
+    ).toEqual([['BC', 'angle']]);
+    expect([scene.b.y, scene.c.y]).toEqual([0, 0]);
+
+    // A move changes neither, so it goes through.
+    expect(snapshot.apply({ translation: { x: 1, y: 1 } }).applied).toBe(true);
+  });
+
+  it('refuses a held bar stretched by moving only one of its joints', () => {
+    const scene = twoBars();
+    scene.bc.hold = 'length';
+    const snapshot = captureSelectionTransform([scene.ab], scene.joints, scene.links);
+
+    const result = snapshot.apply({ scale: 2, pivot: { x: 0, y: 0 } });
+    expect(!result.applied && result.brokenHolds?.map((hold) => hold.link.id)).toEqual(['BC']);
+  });
+
   it('moves a selected slider like any other joint', () => {
     const slider = new PrisJoint('P', 1, 1);
     const far = new RevJoint('E', 3, 1);

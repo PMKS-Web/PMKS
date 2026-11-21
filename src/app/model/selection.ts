@@ -6,11 +6,11 @@ import { Link, RealLink } from './link';
  * What a reader can pick out of the drawing and act on as a group.
  *
  * A force is one of them, and it is the odd one: joints and links are
- * *geometry*, and a force is a reading anchored to a body. It joins the
- * selection so that eight of them can be given one magnitude, one frame or one
- * color in a single press -- and it brings no geometry of its own to a group
- * drag, because where a force is is decided by the link it is on. A selection
- * that is nothing but forces therefore has nothing to drag, and says so.
+ * *geometry*, and a force is a reading anchored to a body. It is selected
+ * through here alone, and the canvas does not add one to a group (#295
+ * review): it brings no geometry to the box's move, turn or resize, because
+ * where a force is is decided by the link it is on. A selection that is
+ * nothing but forces therefore has nothing to drag, and says so.
  */
 export type SelectedPart = RealJoint | RealLink | Force;
 export type SelectedPartKind = 'joint' | 'link' | 'force';
@@ -49,6 +49,19 @@ export function isAdditiveSelectionGesture(
   platform: string = typeof navigator === 'undefined' ? '' : navigator.platform
 ): boolean {
   return /Mac|iPhone|iPad|iPod/i.test(platform) ? event.metaKey : event.ctrlKey;
+}
+
+/**
+ * Whether the selection gets the box that moves, turns and resizes it: two
+ * parts or more, or one link picked with Cmd/Ctrl, because resizing a link
+ * should not need a second one beside it (#295 review). A plain click on a
+ * link is a selection to edit, not a group, and a lone joint has nothing to
+ * turn or resize.
+ */
+export function getsSelectionBox(parts: readonly SelectedPart[], pickedTogether: boolean): boolean {
+  return (
+    parts.length >= 2 || (parts.length === 1 && parts[0] instanceof RealLink && pickedTogether)
+  );
 }
 
 /** Roots plus every leaf of every compound, without making the top-level array lie. */

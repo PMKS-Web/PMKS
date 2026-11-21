@@ -61,7 +61,7 @@ const joints = (ids) =>
 
 const clickWith = async (selector, key) => {
   const at = await center(selector);
-  const modifiers = key === 'Control' ? { ctrlKey: true } : { metaKey: true };
+  const modifiers = key === 'Control' ? { ctrlKey: true } : key === 'Meta' ? { metaKey: true } : {};
   await page.locator(selector).dispatchEvent('pointerdown', {
     bubbles: true,
     cancelable: true,
@@ -165,6 +165,18 @@ check(
   'Control-click on a link while joints are selected starts a link selection',
   JSON.stringify(await selection()) === JSON.stringify(['link:ACT']),
   JSON.stringify(await selection())
+);
+// One link is enough to resize (#295 review), when it was picked with Control.
+check(
+  'and that one link gets the move-and-scale box',
+  (await page.locator('.selectionBounds').count()) === 1
+);
+// Dispatched on the link itself: a pointer click at its center lands on its
+// center-of-mass mark instead.
+await clickWith('#ACT', null);
+check(
+  'while a link picked with a plain click does not',
+  (await page.locator('.selectionBounds').count()) === 0
 );
 await page.click('#joint_C');
 check(
@@ -530,15 +542,29 @@ check(
   heldAngle.OA === 'both' && heldAngle.CD === 'both' && heldAngle.ACT === null,
   JSON.stringify(heldAngle)
 );
+// Held, the box may move the bars but not resize them (#295 review): the
+// reader turns off Fixed Length first.
+{
+  const before = await joints(['O', 'A', 'C', 'D']);
+  const grip = await center('[data-selection-grip="se"]');
+  await drag(grip, { x: grip.x + 80, y: grip.y + 60 });
+  const after = await joints(['O', 'A', 'C', 'D']);
+  const notice = (await page.locator('app-notification-stack').allInnerTexts()).join(' ');
+  check(
+    'a resize that would change a held length is refused, and says what to turn off',
+    JSON.stringify(after) === JSON.stringify(before) &&
+      notice.includes('Turn off their Fixed Length'),
+    JSON.stringify({ before, after, notice })
+  );
+}
 await openMechanism(page, BASE + FOURBAR);
 await page.waitForTimeout(300);
 
-// --- and the ones a force carries -------------------------------------------
+// --- and forces, which do not join one -----------------------------------
 //
-// A force is a member of the selection for everything a group *says* about it
-// -- how big, which way, which frame, what color -- and brings no geometry:
-// where a force is, is decided by the body it acts on. So it deletes with the
-// group, and a copy of it lands on that same body, a grid step away.
+// A group is what the box moves, turns and resizes, and a force brings none of
+// that: where a force is, is decided by the body it acts on. So Control on a
+// force is a plain click (#295 review).
 {
   await openMechanism(page, BASE + FOURBAR);
   await page.waitForTimeout(300);
@@ -555,135 +581,22 @@ await page.waitForTimeout(300);
     ng.applyChanges(document.querySelector('app-new-grid'));
   });
   await page.waitForTimeout(700);
-  const forces = () =>
-    page.evaluate(() =>
-      ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv.forces.map((force) => ({
-        id: force.id,
-        mag: Math.round(force.mag * 100) / 100,
-        deg: Math.round((force.angleRad * 180) / Math.PI),
-        local: force.local,
-      }))
-    );
 
   await page.click('#F1');
   await clickWith('#F2', 'Control');
   await page.waitForTimeout(250);
-  check(
-    'a force joins a selection, and the panel offers what a set of forces has in common',
-    JSON.stringify(await selection()) === JSON.stringify(['force:F1', 'force:F2']) &&
-      (await page.locator('app-multi-edit-panel input[data-field="magnitude"]').count()) === 1 &&
-      (await page.locator('app-multi-edit-panel input[data-field="forceAngle"]').count()) === 1,
-    JSON.stringify(await selection())
-  );
-
-  // Every member wears the selected mark, not only the last one picked; and a
-  // group of nothing but forces gets no box, because nothing in it can move.
   const marked = await page.evaluate(() =>
     ['F1', 'F2'].map(
       (id) => !!document.getElementById(id)?.parentElement?.querySelector('.forceSelectedLine')
     )
   );
   check(
-    'every force in the group is drawn selected',
-    marked.every(Boolean),
-    JSON.stringify(marked)
+    'Control-click on a force selects that force alone',
+    JSON.stringify(await selection()) === JSON.stringify(['force:F2']) &&
+      JSON.stringify(marked) === JSON.stringify([false, true]) &&
+      (await page.locator('app-multi-edit-panel').count()) === 0,
+    JSON.stringify({ selection: await selection(), marked })
   );
-  check(
-    'and forces alone draw no move-and-scale box',
-    (await page.locator('.selectionBounds').count()) === 0
-  );
-
-  const magnitude = page.locator('app-multi-edit-panel input[data-field="magnitude"]');
-  await magnitude.click();
-  await magnitude.fill('4 N');
-  await magnitude.press('Tab');
-  await page.waitForTimeout(700);
-  check(
-    'one magnitude reaches every selected force',
-    (await forces()).every((force) => force.mag === 4),
-    JSON.stringify(await forces())
-  );
-
-  await page.locator('app-multi-edit-panel radio-block button', { hasText: 'Local' }).click();
-  await page.waitForTimeout(700);
-  check(
-    'and so does one frame',
-    (await forces()).every((force) => force.local === true),
-    JSON.stringify(await forces())
-  );
-  await page.getByRole('button', { name: 'Undo' }).click();
-  await page.waitForTimeout(800);
-  check(
-    'each of which is one press of Undo',
-    (await forces()).every((force) => force.local === false && force.mag === 4),
-    JSON.stringify(await forces())
-  );
-
-  // On the arrow's own line. A selected force also draws its dashed frame
-  // datum inside `#F1`, which widens the group's box, so the box's center can
-  // land on the link beside the arrow rather than on the arrow.
-  const atForce = await center('#F1 .forceLine');
-  await page.mouse.click(atForce.x, atForce.y, { button: 'right' });
-  await page.waitForTimeout(450);
-  const forceRows = await page.evaluate(() =>
-    [...document.querySelectorAll('#contextMenu .cm-row')].map((row) => ({
-      label: row.querySelector('.cm-row__label')?.textContent.trim(),
-      hint: row.querySelector('.cm-row__hint')?.textContent.trim() ?? '',
-      off: row.className.includes('is-off') || row.getAttribute('aria-disabled') === 'true',
-    }))
-  );
-  check(
-    'the group menu opens on a force and offers the frame',
-    forceRows.some((row) => row.label === 'Global Frame'),
-    JSON.stringify(forceRows.map((row) => row.label))
-  );
-  check(
-    'and offers Duplicate, which copies each force onto the link it acts on',
-    forceRows.find((row) => row.label === 'Duplicate Selected (2)')?.off === false,
-    JSON.stringify(forceRows.find((row) => row.label === 'Duplicate Selected (2)'))
-  );
-  await menuRow('Delete Selected (2)').click();
-  await page.waitForTimeout(700);
-  check('Delete Selected takes both forces', (await forces()).length === 0);
-  await page.getByRole('button', { name: 'Undo' }).click();
-  await page.waitForTimeout(800);
-  check('and one Undo brings both back', (await forces()).length === 2);
-
-  // The panel's button, which is where a group of forces used to do nothing at
-  // all: no copy, no word, and an empty entry on the undo stack.
-  await page.keyboard.press('Escape');
-  const onF1 = await center('#F1 .forceLine');
-  await page.mouse.click(onF1.x, onF1.y);
-  await clickWith('#F2 .forceLine', 'Control');
-  await page.waitForTimeout(250);
-  const owners = () =>
-    page.evaluate(() =>
-      ng
-        .getComponent(document.querySelector('app-new-grid'))
-        .mechanismSrv.forces.map((force) => force.link.id)
-        .sort()
-    );
-  const linkCount = () =>
-    page.evaluate(
-      () => ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv.links.length
-    );
-  const linksBefore = await linkCount();
-  await page.locator('app-multi-edit-panel button[data-action="duplicate"]').click();
-  await page.waitForTimeout(800);
-  const copied = await selection();
-  check(
-    'Duplicate Selected copies each force onto its own link and selects the copies',
-    (await forces()).length === 4 &&
-      JSON.stringify(await owners()) === JSON.stringify(['CD', 'CD', 'OA', 'OA']) &&
-      (await linkCount()) === linksBefore &&
-      copied.length === 2 &&
-      copied.every((ref) => ref.startsWith('force:') && ref !== 'force:F1' && ref !== 'force:F2'),
-    JSON.stringify({ forces: await forces(), owners: await owners(), copied })
-  );
-  await page.screenshot({ path: `${OUT}/force-group-duplicated.png` });
-  await page.getByRole('button', { name: 'Undo' }).click();
-  await page.waitForTimeout(800);
-  check('and one Undo takes both copies back', (await forces()).length === 2);
 }
 
 await openMechanism(page, BASE + FOURBAR);

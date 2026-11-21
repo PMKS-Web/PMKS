@@ -430,10 +430,21 @@ A press on a force's base or head leaves that end selected (`isStartSelected` /
 `isEndSelected`). If a later grab on the arrow's body kept the mark, the drag state machine saw a
 selected handle and dragged that one end to the pointer instead of carrying the arrow whole, so
 `beginDraggingForceBody` clears both marks before recording the grab offset. It clears only the
-marks: it used to call `updateSelectedObj(force)`, which also replaced the selection before
-`setLastLeftClick` ran on the same press, so a Cmd/Ctrl-click on a force had nothing to add to and
-forces could not join a group (#290). `e2e/force-edit.mjs` presses the base, then grabs the arrow,
-and requires both ends to move together at the same length.
+marks and leaves the selection to `setLastLeftClick`, the path joints and links take.
+`e2e/force-edit.mjs` presses the base, then grabs the arrow, and requires both ends to move
+together at the same length.
+
+### Cmd/Ctrl on a force is a plain click; one link picked with it gets the box
+
+A group is what the selection box moves, turns and resizes, and a force brings none of that, so
+`setLastLeftClick` never toggles a force into a group: Cmd/Ctrl on one selects it alone (#295
+review). The code that handles a group of forces -- the marks, Duplicate onto the same link, the
+empty drag -- is kept for when forces get a group of their own, but nothing on the canvas builds
+one. The other way round, one link picked with Cmd/Ctrl does get the box, where one picked plainly
+does not: `ActiveObjService.selectedTogether` remembers how the selection was built. A joint alone
+never does. A turn or resize that would change a held length or angle is refused whole, naming the
+Fixed Length or Fixed Angle to turn off (`groupHoldRefusal`); a move changes neither and goes
+through.
 
 ### A lone selected force is `selectedForce`; a group's forces are in the part selection
 

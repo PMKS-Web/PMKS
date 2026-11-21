@@ -2,7 +2,7 @@ import { Coord } from './coord';
 import { Force } from './force';
 import { carryForce, frameTurn } from './force-carry';
 import { Joint, PrisJoint } from './joint';
-import { Link, RealLink } from './link';
+import { HeldValue, Link, RealLink, holdsAngle, holdsLength } from './link';
 import { derivedCenterOfMass } from './link-body';
 import { SelectedPart, selectableLinks } from './selection';
 import { CanonicalSelectionClosure, canonicalSelectionClosure } from './selection-closure';
@@ -32,9 +32,20 @@ export interface SelectionAffineTransform {
   pivot?: { x: number; y: number };
 }
 
+/** A bar whose held length or angle a transform would change, and which of the two. */
+export interface BrokenHold {
+  link: RealLink;
+  values: HeldValue[];
+}
+
 export type SelectionTransformResult =
   | { applied: true; lockedJointIds: [] }
-  | { applied: false; lockedJointIds: string[]; reason?: 'invalid-transform' };
+  | {
+      applied: false;
+      lockedJointIds: string[];
+      reason?: 'invalid-transform' | 'held';
+      brokenHolds?: BrokenHold[];
+    };
 
 interface BodySnapshot {
   link: RealLink;
@@ -182,6 +193,13 @@ export class SelectionTransformSnapshot {
         y: pivot.y + x * sin + y * cos + translation.y,
       };
     };
+    // A held length or angle is the reader's to release, not the box's to
+    // change: a turn or a resize that would change one is refused whole, and
+    // the refusal names the hold (#295 review). A move changes neither.
+    const brokenHolds = this.holdsBrokenBy(mapPoint);
+    if (brokenHolds.length > 0) {
+      return { applied: false, lockedJointIds: [], reason: 'held', brokenHolds };
+    }
 
     this.closure.joints.forEach((joint) => {
       const start = this.jointStarts.get(joint.id)!;
@@ -203,6 +221,38 @@ export class SelectionTransformSnapshot {
       .filter((link) => link.joints.some((joint) => this.jointIds.has(joint.id)))
       .forEach((link) => link.reComputeDPath());
     return { applied: true, lockedJointIds: [] };
+  }
+
+  /** The holding bars this map would stretch or turn, measured from the grab. */
+  private holdsBrokenBy(
+    mapPoint: (point: { x: number; y: number }) => { x: number; y: number }
+  ): BrokenHold[] {
+    const broken: BrokenHold[] = [];
+    for (const body of this.bodies) {
+      const hold = body.link.hold;
+      const [first, second] = body.link.joints;
+      if (!hold || !first || !second || body.from.length < 2) continue;
+      const moves = [first, second].map((joint) => this.jointIds.has(joint.id));
+      if (!moves[0] && !moves[1]) continue;
+      const before = body.from;
+      const after = before.map((point, index) => (moves[index] ? mapPoint(point) : point));
+      const length = (ends: { x: number; y: number }[]) =>
+        Math.hypot(ends[1].x - ends[0].x, ends[1].y - ends[0].y);
+      const lengthBefore = length(before);
+      const tolerance = 1e-9 * Math.max(1, lengthBefore);
+      const values: HeldValue[] = [];
+      if (holdsLength(hold) && Math.abs(length(after) - lengthBefore) > tolerance) {
+        values.push('length');
+      }
+      if (
+        holdsAngle(hold) &&
+        Math.abs(frameTurn([before[0], before[1]], [after[0], after[1]])) > 1e-9
+      ) {
+        values.push('angle');
+      }
+      if (values.length > 0) broken.push({ link: body.link, values });
+    }
+    return broken;
   }
 
   private applyBody(

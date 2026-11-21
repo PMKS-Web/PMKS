@@ -45,12 +45,26 @@ export class ActiveObjService {
 
   private readonly partSelection = new PartSelectionState();
 
+  /**
+   * Whether the parts were picked with Cmd/Ctrl rather than by a plain click.
+   *
+   * One link picked that way gets the move-and-scale box, the way two parts
+   * do; one link picked plainly does not, because a plain click on a link is
+   * how it is selected to be edited (#295 review).
+   */
+  private pickedTogether = false;
+
   constructor() {}
 
   onActiveObjChange = new EventEmitter<string>();
 
   get selectedParts(): readonly SelectedPart[] {
     return this.partSelection.parts;
+  }
+
+  /** Whether the selection was built with Cmd/Ctrl; see `pickedTogether`. */
+  get selectedTogether(): boolean {
+    return this.pickedTogether && this.partSelection.parts.length > 0;
   }
 
   get selectedPartRefs(): SelectedPartRef[] {
@@ -180,6 +194,7 @@ export class ActiveObjService {
     newActiveObj: Joint | Link | Force | Coord | SynthesisPose | string | undefined | null,
     forceParent: Force | null = null
   ) {
+    this.pickedTogether = false;
     this.prevSelectedJoint = this.selectedJoint;
     this.selectedMechanismIndex = -1;
     if (newActiveObj === undefined || newActiveObj === null) {
@@ -218,6 +233,7 @@ export class ActiveObjService {
 
   /** Replace any selected parts with exactly this joint or link. */
   replacePartSelection(part: SelectedPart): void {
+    this.pickedTogether = false;
     this.prevSelectedJoint = this.selectedJoint;
     this.selectedMechanismIndex = -1;
     this.partSelection.replace(part);
@@ -227,6 +243,7 @@ export class ActiveObjService {
 
   /** Add a part, or remove it when it is already selected. */
   togglePartSelection(part: SelectedPart): void {
+    this.pickedTogether = true;
     this.prevSelectedJoint = this.selectedJoint;
     this.selectedMechanismIndex = -1;
     this.partSelection.toggle(part);
@@ -287,6 +304,7 @@ export class ActiveObjService {
   }
 
   private resetPartSelection(): void {
+    this.pickedTogether = false;
     this.partSelection.clear();
   }
 
