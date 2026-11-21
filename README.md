@@ -18,7 +18,7 @@ forces—with nothing to install, no account required, and nothing stored on a s
 
 </div>
 
-<img width="2982" height="1970" alt="frame_chrome_mac_light-110" src="https://github.com/user-attachments/assets/4d63252a-63fa-421e-a1b4-eb923cc6aeb7" />
+<img alt="PMKS in Kinematic Analysis: a Jansen leg tracing its paths, with the position graph for joint F in the left panel" src="docs/images/readme/hero-framed.png" />
 
 
 ---
@@ -281,7 +281,7 @@ project menu, **CAD Export** also exports start-pose link geometry as **DXF** or
 | **Open** | Loads a saved `.pmks` file from disk |
 | **Templates** | Opens the mechanism library |
 | **Save** | Downloads the current mechanism as a `.pmks` file |
-| **Share Project** | Copies a shareable URL that reopens the exact drawing and settings |
+| **Share Project** | Copies a URL that reopens the drawing and its document settings. Background images and device preferences are not included |
 
 Undo and redo use the same URL encoding: each history entry is a serialized snapshot, so undoing
 restores the entire drawing state (geometry, welds, locks, masses, colors, and document settings)

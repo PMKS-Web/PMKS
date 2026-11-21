@@ -37,6 +37,8 @@ import { TEMPLATE_LINKAGES as payloads } from './template-payloads.mjs';
 
 /** One picture: what to open, what to do, and where to point the camera. */
 const SHOTS = [
+  // The README shows this one framed, as hero-framed.png: after retaking it,
+  // wrap it again at browserframe.com (Chrome · Mac · Light, default settings).
   {
     name: 'hero',
     template: 'Jansen_Leg',
