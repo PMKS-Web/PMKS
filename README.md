@@ -428,12 +428,12 @@ See [**pmksplus.com/validation**](https://pmksplus.com/validation) and
 and known limits.
 
 - **Independent multibody oracle (Exudyn):** All **202 mechanisms** (every library template and
-  verification fixture, totaling 250,000+ motion samples and nearly 160,000 force samples) are
-  solved independently from their raw shareable URLs using
-  [Exudyn](https://exudyn.readthedocs.io/). Both solvers agree on first- and second-order degrees
-  of freedom across all 202 mechanisms (154 verified in kinematics and forces, 43 confirmed
-  unrunnable, 5 documented exclusions). Reference outputs are committed so CI runs every check
-  without extra runtime dependencies.
+  verification fixture) are evaluated independently from their raw shareable URLs using
+  [Exudyn](https://exudyn.readthedocs.io/), and both solvers agree on first- and second-order
+  degrees of freedom for every one. Of those, 154 are solved and compared in kinematics and forces
+  (250,000+ motion samples and nearly 160,000 force samples), 43 are mechanisms both solvers
+  agree cannot run, and 5 are documented exclusions. Reference outputs are committed so CI runs
+  every check without extra runtime dependencies.
 - **MATLAB reference suite:** Five mechanism configurations from
   [PMKS-Web/PMKS_Verification](https://github.com/PMKS-Web/PMKS_Verification) (a slider-crank with
   a tracer, Stephenson III, Watt I, and two teaching-lab cases) are compared row by row against
@@ -510,8 +510,8 @@ sentences.
 
 ### 4. Independently verified solvers
 
-Solver accuracy is tested against independent tools (Exudyn across 202 mechanisms and MATLAB across
-5 reference cases), with reference outputs committed to the repo for CI. Every gallery fixture is
+Solver accuracy is tested against independent tools (Exudyn across 202 mechanisms, 154 of them
+solved and compared, and MATLAB across 5 reference cases), with reference outputs committed to the repo for CI. Every gallery fixture is
 also published as a clickable link in [`docs/fixture-urls.md`](docs/fixture-urls.md) for quick
 visual inspection.
 
