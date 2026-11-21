@@ -84,7 +84,24 @@ const EXPECTED_INVALID = new Set([
   // Two things wrong at once, both said together.
   'Four-bar with a hanging link and no input',
   'Four-bar driven from its coupler point, with a hanging link',
+  // A welded rod in a slanted slot: the geometry says nothing can move.
+  'Slotted lever with a rod that cannot tilt',
+  'Audit #1: Slotted lever with a rod that cannot tilt',
+  // Retained audit reproductions: each row is the file an older build wrote,
+  // broken as it was written. mechanism-audit-save.spec.ts opens the source
+  // and checks that a save made today runs.
+  'Audit #6: Parallelogram with a third parallel crank rotated 25.714 degrees: save/reopen',
+  'Audit #7: Locomotive drive wheels rotated 25.714 degrees: save/reopen',
+  'Audit #28: Vertical translating bracket: save/reopen stops it',
+  'Audit #31: Cylinder-driven gripper: meters save/reopen',
+  'Audit #37: Hood_Hinge in in',
 ]);
+
+/**
+ * The Split Joint drawings show what a split does to a joint, with nothing
+ * grounded or driven: there is no machine in any of them to run.
+ */
+const expectedInvalid = (name) => EXPECTED_INVALID.has(name) || name.startsWith('Split Joint: ');
 
 function galleryRows() {
   return readFileSync('docs/fixture-urls.md', 'utf8')
@@ -153,7 +170,7 @@ for (const { name, query } of galleryRows()) {
   await open(BASE + '/' + query);
 
   const model = await readModel();
-  const shouldSolve = !EXPECTED_INVALID.has(name);
+  const shouldSolve = !expectedInvalid(name);
 
   checkThat(`${name}: decodes`, model.joints > 0, `${model.joints} joints`);
   checkThat(

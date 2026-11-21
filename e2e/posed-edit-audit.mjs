@@ -572,8 +572,10 @@ const FORMS = {
   // gave the barrel and the rod a link panel each and the slide a joint's, so
   // a cylinder's parts are audited through the two forms above.
 };
+// Not a force's magnitude: how hard it pushes is the same at every pose, so
+// model/edit-permission.ts offers it (a 'load') wherever the reader stands.
 const POSE_FIELDS =
-  /^(xPos|yPos|prisAngle|length|angle|comX|comY|magnitude|xComp|yComp|isGlobal|inputSpeed)$/;
+  /^(xPos|yPos|prisAngle|length|angle|comX|comY|xComp|yComp|isGlobal|inputSpeed)$/;
 const CAPTURING_FIELDS = /^(slider|weld)$/;
 
 for (const mechanism of MECHANISMS) {

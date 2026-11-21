@@ -22,13 +22,18 @@ const check = (label, ok, detail) => {
   results.push({ label, ok, detail });
   console.log(`${ok ? 'PASS' : 'FAIL'} ${label}`, ok ? '' : detail);
 };
+// A poke from here runs outside Angular, and nothing renders what it changed
+// until something else asks: a selection made this way left the panel showing
+// the last one, and the next step waited for a field that never appeared.
+// So every poke ends with a render pass.
 const grid = (fn, arg) =>
   page.evaluate(
-    ({ source, arg }) =>
-      new Function('g', 'arg', `return (${source})(g,arg)`)(
-        ng.getComponent(document.querySelector('app-new-grid')),
-        arg
-      ),
+    ({ source, arg }) => {
+      const g = ng.getComponent(document.querySelector('app-new-grid'));
+      const result = new Function('g', 'arg', `return (${source})(g,arg)`)(g, arg);
+      ng.applyChanges(g);
+      return result;
+    },
     { source: fn.toString(), arg }
   );
 const load = async (id) => {
@@ -210,13 +215,19 @@ try {
       }
     );
     await settings();
-    await page.getByRole('button', { name: 'Meter (m)', exact: true }).click();
+    // Convert into whichever of cm and m the drawing is not in, then back:
+    // Cylinder_Boom is authored in meters, where a press of Meter changes nothing.
+    const inMeters = (await grid((g) => g.settings.lengthUnit.value)) === 2;
+    const [there, back] = inMeters
+      ? ['Centimeter (cm)', 'Meter (m)']
+      : ['Meter (m)', 'Centimeter (cm)'];
+    await page.getByRole('button', { name: there, exact: true }).click();
     check(
       `${id}: unit conversion preserves physical dimensions`,
-      same(restored, await geometry(), 0.01),
+      same(restored, await geometry(), inMeters ? 100 : 0.01),
       { before: restored.cylinders, after: (await geometry()).cylinders }
     );
-    await page.getByRole('button', { name: 'Centimeter (cm)', exact: true }).click();
+    await page.getByRole('button', { name: back, exact: true }).click();
     check(`${id}: unit conversion round-trip`, same(restored, await geometry()));
     await page.getByRole('button', { name: 'Schematic', exact: true }).click();
     await page.waitForTimeout(220);
@@ -309,14 +320,25 @@ try {
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   check('existing multiword names can be saved unchanged', (await field('Name').count()) === 0);
   await page.getByRole('button', { name: 'Play', exact: true }).click();
-  await page.waitForFunction(
-    () =>
-      Number(getComputedStyle(document.querySelector('editable-title-block .row')).opacity) < 0.7
+  // The fade is on each live button rather than the row: a disabled button
+  // already fades itself, and fading the row too left it at a third.
+  const headerButtons = () =>
+    page
+      .locator('editable-title-block .row .mini-buttons')
+      .evaluateAll((nodes) =>
+        nodes.map((n) => (n.disabled ? 0 : Number(getComputedStyle(n).opacity)))
+      );
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('editable-title-block .row .mini-buttons')].every(
+      (n) => n.disabled || Number(getComputedStyle(n).opacity) < 0.7
+    )
   );
-  const frozen = await page
-    .locator('editable-title-block .row')
-    .evaluate((n) => getComputedStyle(n).opacity);
-  check('animation visibly fades inactive header actions', Number(frozen) < 0.7, frozen);
+  const frozen = await headerButtons();
+  check(
+    'animation visibly fades inactive header actions',
+    frozen.length > 0 && frozen.every((o) => o < 0.7),
+    frozen
+  );
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await page.locator('.stopButton').click();
   await page.getByRole('button', { name: 'Project menu', exact: true }).click();

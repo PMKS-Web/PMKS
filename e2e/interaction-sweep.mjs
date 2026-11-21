@@ -93,8 +93,16 @@ const signature = () =>
     // and a joined string would have to spell it to say so.
     const dofs = mech.mechanisms.map((mechanism) => mechanism.dof);
     const dofText = dofs.length > 0 ? dofs.join(', ') : null;
+    // Traces are view state, kept outside the model (a link's path and every
+    // vector trace live in their own sets), so a Trace Path or a Velocity
+    // Vectors that worked changed nothing above. The sets are asked, not the
+    // drawing: a grounded pin's velocity is a vector of length zero.
+    const traced = [
+      [...(mech.vectorTraceKeys ?? [])].sort().join(','),
+      [...(grid.linkTraces?.enabled ?? [])].sort().join(','),
+    ].join(';');
     return {
-      key: `${joints}//${links}//${forces}`,
+      key: `${joints}//${links}//${forces}//${traced}`,
       joints: mech.joints.length,
       links: mech.links.length,
       dof: dofText,

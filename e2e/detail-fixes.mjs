@@ -12,6 +12,7 @@ const { chromium } = await import(
   (process.env.PMKS_PLAYWRIGHT_DIR ?? '/tmp/pmks-playwright') + '/node_modules/playwright/index.mjs'
 );
 import { waitForReady } from './app-ready.mjs';
+import { inAngular } from './in-angular.mjs';
 
 const BASE = process.env.PMKS_BASE_URL ?? 'http://localhost:4200';
 import { ALL_LINKAGES as payloads } from './template-payloads.mjs';
@@ -21,8 +22,11 @@ import { ALL_LINKAGES as payloads } from './template-payloads.mjs';
  * first. Reported by a reader whose ram had no graphs and whose combined
  * handle ran the whole drawing backwards when dragged.
  */
+// Pivot G used to carry both the cylinder machine and the T-U-V four-bar.
+// Machines that share a grounded pivot now solve as one, so the four-bar has
+// its own pivot, a, beside G, and its input back on V: three machines again.
 const THREE_MACHINES =
-  '2O.Ay,Fe.5,4x.1011.4O,O,0,0,0.0C,C,YJ,qG,0.4G,G,ku,0,0.0N,N,aM,hl,0.8P,P,ir,8X,0.ZS,S,ir,8X,0,GN,G,N.0T,T,nJ,oD,0.0U,U,1Nd,dn,0.6V,V,1ca,jH,0,,,,1E8.6W,W,J-,1GP,0.0X,X,PF,1dt,0.0Y,Y,rW,1g7,0.4Z,Z,-P,1FX,0.0%5B,%5B,1Tk,16n,0.0%5C,%5C,1ft,1bA,0.0%5E,%5E,1pZ,1Gc,0.0_,_,1_5,_W,0.0%60,%60,2AU,1OV,0.1a,a,2AU,1OV,0..YROC,OC,Fe,Fe,HA,Q8,c5cae9,O,C,,.YRGN,GN,Fe,Fe,fd,Lu,303e9f,G,N,,.YRPC,PC,Fe,Fe,da,UO,0d125a,P,C,,.YPPS,PS,Fe,0,0,0,,P,S,,.YRGT,GT,Fe,Fe,m5,P7,c5cae9,G,T,,.YRTU,TU,Fe,Fe,14T,i-,303e9f,T,U,,.YRUV,UV,Fe,Fe,1V5,gX,0d125a,U,V,,.YRWX,WX,Fe,Fe,Md,1S8,B2DFDB,W,X,,.YRXY,XY,Fe,Fe,dN,1f0,26A69A,X,Y,,.YRYZ,YZ,Fe,Fe,wS,1Sr,00695C,Y,Z,,.YR%5B%5C,%5B%5C,Fe,Fe,1Zp,1Lz,c5cae9,%5B,%5C,,.YR_%60,_%60,Fe,Fe,24I,1BV,B2DFDB,_,%60,,.YP%60a,%60a,Fe,0,0,0,,%60,a,,...N_b';
+  '2O.Ay,Fe.5,0.1011.4O,O,0,0,0.0C,C,YJ,qG,0.4G,G,ku,0,0.0N,N,aM,hl,0.hP,P,ir,8X,0,GN,G,N,,Fe.0T,T,nJ,oD,0.0U,U,1Nd,dn,0.6V,V,1ca,jH,0,,,,1E8.6W,W,J-,1GP,0.0X,X,PF,1dt,0.0Y,Y,rW,1g7,0.4Z,Z,-P,1FX,0.0%5B,%5B,1Tk,16n,0.0%5C,%5C,1ft,1bA,0.0%5E,%5E,1pZ,1Gc,0.0_,_,1_5,_W,0.1%60,%60,2AU,1OV,0,,,,,Fe.4a,a,s2,m,0..YROC,OC,Fe,Fe,HA,Q8,c5cae9,O,C,,.ARGN,GN,Fe,1,fd,Lu,303e9f,G,N,,.ARPC,PC,Fe,1,da,UO,0d125a,P,C,,.YRTa,Ta,Fe,Fe,pg,PV,c5cae9,a,T,,.YRTU,TU,Fe,Fe,14T,i-,303e9f,T,U,,.YRUV,UV,Fe,Fe,1V5,gX,0d125a,U,V,,.YRWX,WX,Fe,Fe,Md,1S8,B2DFDB,W,X,,.YRXY,XY,Fe,Fe,dN,1f0,26A69A,X,Y,,.YRYZ,YZ,Fe,Fe,wS,1Sr,00695C,Y,Z,,.YR%5B%5C,%5B%5C,Fe,Fe,1Zp,1Lz,c5cae9,%5B,%5C,,.YR_%60,_%60,Fe,Fe,24I,1BV,B2DFDB,_,%60,,...N_.PJN~0~2.32618684,PJN~1~2.799044985,PJP~0~2.86881316,PJP~1~0.544955015,PJ%5B~0~5.998000000000001,PJa~0~3.45784446,PJa~1~0.04799429499999999,PLGN~1~0.0006907230835535695,PLGN~2~2.66309342,PLGN~3~1.3995224925,PLPC~1~0.0006907230835535697,PLPC~2~2.53190658,PLPC~3~1.9444775074999998,PLTa~2~3.305855823319823,PLTa~3~1.6309204481882238,PLTU~3~2.8789999999999996P*43xuEx';
 
 /** Two joints and a bar: in no mechanism, so nothing about it can be analyzed. */
 const LONE_BAR =
@@ -95,9 +99,11 @@ const tags = await page.evaluate(() => {
     return { id: link.id, name: tag.name, angle: tag.angle, joints: link.joints.length };
   });
 });
+// Since #275 a bar's name runs along the bar whatever its length: whether two
+// letters lay flat used to depend on the drawing style's width.
 record(
-  'a two-letter name is written level',
-  tags.every((tag) => tag.angle === 0),
+  'a two-letter name runs along its bar, the right way up',
+  tags.every((tag) => tag.angle !== 0 && tag.angle >= -100 && tag.angle < 80),
   tags
 );
 
@@ -251,14 +257,18 @@ await page.waitForTimeout(900);
 
 // Every graph of the first machine, which is cylinder-driven and was solved
 // before the other two were solved over the top of its solver state.
-await page.evaluate(() => {
+// Inside the zone, or the panel never renders the selection and there is no
+// graph to open.
+await inAngular(page, () => {
   const grid = ng.getComponent(document.querySelector('app-new-grid'));
   grid.activeObjService.updateSelectedObj(grid.mechanismSrv.joints.find((j) => j.id === 'C'));
 });
 await page.waitForTimeout(800);
-await page.evaluate(() =>
-  document.querySelector('app-analysis-graph-section .graphHeader')?.click()
-);
+// Position opens on its own now; pressing its header would fold it away.
+await inAngular(page, () => {
+  if (!document.querySelector('app-analysis-graph'))
+    document.querySelector('app-analysis-graph-section .graphHeader')?.click();
+});
 await page.waitForTimeout(1500);
 const firstMachine = await page.evaluate(() => {
   const graph = ng.getComponent(document.querySelector('app-analysis-graph'));
@@ -271,8 +281,11 @@ const firstMachine = await page.evaluate(() => {
     velocity: plotted('Linear Joint Vel', 'C'),
     acceleration: plotted('Linear Joint Acc', 'C'),
     linkVelocity: plotted('Angular Link Vel', 'OC'),
-    frames: ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv.mechanisms[0]
-      .joints.length,
+    // The cylinder machine is the one holding C, wherever the partition puts it.
+    frames: (() => {
+      const srv = ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv;
+      return srv.mechanismContaining(srv.joints.find((j) => j.id === 'C')).joints.length;
+    })(),
   };
 });
 record(
@@ -320,8 +333,12 @@ const playhead = await page.evaluate(async () => {
   const srv = grid.mechanismSrv;
   const bar = ng.getComponent(document.querySelector('app-playback-bar'));
   if (bar.synced) bar.toggleSync();
-  // A joint of the second machine, graphed.
-  grid.activeObjService.updateSelectedObj(srv.joints.find((joint) => joint.id === 'T'));
+  // A joint of one machine, graphed -- asked by ownership, since the order the
+  // partition lists machines in is not this suite's to assume.
+  const traced = srv.joints.find((joint) => joint.id === 'T');
+  const parkedIndex = srv.indexOfMechanismContaining(traced);
+  const runningIndex = srv.mechanisms.findIndex((_, i) => i !== parkedIndex);
+  grid.activeObjService.updateSelectedObj(traced);
   await new Promise((done) => setTimeout(done, 700));
   // Only if nothing is open: the sections remember which quantity was
   // expanded, so a click here would close the one already showing.
@@ -330,15 +347,23 @@ const playhead = await page.evaluate(async () => {
     await new Promise((done) => setTimeout(done, 1600));
   }
   // Park it, and run the first machine instead.
-  srv.seekMechanism(1, 3);
-  if (!srv.isMechanismPlaying(0)) srv.toggleMechanismPlaying(0);
+  srv.seekMechanism(parkedIndex, 3);
+  if (!srv.isMechanismPlaying(runningIndex)) srv.toggleMechanismPlaying(runningIndex);
   // Where the playhead stands, as the line's own x: it carries no label now.
   const label = () =>
     document.querySelector('.apexcharts-xaxis-annotations line')?.getAttribute('x1') ?? '';
-  const before = { at: label(), running: srv.secondsOf(0), parked: srv.secondsOf(1) };
+  const before = {
+    at: label(),
+    running: srv.secondsOf(runningIndex),
+    parked: srv.secondsOf(parkedIndex),
+  };
   await new Promise((done) => setTimeout(done, 1500));
-  const after = { at: label(), running: srv.secondsOf(0), parked: srv.secondsOf(1) };
-  if (srv.isMechanismPlaying(0)) srv.toggleMechanismPlaying(0);
+  const after = {
+    at: label(),
+    running: srv.secondsOf(runningIndex),
+    parked: srv.secondsOf(parkedIndex),
+  };
+  if (srv.isMechanismPlaying(runningIndex)) srv.toggleMechanismPlaying(runningIndex);
   // Back to one handle for the checks that follow.
   if (!bar.synced) bar.toggleSync();
   return { before, after };
@@ -389,6 +414,8 @@ const traces = await page.evaluate(() => {
   // Ask two joints to trace, as the Edit panel does.
   grid.mechanismSrv.joints.slice(0, 2).forEach((joint) => (joint.showCurve = true));
   grid.mechanismSrv.updateMechanism();
+  // From outside Angular, so nothing draws the paths without a render pass.
+  ng.applyChanges(grid);
   return { disabledWithNone, drawn: drawn() };
 });
 await page.waitForTimeout(900);
@@ -475,6 +502,8 @@ await page.evaluate(() => {
   grid.mechanismSrv.joints[1].showCurve = true;
   grid.mechanismSrv.links[0].mass = 1;
   grid.mechanismSrv.updateMechanism();
+  // From outside Angular: without a render pass the switches stay grayed.
+  ng.applyChanges(grid);
 });
 await page.waitForTimeout(700);
 const asDrawn = await switches();
@@ -618,9 +647,10 @@ await page.waitForTimeout(900);
 // A window too short for the list, so the drawer is at its full extent and the
 // gap below it is the one being kept rather than wherever the content ended.
 await page.setViewportSize({ width: 1500, height: 700 });
-await page.evaluate(() =>
-  document.querySelectorAll('app-analysis-setup .sectionHeader').forEach((head) => head.click())
-);
+// Only the folded ones, and by a real press: a section that starts open would
+// fold at one, and a click dispatched from here was never rendered.
+const folded = page.locator('app-analysis-setup .sectionHeader[aria-expanded="false"]');
+while ((await folded.count()) > 0) await folded.first().click();
 await page.waitForTimeout(800);
 const gapsSynced = await drawerGaps();
 record(
@@ -790,8 +820,10 @@ await page.setViewportSize({ width: 1500, height: 950 });
 // --- a scrolled panel says there is something above it ----------------------
 // The title stays put while the card scrolls under it, so a card scrolled off
 // its own top read as a card that simply started there.
+// Short enough that a joint's card scrolls: it is 440px now, and fitted whole
+// in the 560px window this used to use.
 await load(payloads['4-Bar']);
-await page.setViewportSize({ width: 1400, height: 560 });
+await page.setViewportSize({ width: 1400, height: 460 });
 await page.waitForTimeout(400);
 await page.locator('#joint_B').first().click({ force: true });
 await page.waitForTimeout(900);

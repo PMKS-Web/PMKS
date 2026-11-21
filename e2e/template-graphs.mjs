@@ -49,6 +49,7 @@ const { chromium } = await import(
 );
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { waitForReady } from './app-ready.mjs';
+import { inAngular } from './in-angular.mjs';
 
 const BASE = process.env.PMKS_BASE_URL ?? process.env.PMKS_URL ?? 'http://localhost:4200/';
 const OUT = 'artifacts/template-graphs';
@@ -359,6 +360,11 @@ for (const id of IDS) {
       timeout: 60000,
     });
     await waitForReady(page);
+    // A drawing over SOLVE_IN_EDIT_UP_TO joints (the Running Horse) opens in
+    // Edit unsolved, and is solved when an analysis is asked for. Ask now.
+    await inAngular(page, () =>
+      window.ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv.solveNow()
+    );
 
     const mech = await readMechanism();
     check('payload decodes into a mechanism', !mech.error, mech.error);
