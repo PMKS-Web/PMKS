@@ -52,6 +52,9 @@ const SHOTS = [
       ['traces'],
       ['play', 2200],
       ['selectJoint', 'F'],
+      // The foot's velocity, drawn along its path.
+      ['click', 'app-analysis-panel app-view-button[data-switch="velocity"] .viewButton'],
+      ['wait', 600],
       ['expandGraphs', 1],
       ['resetView'],
       ['park'],
