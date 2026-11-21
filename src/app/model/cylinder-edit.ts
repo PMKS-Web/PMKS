@@ -621,12 +621,18 @@ export function poseForCylinderAngle(
   // lock and no held bar has anything to say about it.
   const pivot = turning ? pivotFor(cylinder, ends) : cylinder.seal;
   if (!pivot) {
+    // An end a fixed-length bar holds reads as locked without carrying a Lock,
+    // so unlocking alone would not free it: then the advice every other
+    // cylinder edit gives, which names releasing the length too.
+    const barHeld = ends.a.held !== undefined || ends.b.held !== undefined;
     return refuseNothingLeft(
       ANGLE,
       ends,
       [],
       context,
-      'There is no unlocked joint to rotate this cylinder around—unlock one of its joints.'
+      barHeld
+        ? MOVE_TAIL
+        : 'There is no unlocked joint to rotate this cylinder around—unlock one of its joints.'
     );
   }
   const cos = Math.cos(turn);

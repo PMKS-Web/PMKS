@@ -202,7 +202,7 @@ await page.waitForTimeout(500);
 await page.screenshot({ path: `${OUT}/unweld-notice.png` });
 const notice = await page.locator('app-notification-stack').allInnerTexts();
 check(
-  notice.some((text) => /came apart, so the center of mass you set/.test(text)),
+  notice.some((text) => /was split, so its custom center of mass/.test(text)),
   'unwelding says the placed CoM no longer applies',
   JSON.stringify(notice)
 );

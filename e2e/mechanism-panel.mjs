@@ -284,7 +284,7 @@ record(
 );
 record(
   'and says a joint or link opens its graphs straight from the list',
-  text.includes('for its position, velocity and acceleration graphs'),
+  text.includes('to view its position, velocity, and acceleration graphs'),
   text
 );
 await page.locator('.machineRow').nth(0).click();
@@ -477,7 +477,7 @@ record(
 );
 record(
   'and its Overview says when its motion is worked out',
-  text.includes('worked out when you press Play'),
+  text.includes('Motion is solved when you press Play'),
   text.slice(0, 300)
 );
 

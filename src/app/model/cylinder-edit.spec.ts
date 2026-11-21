@@ -649,6 +649,15 @@ describe('a number that cannot be fully honored is honored as far as it goes', (
     }
   });
 
+  it('names releasing the fixed length when held bars, not Locks, pin both ends', () => {
+    const refusal = refusalOf(
+      poseForCylinderAngle(cylinder(), 1, context({ heldBy: heldBy('Held by fixed length BC') }))
+    );
+    expect(refusal.short).toBe('nothing is free to move');
+    expect(refusal.long).toMatch(/release a fixed length/);
+    expect(refusal.long).not.toMatch(/unlock one of its joints/);
+  });
+
   it('says nothing and stops short of nothing when the number is fully reachable', () => {
     const answer = poseForBarrelLength(cylinder({ rod: 9 }), 7, context());
     expect(answer.ok && answer.stoppedBy).toBeUndefined();

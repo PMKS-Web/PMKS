@@ -157,8 +157,8 @@ record(
   'a grounded pin has its velocity chip grayed, with the reason on hover',
   !!velocity &&
     velocity.off &&
-    velocity.why === 'it never moves' &&
-    /never moves/.test(velocity.tip ?? ''),
+    velocity.why === 'fixed joint' &&
+    /is always zero/.test(velocity.tip ?? ''),
   { selected: await selectedId(), onA }
 );
 record(

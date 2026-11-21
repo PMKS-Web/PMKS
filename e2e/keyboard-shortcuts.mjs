@@ -155,7 +155,7 @@ record('Backspace leaves a joint alone mid-cycle', (await state()).joints === jo
   jointsBefore,
   now: (await state()).joints,
 });
-// ...and R, Stop and go back to the start, is the way out.
+// ...and R, Stop and return to start, is the way out.
 await press('r');
 await page.waitForFunction(
   () => ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv.isAtStartPose(),
@@ -359,7 +359,7 @@ record('R goes back to the start pose', displaced === false && home === true, {
 });
 record(
   'and Help lists it with the rest of the transport',
-  /Stop and go back to the start/.test(
+  /Stop and return to start/.test(
     await page.evaluate(() => document.querySelector('app-help-panel')?.innerText ?? '')
   ) ||
     (await page.evaluate(() =>

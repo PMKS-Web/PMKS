@@ -926,6 +926,10 @@ describe('the right-click menu, on a bar that can hold a value', () => {
     const model = harness.builder.build(parts.crank, noHandlers);
     expect(row(model, 'Fixed Length')!.checked).toBe(true);
     expect(row(model, 'Fixed Angle')!.checked).toBe(true);
+    // Neither single-hold tip is true while both stand: the link neither
+    // rotates nor slides along a line, so both rows say what it does do.
+    expect(row(model, 'Fixed Length')!.tip).toContain('length and angle');
+    expect(row(model, 'Fixed Angle')!.tip).toContain('length and angle');
     expect(model.header?.subtitle).toContain('fixed length and angle');
     row(model, 'Fixed Length')!.action();
     expect(parts.crank.hold).toBe('angle');

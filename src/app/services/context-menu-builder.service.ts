@@ -1166,7 +1166,9 @@ export class ContextMenuBuilderService {
     const held = holdOf(link);
     const row = (hold: HeldValue, label: string, icon: string, value: string) => {
       const on = holdsValue(held, hold);
-      const both = !on && held !== undefined;
+      // Both rows describe the combined hold while it stands, and the unchecked
+      // row describes it when pressing it would make one.
+      const both = held === 'both' || (!on && held !== undefined);
       return new MenuRow({
         label,
         posePolicy: 'safe',

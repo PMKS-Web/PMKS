@@ -335,7 +335,7 @@ try {
   await comButton.click();
   await page.waitForTimeout(300);
   await restCursor();
-  await page.locator('.viewControls .viewButton[aria-label="Fit to view"]').click();
+  await page.locator('.viewControls .viewButton[aria-label="Fit to View"]').click();
   await page.waitForTimeout(600);
   await restCursor();
   await page.locator('.viewControls .viewButton[aria-label="Zoom In"]').click();

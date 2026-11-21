@@ -122,7 +122,7 @@ const heldOff = await state();
 record('over the grounded pin, the pin is ringed red', whileOver);
 record(
   'and the reason is said',
-  heldOff.said.some((text) => /cannot sit on joint O: the joint is grounded/.test(text)),
+  heldOff.said.some((text) => /cannot sit on joint O: this joint is grounded/.test(text)),
   heldOff.said
 );
 record(
@@ -156,7 +156,7 @@ record(
 );
 record(
   'and the reader is told where it went',
-  opened.said.some((text) => /moved off joint O onto link Boom: the joint is grounded/.test(text)),
+  opened.said.some((text) => /moved off joint O onto link Boom: this joint is grounded/.test(text)),
   opened.said
 );
 
@@ -217,7 +217,7 @@ record(
 );
 record(
   'and the reader is told',
-  merged.said.some((text) => /moved off joint \w onto link Boom: 2 links meet there/.test(text)),
+  merged.said.some((text) => /moved off joint \w onto link Boom: 2 links meet here/.test(text)),
   merged.said
 );
 

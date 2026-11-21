@@ -2018,6 +2018,13 @@ export class NewGridComponent implements OnDestroy {
   /** The part the current Attach Link gesture started from, if it started on one. */
   private linkCreateFrom?: Joint | Link;
 
+  /** End a link-creation gesture: back to waiting, with no start and no origin. */
+  private endLinkCreation(): void {
+    this.dragState.finishCreating();
+    this.linkCreateStart = undefined;
+    this.linkCreateFrom = undefined;
+  }
+
   mouseMove($event: MouseEvent) {
     // One solve per frame, however fast the pointer reports. Every move of a
     // held part re-solves the whole cycle, and a pointer can report faster
@@ -4203,9 +4210,7 @@ export class NewGridComponent implements OnDestroy {
                 this.mechanismSrv.mergeToJoints([joint1, joint2]);
                 this.mechanismSrv.mergeToLinks([link]);
                 this.mechanismSrv.finishStructuralEdit(true);
-                this.dragState.finishCreating();
-                this.linkCreateStart = undefined;
-                this.linkCreateFrom = undefined;
+                this.endLinkCreation();
                 break;
               case gridStates.createJointFromJoint:
                 joint2 = this.mechanismSrv.createRevJoint(
@@ -4224,9 +4229,7 @@ export class NewGridComponent implements OnDestroy {
                 this.mechanismSrv.mergeToJoints([joint2]);
                 this.mechanismSrv.mergeToLinks([link]);
                 this.mechanismSrv.finishStructuralEdit(true);
-                this.dragState.finishCreating();
-                this.linkCreateStart = undefined;
-                this.linkCreateFrom = undefined;
+                this.endLinkCreation();
                 break;
               case gridStates.createJointFromLink:
                 //This is werid bug, ensures that when you use a context menu it always counts as a real click instead of a mis-drag
@@ -4284,9 +4287,7 @@ export class NewGridComponent implements OnDestroy {
                 this.activeObjService.selectedLink.d =
                   this.activeObjService.selectedLink.getPathString();
                 this.mechanismSrv.finishStructuralEdit(true);
-                this.dragState.finishCreating();
-                this.linkCreateStart = undefined;
-                this.linkCreateFrom = undefined;
+                this.endLinkCreation();
                 break;
             }
             break;
@@ -4317,9 +4318,7 @@ export class NewGridComponent implements OnDestroy {
                 this.mechanismSrv.finishStructuralEdit(true);
                 this.popJoint(joint2.id);
                 // PositionSolver.setUpSolvingForces(link.forces); // needed to determine force location when dragging a joint
-                this.dragState.finishCreating();
-                this.linkCreateStart = undefined;
-                this.linkCreateFrom = undefined;
+                this.endLinkCreation();
                 break;
               case gridStates.createJointFromJoint:
                 // joint2 = this.createRevJoint(
@@ -4341,17 +4340,20 @@ export class NewGridComponent implements OnDestroy {
                   }
                 });
                 if (commonLinkCheck) {
-                  this.dragState.finishCreating();
-                  this.linkCreateStart = undefined;
-                  this.linkCreateFrom = undefined;
                   // Named rather than counted: clicking the joint the gesture
                   // started from lands here too, and "those two joints" was a
                   // sentence about two things when the reader had pointed at
                   // one.
                   const from = this.activeObjService.prevSelectedJoint;
+                  const sameJoint = from.id === joint2.id;
+                  // Clicking the start joint again is a miss, not a cancel:
+                  // the gesture stays open from that joint, so the click the
+                  // notice asks for is the one that finishes the link.
+                  if (sameJoint) this.dragState.keepCreatingThroughRelease();
+                  else this.endLinkCreation();
                   this.notify.refusal(
                     'link.already-joined',
-                    from.id === joint2.id
+                    sameJoint
                       ? 'A link needs two distinct joints. Click another point or joint to finish it.'
                       : `${from.name || from.id} and ${joint2.name || joint2.id} are already on one link.`
                   );
@@ -4369,9 +4371,7 @@ export class NewGridComponent implements OnDestroy {
                 this.mechanismSrv.mergeToLinks([link]);
                 this.mechanismSrv.finishStructuralEdit(true);
                 this.popJoint(joint2.id);
-                this.dragState.finishCreating();
-                this.linkCreateStart = undefined;
-                this.linkCreateFrom = undefined;
+                this.endLinkCreation();
                 break;
               case gridStates.createJointFromLink:
                 // TODO: set context Link as a part of joint 1 or joint 2
@@ -4414,9 +4414,7 @@ export class NewGridComponent implements OnDestroy {
                 this.mechanismSrv.mergeToLinks([link]);
                 this.mechanismSrv.finishStructuralEdit(true);
                 this.popJoint(joint2.id);
-                this.dragState.finishCreating();
-                this.linkCreateStart = undefined;
-                this.linkCreateFrom = undefined;
+                this.endLinkCreation();
                 break;
             }
             switch (this.dragState.joint) {
