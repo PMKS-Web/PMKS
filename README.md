@@ -118,16 +118,19 @@ or attach to it.
 
 ### Joint types
 
-Welding and sliding are independent properties on a joint, producing four joint types:
+Each joint has one **Joint Type**, chosen in the Edit panel or at the top of the joint's
+right-click menu:
 
-| | Free to rotate | Welded (no relative rotation) |
-| --- | --- | --- |
-| **No slider** | **Revolute** (R): standard pin joint | **Welded**: fuses meeting links into one rigid compound link |
-| **Slider** | **Slider** (RP): pin free to rotate while sliding along a slot | **Slide** (P): translates along a slot without rotating (used inside cylinders) |
+| Type | What it does |
+| --- | --- |
+| **Revolute** | A pin. The bodies that meet at the joint turn about it |
+| **Pin-in-slot** | A pin that rides a slot. It slides along the slot and turns in it |
+| **Prismatic** | A block fixed to the body that rides it. It slides along its slot and does not turn |
+| **Welded** | Fuses the links that meet at the joint into one rigid compound link |
 
-Any slider or slide can be **grounded** (slot fixed to the frame) or **floating** (slot carried on
-a moving link). A Revolute, Slider, or Slide joint can be set as the **driven input**; a Welded
-joint cannot, since it allows no relative motion.
+**Grounded** is a separate switch beside the type. A slot can be grounded (fixed to the frame) or
+floating (carried on a moving link). A Revolute, Pin-in-slot, or Prismatic joint can be the
+**driven input**. A Welded joint cannot, because it allows no relative motion.
 
 ### Parts
 
@@ -135,7 +138,7 @@ joint cannot, since it allows no relative motion.
 | --- | --- |
 | **Link** | Connects two or more joints with configurable length, mass, mass moment of inertia, center of mass, color, and name. Two-joint links can hold a **Fixed Length**, **Fixed Angle**, or both while connected parts are dragged |
 | **Compound link** | Created by welding links together at shared joints so they move as a single rigid body (e.g., bell cranks, brackets, excavator buckets) |
-| **Cylinder** | Menu-created hydraulic/linear actuator consisting of a barrel, rod, and sealed slide that can be driven directly as a linear input |
+| **Cylinder** | Menu-created hydraulic/linear actuator consisting of a barrel, a rod, and a sealed Prismatic joint between them. It can be driven directly as a linear input |
 | **Slider** | Constrains a joint to move along a grounded or floating guide at any angle |
 | **Tracer point** | A point rigidly attached to a link for plotting paths, velocities, and accelerations away from pins |
 | **Force** | External load applied to a link in either the **Link** reference frame (rotates with the link) or the **Grid** reference frame (fixed to the grid) |
@@ -302,10 +305,10 @@ tab, replace the current drawing (undoable), or cancel.
 
 <table>
 <tr>
-<td align="center"><img src="docs/images/readme/library/four-bar.gif" width="190" alt="Four-Bar"><br><b>Four-Bar</b></td>
-<td align="center"><img src="docs/images/readme/library/slider-crank.gif" width="190" alt="Slider-Crank"><br><b>Slider-Crank</b></td>
-<td align="center"><img src="docs/images/readme/library/whitworth.gif" width="190" alt="Whitworth Quick-Return"><br><b>Whitworth Quick-Return</b></td>
-<td align="center"><img src="docs/images/readme/library/jansen-leg.gif" width="190" alt="Jansen Leg"><br><b>Jansen Leg</b></td>
+<td align="center"><img src="src/assets/gifs/four-bar.gif" width="190" alt="Four-Bar"><br><b>Four-Bar</b></td>
+<td align="center"><img src="src/assets/gifs/slider-crank.gif" width="190" alt="Slider-Crank"><br><b>Slider-Crank</b></td>
+<td align="center"><img src="src/assets/gifs/whitworth.gif" width="190" alt="Whitworth Quick-Return"><br><b>Whitworth Quick-Return</b></td>
+<td align="center"><img src="src/assets/gifs/jansen-leg.gif" width="190" alt="Jansen Leg"><br><b>Jansen Leg</b></td>
 </tr>
 <tr>
 <td align="center"><img src="src/assets/gifs/slider-crank-inversions.png" width="190" alt="Slider-Crank Inversions"><br><b>Slider-Crank Inversions</b></td>
@@ -490,7 +493,7 @@ Disabled controls should tell you why they're unavailable and what to do instead
 refusals read directly from the model rules (`describeActuatorRefusal`, `weldRefusal`,
 `locksHolding`) so the menu and the edit panel stay consistent.
 
-<img alt="Context menus showing refusals: 'unlock first', 'part is sealed'" src="docs/images/context-menu/refusals.png" width="820">
+<img alt="Three right-click menus with grayed rows and their reasons: '2 links share it', 'needs 2 links', 'inside a cylinder', 'ground an end joint instead'" src="docs/images/context-menu/refusals.png" width="820">
 
 Analysis tabs follow the same pattern: when a mode isn't ready, its badge shows the number of
 remaining issues, and clicking it opens a checklist linking directly to the affected parts.
@@ -499,7 +502,7 @@ remaining issues, and clicking it opens a checklist linking directly to the affe
 
 User-facing copy follows [`docs/ui-vocabulary.md`](docs/ui-vocabulary.md): **Add** on the blank
 grid, **Attach** on an existing part, **Delete** for removal, and one canonical term per concept
-(**Reference Frame** with **Link** / **Grid**, **Revolute** / **Welded** / **Slider** / **Slide**,
+(**Reference Frame** with **Link** / **Grid**, **Revolute** / **Prismatic** / **Pin-in-slot** / **Welded**,
 **Return to Start**). Control labels use Title Case; messages and tooltips use plain, direct
 sentences.
 
