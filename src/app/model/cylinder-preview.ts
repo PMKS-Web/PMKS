@@ -32,7 +32,7 @@ export function cylinderPreviewOf(
   drawingScale: number,
   fill: string
 ): CylinderPreview {
-  const { base, rodEnd } = cylinderGestureEnds(start, end);
+  const { base, rodEnd } = cylinderGestureEnds(start, end, cylinderScale);
   const creation = cylinderCreationLayout(base.at, rodEnd.at, cylinderScale);
   const r = 0.15 * drawingScale;
   const head = cylinderHeadHalf(creation.barrelLength);

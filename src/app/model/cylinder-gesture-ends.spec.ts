@@ -11,18 +11,28 @@ describe('cylinderGestureEnds', () => {
   it('puts the base where the gesture started on empty grid', () => {
     const start = { at: new Coord(0, 5) };
     const end = { at: new Coord(3, 5), joint: b };
-    expect(cylinderGestureEnds(start, end)).toEqual({ base: start, rodEnd: end });
+    expect(cylinderGestureEnds(start, end, 1)).toEqual({
+      base: start,
+      rodEnd: end,
+      rodHeld: false,
+    });
   });
 
   it('puts the base where the gesture ended when it started on a joint', () => {
     const start = { at: new Coord(0, 0), joint: a };
     const end = { at: new Coord(3, 5) };
-    expect(cylinderGestureEnds(start, end)).toEqual({ base: end, rodEnd: start });
+    expect(cylinderGestureEnds(start, end, 1)).toEqual({ base: end, rodEnd: start, rodHeld: true });
   });
 
   it('puts the base where the gesture ended when it started on a link', () => {
     const start = { at: new Coord(1, 0), link: ab };
     const end = { at: new Coord(3, 5) };
-    expect(cylinderGestureEnds(start, end)).toEqual({ base: end, rodEnd: start });
+    expect(cylinderGestureEnds(start, end, 1)).toEqual({ base: end, rodEnd: start, rodHeld: true });
+  });
+
+  it('drops an end on the joint the gesture started from', () => {
+    const start = { at: new Coord(0, 0), joint: a };
+    const ends = cylinderGestureEnds(start, { at: new Coord(0, 0), joint: a }, 1);
+    expect(ends.base.joint).toBeUndefined();
   });
 });

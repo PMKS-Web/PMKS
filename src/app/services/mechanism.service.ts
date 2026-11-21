@@ -4572,8 +4572,16 @@ export class MechanismService {
 
   /** Build the cylinder a two-point gesture drew, its base where `cylinderGestureEnds` puts it. */
   createCylinderFromGesture(start: CylinderGestureEnd, end: CylinderGestureEnd): void {
-    const { base, rodEnd } = cylinderGestureEnds(start, end);
-    this.createCylinderFrom(base.at, rodEnd.at, base.link, base.joint, rodEnd.joint, rodEnd.link);
+    const ends = cylinderGestureEnds(start, end, SettingsService.cylinderObjectScale);
+    const { base, rodEnd } = ends;
+    if (!ends.rodHeld) {
+      this.createCylinderFrom(base.at, rodEnd.at, base.link, base.joint, rodEnd.joint);
+      return;
+    }
+    this.createCylinderFrom(base.at, rodEnd.at, base.link, base.joint, undefined, {
+      at: rodEnd.joint,
+      on: rodEnd.link,
+    });
   }
 
   /**
@@ -4589,8 +4597,10 @@ export class MechanismService {
    * so the ram hangs off everything already meeting there. A second joint at
    * the same point would look identical and behave like neither.
    *
-   * `endOn` is `mountOn` for the rod's far end: that end joins the link's
-   * body, which is where a gesture started on a link puts it.
+   * `rodEnd` is `mountOn` and `mountAt` for the rod's far end, which is
+   * where a gesture started on a part puts it: on a link, that end joins the
+   * link's body; on a joint, it is that joint, reused rather than merged into,
+   * so a joint a merge would refuse -- a driven one -- still takes the ram.
    *
    * One `finishStructuralEdit(true)` at the end makes creation one undo entry.
    */
@@ -4600,14 +4610,16 @@ export class MechanismService {
     mountOn?: RealLink,
     mountAt?: RealJoint,
     endAt?: RealJoint,
-    endOn?: RealLink
+    rodEnd?: { on?: RealLink; at?: RealJoint }
   ): void {
     // Both ends, before anything is built. `endAt` is folded in through
     // `mergeJoints` further down, which refuses a cylinder's interior in its
     // own words -- but by then the new part exists and a refusal leaves it
     // standing with a free end, which is a half-done gesture rather than a
     // refused one. Asked here, both ends are one answer and nothing is made.
-    const closed = this.attachRefusal(mountAt) ?? this.attachRefusal(endAt);
+    const rodAt = rodEnd?.at;
+    const closed =
+      this.attachRefusal(mountAt) ?? this.attachRefusal(endAt) ?? this.attachRefusal(rodAt);
     if (closed) {
       this.sayRefused(closed);
       return;
@@ -4630,7 +4642,7 @@ export class MechanismService {
     // listed, and keeps an interior name so `determineNextLetter` walks past it.
     const aId = mountAt ? mountAt.id : this.determineNextLetter();
     const cId = this.determineNextLetter([aId]);
-    const dId = this.determineNextLetter([aId, cId]);
+    const dId = rodAt ? rodAt.id : this.determineNextLetter([aId, cId]);
     const [bId] = this.determineInteriorNames(aId, 1);
 
     const place = (at: { x: number; y: number }): [number, number] => [
@@ -4639,7 +4651,7 @@ export class MechanismService {
     ];
     const barrelFar = mountAt ?? new RevJoint(aId, ...place(creation.mountA));
     const barrelNear = new RevJoint(bId, ...place(creation.inner));
-    const rodFar = new RevJoint(dId, ...place(creation.mountB));
+    const rodFar = rodAt ?? new RevJoint(dId, ...place(creation.mountB));
     // The seal and the pin the rod hangs on are one joint. They were a
     // prismatic joint, a coincident `RevJoint` and a zero-length block joining
     // the two until Stage 1 of `docs/joint-type-and-cylinder-plan.md`; the rod
@@ -4677,12 +4689,12 @@ export class MechanismService {
     // leaves the base free for the user to attach (#366) -- a ram fixed at both
     // ends before it exists would be a ram with nowhere to go.
     if (mountOn) this.graftJointOnto(barrelFar, mountOn);
-    if (endOn) this.graftJointOnto(rodFar, endOn);
+    if (rodEnd?.on) this.graftJointOnto(rodFar, rodEnd.on);
 
     // Started from a joint, that joint is already in the mechanism and already
     // holds its own links; it has just gained one more.
     if (!mountAt) this.joints.push(barrelFar);
-    this.joints.push(barrelNear, rodFar, slider);
+    this.joints.push(barrelNear, ...(rodAt ? [] : [rodFar]), slider);
     this.links.push(barrel, rod);
     // Ended on a joint, the rod's far end is folded into it through the same
     // door a mount dragged onto a joint goes through, so every rule that
