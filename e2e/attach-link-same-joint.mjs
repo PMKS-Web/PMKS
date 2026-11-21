@@ -111,6 +111,51 @@ record(
   finished
 );
 
+// A joint with no links never reaches the shared-link test, so the start-joint
+// check has to come first: clicking it again must not make a link with one
+// joint at both ends.
+const lone = { x: 560, y: 320 };
+await page.evaluate(({ x, y }) => {
+  const grid = ng.getComponent(document.querySelector('app-new-grid'));
+  const at = grid.svgGrid.screenToModelFromXY(x, y);
+  const joint = grid.mechanismSrv.createRevJoint(at.x.toString(), at.y.toString());
+  grid.mechanismSrv.mergeToJoints([joint]);
+  grid.mechanismSrv.updateMechanism(true);
+}, lone);
+// A real input after the poke, so the canvas renders what was added.
+await page.mouse.move(lone.x + 40, lone.y + 40);
+await page.waitForTimeout(400);
+const before = await state();
+const loneAt = (await jointCenters()).find((p) => Math.hypot(p.x - lone.x, p.y - lone.y) < 20);
+record('a joint with no links is drawn', !!loneAt && before.joints === 4, { before, loneAt });
+if (loneAt) {
+  await openLinkFrom(loneAt);
+  await page.mouse.move(loneAt.x + 30, loneAt.y - 30);
+  await page.waitForTimeout(100);
+  await page.mouse.move(loneAt.x, loneAt.y);
+  await page.mouse.click(loneAt.x, loneAt.y);
+  await page.waitForTimeout(500);
+  const self = await state();
+  record(
+    'clicking a lone start joint again adds no link',
+    self.creating && self.joints === before.joints && self.links === before.links,
+    self
+  );
+  record(
+    'and says a link needs two distinct joints',
+    self.said.some((text) => /two distinct joints/.test(text)),
+    self.said
+  );
+  const next = { x: loneAt.x - 150, y: loneAt.y + 10 };
+  await glideAndClick(loneAt, next);
+  const joined = await state();
+  record(
+    'the next click finishes the link from the lone joint',
+    !joined.creating && joined.joints === before.joints + 1 && joined.links === before.links + 1,
+    joined
+  );
+}
+
 await browser.close();
 record('nothing threw', errors.length === 0, errors.slice(0, 5));
 const failed = results.filter(([, ok]) => !ok).length;

@@ -4327,35 +4327,26 @@ export class NewGridComponent implements OnDestroy {
                 // );
 
                 joint2 = this.activeObjService.selectedJoint;
-                let commonLinkCheck = false;
-                // Make sure link is not being attached to the same link
-                joint2.links.forEach((l) => {
-                  if (commonLinkCheck) return;
-                  if (
-                    this.activeObjService.prevSelectedJoint.links.findIndex(
-                      (li) => li.id === l.id
-                    ) !== -1
-                  ) {
-                    commonLinkCheck = true;
-                  }
-                });
-                if (commonLinkCheck) {
-                  // Named rather than counted: clicking the joint the gesture
-                  // started from lands here too, and "those two joints" was a
-                  // sentence about two things when the reader had pointed at
-                  // one.
-                  const from = this.activeObjService.prevSelectedJoint;
-                  const sameJoint = from.id === joint2.id;
-                  // Clicking the start joint again is a miss, not a cancel:
-                  // the gesture stays open from that joint, so the click the
-                  // notice asks for is the one that finishes the link.
-                  if (sameJoint) this.dragState.keepCreatingThroughRelease();
-                  else this.endLinkCreation();
+                const from = this.activeObjService.prevSelectedJoint;
+                // Clicking the start joint again is a miss, not a cancel: the
+                // gesture stays open from that joint, so the click the notice
+                // asks for is the one that finishes the link. Checked before
+                // the shared-link test, which a joint with no links never
+                // reaches.
+                if (from.id === joint2.id) {
+                  this.dragState.keepCreatingThroughRelease();
                   this.notify.refusal(
                     'link.already-joined',
-                    sameJoint
-                      ? 'A link needs two distinct joints. Click another point or joint to finish it.'
-                      : `${from.name || from.id} and ${joint2.name || joint2.id} are already on one link.`
+                    'A link needs two distinct joints. Click another point or joint to finish it.'
+                  );
+                  return;
+                }
+                // Make sure link is not being attached to the same link
+                if (joint2.links.some((l) => from.links.some((li) => li.id === l.id))) {
+                  this.endLinkCreation();
+                  this.notify.refusal(
+                    'link.already-joined',
+                    `${from.name || from.id} and ${joint2.name || joint2.id} are already on one link.`
                   );
                   return;
                 }
