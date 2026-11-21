@@ -1,3 +1,4 @@
+import { CylinderGestureEnd, cylinderGestureEnds } from '../model/cylinder-gesture-ends';
 import { writeMechanismName } from '../model/mechanism/mechanism-name';
 import { paintOf } from '../model/joint-colors';
 import { familyReading, machineFacts } from '../model/machine-facts/machine-facts';
@@ -4569,10 +4570,16 @@ export class MechanismService {
     );
   }
 
+  /** Build the cylinder a two-point gesture drew, its base where `cylinderGestureEnds` puts it. */
+  createCylinderFromGesture(start: CylinderGestureEnd, end: CylinderGestureEnd): void {
+    const { base, rodEnd } = cylinderGestureEnds(start, end);
+    this.createCylinderFrom(base.at, rodEnd.at, base.link, base.joint, rodEnd.joint, rodEnd.link);
+  }
+
   /**
-   * Build a complete cylinder from the two points of the creation gesture
-   * (§ cylinder 2): `start` is the barrel-side mount, `end` is where the rod
-   * finishes. The drawn span sets the member lengths (fixture-gallery
+   * Build a complete cylinder from two points (§ cylinder 2): `start` is the
+   * barrel-side mount, `end` is where the rod finishes. Which end of the
+   * gesture is which is `cylinderGestureEnds`'s to say (#366). The drawn span sets the member lengths (fixture-gallery
    * proportions, minimum span clamped in `cylinderCreationLayout` so a
    * zero-length click cannot make a degenerate part); the four joints — A, N,
    * S, B — are exactly collinear along the drawn axis by construction.
@@ -4582,6 +4589,9 @@ export class MechanismService {
    * so the ram hangs off everything already meeting there. A second joint at
    * the same point would look identical and behave like neither.
    *
+   * `endOn` is `mountOn` for the rod's far end: that end joins the link's
+   * body, which is where a gesture started on a link puts it.
+   *
    * One `finishStructuralEdit(true)` at the end makes creation one undo entry.
    */
   createCylinderFrom(
@@ -4589,7 +4599,8 @@ export class MechanismService {
     end: Coord,
     mountOn?: RealLink,
     mountAt?: RealJoint,
-    endAt?: RealJoint
+    endAt?: RealJoint,
+    endOn?: RealLink
   ): void {
     // Both ends, before anything is built. `endAt` is folded in through
     // `mergeJoints` further down, which refuses a cylinder's interior in its
@@ -4613,7 +4624,7 @@ export class MechanismService {
     // A cylinder is four joints and shows three of them. The two ends and the
     // seal are what a reader points at, names and reads back out of a panel, so
     // they take letters -- handed out *along the part* (decision S9, amended):
-    // the mount the gesture started from, then the slide, then the far end, so
+    // the barrel's mount, then the slide, then the rod's far end, so
     // the letters run down the cylinder the way a reader's eye does. The
     // barrel's near end is buried under the rod, is never drawn, labeled or
     // listed, and keeps an interior name so `determineNextLetter` walks past it.
@@ -4661,12 +4672,12 @@ export class MechanismService {
     rodFar.links.push(rod);
     slider.links.push(rod);
 
-    // Anchored on a link, when the gesture started from one: the barrel's mount
-    // joins that body and the ram swings with it, which is what a ram bolted to
-    // a boom or a frame does. The rod's far end is left free for the user to
-    // attach to whatever it drives — a ram fixed at both ends before it exists
-    // would be a ram with nowhere to go.
+    // Anchored on a link: that end joins the link's body and the ram swings
+    // with it. A gesture started on a link anchors the rod's end there and
+    // leaves the base free for the user to attach (#366) -- a ram fixed at both
+    // ends before it exists would be a ram with nowhere to go.
     if (mountOn) this.graftJointOnto(barrelFar, mountOn);
+    if (endOn) this.graftJointOnto(rodFar, endOn);
 
     // Started from a joint, that joint is already in the mechanism and already
     // holds its own links; it has just gained one more.

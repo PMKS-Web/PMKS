@@ -945,7 +945,7 @@ export class NewGridComponent implements OnDestroy {
     }
   }
 
-  /** Where the two-point cylinder gesture started: the barrel-side mount. */
+  /** Where the two-point cylinder gesture started; `cylinderGestureEnds` says which end that is. */
   private cylinderCreateStart?: Coord;
   /** The link the gesture started on, when it started on one rather than the grid. */
   private cylinderCreateOn?: RealLink;
@@ -954,14 +954,15 @@ export class NewGridComponent implements OnDestroy {
 
   /**
    * Begin the two-point cylinder gesture (§ cylinder 2), mirroring Add Link:
-   * the right-click point is the barrel-side mount, a ghost of the assembly
-   * tracks the cursor (which is where the ROD will finish), and the next
-   * left-click commits. Right- or middle-click cancels, exactly as link
-   * creation does.
+   * a ghost of the assembly tracks the cursor from the right-click point, and
+   * the next left-click commits. Right- or middle-click cancels, exactly as
+   * link creation does.
    *
-   * Started from a link's own menu, that link is what the ram is bolted to and
-   * the mount joins its body — the same difference Attach Link has from Add
-   * Link, and the reason both live on both menus.
+   * From empty grid the right-click point is the barrel's mount, the base.
+   * From a link or a joint it is where the rod's end attaches, and the base
+   * goes where the gesture ends (`cylinderGestureEnds`, #366). Started on a
+   * link, that end joins the link's body -- the same difference Attach Link
+   * has from Add Link, and the reason both live on both menus.
    */
   startCreatingCylinder() {
     if (!this.permission.may('create')) return;
@@ -993,10 +994,10 @@ export class NewGridComponent implements OnDestroy {
       return undefined;
     }
     return cylinderPreviewOf(
-      this.cylinderCreateStart,
-      // Where the click will put it, not where the pointer is: the rod's far
-      // end is a joint, and it lands on the grid like every other.
-      this.creationLanding(),
+      { at: this.cylinderCreateStart, joint: this.cylinderCreateAt, link: this.cylinderCreateOn },
+      // Where the click will put it, not where the pointer is: the far end is
+      // a joint, and it lands on the grid like every other.
+      { at: this.creationLanding() },
       SettingsService.cylinderObjectScale,
       this.settings.drawingScale,
       // The color the barrel will be handed when the click builds it, which
@@ -1017,15 +1018,14 @@ export class NewGridComponent implements OnDestroy {
 
   private commitCylinderCreationNow(end: Coord, endAt?: RealJoint) {
     const start = this.cylinderCreateStart;
-    const mountOn = this.cylinderCreateOn;
-    const mountAt = this.cylinderCreateAt;
+    const from = { joint: this.cylinderCreateAt, link: this.cylinderCreateOn };
     this.cylinderCreateStart = undefined;
     this.cylinderCreateOn = undefined;
     this.cylinderCreateAt = undefined;
     this.dragState.finishCreating();
     if (!start) return;
     const count = this.mechanismSrv.links.length;
-    this.mechanismSrv.createCylinderFrom(start, end, mountOn, mountAt, endAt);
+    this.mechanismSrv.createCylinderFromGesture({ at: start, ...from }, { at: end, joint: endAt });
     if (endAt && this.mechanismSrv.links.length > count) this.popJoint(endAt.id);
   }
 

@@ -373,6 +373,13 @@ guards it; when writing a suite like it, start the gesture from a point chosen o
 below the lowest joint, because a joint's hitbox is a screen size and the drawing's own units say
 nothing about it -- the first cut started three model units from C and got C's menu.
 
+That is the gesture from empty grid. Started on a joint or a link, the ends swap (#366): the rod's
+end is the part the gesture started on and the base goes where it ends, so a joint clicked second
+becomes the barrel's mount itself rather than being merged into. `cylinderGestureEnds` is the one
+rule, and the preview asks it too, or the ghost would point the other way from the part the click
+builds. The canvas calls `createCylinderFromGesture`; `createCylinderFrom` under it still takes the
+base first, and its `endOn` is what lets the rod's end join a link.
+
 ### The analysis panel's four chips are the menu's Traces rows
 
 Under every joint's and link's graphs, in Kinematic and Force Analysis alike, sits "Show Vectors

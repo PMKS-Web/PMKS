@@ -2,10 +2,11 @@
  * Attach Cylinder, from a link's own context menu.
  *
  * The same gesture as Attach Link with a different member on the end of it: the
- * right-click point is where the ram is bolted, the cursor is where its rod
- * finishes, and the next left-click commits. What this checks is that the mount
- * actually joins the link's body — a ram that merely sits near a bar is not
- * attached to it — and that the whole assembly is one undo step.
+ * right-click point is where the rod's end attaches, the cursor is where the
+ * barrel, the ram's base, is mounted (#366), and the next left-click commits.
+ * What this checks is that the rod's end actually joins the link's body — a ram
+ * that merely sits near a bar is not attached to it — and that the whole
+ * assembly is one undo step.
  *
  *   PMKS_PLAYWRIGHT_DIR=<dir> PMKS_BASE_URL=<origin> node e2e/attach-cylinder.mjs
  */
@@ -66,7 +67,8 @@ const state = () =>
             rod: between(cylinder.seal, cylinder.mountB),
             span: between(cylinder.mountA, cylinder.mountB),
             pinAlong: between(cylinder.mountA, cylinder.seal),
-            mountLinks: cylinder.mountA.links.map((link) => link.id),
+            rodEnd: cylinder.mountB.id,
+            rodEndLinks: cylinder.mountB.links.map((link) => link.id),
           }
         : undefined,
     };
@@ -129,20 +131,21 @@ record(
     Math.abs(after.ram.pinAlong + after.ram.barrel - after.ram.span) < 0.01,
   after.ram
 );
-// The point of attaching rather than drawing: the mount is a member of the bar
-// that was right-clicked, so the ram swings with it.
+// The point of attaching rather than drawing: the rod's end is a member of the
+// bar that was right-clicked, so the ram swings with it. The base is where the
+// gesture ended (#366).
 const grew = after.links.find(
   (id) => !before.links.includes(id) && before.links.some((old) => id.startsWith(old))
 );
 record(
-  "the mount joins the link's own body",
-  !!grew && !!after.ram && after.ram.mountLinks.includes(grew),
-  { grew, mountLinks: after.ram?.mountLinks, before: before.links, after: after.links }
+  "the rod's end joins the link's own body",
+  !!grew && !!after.ram && after.ram.rodEndLinks.includes(grew),
+  { grew, rodEndLinks: after.ram?.rodEndLinks, before: before.links, after: after.links }
 );
-// Two freedoms, because the rod's far end is deliberately left unattached: the
+// Two freedoms, because the barrel's mount is deliberately left unattached: the
 // part can swing about its end joint, and nothing drives it, so it can change
 // length as well (decision S30).
-record('the free rod end shows as two added freedoms', after.dof === '3', {
+record('the free base shows as two added freedoms', after.dof === '3', {
   before: before.dof,
   after: after.dof,
 });
@@ -162,7 +165,7 @@ record(
 
 // ---------------------------------------------------------------------------
 // The same gesture from a *joint's* menu. The difference worth checking is what
-// the mount turns out to be: attaching to a joint has to use that joint, not
+// the rod's end turns out to be: attaching to a joint has to use that joint, not
 // build a second one on top of it. Two joints at one point look like one and
 // behave like neither — and a body whose joints are coincident has no angle,
 // which is its own class of bug (see driven-slider-block.spec.ts).
@@ -222,8 +225,12 @@ const mount = await page.evaluate(() => {
       .map((other) => other.id),
   };
 });
-record('the mount is the joint itself, not a twin beside it', mount.coincident.length === 0, mount);
-record('and the joint carries the barrel', mount.links.length === 3, mount);
+record(
+  "the rod's end is the joint itself, not a twin beside it",
+  mount.coincident.length === 0 && fromJoint.ram?.rodEnd === 'B',
+  { mount, rodEnd: fromJoint.ram?.rodEnd }
+);
+record('and the joint carries the rod', mount.links.length === 3, mount);
 record('nothing is drawn NaN from a joint either', fromJoint.nan === 0, fromJoint.nan);
 
 await page.evaluate(() => {
