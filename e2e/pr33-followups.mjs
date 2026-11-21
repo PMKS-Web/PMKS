@@ -42,7 +42,7 @@ check(
 );
 
 await page.getByRole('button', { name: 'Synthesis', exact: true }).click();
-await page.getByRole('button', { name: /Motion — 3 positions/ }).click();
+await page.getByRole('button', { name: /Motion — 3 Positions/ }).click();
 await enter('Position 1 X', '1 cm');
 await enter('Position 1 Y', '1 cm');
 await enter('Position 1 angle', '0 deg');

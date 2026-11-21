@@ -49,7 +49,7 @@ try {
   await page.getByRole('button', { name: 'Radian (rad)', exact: true }).click();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: 'Synthesis', exact: true }).click();
-  await page.getByRole('button', { name: /Motion — 3 positions/ }).click();
+  await page.getByRole('button', { name: /Motion — 3 Positions/ }).click();
   for (const [n, v] of [
     ['Position 1 X', '2'],
     ['Position 1 Y', '1'],
@@ -226,7 +226,7 @@ try {
   }
   await load('4-Bar');
   await page.getByRole('button', { name: 'Synthesis', exact: true }).click();
-  await page.getByRole('button', { name: /Motion — 3 positions/ }).click();
+  await page.getByRole('button', { name: /Motion — 3 Positions/ }).click();
   const length = field('End-effector Link length');
   const validLength = await length.inputValue();
   for (const bad of ['-2', '0']) {

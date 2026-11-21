@@ -470,9 +470,9 @@ await inAngular(page, () => {
 });
 await page.waitForTimeout(500);
 checkThat(
-  'selecting the slide opens its joint panel, with Starts at and no Grounded row',
+  'selecting the slide opens its joint panel, with Starts At and no Grounded row',
   /Edit Joint /.test(await page.locator('app-edit-panel').innerText()) &&
-    /Starts at/.test(await page.locator('app-edit-panel').innerText()) &&
+    /Starts At/.test(await page.locator('app-edit-panel').innerText()) &&
     !/Grounded/.test(await page.locator('app-edit-panel').innerText())
 );
 const speedInput = page

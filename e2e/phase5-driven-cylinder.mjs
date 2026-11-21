@@ -248,7 +248,7 @@ const panelText = await page
 await page.screenshot({ path: `${OUT}/04-panel.png` });
 checkThat(
   "the slide's panel opens on the cylinder",
-  /Edit Joint /.test(panelText) && /Starts at/.test(panelText),
+  /Edit Joint /.test(panelText) && /Starts At/.test(panelText),
   panelText.slice(0, 60).replace(/\n/g, ' ')
 );
 checkThat(

@@ -245,6 +245,8 @@ Not suites — import them from one.
   field is being typed in.
 - `creation-previews.mjs` — the ghost drawn while creating a link or cylinder wears the color the
   part gets, and a canceled gesture does not shuffle the colors after it.
+- `attach-link-same-joint.mjs` — during Attach Link, clicking the joint the gesture started from
+  keeps the gesture open, as its notice says, and never makes a link with one joint at both ends.
 - `hover-dimensions.mjs` — every dimension drawn while an Edit panel field is pointed at uses the
   same chip, hairline weight and angle unit.
 
