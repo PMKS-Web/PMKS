@@ -378,7 +378,9 @@ end is the part the gesture started on and the base goes where it ends, so a joi
 becomes the barrel's mount itself rather than being merged into. `cylinderGestureEnds` is the one
 rule, and the preview asks it too, or the ghost would point the other way from the part the click
 builds. The canvas calls `createCylinderFromGesture`; `createCylinderFrom` under it still takes the
-base first, and its `endOn` is what lets the rod's end join a link.
+base first, and its `rodEnd` puts the rod's end on the part: the start joint itself, reused rather
+than merged into, or a new joint joined to the start link. A gesture shorter than the smallest
+cylinder is lengthened at the free base, so the rod's end never lands past the part.
 
 ### The analysis panel's four chips are the menu's Traces rows
 
