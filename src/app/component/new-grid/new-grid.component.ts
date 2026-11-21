@@ -997,7 +997,7 @@ export class NewGridComponent implements OnDestroy {
       { at: this.cylinderCreateStart, joint: this.cylinderCreateAt, link: this.cylinderCreateOn },
       // Where the click will put it, not where the pointer is: the far end is
       // a joint, and it lands on the grid like every other.
-      { at: this.creationLanding() },
+      { at: this.creationLanding(), joint: this.creationMergeTarget },
       SettingsService.cylinderObjectScale,
       this.settings.drawingScale,
       // The color the barrel will be handed when the click builds it, which
