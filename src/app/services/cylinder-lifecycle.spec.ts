@@ -469,3 +469,49 @@ describe('mount merge rules', () => {
     expect(refuseJointMerge(h.sealed.mountB, plain, cylindersIn(h.service.joints))).toBeUndefined();
   });
 });
+
+describe('a cylinder drawn from a part (#366)', () => {
+  function bars() {
+    const h = createMechanismHarness();
+    const a = new RevJoint('A', 0, 0);
+    const b = new RevJoint('B', 2 * MODEL_SCALE, 0);
+    const c = new RevJoint('C', 0, 2 * MODEL_SCALE);
+    h.service.joints.push(a, b, c);
+    h.service.links.push(new RealLink('AB', [a, b]), new RealLink('AC', [a, c]));
+    wireGraph(h.service);
+    return { ...h, a };
+  }
+
+  // Reused, not merged into, as the barrel's mount always was. A driven joint
+  // that joins two bodies is refused before either, by `attachRefusal`.
+  it('reuses a grounded, welded start joint as the rod end', () => {
+    const h = bars();
+    h.a.ground = true;
+    h.active.updateSelectedObj(h.a);
+    h.service.weldJoint();
+    expect(h.a.isWelded).toBe(true);
+    const joints = h.service.joints.length;
+
+    h.service.createCylinderFromGesture(
+      { at: new Coord(h.a.x, h.a.y), joint: h.a },
+      { at: new Coord(0, -3 * MODEL_SCALE) }
+    );
+
+    const sealed = resolve(h);
+    expect(sealed?.mountB).toBe(h.a);
+    expect(h.service.joints.length).toBe(joints + 3);
+  });
+
+  it('keeps the rod end on the link when the gesture is shorter than the smallest cylinder', () => {
+    const h = bars();
+    const ab = h.service.links.find((link) => link.id === 'AB') as RealLink;
+    const on = new Coord(1 * MODEL_SCALE, 0);
+    const tiny = (CYLINDER_MIN_SPAN_SCALE * SettingsService.cylinderObjectScale) / 10;
+
+    h.service.createCylinderFromGesture({ at: on, link: ab }, { at: new Coord(on.x, -tiny) });
+
+    const sealed = resolve(h);
+    expect(Math.hypot(sealed.mountB.x - on.x, sealed.mountB.y - on.y)).toBeLessThan(0.01);
+    expect(sealed.mountA.y).toBeLessThan(-tiny);
+  });
+});

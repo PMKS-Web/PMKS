@@ -1,4 +1,5 @@
 import { cylinderCreationLayout, cylinderHeadHalf } from './cylinder';
+import { CylinderGestureEnd, cylinderGestureEnds } from './cylinder-gesture-ends';
 import { barrelPath, cylinderBlockPath, rodBodyPath, slideMarkPath } from './joint-marks';
 
 /**
@@ -21,16 +22,18 @@ export interface CylinderPreview {
 
 /**
  * `cylinderScale` lays the part out, exactly as the click will build it;
- * `drawingScale` only sizes what is drawn.
+ * `drawingScale` only sizes what is drawn. The base goes at whichever end of
+ * the gesture `cylinderGestureEnds` says the click will put it (#366).
  */
 export function cylinderPreviewOf(
-  start: { x: number; y: number },
-  end: { x: number; y: number },
+  start: CylinderGestureEnd,
+  end: CylinderGestureEnd,
   cylinderScale: number,
   drawingScale: number,
   fill: string
 ): CylinderPreview {
-  const creation = cylinderCreationLayout(start, end, cylinderScale);
+  const { base, rodEnd } = cylinderGestureEnds(start, end, cylinderScale);
+  const creation = cylinderCreationLayout(base.at, rodEnd.at, cylinderScale);
   const r = 0.15 * drawingScale;
   const head = cylinderHeadHalf(creation.barrelLength);
   const anchor = -creation.sealFromMount;
