@@ -18,23 +18,28 @@ why, and what to do about it.**
 
 | | |
 | --- | --- |
-| Buttons, menu items, section headings, field labels | `Add Cylinder`, `Input Settings`, `Starts at` |
+| Buttons, menu items, section headings, field labels | `Add Cylinder`, `Input Settings`, `Starts At` |
 | Messages, tooltips, refusals, warnings | `Switch to Edit mode to change the mechanism.` |
 
 One carve-out: the **action chips on a notification** stay sentence case, because they are
 written as the end of the sentence above them — `Keep it, insert a new one` is a phrase, not
 a control name, and Title Case makes it absurd.
 
-**Spell American.** `analyze`, `analyzed`, `analyzing` — never `analyse`. The noun is
-`Analysis`, which is spelled the same either way, and it is what named the modes.
+**Spell American and write plain US engineering English.** `analyze`, `analyzed`, `analyzing` — never `analyse`, `colour`, `centre`, `neighbour`, or `capitalised`. Avoid British idioms too: write `solving` (not `working out`), `rotates around` (not `turns about`), `continuously` / `partway through` (not `all the way round` / `partway round`), `excavator` (not `digger`), `check this box` (not `tick this`), and `decimal places` (not `after the point`). The noun is `Analysis`, which is spelled the same either way, and it is what named the modes.
+
+**Use the Oxford comma** in lists of three or more (`position, velocity, and acceleration`; `2 joints, 1 link, and 1 force`).
+
+**End every tooltip with a period.** Tooltips are complete sentences. Natural contractions (`can't`, `isn't`, `aren't`) are fine anywhere conversational prose or guidance appears.
+
+**Use platform-aware modifier keys.** Never hardcode macOS keys like `Option` in tooltips or banners — read `Option` vs `Alt` from `KeyboardShortcutsService`.
 
 **Write to the person, about their mechanism.** Not about the program.
 
 | Instead of | Write |
 | --- | --- |
-| `Check Force Angle` | `That is not an angle. Type a number of degrees.` |
+| `Check Force Angle` | `Enter a valid angle in degrees.` |
 | `Cannot edit while in Synthesis mode. Switch to Edit mode to edit` | `Switch to Edit mode to change the mechanism.` |
-| `This feature is not available yet` | `Not built yet.` |
+| `This feature is not available yet` | `Coming soon` |
 | `Don't link a joint to itself` | `A link needs two different joints.` |
 
 **Say the way out.** A refusal that only names the wall makes the user guess. A
@@ -77,15 +82,18 @@ appears for the reader it can help and for nobody else.
 | --- | --- | --- |
 | On the bare grid — a new free-standing member | **Add** | `Add Link`, `Add Cylinder` |
 | On an existing object — a member joined to it | **Attach** | `Attach Link`, `Attach Cylinder`, `Attach Tracer Point`, `Attach Force` |
-| A property that is present or absent | **Add** / **Remove** | `Add Ground` / `Remove Ground`, `Add Input` / `Remove Input`, `Add Slider` / `Remove Slider` |
-| Fusing bodies | **Weld** / **Unweld** | `Weld Joint`, `Unweld Joint`, `Un-weld All` |
+| A property that is present or absent | **Add** / **Remove** | `Add Ground` / `Remove Ground`, `Add Input` / `Remove Input` |
+| Reversing an applied force at fixed endpoints | **Flip Force** | `Flip Force` (reverses the force while keeping its application point on the link) |
+| Transforming geometry | **Move**, **Rotate**, **Scale** | `move, rotate, or scale` (not `turn` or `resize`) |
+| Start-pose actions | **Return to Start** / **Set Start Pose Here** | `Return to Start` (button/menu), `Return to start` (notification chip), `Return to the start pose` (tooltips/prose), `Set Start Pose Here` |
 | Removing anything | **Delete** | `Delete Joint`, `Delete Link`, `Delete Cylinder` |
 
 `Make` is gone. It survived in one place — `Make Force Global` / `Make Force
 Local` — precisely because that pair was a switch between two states rather
-than the presence or absence of one, and the right-click menu now writes states
-as states: the row is `Global Frame`, ticked or not. Do not reach for `Make`
-anywhere.
+than the presence or absence of one. Force orientation is now **Reference Frame**
+with options **Link** and **Grid** (ring = Grid, keyway = Link), and the
+right-click menu writes the state as a checkbox: **`Grid Frame`**, ticked or not.
+Do not reach for `Make` anywhere.
 
 ### Verbs, and the switches that are not verbs
 
@@ -95,13 +103,14 @@ so no label rewrites itself as it is used:
 
 | A verb, because it acts | A state, because it describes |
 | --- | --- |
-| `Attach Link`, `Delete Joint`, `Reverse Direction` | `Grounded`, `Driven Input`, `Locked`, `Trace Path`, `Global Frame`, `Drawn as a Disc` |
+| `Attach Link`, `Delete Joint`, `Flip Force`, `Reverse Direction` | `Grounded`, `Driven Input`, `Locked`, `Trace Path`, `Grid Frame`, `Drawn as a Disc` |
 
 The Edit panel spells the same states the same way — its toggles read
-`Grounded` and `Trace Path`, not `Ground` or `Show Joint Path`. Where the panel
-has a button rather than a switch it names the act without reaching for
-`Make`: the disc control is `Draw as a Disc` / `Draw as a Bar`, which is the
-right-click menu's `Drawn as a Disc` said as a verb.
+`Grounded`, `Trace Path`, and `Draw as a Disc`, not `Ground`, `Show Joint Path`,
+or `Make Circular`.
+
+`Weld` / `Unweld` and `Add Slider` / `Remove Slider` are retired as standalone
+verbs because **Joint Type** replaced them.
 
 ### A joint's type
 
@@ -125,7 +134,8 @@ and turning it on swaps the four glyphs for the set that stands on the frame.
 | --- | --- |
 | **Slider Angle** | the field that aims a grounded slot, on a row of its own under Grounded |
 | **Nowhere to slide.** | the bold lead of the one state the choice says in words: a block with no slot and no ground. `dangling` is the code's word for it, never the reader's |
-| **Starts at** | where a cylinder's rod begins its cycle, as a share of the stroke |
+| **Joint is orphaned.** | the bold lead for a disconnected joint: `Joint is orphaned. Drag another joint to merge it or create a new link.` |
+| **Starts At** | where a cylinder's rod begins its cycle, as a share of the stroke |
 | **Barrel**, **Rod** | a cylinder's two members, once each has a panel of its own (Stage 2 of `joint-type-and-cylinder-plan.md`) |
 | **Split Joint** | action that replaces one shared point with one slightly separated Revolute pin per link; Title Case on controls |
 | **inside a cylinder** | the short refusal on either joint a cylinder places for itself — the square it slides on, and the barrel's buried end (Stage 2) |
@@ -193,15 +203,15 @@ The Force Analysis setup drawer lists every body that weighs: `Body`, `Mass`, `M
 
 ### A link's mass fields
 
-Under Mass, the Edit panel's Mass Settings reads `CoM measured from`, then the choice, then X and Y.
+Under Mass, the Edit panel's Mass Settings reads `CoM Measured From`, then the choice, then X and Y.
 
-- **The label says "measured from"**, because `Center of mass: Centroid` read as where the point
+- **The label says "Measured From"**, because `Center of mass: Centroid` read as where the point
   is rather than what X and Y count from. The choices name a point: `Shape's centroid`, `Joint A`
   for each joint a reader can see, `Grid origin (0, 0)`.
-- **Its help mark sits right after "from"** and names both of the choice's jobs: what X and Y are
+- **Its help mark sits right after "From"** and names both of the choice's jobs: what X and Y are
   measured from, and what the center of mass keeps its place against while you edit.
 - **`Inertia`** in the panel, so the label fits on one line beside its field. The help mark and the
-  Masses table say `Mass moment of inertia`, because `moment of inertia` alone is also a beam's
+  Masses table say `Mass Moment of Inertia` (or `mass moment of inertia` in prose), because `moment of inertia` alone is also a beam's
   area moment. Every message says it in full.
 
 ### The machines panel
@@ -210,13 +220,13 @@ With nothing selected, the left panel is about the machines on the grid.
 
 | Part | Says |
 | --- | --- |
-| Several machines, none picked | `All mechanisms`, `Select one to see its details.` in Edit, then one row each: its name, its chip, a chevron, and under the name how free it is in Edit (`1 degree of freedom`) or its family in an analysis mode (`Not running` where it cannot run) |
-| One picked, or the only one | its name as the title (`Edit Mechanism 2` in Edit), `All mechanisms` with a back arrow above it when there are others; no chip. In Edit, a machine with something to fix gets `Can’t run yet. 2 things to fix before analysis. Open Setup` -- never with nothing to fix: a large drawing waiting for Play says `This drawing's motion is worked out when you press Play.` in its Overview instead |
+| Several machines, none picked | `All Mechanisms`, `Select one to see its details.` in Edit, then one row each: its name, its chip, a chevron, and under the name how free it is in Edit (`1 degree of freedom`) or its family in an analysis mode (`Not running` where it cannot run) |
+| One picked, or the only one | its name as the title (`Edit Mechanism 2` in Edit), `All Mechanisms` with a back arrow above it when there are others; no chip. In Edit, a machine with something to fix gets `Can’t run yet. 2 things to fix before analysis. Open Setup` -- never with nothing to fix: a large drawing waiting for Play says `Motion is solved when you press Play.` in its Overview instead |
 | Sections | `Mechanism Overview`, a label-and-value list -- in Edit `Degrees of freedom`, `Links` (`4 (including ground)`: the ground is a link, as Gruebler counts it), `Joints`, `Input joint`, `Input speed`; in an analysis mode the same after the Family, then `Cycle time` (and `Motion` where no named family says it). `Input joint` is a part link to the driven joint, and `Input speed` is read-only: click to edit, so the speed and direction change in that joint's own panel. `Links` gives each link's name, its job (`Input crank`, `Coupler`, `Rocker`) and its length, or `3 joints` for a plate. Folded sections stay folded across modes for the session. Lengths are not repeated in a tooltip: tooltips say how to use a control |
-| The Family | a name PMKS matched (`Crank-rocker four-bar`); else `Six-bar linkage`, `Named by its 6 bodies, ground included. Not matched to a named type.`; else `Not recognized` |
+| The Family | a name PMKS matched (`Crank-rocker four-bar`); else `Six-bar linkage`, `Classified by its 6 bodies (including ground); does not match a named mechanism family.`; else `Not recognized` |
 | A shut mode tab | tooltip `Force Analysis opens once a mechanism runs.` |
-| The first Play in Edit | a card under the Kinematic Analysis tab: `Your mechanism runs`, `Kinematic Analysis graphs the position, velocity and acceleration of any joint or link as it moves.`, `Not Now` / `Open Kinematic Analysis` |
-| Past the fourth | `Only 4 mechanisms run at once`; the list adds `Only the first 4 mechanisms are simulated.` |
+| The first Play in Edit | a card under the Kinematic Analysis tab: `Your mechanism runs`, `Kinematic Analysis graphs the position, velocity, and acceleration of any joint or link as it moves.`, `Not Now` / `Open Kinematic Analysis` |
+| Past the fourth | `Only 4 mechanisms run at once`; the list adds `Only the first 4 mechanisms are solved.` |
 
 - **The chip is the setup drawer's chip**, word for word (`Ready`, `1 fix`, `2 to check`), and
   pressing it opens the drawer.
@@ -272,10 +282,13 @@ not whether it may go or what may be built onto it.
 | --- | --- | --- |
 | **mechanism** | one machine on the grid — a drawing may hold several, named M1, M2… | ~~linkage~~ (stops being true the moment it has a cylinder), ~~assembly~~ |
 | **project** | the saved document | — |
+| **project link** | the shareable URL encoding the project | ~~project web address~~ |
+| **image** | a background reference image on the grid | ~~picture~~ |
+| **solve** | computing kinematics or forces (`Solving motion…`, `Only the first 4 mechanisms are solved.`) | ~~work out~~, ~~simulate~~ |
 | **animation** | playing the mechanism | ~~simulation~~, ~~playback~~ (internal only) |
-| **input** | in controls: the driven joint | — |
+| **input** | in controls and setup hints: the driven joint (`Ground a joint and set one joint as an input.`) | — |
 | **driven** | in prose about the mechanism | ~~actuator~~ (internal only) |
-| **Synthesis / Edit / Kinematic / Force** | the four modes, capitalised as the tabs spell them | ~~Analyze~~ (it split into Kinematic and Force), ~~analysis mode~~ |
+| **Synthesis / Edit / Kinematic / Force** | the four modes, capitalized as the tabs spell them | ~~Analyze~~ (it split into Kinematic and Force), ~~analysis mode~~ |
 
 `Share Project` and `New Project` are about the document, and stay.
 
@@ -384,7 +397,3 @@ whole part: the export catalog's row for it, and a sentence about the part.
 deliberately. This guide governs what the app *says*; rewriting a hundred
 explanations to change a synonym would churn a lot of carefully-worded prose for
 no reader's benefit. Do not use it in new comments, and never in the UI.
-
-### Editor bug-fix wording
-
-Use **Flip Force** for reversing the arrowhead at fixed endpoints; this reverses the physical force while the application-point disc stays on the body. Its ring means Grid; its keyway means Local. **Input** is the noun for a joint that supplies motion; the generic setup hint is “Ground a joint and set one joint as an input.” Keep specific failure explanations when setup is already complete. A context-menu refusal that needs the initial pose says “return to start.” Restarting the tutorial offers **Cancel**. A disconnected joint says “Joint is Orphaned. Drag another joint to merge it or create a new link.”

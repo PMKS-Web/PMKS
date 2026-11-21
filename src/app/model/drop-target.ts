@@ -41,10 +41,9 @@ export const MERGE_REFUSAL_MESSAGES: Record<MergeRefusal, string> = {
   'driven-joint':
     'A driven joint can only join two bodies — remove the input first, or attach somewhere else.',
   'own-cylinder': 'A cylinder cannot fold onto itself.',
-  'weld-cannot-survive':
-    'The joint these would make cannot be welded, and one of them is — merging here would take the weld off without saying so.',
+  'weld-cannot-survive': 'These joints cannot merge while welded—unweld first, or merge elsewhere.',
   'crosses-machines':
-    'Joining two mechanisms needs the start pose. Press Back to the start pose, then try again.',
+    'Joining two mechanisms requires the start pose. Return to the start pose, then try again.',
 };
 
 /**

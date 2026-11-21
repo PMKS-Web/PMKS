@@ -23,7 +23,7 @@ describe('selectionCount', () => {
   });
 
   it('lists three kinds as a sentence, with no separator dots', () => {
-    expect(said([a, b, link, force])).toBe('2 joints, 1 link and 1 force');
+    expect(said([a, b, link, force])).toBe('2 joints, 1 link, and 1 force');
   });
 
   it('keeps each count on the same line as its noun', () => {
@@ -31,6 +31,6 @@ describe('selectionCount', () => {
   });
 
   it('capitalizes the nouns, and only the nouns, for a title', () => {
-    expect(said([a, link, force], 'title')).toBe('1 Joint, 1 Link and 1 Force');
+    expect(said([a, link, force], 'title')).toBe('1 Joint, 1 Link, and 1 Force');
   });
 });

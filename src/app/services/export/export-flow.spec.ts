@@ -204,7 +204,7 @@ describe('the export drawer', () => {
     expect(groups.map((group) => group.title)).toEqual([
       'Joints B, C',
       'Link AB',
-      'Center of mass',
+      'Center of Mass',
     ]);
     expect(groups[0].columns.map((column) => column.label)).toEqual([
       'Position',
@@ -213,8 +213,8 @@ describe('the export drawer', () => {
     ]);
     expect(groups[1].columns.map((column) => column.label)).toEqual([
       'Angle',
-      'Angular velocity',
-      'Angular acceleration',
+      'Angular Velocity',
+      'Angular Acceleration',
     ]);
     expect(groups[2].columns.map((column) => column.label)).toEqual([
       'Position',
@@ -231,7 +231,7 @@ describe('the export drawer', () => {
     flow.setParts(parts, true);
 
     const titles = flow.columnGroups('kinematics').map((group) => group.title);
-    expect(titles).toEqual(['8 joints', '7 links', 'Center of mass']);
+    expect(titles).toEqual(['8 joints', '7 links', 'Center of Mass']);
   });
 
   it('writes one row per solved sample, on the mechanism’s own clock', () => {
@@ -362,12 +362,12 @@ describe('the export drawer', () => {
     // The solver records an angle in degrees and a rate in radians, so exactly
     // one of these two is converted whichever unit the reader has chosen.
     const inDegrees = tables.tables()[0];
-    const degreeRate = inDegrees.plots.find((plot) => plot.head.startsWith('Angular velocity'))!;
+    const degreeRate = inDegrees.plots.find((plot) => plot.head.startsWith('Angular Velocity'))!;
     const degreeAngle = inDegrees.plots.find((plot) => plot.head.startsWith('Angle'))!;
 
     fixture.settings.angleUnit.next(AngleUnit.RADIAN);
     const inRadians = tables.tables()[0];
-    const radianRate = inRadians.plots.find((plot) => plot.head.startsWith('Angular velocity'))!;
+    const radianRate = inRadians.plots.find((plot) => plot.head.startsWith('Angular Velocity'))!;
     const radianAngle = inRadians.plots.find((plot) => plot.head.startsWith('Angle'))!;
 
     expect(degreeRate.unit).toBe('deg/s');
@@ -408,7 +408,7 @@ describe('the export drawer', () => {
     // drive is a joint with no marker, no hitbox and no row of its own, which
     // makes this the only place its effort can be asked for.
     expect(labels.filter((label) => label.startsWith('Force at Joint ')).length).toBe(2);
-    expect(labels).toContain('Input force');
+    expect(labels).toContain('Input Force');
   });
 
   it('lists a slider as the one part a reader can point at', () => {

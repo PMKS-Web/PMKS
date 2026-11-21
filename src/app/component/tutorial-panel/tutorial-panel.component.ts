@@ -143,7 +143,7 @@ export class TutorialPanelComponent implements DoCheck {
     this.tutorial.exit();
     this.notify.success(
       'tutorial.closed',
-      'Tutorial closed. It is in the project menu, at the top left, whenever you want it back.'
+      'Tutorial closed. Reopen it anytime from the top-left project menu.'
     );
   }
 

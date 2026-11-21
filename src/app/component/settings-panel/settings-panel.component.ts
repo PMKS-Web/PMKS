@@ -17,6 +17,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { SettingsFocusService } from '../../services/settings-focus.service';
+import { KeyboardShortcutsService } from '../../services/keyboard-shortcuts.service';
 import { SettingsService, writeStoredFlag } from 'src/app/services/settings.service';
 import { LengthUnit, AngleUnit, ForceUnit, GlobalUnit, MassUnit } from 'src/app/model/utils';
 import { displayMassUnit, inertiaUnitFor, storedMassUnit } from 'src/app/model/mass-units';
@@ -58,6 +59,8 @@ export class SettingsPanelComponent implements OnDestroy {
   private tabs = inject(SelectedTabService);
   private permission = inject(EditPermissionService);
   private settingsFocus = inject(SettingsFocusService);
+  private shortcuts = inject(KeyboardShortcutsService);
+  readonly altKey = this.shortcuts.alt;
   private injector = inject(Injector);
   private basicSettings = viewChild.required('basicSettings', {
     read: CollapsibleSubsectionComponent,
@@ -345,7 +348,7 @@ export class SettingsPanelComponent implements OnDestroy {
     if (!why) return '';
     return why.actionKind === 'toEdit'
       ? ' Switch to Edit mode to change.'
-      : ' Reset to the starting pose to change.';
+      : ' Return to the start pose to change.';
   }
 
   /**
@@ -378,7 +381,7 @@ export class SettingsPanelComponent implements OnDestroy {
     const force = this.currentForceUnit;
     const torque = this.nup.torqueLabel(force, length);
     const inertia = this.nup.unitLabel(inertiaUnitFor(mass, length));
-    const derived = `Torque reads in ${torque} and inertia in ${inertia}.`;
+    const derived = `Torque is shown in ${torque} and inertia in ${inertia}.`;
     if (this.showsMassUnit()) return derived;
     return `Mass is in ${this.nup.unitLabel(mass)} and force in ${this.nup.unitLabel(force)}. ${derived}`;
   }

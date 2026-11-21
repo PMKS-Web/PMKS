@@ -81,7 +81,7 @@ export interface ShortcutPress {
 /** What the three arrow shortcuts after the first repeat. */
 const NUDGE = {
   section: 'Editing',
-  label: 'Nudge what is selected',
+  label: 'Nudge selection',
   keys: '← → ↑ ↓',
   hidden: true,
 } as const;
@@ -167,7 +167,7 @@ export class KeyboardShortcutsService {
 
   private readonly mod = onAMac() ? '⌘' : 'Ctrl';
   /** The same key by its two names: Option on a Mac, Alt on every keyboard else. */
-  private readonly alt = onAMac() ? 'Option' : 'Alt';
+  readonly alt = onAMac() ? 'Option' : 'Alt';
 
   readonly shortcuts: Shortcut[] = [
     { id: 'mode.synthesis', section: 'Modes', label: 'Synthesis', keys: '1', match: ['1'] },
@@ -184,14 +184,14 @@ export class KeyboardShortcutsService {
     {
       id: 'playback.toggle',
       section: 'Animation',
-      label: 'Play / Pause',
+      label: 'Play or pause',
       keys: 'Space',
       match: [' ', 'spacebar'],
     },
     {
       id: 'playback.stop',
       section: 'Animation',
-      label: 'Stop and go back to the start',
+      label: 'Stop and return to start',
       keys: 'R',
       match: ['r'],
     },
@@ -212,34 +212,34 @@ export class KeyboardShortcutsService {
     {
       id: 'playback.speed',
       section: 'Animation',
-      label: 'Cycle Animation Speed',
+      label: 'Cycle animation speed',
       keys: 'S',
       match: ['s'],
     },
 
-    { id: 'view.zoomIn', section: 'View', label: 'Zoom In', keys: '+', match: ['+', '='] },
-    { id: 'view.zoomOut', section: 'View', label: 'Zoom Out', keys: '−', match: ['-', '_'] },
+    { id: 'view.zoomIn', section: 'View', label: 'Zoom in', keys: '+', match: ['+', '='] },
+    { id: 'view.zoomOut', section: 'View', label: 'Zoom out', keys: '−', match: ['-', '_'] },
     { id: 'view.reset', section: 'View', label: 'Fit to view', keys: '0', match: ['0'] },
     {
       id: 'view.centerOfMass',
       section: 'View',
-      label: 'Center of mass',
+      label: 'Toggle center of mass',
       keys: 'M',
       match: ['m'],
     },
     {
       id: 'view.jointIds',
       section: 'View',
-      label: 'Joint and force names',
+      label: 'Toggle joint and force names',
       keys: 'L',
       match: ['l'],
     },
-    { id: 'view.paths', section: 'View', label: 'Traced paths', keys: 'P', match: ['p'] },
+    { id: 'view.paths', section: 'View', label: 'Toggle traced paths', keys: 'P', match: ['p'] },
 
     {
       id: 'edit.lock',
       section: 'Editing',
-      label: 'Lock / Unlock what is selected',
+      label: 'Lock or unlock selection',
       keys: 'K',
       match: ['k'],
     },
@@ -253,7 +253,7 @@ export class KeyboardShortcutsService {
     {
       id: 'edit.delete',
       section: 'Editing',
-      label: 'Delete what is selected',
+      label: 'Delete selection',
       // Backspace as well as Delete: a MacBook has one key here and it sends
       // Backspace, so Delete alone left the shortcut unreachable on the
       // keyboard it is printed on.
@@ -263,7 +263,7 @@ export class KeyboardShortcutsService {
     {
       id: 'edit.nudgeLeft',
       section: 'Editing',
-      label: 'Nudge what is selected',
+      label: 'Nudge selection',
       keys: '← → ↑ ↓',
       match: ['arrowleft'],
     },
@@ -298,7 +298,7 @@ export class KeyboardShortcutsService {
     {
       id: 'app.help',
       section: 'General',
-      label: 'Help, and this list',
+      label: 'Help and shortcuts',
       keys: '?',
       // The character, not the keystroke that makes it: which key and which
       // modifiers produce a question mark is a matter of layout, and asking
@@ -323,12 +323,12 @@ export class KeyboardShortcutsService {
     },
     {
       id: 'drag.free',
-      label: 'Drag without snapping to the grid or guides, or merging on drop',
+      label: 'Drag without snapping to grid, guides, or merging joints',
       keys: `${this.alt} + drag`,
     },
     {
       id: 'place.bearing',
-      label: 'Point a new link, cylinder or force in 15° steps',
+      label: 'Snap a new link, cylinder, or force to 15° increments',
       keys: `${this.alt} + click`,
     },
     {
@@ -338,7 +338,7 @@ export class KeyboardShortcutsService {
     },
     {
       id: 'field.fine',
-      label: 'Drag a number’s label in steps ten times finer',
+      label: 'Fine-tune a numeric field (10× precision)',
       keys: 'Shift + drag',
     },
   ];

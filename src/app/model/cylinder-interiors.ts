@@ -172,11 +172,11 @@ function refusalFor(
   const slide = lettered(cylinder.seal);
   const said =
     blocked === 'fixed-length'
-      ? `its barrel is fixed at its length, so it cannot reach out to ${slide} at this size. Release the fixed length, or put Object Size back where it was.`
-      : `at this size ${slide} stands too close to ${lettered(cylinder.mountA)} for any barrel to fit between them. Reduce Object Size, or drag the two apart.`;
+      ? `its barrel has a fixed length and cannot reach ${slide} at this scale. Release the fixed length, or restore Object Scale.`
+      : `at this scale ${slide} stands too close to ${lettered(cylinder.mountA)} for any barrel to fit between them. Reduce Object Scale, or drag the two apart.`;
   return {
     cylinder,
     code: blocked === 'fixed-length' ? NO_TRAVEL : OUT_OF_REACH,
-    text: `Cylinder ${name} could not follow the new Object Size: ${said}`,
+    text: `Cylinder ${name} could not follow the new Object Scale: ${said}`,
   };
 }

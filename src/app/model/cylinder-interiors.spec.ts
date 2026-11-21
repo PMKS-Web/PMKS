@@ -309,7 +309,7 @@ describe('the plan the service commits', () => {
     expect(plan.placements.size).toBe(0);
     expect(plan.refusals.length).toBe(1);
     expect(plan.refusals[0].text).toContain('Cylinder AD');
-    expect(plan.refusals[0].text).toContain('Object Size');
+    expect(plan.refusals[0].text).toContain('Object Scale');
     expect(plan.refusals[0].text).not.toContain(one.inner.id);
     // The reader's nouns: the block is a joint, an end is an end joint.
     expect(plan.refusals[0].text).not.toMatch(/\b(mount|head|seal|ram)\b/i);

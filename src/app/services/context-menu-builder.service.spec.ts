@@ -211,7 +211,7 @@ describe('the right-click menu', () => {
       const driven = row(model, 'Driven Input')!;
       // Present, so a reader who learned the one-joint menu finds it, and
       // grayed with the reason rather than silently absent.
-      expect(driven.refusal?.short).toBe('one input per machine');
+      expect(driven.refusal?.short).toBe('one input per mechanism');
     });
 
     it('grays a group type for the reason one joint would have been grayed for', () => {
@@ -751,7 +751,7 @@ describe('the right-click menu', () => {
     expect(row(load, 'Delete Force')!.disabled).toBe(false);
     // The load is what Force Analysis asks about; the frame is a direction.
     expect(row(load, 'Flip Force')!.disabled).toBe(false);
-    expect(row(load, 'Global Frame')!.disabled).toBe(true);
+    expect(row(load, 'Grid Frame')!.disabled).toBe(true);
   });
 
   it('keeps a locked force direction fixed while allowing its frame switch', () => {
@@ -762,7 +762,7 @@ describe('the right-click menu', () => {
     harness.active.updateSelectedObj(force);
     const model = harness.builder.build(force, noHandlers);
     expect(row(model, 'Flip Force')!.disabled).toBe(true);
-    expect(row(model, 'Global Frame')!.disabled).toBe(false);
+    expect(row(model, 'Grid Frame')!.disabled).toBe(false);
     const before = force.angleRad;
     row(model, 'Flip Force')!.action();
     expect(force.angleRad).toBe(before);
@@ -926,6 +926,10 @@ describe('the right-click menu, on a bar that can hold a value', () => {
     const model = harness.builder.build(parts.crank, noHandlers);
     expect(row(model, 'Fixed Length')!.checked).toBe(true);
     expect(row(model, 'Fixed Angle')!.checked).toBe(true);
+    // Neither single-hold tip is true while both stand: the link neither
+    // rotates nor slides along a line, so both rows say what it does do.
+    expect(row(model, 'Fixed Length')!.tip).toContain('length and angle');
+    expect(row(model, 'Fixed Angle')!.tip).toContain('length and angle');
     expect(model.header?.subtitle).toContain('fixed length and angle');
     row(model, 'Fixed Length')!.action();
     expect(parts.crank.hold).toBe('angle');
@@ -946,7 +950,7 @@ describe('the right-click menu, on a bar that can hold a value', () => {
     const locked = harness.builder.build(parts.crank, noHandlers);
     expect(row(locked, 'Fixed Length')!.refusal?.short).toBe('locked in place');
     const body = harness.builder.build(parts.coupler, noHandlers);
-    expect(row(body, 'Fixed Angle')!.refusal?.short).toBe('bars only');
+    expect(row(body, 'Fixed Angle')!.refusal?.short).toBe('two-joint links only');
   });
 
   it('tells a joint on a held bar what confines it, in its subtitle', () => {

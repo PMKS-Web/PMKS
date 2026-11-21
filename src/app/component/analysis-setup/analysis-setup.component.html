@@ -66,7 +66,7 @@
             <div class="massRow head">
               <span>Body</span>
               <span>Mass</span>
-              <span>Mass moment of inertia</span>
+              <span>Mass Moment of Inertia</span>
             </div>
             @for (group of massGroups(); track $index) {
               @if (group.label) {
@@ -126,7 +126,7 @@
                 </button>
               </div>
               <p class="note">
-                Gravity and inertia skip a link with no mass. Open a link to place its center of
+                Gravity and inertia skip links with zero mass. Select a link to adjust its center of
                 mass.
               </p>
             }
@@ -169,7 +169,7 @@
         (click)="unassignedOpen = !unassignedOpen"
       >
         <span class="sectionName">
-          Not in any mechanism
+          Not in a Mechanism
           <!-- Amber: the machines that do exist still analyze, but part of
                what has been drawn is not among them. -->
           <chip-block kind="warning">{{ unassigned.length }}</chip-block>

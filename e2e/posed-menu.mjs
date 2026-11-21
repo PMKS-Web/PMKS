@@ -323,7 +323,7 @@ await section('force', async () => {
   // A force's frame is typed geometry, Edit's alone. Flip Force is the load,
   // the same at every pose, so an analysis mode offers it (#262).
   await openForce();
-  await refused('Global Frame', 'Edit mode only');
+  await refused('Grid Frame', 'Edit mode only');
   await page.keyboard.press('Escape');
   await openForce();
   const outward = () =>

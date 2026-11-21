@@ -657,7 +657,7 @@ await page.locator('.startChipCaret').first().click();
 await page.waitForTimeout(300);
 const moveRow = await page.evaluate(() => {
   const row = [...document.querySelectorAll('.startMenu button')].find((one) =>
-    /Move the start here/.test(one.textContent ?? '')
+    /Set Start Pose Here/.test(one.textContent ?? '')
   );
   return row
     ? {
@@ -668,7 +668,7 @@ const moveRow = await page.evaluate(() => {
     : null;
 });
 record(
-  'Move the start here is grayed, naming the fixed angle',
+  'Set Start Pose Here is grayed, naming the fixed angle',
   moveRow?.off === true && moveRow.disabled === 'true' && moveRow.reason === 'fixed angle GC',
   moveRow
 );
@@ -681,7 +681,7 @@ const startBefore = await page.evaluate(() =>
   )
 );
 // Forced: Playwright reads aria-disabled as not enabled, which is the point.
-await page.locator('.startMenu button', { hasText: 'Move the start here' }).click({ force: true });
+await page.locator('.startMenu button', { hasText: 'Set Start Pose Here' }).click({ force: true });
 await page.waitForTimeout(500);
 record(
   'and pressing it anyway leaves the start where it was',
@@ -693,7 +693,7 @@ record(
     )
   )) === startBefore
 );
-await page.locator('.startMenu button', { hasText: 'Back to the start' }).click();
+await page.locator('.startMenu button', { hasText: 'Return to Start' }).click();
 await page.waitForTimeout(1500);
 record(
   'back at the start, the chips are drawn again',

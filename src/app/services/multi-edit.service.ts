@@ -95,7 +95,7 @@ export class MultiEditService {
         return this.refusal(
           'selection.conflicting-geometry',
           'shared joint disagrees',
-          `The selected links ask joint ${placement.joint.name} to land in two different places.`
+          `The selected links place joint ${placement.joint.name} in two conflicting positions.`
         );
       }
       byJoint.set(placement.joint.id, placement.at);
@@ -169,7 +169,7 @@ export class MultiEditService {
       return this.refusal(
         'selection.binary-links-only',
         'two-joint links only',
-        'Shared length and angle are available only for ordinary two-joint links.'
+        'Shared length and angle only apply to plain two-joint links.'
       );
     }
 
@@ -208,8 +208,8 @@ export class MultiEditService {
       return this.refusal(
         'selection.welded-mass',
         'welded member',
-        `${names} ${members.length === 1 ? 'weighs its' : 'weigh their'} share of a welded ` +
-          'body. Select the body to set its mass. No links were changed.'
+        `${names} ${members.length === 1 ? 'shares' : 'share'} the mass of a welded ` +
+          'compound link. Select the compound link to set its mass. No links were changed.'
       );
     }
     this.mechanism.editingAtStartPose(() => {
@@ -378,7 +378,7 @@ export class MultiEditService {
       return {
         code: 'selection.binary-links-only',
         short: 'two-joint links only',
-        message: 'A length or an angle is held on ordinary two-joint links.',
+        message: 'Fixed length and angle only apply to plain two-joint links.',
       };
     }
     return undefined;
@@ -482,7 +482,7 @@ export class MultiEditService {
       return this.refusal(
         'selection.forces-only',
         'forces only',
-        'A force base frame can be switched when every selected item is a force.'
+        'Reference frame can only be changed when every selected item is a force.'
       );
     }
     if (forces.every((force) => force.local === local)) return OK;
@@ -496,7 +496,7 @@ export class MultiEditService {
     return this.refusal(
       'selection.force-pose',
       'start pose unavailable',
-      'The selected forces cannot be mapped to their start pose. Return to the start before changing them.'
+      'The selected forces cannot be mapped back to the start pose. Return to the start pose before editing them.'
     );
   }
 

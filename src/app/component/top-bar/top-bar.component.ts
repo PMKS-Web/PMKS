@@ -499,7 +499,7 @@ export class TopBarComponent implements AfterViewInit, AfterViewChecked, OnDestr
     // then takes the thread. Nothing here is faster; it is visible.
     if (this.mechanism.solvingIsDeferred) {
       void this.loading
-        .during('Working out the motion…', () => this.mechanism.solveNow())
+        .during('Solving motion…', () => this.mechanism.solveNow())
         .then(() => this.openOrRefuse(tab, setup));
       return;
     }
@@ -675,8 +675,8 @@ export class TopBarComponent implements AfterViewInit, AfterViewChecked, OnDestr
 
   exportTooltip(): string {
     return this.canExport()
-      ? 'Choose objects, quantities and a file format.'
-      : 'Nothing has been solved yet, so there are no numbers to export.';
+      ? 'Choose objects, quantities, and a file format.'
+      : 'No mechanism has been solved yet, so there is no data to export.';
   }
 
   exportData(): void {

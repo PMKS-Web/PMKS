@@ -29,7 +29,7 @@ export const TEMPLATE_CATEGORIES = [
   { id: 'start', name: 'Start Here' },
   { id: 'realworld', name: 'Real Machines' },
   { id: 'backforth', name: 'Back-and-Forth Motion' },
-  { id: 'swing', name: 'Swing, Lift and Grip' },
+  { id: 'swing', name: 'Swing, Lift, and Grip' },
   { id: 'paths', name: 'Drawing a Path' },
   { id: 'forces', name: 'Forces' },
   { id: 'sixbar', name: 'Six-Bars and Beyond' },
@@ -108,7 +108,7 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
     name: 'Four-Bar',
     category: 'start',
     description:
-      'The short crank turns all the way round, the opposite link only swings, and a point on the coupler draws a curve.',
+      'The short crank rotates continuously, the opposite link rocks back and forth, and a point on the coupler traces a curve.',
     thumbnail: 'assets/gifs/four-bar.png',
     animation: 'assets/gifs/four-bar.gif',
   },
@@ -124,8 +124,7 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
     id: 'Cylinder_Boom',
     name: 'Cylinder-Driven Boom',
     category: 'start',
-    description:
-      'A hydraulic cylinder pushes, and the boom swings up the way a digger lifts its arm.',
+    description: 'A hydraulic cylinder extends to lift the boom, like an excavator arm.',
     thumbnail: 'assets/gifs/cylinder-boom.png',
     animation: 'assets/gifs/cylinder-boom.gif',
   },
@@ -143,7 +142,7 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
     name: 'Four-Bar with Fixed Lengths',
     category: 'start',
     description:
-      'Fixed Length and Fixed Angle are on, so dragging a joint only changes what is left free. Turn one off and drag again.',
+      'Fixed Length and Fixed Angle are enabled, so dragging a joint only adjusts unconstrained dimensions. Turn one off and drag again.',
     thumbnail: 'assets/gifs/locked-four-bar.png',
     animation: 'assets/gifs/locked-four-bar.gif',
   },
@@ -161,7 +160,7 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
     name: 'Slider-Crank Inversions',
     category: 'start',
     description:
-      'One slider-crank held still four ways: an engine, a quick-return, an oscillating cylinder and a hand pump.',
+      'Four inversions of a slider-crank: an engine, a quick-return, an oscillating cylinder, and a hand pump.',
     thumbnail: 'assets/gifs/slider-crank-inversions.png',
     animation: 'assets/gifs/slider-crank-inversions.gif',
   },
@@ -212,7 +211,7 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
     name: 'Excavator Bucket',
     category: 'realworld',
     description:
-      'How a digger curls its bucket, traced over its drawing: a cylinder, a bell crank, and the link that tips the bucket.',
+      'An excavator bucket curl mechanism traced over a reference drawing: a cylinder, a bell crank, and the bucket link.',
     thumbnail: 'assets/gifs/excavator-bucket.png',
     animation: 'assets/gifs/excavator-bucket.gif',
     backdrop: {
@@ -324,7 +323,7 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
     name: 'Whitworth Quick-Return',
     category: 'backforth',
     description:
-      'A machine tool drive that cuts slowly and returns quickly: the crank turns the slotted link all the way round, unevenly.',
+      'A machine-tool drive that cuts slowly and returns quickly: the crank rotates the slotted link continuously at a varying speed.',
     thumbnail: 'assets/gifs/whitworth.png',
     animation: 'assets/gifs/whitworth.gif',
   },
@@ -347,13 +346,12 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
     animation: 'assets/gifs/pumpjack.gif',
   },
 
-  // Swing, Lift and Grip
+  // Swing, Lift, and Grip
   {
     id: 'Windshield_Wiper',
     name: 'Windshield Wiper',
     category: 'swing',
-    description:
-      'One motor turning round, two wiper arms sweeping back and forth together across the glass.',
+    description: 'One rotating motor drives two wiper arms sweeping in sync across the windshield.',
     thumbnail: 'assets/gifs/windshield-wiper.png',
     animation: 'assets/gifs/windshield-wiper.gif',
   },
@@ -362,7 +360,7 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
     name: 'Oscillating Fan',
     category: 'swing',
     description:
-      'The motor rides on the fan head it swings: its crank turns all the way round while the head sweeps side to side.',
+      'The motor rides on the fan head it drives: its crank rotates continuously while the head sweeps side to side.',
     thumbnail: 'assets/gifs/oscillating-fan.png',
     animation: 'assets/gifs/oscillating-fan.gif',
   },
@@ -371,7 +369,7 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
     name: 'Parallel Gripper',
     category: 'swing',
     description:
-      'A cylinder closes two jaws that stay level the whole way and meet flat, like a robot’s gripper.',
+      'A cylinder closes two parallel jaws that stay level throughout the stroke, like a robotic gripper.',
     thumbnail: 'assets/gifs/cylinder-gripper.png',
     animation: 'assets/gifs/cylinder-gripper.gif',
   },
@@ -427,7 +425,7 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
     name: 'Elliptical Trammel',
     category: 'paths',
     description:
-      'A crank and rod turn a bar whose ends slide on crossed guides, so the traced point on the bar goes all the way round an ellipse.',
+      'A crank drives a bar whose ends slide along perpendicular guides, tracing a complete ellipse.',
     thumbnail: 'assets/gifs/elliptical-trammel.png',
     animation: 'assets/gifs/elliptical-trammel.gif',
   },
@@ -511,7 +509,7 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
     name: 'Bell Crank',
     category: 'sixbar',
     description:
-      'A crank drives an L-shaped lever, welded from two links, that passes the motion round a corner to a second rocker.',
+      'A crank drives a welded L-shaped bell crank that redirects motion around a corner to a second rocker.',
     thumbnail: 'assets/gifs/bell-crank.png',
     animation: 'assets/gifs/bell-crank.gif',
   },

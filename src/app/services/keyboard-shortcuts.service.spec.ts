@@ -113,7 +113,7 @@ describe('KeyboardShortcutsService', () => {
     expect(nudges).toHaveLength(1);
     expect(nudges[0].keys).toBe('← → ↑ ↓');
     // The coarser step is the modifier list's to say, not a bracket here.
-    expect(nudges[0].label).toBe('Nudge what is selected');
+    expect(nudges[0].label).toBe('Nudge selection');
   });
 
   describe('the modifier keys', () => {

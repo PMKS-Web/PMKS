@@ -112,7 +112,7 @@ export class MechanismPanelComponent {
     const press = this.viewport.isTouch() ? 'Tap' : 'Select';
     return this.tabs.getCurrentTab() === TabID.FORCE
       ? `${press} a joint or link on the grid for the reactions it carries, or the input for the effort that drives it.`
-      : `${press} a joint or link on the grid for its position, velocity and acceleration graphs.`;
+      : `${press} a joint or link on the grid to view its position, velocity, and acceleration graphs.`;
   }
 
   protected pick(index: number): void {

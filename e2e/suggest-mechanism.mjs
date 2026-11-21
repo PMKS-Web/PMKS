@@ -303,7 +303,7 @@ await page.fill('#suggest-link', `https://app.pmksplus.com/?${payloads.Four_Bar.
 await page.waitForTimeout(500);
 check(
   'a link that will not decode is cut short',
-  (await hint()).startsWith('That link is cut short')
+  (await hint()).startsWith('That link looks incomplete')
 );
 await page.fill('#suggest-link', `https://app.pmksplus.com/?${payloads.Four_Bar}`);
 await page.waitForTimeout(80);

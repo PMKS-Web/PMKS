@@ -57,7 +57,7 @@ try {
   );
   check(
     'Rotation has three ordinary graph rows and no drawing chips',
-    (await cleanNames()).join('|') === 'Angle|Angular velocity|Angular acceleration' &&
+    (await cleanNames()).join('|') === 'Angle|Angular Velocity|Angular Acceleration' &&
       (await page.locator('.drawingChips').count()) === 0
   );
   await shot('rotation');
@@ -65,7 +65,7 @@ try {
   await tab('Rotation').press('ArrowRight');
   check(
     'Right selects and focuses Center of mass without nudging the drawing',
-    (await tab('Center of mass').evaluate(
+    (await tab('Center of Mass').evaluate(
       (node) => node === document.activeElement && node.getAttribute('aria-selected') === 'true'
     )) && JSON.stringify(await geometry()) === JSON.stringify(before)
   );
@@ -93,14 +93,14 @@ try {
   );
   await rows.nth(0).click();
   await rows.nth(1).click();
-  await tab('Center of mass').press('Home');
+  await tab('Center of Mass').press('Home');
   check('Home returns to Rotation and preserves its open graph', (await expansion())[0] === 'true');
   await rows.nth(0).click();
   const film = filmstrip(page, `${OUT}/switch-film`, { x: 0, y: 40, width: 445, height: 720 });
   await film.during(75, 8, 'tabs', async () => {
     await tab('Rotation').press('End');
     await page.waitForTimeout(180);
-    await tab('Center of mass').press('ArrowRight');
+    await tab('Center of Mass').press('ArrowRight');
     await page.waitForTimeout(180);
     await tab('Rotation').press('ArrowLeft');
   });
@@ -109,7 +109,7 @@ try {
     JSON.stringify(await expansion()) === '["false","true","false"]',
     await expansion()
   );
-  await tab('Center of mass').press('Home');
+  await tab('Center of Mass').press('Home');
   check('Rotation remembers its collapsed Angle', (await expansion())[0] === 'false');
   await tab('Rotation').press('End');
   await shot('center-of-mass');
@@ -162,9 +162,9 @@ try {
   await page.getByRole('button', { name: /Kinematic Analysis/ }).click();
   check(
     'selected kinematics tab survives changing the selected link and mode',
-    (await tab('Center of mass').getAttribute('aria-selected')) === 'true'
+    (await tab('Center of Mass').getAttribute('aria-selected')) === 'true'
   );
-  await tab('Center of mass').press('Home');
+  await tab('Center of Mass').press('Home');
   await page.mouse.move(600, 100);
   const cleared = await page.evaluate(() => {
     const grid = ng.getComponent(document.querySelector('app-new-grid'));
@@ -211,7 +211,7 @@ try {
   const expand = page.getByRole('button', { name: 'Expand the panel', exact: true });
   await expand.waitFor({ state: 'visible' });
   await expand.click();
-  await tab('Center of mass').click();
+  await tab('Center of Mass').click();
   await page.locator('.drawingChips').scrollIntoViewIfNeeded();
   const narrow = await panel.evaluate((host) => {
     const head = host.querySelector('.panelHead').getBoundingClientRect();
@@ -237,7 +237,7 @@ try {
   );
   await shot('narrow');
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await tab('Center of mass').press('Home');
+  await tab('Center of Mass').press('Home');
   check(
     'reduced motion still switches immediately',
     (await tab('Rotation').getAttribute('aria-selected')) === 'true'

@@ -99,7 +99,7 @@ export class SplitJointService {
       this.notify.news(
         'split-removed-input',
         wasSlider
-          ? 'The slider input was removed because no links ride its block now.'
+          ? 'The slider input was removed because no links are connected to it.'
           : 'The input was removed because its two links are now separate.'
       );
     }

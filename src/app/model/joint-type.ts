@@ -54,7 +54,7 @@ export const NOWHERE_TO_SLIDE = {
 } as const;
 
 export const ORPHANED_JOINT = {
-  lead: 'Joint is Orphaned.',
+  lead: 'Joint is orphaned.',
   sentence: 'Drag another joint to merge it or create a new link.',
 } as const;
 

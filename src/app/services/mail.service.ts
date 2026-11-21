@@ -15,8 +15,7 @@ const MAIL_SERVICE = 'service_pg2k647';
  * round it is the same whatever the reader was writing.
  */
 export const NO_MAIL_KEY =
-  'This build of PMKS has no key for the mail service, so the form cannot send. ' +
-  `Write to ${HELP_ADDRESS} instead.`;
+  'This build of PMKS isn’t configured to send email. ' + `Please email ${HELP_ADDRESS} directly.`;
 
 /**
  * Mail from the app to the team, through EmailJS.

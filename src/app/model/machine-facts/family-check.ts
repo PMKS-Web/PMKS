@@ -209,12 +209,12 @@ function sliders(ctx: RelationContext): FamilyMatch[] {
       } else if (pivot && turnsFully(ctx, slotted)) {
         out.push({
           family: 'Whitworth quick-return mechanism',
-          basis: `${ctx.bodyLabel(crank)} turns fully and drives the slotted ${ctx.bodyLabel(slotted)}, which also turns fully about ${pivot.id} but unevenly (a rotating slotted link)`,
+          basis: `${ctx.bodyLabel(crank)} rotates continuously and drives the slotted ${ctx.bodyLabel(slotted)}, which also rotates continuously around ${pivot.id} at a varying speed (a rotating slotted link)`,
         });
       } else if (pivot) {
         out.push({
           family: 'crank and slotted-lever quick-return mechanism',
-          basis: `${ctx.bodyLabel(crank)} turns fully and rocks the slotted ${ctx.bodyLabel(slotted)} about ${pivot.id} (an oscillating slotted link, as in a shaper)`,
+          basis: `${ctx.bodyLabel(crank)} rotates continuously and rocks the slotted ${ctx.bodyLabel(slotted)} around ${pivot.id} (an oscillating slotted link, as in a shaper)`,
         });
       }
     } else if (rider.ground) {
@@ -254,7 +254,7 @@ function sliders(ctx: RelationContext): FamilyMatch[] {
           if (drivenAtOther) {
             out.push({
               family: 'walking-beam mechanism',
-              basis: `${ctx.bodyLabel(crank)} is a beam rocking about a pivot between its ends; one end (${other.id}) is moved by the rest of the mechanism, the other (${pin.id}) works slider ${rider.id} up and down a fixed guide through rod ${ctx.bodyLabel(rod)}`,
+              basis: `${ctx.bodyLabel(crank)} is a beam rocking around a pivot between its ends; one end (${other.id}) is driven by the mechanism, and the other (${pin.id}) drives slider ${rider.id} along a fixed guide through rod ${ctx.bodyLabel(rod)}`,
             });
           }
         }
@@ -315,7 +315,7 @@ function sideRods(ctx: RelationContext): FamilyMatch | undefined {
       );
       if (!main || !wheels) continue;
       return {
-        family: 'steam-locomotive running gear (driving wheels, side rod and main rod)',
+        family: 'steam-locomotive running gear (driving wheels, side rod, and main rod)',
         basis: `${coupling}; ${ctx.bodyLabel(main)} joins them to slider ${slider.id} on a fixed guide, as a main rod joins a piston's crosshead to a driving wheel`,
       };
     }
@@ -383,7 +383,7 @@ function cylinderLever(ctx: RelationContext): FamilyMatch | undefined {
   const { cylinder, mount, other, lever } = relation;
   return {
     family: 'cylinder-driven lever',
-    basis: `cylinder ${cylinder.mountA.id}-${cylinder.mountB.id}, anchored at ${other.id}, pushes ${ctx.bodyLabel(lever)} at ${mount.id} and swings it about its fixed pivot`,
+    basis: `cylinder ${cylinder.mountA.id}-${cylinder.mountB.id}, anchored at ${other.id}, pushes ${ctx.bodyLabel(lever)} at ${mount.id} and swings it around its fixed pivot`,
   };
 }
 

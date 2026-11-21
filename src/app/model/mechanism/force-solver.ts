@@ -163,8 +163,8 @@ const EVENEST_REFINEMENTS = 3;
  * is the solver talking to itself.
  */
 export const SECOND_ORDER_LOCK_MESSAGE =
-  'The loads push along a direction the mechanism only resists after a tiny sag, so no finite ' +
-  'reactions balance them. Add another support to the part that moves, or take the load off it.';
+  'The applied loads push in a direction the mechanism only resists after deflecting, so no ' +
+  'finite rigid-body reactions exist. Add a support to the moving link, or remove the load.';
 /**
  * The smallest scaled pivot the elimination accepts before calling the pose
  * singular.
@@ -492,7 +492,7 @@ export class ForceSolver {
       return empty(
         'unsupported-topology',
         unknownCount > rowCount
-          ? `This linkage has more supports than equilibrium can determine — a redundant support, link, or weld leaves the load's split between them ambiguous. Remove one ${counts}.`
+          ? `This mechanism is statically indeterminate—a redundant support, link, or weld leaves the load distribution ambiguous. Remove one ${counts}.`
           : `A body here has nothing to react against, so its equilibrium cannot be written. Check for a part carrying load with no support ${counts}.`
       );
     }
@@ -743,13 +743,13 @@ export class ForceSolver {
   static statusMessage(status: ForceAnalysisStatus): string {
     switch (status) {
       case 'singular':
-        return 'The force equations have no single answer at this pose.';
+        return 'The force equations have no unique solution at this pose.';
       case 'unsupported-topology':
         return "Force analysis can't model this kind of mechanism yet.";
       case 'missing-kinematics':
         return 'Some links are missing the motion data in-motion analysis needs.';
       case 'invalid-properties':
-        return "A mass, mass moment of inertia or force value isn't a usable number.";
+        return 'A mass, mass moment of inertia, or force value isn’t a valid number.';
       default:
         return '';
     }
@@ -998,11 +998,11 @@ export class ForceSolver {
     const nameOf = (body: Link): string => visibleBodyName(body, cylinders);
     for (const body of bodies) {
       if (!Number.isFinite(body.mass) || body.mass < 0) {
-        return `Link ${nameOf(body)} has a mass that isn't a usable number. Type it again in the Masses table.`;
+        return `Link ${nameOf(body)} has a mass that isn’t a valid number. Re-enter it in the Masses table.`;
       }
       if (body instanceof RealLink) {
         if (!Number.isFinite(body.massMoI) || body.massMoI < 0) {
-          return `Link ${nameOf(body)} has a mass moment of inertia that isn't a usable number. Type it again in the Masses table.`;
+          return `Link ${nameOf(body)} has a mass moment of inertia that isn’t a valid number. Re-enter it in the Masses table.`;
         }
         for (const force of body.forces) {
           if (
@@ -1011,7 +1011,7 @@ export class ForceSolver {
             !Number.isFinite(force.startCoord.x) ||
             !Number.isFinite(force.startCoord.y)
           ) {
-            return `The force on link ${nameOf(body)} has a magnitude or position that isn't a number. Select it and type its values again.`;
+            return `The force on link ${nameOf(body)} has a magnitude or position that isn’t a valid number. Select it and re-enter its values.`;
           }
         }
       }

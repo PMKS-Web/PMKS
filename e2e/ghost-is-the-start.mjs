@@ -236,7 +236,7 @@ const displace = async (index = 0, fraction = 1 / 3) => {
     [index, fraction]
   );
   await page.waitForTimeout(280);
-  await press('Fit to view').catch(() => {});
+  await press('Fit to View').catch(() => {});
   await page.waitForTimeout(500);
 };
 
@@ -257,9 +257,12 @@ async function scene(name, run) {
   const state = await look();
   let problems = breaks(state);
   if (!problems.length && state.ghosts.length) {
-    await press('Back to the start pose');
-    await page.waitForTimeout(700);
-    problems = landed(state, await look());
+    if (await press('Return to start pose')) {
+      await page.waitForTimeout(700);
+      problems = landed(state, await look());
+    } else {
+      problems = ['found no enabled Return to start pose button'];
+    }
   }
   record(name, problems.length === 0, problems);
   return state;
@@ -429,9 +432,12 @@ await scene('play, pause, edit, undo leaves it there too', async () => {
     const parked = await look();
     let problems = breaks(parked);
     if (!problems.length) {
-      await press('Back to the start pose');
-      await page.waitForTimeout(700);
-      problems = landed(parked, await look());
+      if (await press('Return to start pose')) {
+        await page.waitForTimeout(700);
+        problems = landed(parked, await look());
+      } else {
+        problems = ['found no enabled Return to start pose button'];
+      }
     }
     record('the reported drawing keeps its ghost on its start', problems.length === 0, problems);
   }
@@ -446,7 +452,7 @@ await scene('play, pause, edit, undo leaves it there too', async () => {
   await film.shot('edited-at-the-start');
   await displace();
   await film.shot('parked-with-the-ghost');
-  await press('Back to the start pose');
+  await press('Return to start pose');
   await page.waitForTimeout(700);
   await film.shot('back-on-the-ghost');
   const sheet = await contactSheet(
@@ -492,7 +498,7 @@ const STEPS = {
     return `scrub row ${which} to ${to}`;
   },
   async stop() {
-    await press('Back to the start pose');
+    await press('Return to start pose');
     await page.waitForTimeout(450);
     return 'stop-to-start';
   },

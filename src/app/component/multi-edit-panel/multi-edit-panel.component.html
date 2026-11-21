@@ -69,7 +69,7 @@
         [disabled]="form.controls.trace.disabled"
         dataAction="trace"
         [mixed]="traceState().kind === 'mixed'"
-        tooltip="Show / hide the path each selected joint takes through the cycle."
+        tooltip="Show or hide the path each selected joint traces through the cycle."
       >
         Trace Path
       </toggle-block>
@@ -92,12 +92,12 @@
           [placeholder2]="placeholder(linkValue('angle'))"
           dataField1="length"
           dataField2="angle"
-          tooltip="Each selected link keeps the same anchor used by its one-link editor."
+          tooltip="Each selected link keeps its own anchor joint."
         >
           Link Geometry
         </dual-input-block>
       } @else {
-        <p class="multiNote">Length and angle need ordinary two-joint links.</p>
+        <p class="multiNote">Length and angle can only be edited on plain two-joint links.</p>
       }
       <input-block
         [formGroup]="form"
@@ -120,7 +120,7 @@
           [disabled]="form.controls.fixedLength.disabled"
           dataAction="fixedLength"
           [mixed]="holdState('length').kind === 'mixed'"
-          tooltip="Hold every selected bar at the length it is now. Its ends may still turn about each other."
+          tooltip="Keep every selected link at its current length. Its angle can still change."
         >
           Fixed Length
         </toggle-block>
@@ -130,7 +130,7 @@
           [disabled]="form.controls.fixedAngle.disabled"
           dataAction="fixedAngle"
           [mixed]="holdState('angle').kind === 'mixed'"
-          tooltip="Hold every selected bar at the direction it points now. Its ends may still stretch along that line."
+          tooltip="Keep every selected link at its current angle. Its length can still change."
         >
           Fixed Angle
         </toggle-block>
@@ -170,11 +170,11 @@
         [formGroup]="form"
         _formControl="isGlobal"
         [disabled]="form.controls.isGlobal.disabled"
-        tooltip="Global keeps a force pointing the same way. Local turns it with the link it is on."
+        tooltip="Grid keeps each force direction fixed; Link rotates it with the link it acts on."
         [option1]="localOptionLabel"
-        option2="Global"
+        option2="Grid"
       >
-        Force Base Frame
+        Reference Frame
       </radio-block>
     </collapsible-subsection>
     <collapsible-subsection titleLabel="Visual Settings" [expanded]="true">
@@ -190,8 +190,8 @@
            one paragraph. The title already counts what is selected, so the
            note does not say it again. -->
       <ul class="multiNote">
-        <li>Drag the selection, or its handles, to move, rotate or scale it.</li>
-        <li>A field shows only when every part has it.</li>
+        <li>Drag the selection or its handles to move, rotate, or scale it.</li>
+        <li>Property fields appear only when every selected part shares them.</li>
         <li>Forces move with their links.</li>
       </ul>
     </collapsible-subsection>

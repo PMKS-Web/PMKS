@@ -387,7 +387,7 @@ record(
 );
 record(
   'while the subtitle says the numbers are following it',
-  /Following your hand/.test(await page.locator('.panelSub').innerText())
+  /Updating live/.test(await page.locator('.panelSub').innerText())
 );
 record(
   'and the strip says the same, in the accent',

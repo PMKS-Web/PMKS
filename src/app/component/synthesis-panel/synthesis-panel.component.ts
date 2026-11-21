@@ -69,12 +69,12 @@ const REPLACE_WARNING = 'synthesis.replace-edited';
 const HELP = {
   length:
     'The length of the end-effector link — the part whose three positions you are designing for.',
-  ref: 'Which point on the end-effector link the coordinates describe, and the point it turns about.',
+  ref: 'Which point on the end-effector link the coordinates describe and rotate around.',
   duplicate:
     'Copy the last position and offset it slightly — a quick start for three similar positions.',
   branch:
-    'A four-bar can be closed two ways through the same ground pins, and only one of them ' +
-    'may reach all three positions without coming apart.',
+    'A four-bar can be assembled two ways on the same ground pins. Often only one assembly ' +
+    'reaches all three positions continuously without reassembly.',
   pin:
     'Which ground pin carries the input. A four-bar that will not turn from one ground pin often ' +
     'turns freely from the other.',
@@ -479,7 +479,7 @@ export class SynthesisPanelComponent implements OnInit, DoCheck, OnDestroy {
     ) {
       this.notify.refusal(
         'synthesis.region',
-        'Type a valid position and a width and height greater than zero.'
+        'Enter a valid position with a width and height greater than zero.'
       );
       this.readFromModel();
       return;
@@ -691,11 +691,11 @@ export class SynthesisPanelComponent implements OnInit, DoCheck, OnDestroy {
         ? 'No solution to check this position against yet'
         : 'Generate solutions to check this position';
     }
-    if (ok) return 'The chosen solution passes through this position on its own assembly';
+    if (ok) return 'The chosen solution passes through this position on its own assembly.';
     return this.solution.settledForTwo
-      ? 'No four-bar reaches all three, so this is the one given up: the linkage would have to ' +
-          'be taken apart to get here'
-      : 'The chosen solution reaches this position only on its other assembly — a branch defect';
+      ? 'No four-bar reaches all three positions continuously, so this position is skipped—the ' +
+          'mechanism would need reassembly to reach it.'
+      : 'The chosen solution reaches this position only on its other assembly—a branch defect.';
   }
 
   // --- requirements --------------------------------------------------------
@@ -713,7 +713,7 @@ export class SynthesisPanelComponent implements OnInit, DoCheck, OnDestroy {
         label: "Coupler pinned at the link's ends",
         detail: this.design.endsOnly
           ? `The coupler is the whole ${length} ${this.lengthUnit} of the end-effector link`
-          : 'Pins are tried at a range of places along the link and past its ends',
+          : 'Pins are tested at multiple positions along and beyond the link.',
         toggle: () => this.toggleRequirement('endsOnly'),
       },
       {
@@ -819,7 +819,7 @@ export class SynthesisPanelComponent implements OnInit, DoCheck, OnDestroy {
     // the way out that does not cost a requirement -- and when nothing fits at
     // all, it is usually because the three are close to a straight line.
     const moveOne =
-      'Moving the middle position further off the line between the other two also opens it up.';
+      'Moving the middle position farther off the line between the other two also helps.';
     if (this.design.constrain) {
       return (
         'No solution keeps both ground pins inside the region. Widen it, move it, or switch it ' +
@@ -972,15 +972,14 @@ export class SynthesisPanelComponent implements OnInit, DoCheck, OnDestroy {
     if (why.degenerate && !why.tooBig) {
       return (
         'The three positions lie on one line, so no circle passes through the three positions of ' +
-        'a coupler point. Turn the middle position, or move it off the line between the other two.'
+        'a coupler point. Rotate the middle position, or move it off the line between the other two.'
       );
     }
     if (why.tooBig) {
       return (
-        `${why.tooBig} of ${why.tried} constructions put a ground pivot further from the ` +
-        'positions than the mechanism could sensibly reach — the three positions are close to a ' +
-        'straight line. Turn the middle position further, or move it off the line between the ' +
-        'other two.'
+        `${why.tooBig} of ${why.tried} constructions put a ground pivot too far away for a ` +
+        'practical mechanism—the three positions are nearly collinear. Rotate the middle position ' +
+        'farther, or move it off the line between the other two.'
       );
     }
     return 'No four-bar of a buildable size passes through these three positions.';
@@ -1480,8 +1479,8 @@ export class SynthesisPanelComponent implements OnInit, DoCheck, OnDestroy {
       // two things they could mean are on the message.
       this.notify.warning(
         REPLACE_WARNING,
-        `${this.solutionName} would replace the mechanism on the grid, and it has been moved by ` +
-          `hand since Synthesis put it there. Those changes would be lost.`,
+        `${this.solutionName} would replace the mechanism on the grid, and it has been edited ` +
+          `manually since Synthesis inserted it. Replacing it will discard those changes.`,
         {
           // Guarded as well as dismissed on the way out. The message outlives
           // the press that raised it by design -- it waits to be answered --
@@ -1517,7 +1516,7 @@ export class SynthesisPanelComponent implements OnInit, DoCheck, OnDestroy {
       return 'Changes are in the preview. Choose Replace on Grid to update the inserted mechanism.';
     }
     const kind = this.solution.dyad() ? 'six-bar' : 'four-bar';
-    return `Left on the grid as a ${kind}. Change a position and insert again to revise it.`;
+    return `Inserted on the grid as a ${kind}. Adjust a position and insert again to update it.`;
   }
 
   solutionWarning(): string {
@@ -1528,7 +1527,7 @@ export class SynthesisPanelComponent implements OnInit, DoCheck, OnDestroy {
     if (missed) notes.push(`${missed} of 3 positions need reassembly.`);
     if (chosen.binds) {
       notes.push(
-        `Minimum transmission angle: ${chosen.minTransmission}°. The linkage may bind near a toggle position.`
+        `Minimum transmission angle: ${chosen.minTransmission}°. The mechanism may bind near a toggle position.`
       );
     }
     return notes.join(' ');

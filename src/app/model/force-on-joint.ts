@@ -50,7 +50,7 @@ export function refuseForceOnJoint(joint: Joint): ForceOnJointRefusal | undefine
       joint,
       'shared',
       `${links} links share it`,
-      `${links} links meet there, so the force would not say which one carries it`
+      `${links} links meet here, so it’s ambiguous which link carries the force`
     );
   }
   if (joint instanceof PrisJoint) {
@@ -58,7 +58,7 @@ export function refuseForceOnJoint(joint: Joint): ForceOnJointRefusal | undefine
       joint,
       'slider',
       'a slider shares it',
-      'the joint slides, so the force would not say whether the link or the slider carries it'
+      'this joint slides, so it’s ambiguous whether the link or slider carries the force'
     );
   }
   if (joint.ground) {
@@ -66,7 +66,7 @@ export function refuseForceOnJoint(joint: Joint): ForceOnJointRefusal | undefine
       joint,
       'grounded',
       'it is grounded',
-      'the joint is grounded, so the force would not say whether the link or the ground carries it'
+      'this joint is grounded, so it’s ambiguous whether the link or ground carries the force'
     );
   }
   return undefined;

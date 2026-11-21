@@ -128,7 +128,7 @@
                   <button
                     class="startChipLabel"
                     (click)="backToStart(row); $event.stopPropagation()"
-                    title="Back to the start pose"
+                    title="Return to start pose"
                   >
                     <mat-icon>first_page</mat-icon>
                     {{ away }}
@@ -138,7 +138,7 @@
                     class="startChipCaret"
                     (click)="toggleStartMenu(row); $event.stopPropagation()"
                     [attr.aria-expanded]="startMenuFor === row.index"
-                    aria-label="What to do about the start pose"
+                    aria-label="Start pose options"
                   >
                     <mat-icon>arrow_drop_up</mat-icon>
                   </button>
@@ -166,7 +166,7 @@
                     <div class="startMenu">
                       <button (click)="backToStart(row)">
                         <mat-icon>first_page</mat-icon>
-                        Back to the start
+                        Return to Start
                       </button>
                       <!-- Grayed with its reason rather than refused after
                            the click: aria-disabled and not disabled, so the
@@ -181,7 +181,7 @@
                       >
                         <mat-icon>flag</mat-icon>
                         <span class="startMenuLabel">
-                          Move the start here
+                          Set Start Pose Here
                           @if (refused) {
                             <span class="startMenuReason">{{ refused.short }}</span>
                           }
@@ -216,7 +216,7 @@
               @if (row.togglePoint) {
                 <span
                   class="rowToggle"
-                  title="This linkage passes through a toggle, where a very small movement of the input produces a very large one at the output. The motion is solved at a finer step there, and velocities and accelerations near that point are large and change quickly."
+                  title="This mechanism passes through a toggle position, where a small input motion causes a large output motion. PMKS uses finer steps here because velocities and accelerations spike and change rapidly."
                 >
                   <span class="toggleDot"></span>
                   Toggle
@@ -350,9 +350,9 @@
     class="stopButton"
     (click)="stop()"
     [disabled]="!canStop"
-    appShortcutTip="Back to the start pose"
+    appShortcutTip="Return to start pose"
     shortcutTipFor="playback.stop"
-    aria-label="Back to the start pose"
+    aria-label="Return to start pose"
   >
     <mat-icon>stop</mat-icon>
   </button>
@@ -378,8 +378,8 @@
           [class.covered]="at.covered"
           [style.--at]="at.percent"
           (click)="backToStart(row); $event.stopPropagation()"
-          title="Back to where this mechanism's cycle starts"
-          aria-label="Back to the start pose"
+          title="Return to this mechanism’s start pose"
+          aria-label="Return to start pose"
         ></button>
       }
     }

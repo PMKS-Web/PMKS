@@ -13,6 +13,30 @@ describe('DragStateService', () => {
     expect(state.joint).toBe(jointStates.creating);
   });
 
+  it('keeps a missed creation click open through its release, once', () => {
+    const state = new DragStateService();
+    state.beginCreatingLinkFromJoint();
+    state.press();
+    state.keepCreatingThroughRelease();
+
+    state.release();
+    expect(state.grid).toBe(gridStates.createJointFromJoint);
+    expect(state.joint).toBe(jointStates.creating);
+
+    state.press();
+    state.release();
+    expect(state.grid).toBe(gridStates.waiting);
+  });
+
+  it('drops a kept creation when the gesture is canceled instead', () => {
+    const state = new DragStateService();
+    state.beginCreatingLinkFromJoint();
+    state.keepCreatingThroughRelease();
+    state.cancel();
+    state.release();
+    expect(state.grid).toBe(gridStates.waiting);
+  });
+
   it('clears every enum when a gesture is canceled', () => {
     const state = new DragStateService();
     state.beginCreatingLinkFromLink();

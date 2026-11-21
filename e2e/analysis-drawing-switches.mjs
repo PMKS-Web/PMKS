@@ -157,8 +157,8 @@ record(
   'a grounded pin has its velocity chip grayed, with the reason on hover',
   !!velocity &&
     velocity.off &&
-    velocity.why === 'it never moves' &&
-    /never moves/.test(velocity.tip ?? ''),
+    velocity.why === 'fixed joint' &&
+    /is always zero/.test(velocity.tip ?? ''),
   { selected: await selectedId(), onA }
 );
 record(
@@ -170,7 +170,7 @@ record(
 // --- a link: trace and force belong to joints ------------------------------
 await selectIn('#linkHolder path', 1, 'Kinematic');
 record('Rotation has no drawing switches', (await switches()).length === 0);
-await page.getByRole('tab', { name: 'Center of mass', exact: true }).click();
+await page.getByRole('tab', { name: 'Center of Mass', exact: true }).click();
 const onLink = await switches();
 record(
   'a link offers a trace of its center of mass',

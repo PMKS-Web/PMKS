@@ -98,7 +98,7 @@ export function fieldError(form: SuggestionForm, field: keyof SuggestionForm['co
     case 'email':
       return 'That is not an email address.';
     case 'consent':
-      return 'Tick this to send it. We can only add what we may publish.';
+      return 'Check this box to submit. We can only add mechanisms we have permission to publish.';
     default:
       return '';
   }

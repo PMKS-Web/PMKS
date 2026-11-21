@@ -256,7 +256,7 @@ export function copyFor(progress: TutorialProgress, chrome: TutorialChrome = {})
   switch (progress.step) {
     case 1:
       return {
-        title: 'Draw the first bar',
+        title: 'Draw the first link',
         // The gesture is a click, then a move, then a click -- not a drag. The
         // bar's far end follows the pointer between the two, and describing it
         // as "drag and release" had readers holding the button down through a
@@ -277,7 +277,7 @@ export function copyFor(progress: TutorialProgress, chrome: TutorialChrome = {})
       return {
         title: 'Ground the two end joints',
         body:
-          `${g.Open} joint ${target}, the ringed one, and switch on Grounded. A grounded joint is fixed to the frame.` +
+          `${g.Open} joint ${target} (highlighted), and turn on Grounded. A grounded joint is fixed to the frame.` +
           (also ? ` Then do the same at joint ${also}, at the other end.` : ''),
         hint: 'A mechanism with nothing grounded floats away.',
         hintGlyph: 'push_pin',
@@ -286,7 +286,7 @@ export function copyFor(progress: TutorialProgress, chrome: TutorialChrome = {})
     case 4:
       return {
         title: 'Set a joint as the input',
-        body: `${g.Open} joint ${target}, the ringed one, and switch on Driven Input. The input is the joint that drives the mechanism. A mechanism needs exactly one.`,
+        body: `${g.Open} joint ${target} (highlighted), and turn on Driven Input. The input is the joint that drives the mechanism. A mechanism needs exactly one.`,
       };
     default:
       return {
@@ -301,7 +301,7 @@ export function copyFor(progress: TutorialProgress, chrome: TutorialChrome = {})
         // mode tabs give up their labels and a student is looking at four
         // unexplained glyphs.
         body: `Press Play at the bottom of the window and watch it run. Then switch to Kinematic Analysis — the third mode in the strip along the top — and ${touch ? 'tap' : 'click'} a moving joint to read its velocity.`,
-        hint: 'The reading follows the pose, so scrubbing the handle moves the number.',
+        hint: 'The reading updates live as you scrub the playback slider.',
         hintGlyph: 'speed',
       };
   }

@@ -193,7 +193,7 @@ const CREATE_IN_EDIT: EditRefusal = refusal({
 const EDIT_MODE_ONLY: EditRefusal = refusal({
   short: 'Edit mode only',
   glyph: 'edit',
-  lead: 'Analysis adds tracer points and forces.',
+  lead: 'Only tracer points and forces can be added in Analysis mode.',
   action: 'Switch to Edit',
   tail: 'to change anything else.',
   actionKind: 'toEdit',
@@ -246,8 +246,8 @@ const DISPLACED: EditRefusal = refusal({
 export const SETTINGS_AT_START_ONLY: EditRefusal = refusal({
   short: 'playing or mid-cycle',
   glyph: 'motion_photos_paused',
-  lead: 'Playing or away from the start.',
-  action: 'Reset to the starting pose',
+  lead: 'Unavailable while animating or away from the start pose.',
+  action: 'Return to start',
   tail: 'to change.',
   actionKind: 'backToStart',
   backToStartHelps: true,
@@ -265,7 +265,7 @@ function displacedUnsynced(name: string | undefined): EditRefusal {
     short: 'a mechanism is mid-cycle',
     glyph: 'pause_circle',
     lead: `${name ?? 'One of the mechanisms'} is parked away from its start.`,
-    action: 'Return every mechanism',
+    action: 'Return every mechanism to its start pose',
     tail: 'to edit.',
     actionKind: 'backToStart',
     backToStartHelps: true,
@@ -301,7 +301,7 @@ const DISPLACED_TYPING: EditRefusal = refusal({
  * these drawings edit exactly as they always did.
  */
 const DEFERRED_DISPLACED: EditRefusal = refusal({
-  short: 'motion not worked out',
+  short: 'motion not solved',
   glyph: 'hourglass_empty',
   lead: 'Motion is solved on request. Press Play, or',
   action: 'return to the start',

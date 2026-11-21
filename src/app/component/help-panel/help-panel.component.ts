@@ -121,7 +121,7 @@ export class HelpPanelComponent {
     {
       term: 'Lock',
       meaning:
-        'Keeps a joint, link or force where it is while you edit. Unlike a fixed length or ' +
+        'Keeps a joint, link, or force where it is while you edit. Unlike a fixed length or ' +
         'angle, it allows no movement at all.',
     },
     {
@@ -201,7 +201,7 @@ export class HelpPanelComponent {
       console.log(error);
       this.notify.failure(
         'feedback.send-failed',
-        `Message failed to send. Please try again later or contact us directly at: ${HELP_ADDRESS}`
+        `Message failed to send. Please try again later or contact us directly at ${HELP_ADDRESS}`
       );
     } finally {
       this.sendingEmail = false;
