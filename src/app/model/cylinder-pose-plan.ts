@@ -351,10 +351,10 @@ export function planEdit(request: EditRequest, context: EditContext): EditPlanRe
         return `${held}, so ${part} cannot change length to follow this edit. Release what is holding it, or move its other end instead.`;
       }
       if (because === 'nowhere') {
-        return `${part} cannot follow this edit: it would put both of its end joints on one point, and a cylinder needs a direction to lie along. Move one of them somewhere else.`;
+        return `${part} cannot follow this edit because its two end joints would coincide. Move one end joint to a separate point.`;
       }
       if (because === 'closed') {
-        return `${part} is already closed as far as it goes, and this edit would bring its two end joints closer still. Move it the other way, or give its barrel a shorter length first.`;
+        return `${part} is already fully closed, so its end joints can’t move any closer. Move it the other way, or shorten its barrel first.`;
       }
       return `${part} cannot follow this edit: another body in the drawing needs one of its joints somewhere the part cannot reach. Set ${ends} to Revolute, or move one part at a time.`;
     };
@@ -622,7 +622,7 @@ export function planEdit(request: EditRequest, context: EditContext): EditPlanRe
         refusal: {
           code: 'cylinder.pose-conflict',
           short: 'parts disagree',
-          long: 'The cylinders here each depend on where the others end up, so this edit has no one answer. Move one of them at a time.',
+          long: 'These cylinders depend on one another, so this edit has no single solution. Move one cylinder at a time.',
         },
       };
     }
@@ -823,7 +823,7 @@ function shapeRefusal(root: Link, part: Cylinder, context: EditContext): PosePla
     short: 'it cannot change shape',
     long: `Moving ${context.names.cylinder(
       part
-    )} as one piece would change the shape of ${body}, which is one rigid body: something else in the drawing needs one of its joints somewhere else. Set joint ${context.names.joint(
+    )} as one piece would change the shape of ${body}, which is one rigid body: another constraint in the mechanism requires one of its joints elsewhere. Set joint ${context.names.joint(
       end.id
     )} to Revolute to let the cylinder move on its own, or move one part at a time.`,
   };

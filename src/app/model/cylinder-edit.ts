@@ -232,7 +232,8 @@ function clause(said: string): string {
 /** "a, b and c" — the way `holdList` says a list, for causes rather than holds. */
 function listOf(parts: string[]): string {
   if (parts.length <= 1) return parts.join('');
-  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+  return `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
 }
 
 /**
@@ -303,7 +304,7 @@ function unreadable(code: string, silent?: boolean): CylinderEdit {
   return refuse(
     code,
     'the cylinder is not built',
-    'this cylinder has no travel to read: its two joints are at the same point, or its barrel is too short to slide in',
+    'this cylinder has no usable stroke: its end joints coincide or its barrel is too short',
     'Drag a joint apart first.',
     silent
   );
@@ -625,7 +626,7 @@ export function poseForCylinderAngle(
       ends,
       [],
       context,
-      'There is nothing left to turn this cylinder about — unlock one of its joints.'
+      'There is no unlocked joint to rotate this cylinder around—unlock one of its joints.'
     );
   }
   const cos = Math.cos(turn);
@@ -910,7 +911,7 @@ function rodAt(
       return refuse(
         ROD,
         'the barrel is fixed at its length',
-        `${fixedClause([cylinder.barrel], context, 'the barrel is fixed at its length')}, and a shorter rod would be pulled inside the barrel on the way closed`,
+        `${fixedClause([cylinder.barrel], context, 'the barrel is fixed at its length')}, and a shorter rod would pull inside the barrel when closing`,
         'Release it, or give the rod at least the barrel’s travel.'
       );
     }
@@ -920,7 +921,7 @@ function rodAt(
         ROD,
         'too short for any cylinder',
         'a rod that short leaves no barrel with room to slide in',
-        'Give it a longer length.'
+        'Enter a longer length.'
       );
     }
     barrel = shortened;

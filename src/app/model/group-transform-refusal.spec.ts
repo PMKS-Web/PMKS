@@ -10,7 +10,7 @@ describe('groupHoldRefusal', () => {
     const ab = bar('AB');
     ab.hold = 'length';
     expect(groupHoldRefusal([{ link: ab, values: ['length'] }], 'scale')).toBe(
-      'Resizing the selection would change fixed length AB. Turn off its Fixed Length first.'
+      'Scaling the selection would change fixed length AB. Turn off its Fixed Length first.'
     );
   });
 
@@ -28,7 +28,7 @@ describe('groupHoldRefusal', () => {
         'rotate'
       )
     ).toBe(
-      'Turning the selection would change fixed length AB and fixed angle CD. ' +
+      'Rotating the selection would change fixed length AB and fixed angle CD. ' +
         'Turn off their Fixed Length and Fixed Angle first.'
     );
   });
@@ -40,7 +40,7 @@ describe('groupTransformRefusal', () => {
       groupTransformRefusal({ applied: false, lockedJointIds: ['A', 'B'] }, 'translate')
     ).toEqual({
       key: 'selection.transform-locked',
-      text: 'The selection is held by A, B. Unlock it before transforming the group.',
+      text: 'The selection is locked by A, B. Unlock it before transforming the group.',
     });
   });
 

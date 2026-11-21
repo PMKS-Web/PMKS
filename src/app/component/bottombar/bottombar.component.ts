@@ -128,7 +128,7 @@ export class BottombarComponent {
     const placed = this.design.getAllPoses().length;
     const next = this.design.getFirstUndefinedPose();
     if (this.design.armed && next !== undefined) {
-      return `Click the grid to place position ${next} of 3 · scroll to turn it`;
+      return `Click the grid to place position ${next} of 3 · scroll to rotate`;
     }
     if (placed < 3) return `${placed} of 3 positions placed`;
     if (this.solution.generating) {
@@ -219,7 +219,7 @@ export class BottombarComponent {
       case GlobalUnit.SI:
         return 'm (SI)';
       case GlobalUnit.ENGLISH:
-        return 'in (english)';
+        return 'in (English)';
       case GlobalUnit.METRIC:
         return 'cm (metric)';
       default:

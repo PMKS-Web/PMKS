@@ -170,7 +170,7 @@ record(
 // --- a link: trace and force belong to joints ------------------------------
 await selectIn('#linkHolder path', 1, 'Kinematic');
 record('Rotation has no drawing switches', (await switches()).length === 0);
-await page.getByRole('tab', { name: 'Center of mass', exact: true }).click();
+await page.getByRole('tab', { name: 'Center of Mass', exact: true }).click();
 const onLink = await switches();
 record(
   'a link offers a trace of its center of mass',

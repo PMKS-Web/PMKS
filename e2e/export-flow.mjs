@@ -154,7 +154,7 @@ record(
   step2.includes('Joint B') &&
     step2.includes('Link AB') &&
     step2.includes('Position') &&
-    step2.includes('Angular velocity'),
+    step2.includes('Angular Velocity'),
   step2
 );
 
@@ -213,7 +213,7 @@ const speed = await page.evaluate(() => {
   return srv.settingsService.inputSpeed.value * 6; // rpm -> deg/s
 });
 const rateColumn = splitCsv(lines[0]).findIndex((head) =>
-  head.startsWith('Angular velocity AB (deg/s)')
+  head.startsWith('Angular Velocity AB (deg/s)')
 );
 record(
   'and an angular rate in the unit its head claims',

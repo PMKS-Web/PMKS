@@ -187,7 +187,7 @@ export class AnalysisPanelComponent implements OnInit, OnDestroy, DoCheck {
    * the way out in the hint row below.
    */
   get subtitle(): string {
-    if (this.tuning) return 'Following your hand';
+    if (this.tuning) return 'Updating live';
     if (this.showForce && this.shownType === 'Joint' && !this.jointForceHasGraphs) {
       return this.mechanismService.noReactionSentence(
         this.shownJoint,
@@ -241,7 +241,7 @@ export class AnalysisPanelComponent implements OnInit, OnDestroy, DoCheck {
     const pick = this.viewport.isTouch() ? 'Tap' : 'Click';
     return this.showForce
       ? `${pick} a joint for the reactions it carries, or a link for the forces at its joints. The input joint carries the effort that drives the mechanism.`
-      : `${pick} a joint for position, velocity and acceleration graphs, or a link for its angular kinematics.`;
+      : `${pick} a joint for position, velocity, and acceleration graphs, or a link for its angular kinematics.`;
   }
 
   /**

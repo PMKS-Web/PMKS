@@ -267,7 +267,9 @@ describe('what the drawer says about a mistake it has learned to name', () => {
     expect(ready).toEqual([true, false]);
     expect(issues).toHaveLength(1);
     expect(issues[0].title).toBe("Joint D isn't joined to joint B");
-    expect(issues[0].summary).toBe("Joint D stops just short of joint B, so they're two joints.");
+    expect(issues[0].summary).toBe(
+      'Joint D doesn’t quite touch joint B, so they’re separate joints.'
+    );
     expect(issues[0].fixes).toEqual(['Drag joint D onto joint B']);
   });
 

@@ -123,7 +123,7 @@
               formControl1="centerX"
               formControl2="centerY"
               [formGroup]="backgroundImageForm"
-              tooltip="Where the middle of the picture sits on the grid."
+              tooltip="Where the center of the image sits on the grid."
             >
               Image Center
             </dual-input-block>
@@ -137,7 +137,7 @@
               [formGroup]="backgroundImageForm"
               _formControl="width"
               wide
-              tooltip="How wide the picture is drawn. The height follows, so the picture keeps its proportions."
+              tooltip="Width of the image on the grid. Height scales automatically to keep the aspect ratio."
               >Image Width
             </input-block>
             <!-- A photograph is rarely taken square to the mechanism in it. -->
@@ -145,14 +145,14 @@
               [formGroup]="backgroundImageForm"
               _formControl="rotation"
               wide
-              tooltip="How far the picture is turned. Counter-clockwise is positive."
+              tooltip="Rotation angle of the image. Counter-clockwise is positive."
               >Rotation
             </input-block>
             <input-block
               [formGroup]="backgroundImageForm"
               _formControl="opacity"
               unit="%"
-              tooltip="How solid the picture is. Fade it back to see the mechanism through it."
+              tooltip="Opacity of the image. Lower it to see the mechanism clearly over the image."
               >Opacity
             </input-block>
           </collapsible-subsection>
@@ -163,8 +163,8 @@
             <!-- The one thing about this that trying it cannot teach: the picture
                is not in the link the user is about to share. -->
             <div class="bgNote">
-              Background images are not saved in the project web address — reloading the page clears
-              this one.
+              Background images aren’t saved in the project link, so reloading the page clears this
+              image.
             </div>
             <button-block icon="check" [click]="saveBackgroundImage.bind(this)">Save</button-block>
             <button-block
@@ -287,7 +287,7 @@
               [emitterOutputID]="-1"
               (fieldEntry)="setCylinderStartOverlay($event !== -2)"
               tooltip="Where the rod begins its cycle, as a share of the stroke."
-              >Starts at
+              >Starts At
             </input-block>
           }
           <!-- The same block every other button in this panel is built from, so
@@ -392,7 +392,7 @@
           <toggle-block
             [formGroup]="jointForm"
             _formControl="curve"
-            tooltip="Show / hide the path this joint takes through the cycle."
+            tooltip="Show or hide the path this joint traces through the cycle."
             >Trace Path
           </toggle-block>
           <color-picker
@@ -434,7 +434,7 @@
                   <dual-input-block
                     label1="D"
                     label2="⊾"
-                    tooltip="How far this joint is from that one, and in what direction. Editing either moves that joint."
+                    tooltip="Distance and angle to the connected joint. Editing either moves that joint."
                     [formGroup]="jointForm"
                     formSubGroup="otherJoints"
                     [formControl1]="(i * 2).toString()"
@@ -595,8 +595,8 @@
               <p class="massNote">
                 Welded into
                 <part-link [part]="compound">{{ mechanismService.bodyLabel(compound) }}</part-link
-                >. A compound has one mass, shared among its links by length. Set it on the
-                compound.
+                >. A compound link has a single mass, distributed across its links by length. Set it
+                on the compound link.
               </p>
             } @else if (memberMassDerived()) {
               <p class="massNote">
@@ -625,7 +625,7 @@
                where the point is rather than what X and Y count from. The
                label takes its own line so the choices can be named in full. -->
               <div class="dotRow comFrameRow">
-                <span class="dotRowLabel" id="comFrameLabel">CoM measured from</span>
+                <span class="dotRowLabel" id="comFrameLabel">CoM Measured From</span>
                 <!-- To the right, toward the canvas: below, it covered the whole
                      select it explains. Where it still overlaps, the pointer
                      goes through it (TOOLTIPS_ARE_LABELS). -->
@@ -726,8 +726,8 @@
                only here, because with no mass there are no such numbers. -->
               @if (drawnAsDisc()) {
                 <p class="shapeNote">
-                  Drawn as a disc, so it is treated as a solid disc on its ground pin: the shape's
-                  centroid is the pin.
+                  Drawn and modeled as a solid disc centered on its ground pin, so its center of
+                  mass sits at the pin.
                 </p>
               }
             }
@@ -774,7 +774,7 @@
           <radio-block
             [formGroup]="forceForm"
             _formControl="isGlobal"
-            tooltip="Grid keeps the force direction fixed; Link turns it with its link. Magnitude and Angle describe the load in that frame, while Force Components always use global grid X and Y axes."
+            tooltip="Grid keeps the force direction fixed; Link rotates it with its link. Magnitude and Angle describe the load in that frame, while Force Components always use global grid X and Y axes."
             option1="{{ forceFrameOption }}"
             option2="Grid"
           >

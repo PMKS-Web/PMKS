@@ -4,7 +4,7 @@
       <!-- Every machine, one row each: a name of any length wraps inside its
            row, and a row is the way into that machine. -->
       <div class="mechHead">
-        <div class="mechTitle">All mechanisms</div>
+        <div class="mechTitle">All Mechanisms</div>
         <p class="mechLead">{{ listLead }}</p>
       </div>
       <div class="machineList" role="list">
@@ -36,8 +36,8 @@
       </div>
       @if (overview.count() > mostMachines) {
         <p class="mechNote">
-          Only the first {{ mostMachines }} mechanisms are simulated. The rest are drawn, and their
-          chips say why.
+          Only the first {{ mostMachines }} mechanisms are solved. The rest stay visible on the
+          grid.
         </p>
       }
       <!-- A joint or link opens its graphs from here too: picking a machine
@@ -55,7 +55,7 @@
         <div class="mechBack">
           <button type="button" class="backLink" (click)="showAll()">
             <mat-icon>arrow_back</mat-icon>
-            All mechanisms
+            All Mechanisms
           </button>
         </div>
       }
@@ -139,7 +139,7 @@
             @if (overview.unsolved()) {
               <!-- A large drawing is solved when Play is pressed, not at every
                    edit, and these facts are read off that solve. -->
-              <p class="factNote">This drawing's motion is worked out when you press Play.</p>
+              <p class="factNote">Motion is solved when you press Play.</p>
             }
           }
         </div>

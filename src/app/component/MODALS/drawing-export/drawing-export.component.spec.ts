@@ -108,7 +108,7 @@ describe('DrawingExportComponent', () => {
     expect(component.options.includeLabels).toBe(true);
     expect(component.options.perLinkLayers).toBe(true);
     const reset = element.querySelector('.linkButton') as HTMLButtonElement;
-    expect(reset.textContent).toContain('Reset to Build parts');
+    expect(reset.textContent).toContain('Reset to Build Parts');
     reset.click();
     fixture.detectChanges();
     expect(component.preset).toBe('build');

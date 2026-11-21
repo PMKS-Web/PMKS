@@ -235,7 +235,7 @@ describe('AnalysisPanelComponent welded mechanism regression', () => {
     fixture.detectChanges();
     const panel = fixture.componentInstance;
     const state = TestBed.inject(AnalysisPanelStateService);
-    expect(sectionLabels(fixture)).toEqual(['Angle', 'Angular velocity', 'Angular acceleration']);
+    expect(sectionLabels(fixture)).toEqual(['Angle', 'Angular Velocity', 'Angular Acceleration']);
     expect(panel.isExpanded('LAng', true)).toBe(true);
     expect(fixture.nativeElement.querySelector('.drawingSwitches')).toBeNull();
     expect(state.previewCoM?.()).toBeNull();
@@ -247,9 +247,9 @@ describe('AnalysisPanelComponent welded mechanism regression', () => {
     panel.selectPanelTab(1);
     fixture.detectChanges();
     expect(sectionLabels(fixture)).toEqual([
-      'Center of mass position',
-      'Center of mass velocity',
-      'Center of mass acceleration',
+      'Center of Mass Position',
+      'Center of Mass Velocity',
+      'Center of Mass Acceleration',
     ]);
     expect(panel.isExpanded('LPos', true)).toBe(true);
     expect(state.previewCoM?.()).toBe('AB');
@@ -348,7 +348,7 @@ describe('AnalysisPanelComponent welded mechanism regression', () => {
     fixture.detectChanges();
 
     const text = fixture.nativeElement.textContent;
-    expect(sectionLabels(fixture).some((label) => label.startsWith('Center of mass '))).toBe(true);
+    expect(sectionLabels(fixture).some((label) => label.startsWith('Center of Mass '))).toBe(true);
     expect(text).not.toContain('CoM');
     expect(text).not.toContain('COM');
     fixture.destroy();
@@ -581,7 +581,9 @@ describe('AnalysisPanelComponent drawing switches', () => {
     const velocity = fixture.componentInstance.drawingSwitches.find(
       (one) => one.key === 'velocity'
     )!;
-    expect(fixture.componentInstance.drawingSwitchTip(velocity)).toContain('it never moves');
+    expect(fixture.componentInstance.drawingSwitchTip(velocity)).toContain(
+      'This joint is grounded, so its velocity is always zero.'
+    );
     expect(fixture.componentInstance.drawingSwitchTip(velocity)).toContain('Velocity Vectors');
     fixture.destroy();
   });

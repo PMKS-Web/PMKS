@@ -936,7 +936,7 @@ export class NewGridComponent implements OnDestroy {
       this.activeObjService.selectBackgroundImage();
       this.notify.success(
         'bgImage.added',
-        `${file.name} is behind the grid. It is not saved in the project web address.`
+        `Added ${file.name} as background image. Background images aren’t saved in the project link.`
       );
     } catch (error) {
       this.notify.failure(
@@ -1676,7 +1676,7 @@ export class NewGridComponent implements OnDestroy {
     if (machines.size > 1) {
       this.notify.refusal(
         'selection.spans-machines',
-        'This selection is spread across two mechanisms, which can only be moved together at the start pose. Press Back to the start pose, then try again.'
+        'This selection spans multiple mechanisms, which can only be moved together at the start pose. Return to the start pose, then try again.'
       );
       return false;
     }
@@ -4352,7 +4352,7 @@ export class NewGridComponent implements OnDestroy {
                   this.notify.refusal(
                     'link.already-joined',
                     from.id === joint2.id
-                      ? `A link needs two joints, and this gesture started at ${from.name || from.id}. Click somewhere else to finish it.`
+                      ? 'A link needs two distinct joints. Click another point or joint to finish it.'
                       : `${from.name || from.id} and ${joint2.name || joint2.id} are already on one link.`
                   );
                   return;
@@ -4448,7 +4448,7 @@ export class NewGridComponent implements OnDestroy {
             if (this.dragState.isCreatingLink) {
               this.notify.refusal(
                 'link.needs-a-joint',
-                'A link joins two joints. Add a tracer point to that bar, then draw to it.'
+                'A link connects two joints. Add a tracer point to that link first, then connect to it.'
               );
               this.dragState.cancel();
               this.linkCreateStart = undefined;
@@ -6239,7 +6239,7 @@ export class NewGridComponent implements OnDestroy {
     if (kind !== 'Joint' && kind !== 'Link' && kind !== 'Force') {
       this.notify.refusal(
         'lock.nothing-selected',
-        'Select something first — Lock holds whatever is selected.'
+        'Select a joint, link, or force first to lock it.'
       );
       return;
     }
@@ -6280,14 +6280,11 @@ export class NewGridComponent implements OnDestroy {
       case 'Mechanism':
         this.notify.refusal(
           'delete.whole-mechanism',
-          'Delete removes one part — the mechanism panel has its own Delete for the whole mechanism.'
+          'The Delete key removes individual parts. Use the Mechanism panel to delete an entire mechanism.'
         );
         return;
       default:
-        this.notify.refusal(
-          'delete.nothing-selected',
-          'Select something first — Delete removes whatever is selected.'
-        );
+        this.notify.refusal('delete.nothing-selected', 'Select a part first to delete it.');
         return;
     }
     this.activeObjService.updateSelectedObj(undefined);

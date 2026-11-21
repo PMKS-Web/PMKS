@@ -76,7 +76,7 @@ check(
 );
 check(
   'and says what it cannot do yet rather than hiding it',
-  (await page.locator('#synthesisPanel .kindCard--off').innerText()).includes('Not built yet')
+  (await page.locator('#synthesisPanel .kindCard--off').innerText()).includes('Coming soon')
 );
 check(
   'the panel is as wide as the analysis panel, not as wide as Edit',

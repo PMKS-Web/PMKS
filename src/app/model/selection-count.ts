@@ -32,5 +32,6 @@ export function selectionCount(
     // of one line and its noun at the start of the next ("1 / Force").
     .map(([howMany, one, many]) => `${howMany}\u00a0${howMany === 1 ? one : many}`);
   if (said.length < 2) return said.join('');
-  return `${said.slice(0, -1).join(', ')} and ${said[said.length - 1]}`;
+  if (said.length === 2) return `${said[0]} and ${said[1]}`;
+  return `${said.slice(0, -1).join(', ')}, and ${said[said.length - 1]}`;
 }

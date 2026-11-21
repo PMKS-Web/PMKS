@@ -339,7 +339,7 @@ export function besideIssue(
     title: `Joint ${nameOf(joint)} isn't joined to joint ${nameOf(onto)}`,
     summary: touching
       ? prose`${jointRef(joint)} sits almost on top of ${jointRef(onto)}, but they're two joints.`
-      : prose`${jointRef(joint)} stops just short of ${jointRef(onto)}, so they're two joints.`,
+      : prose`${jointRef(joint)} doesn’t quite touch ${jointRef(onto)}, so they’re separate joints.`,
     explain:
       'Links move together only where they share one joint. Two joints drawn in the same place still let their links come apart.',
     fixes: [prose`Drag ${jointRef(joint)} onto ${jointRef(onto)}`],

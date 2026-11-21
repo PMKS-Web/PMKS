@@ -64,13 +64,13 @@ export const READINESS = {
  * so; a rejected value is the moment somebody is most willing to be told.
  */
 export const NOT_A = {
-  length: 'That is not a length. Type a number, with or without a unit — 2, 2 cm, 0.75 in.',
-  angle: 'That is not an angle. Type a number, with or without a unit — 90, 90 deg, 1.5 rad.',
-  mass: 'That is not a mass. Type a number, with or without a unit — 5, 5 g, 0.2 lb.',
+  length: 'Enter a valid length, with or without a unit (e.g., 2, 2 cm, 0.75 in).',
+  angle: 'Enter a valid angle, with or without a unit (e.g., 90, 90 deg, 1.5 rad).',
+  mass: 'Enter a valid mass, with or without a unit (e.g., 5, 5 g, 0.2 lb).',
   momentOfInertia:
-    'That is not a mass moment of inertia. Type a number, with or without a unit — 4, 4 kg·cm².',
-  force: 'That is not a force. Type a number, with or without a unit — 10, 10 N, 2.5 lb.',
-  name: 'A name has to be letters or numbers, and cannot be one already in use.',
+    'Enter a valid mass moment of inertia, with or without a unit (e.g., 4, 4 kg·cm²).',
+  force: 'Enter a valid force, with or without a unit (e.g., 10, 10 N, 2.5 lb).',
+  name: 'Use letters or numbers, and choose a name that isn’t already in use.',
   /**
    * A length that parsed but cannot be one.
    *
@@ -79,7 +79,7 @@ export const NOT_A = {
    * wrong thing. The fields used to take it, store the distance without the
    * sign, and go on showing "-5.00 cm" over a bar that was five long.
    */
-  positiveLength: 'A length has to be more than zero.',
+  positiveLength: 'Length must be greater than zero.',
   /** The same distinction for a mass, which may be zero but never negative. */
-  nonNegativeMass: 'A mass cannot be less than zero.',
+  nonNegativeMass: 'Mass cannot be negative.',
 } as const;

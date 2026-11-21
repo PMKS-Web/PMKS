@@ -234,8 +234,8 @@ export class ContextMenuBuilderService {
           kind: 'toggle',
           checked: joints.every((joint) => this.gridUtils.isVisuallyInput(joint)),
           refusal: {
-            short: 'one input per machine',
-            long: 'A machine is driven at one joint, so the input is set on one joint at a time.',
+            short: 'one input per mechanism',
+            long: 'Each mechanism has one input, so select a single joint to set it.',
           },
           action: () => undefined,
         }),
@@ -256,7 +256,7 @@ export class ContextMenuBuilderService {
       const global = state(forces.map((force) => !force.local));
       rows.push(
         new MenuRow({
-          label: 'Global Frame',
+          label: 'Grid Frame',
           icon: 'public',
           material: true,
           kind: 'toggle',
@@ -529,7 +529,7 @@ export class ContextMenuBuilderService {
           (!bar
             ? {
                 short: 'not on a link',
-                long: 'A load has to have a body to push on, and this joint is on none. Attach a link here first.',
+                long: 'A force must act on a link, and this joint isn’t connected to any. Attach a link here first.',
               }
             : forceRefused
               ? { short: forceRefused.short, long: forceRefused.long }
@@ -738,17 +738,17 @@ export class ContextMenuBuilderService {
       {
         key: 'velocity',
         row: vector('velocity'),
-        help: 'Draws which way this part is moving, and how fast, along its path.',
+        help: 'Draws velocity vectors along this part’s path.',
       },
       {
         key: 'acceleration',
         row: vector('acceleration'),
-        help: 'Draws which way this part’s velocity is changing, along its path.',
+        help: 'Draws acceleration vectors along this part’s path.',
       },
       {
         key: 'force',
         row: vector('force'),
-        help: 'Draws the reaction carried at this joint, along its path.',
+        help: 'Draws reaction force vectors at this joint along its path.',
       },
     ];
   }
@@ -1039,7 +1039,7 @@ export class ContextMenuBuilderService {
         icon: 'content_copy',
         material: true,
         action: () => this.mechanism.duplicateLink(link),
-        tip: 'Set a free-standing copy of this link down beside it.',
+        tip: 'Place a standalone copy of this link beside it.',
         // A welded compound is several links and the welds between them, so
         // there is no single link for this to copy. Grayed rather than
         // hidden: copying one is a thing a reader can reasonably expect, and
@@ -1069,7 +1069,7 @@ export class ContextMenuBuilderService {
           ? undefined
           : {
               short: 'needs a fixed pin',
-              long: 'A disc is the shape a link sweeps about a fixed pin, and this link turns about none.',
+              long: 'A disc must be centered on a fixed pin, and this link has no ground joint.',
             },
       }),
       ...this.holdRows(link),
@@ -1118,8 +1118,8 @@ export class ContextMenuBuilderService {
         action: () => this.mechanism.setMemberHold(member, which, !on),
         tip:
           which === 'length'
-            ? 'Fix this half of the cylinder at its current length. A mount dragged past a stop then takes it all out of the other half.'
-            : 'Hold this cylinder at the angle it points now. Dragging a mount slides it along that line.',
+            ? 'Keep this half of the cylinder at its current length. Dragging an end joint past a limit adjusts the other half instead.'
+            : 'Keep this cylinder at its current angle. Dragging an end joint slides it along that line.',
       });
     };
     return [
@@ -1154,8 +1154,8 @@ export class ContextMenuBuilderService {
   private holdRows(link: RealLink): MenuRow[] {
     const refusal: MenuRefusal | undefined = !holdableBar(link)
       ? {
-          short: 'bars only',
-          long: 'Only a bar between two joints has one length and one angle to hold.',
+          short: 'two-joint links only',
+          long: 'Only plain two-joint links have a single length and angle to fix.',
         }
       : this.mechanism.isLockedTarget(link)
         ? {
@@ -1181,9 +1181,9 @@ export class ContextMenuBuilderService {
         // values fixed; a Lock holds a part where it is.
         hint: on ? undefined : value,
         tip: both
-          ? 'Fix this link at its current length and angle. Dragging it slides it without turning or stretching.'
+          ? 'Fix this link at its current length and angle. Dragging it slides it without rotating or stretching.'
           : hold === 'length'
-            ? 'Fix this link at its current length. Dragging either joint slides it on the arc about the other.'
+            ? 'Keep this link at its current length. Dragging either joint rotates it around the other.'
             : 'Fix this link at its current angle from the grid. Dragging either joint slides it along that line.',
       });
     };
@@ -1293,7 +1293,7 @@ export class ContextMenuBuilderService {
     const header = {
       title: `Force ${force.name || force.id}`,
       subtitle: `On ${labelForBody(force.link, undefined, this.mechanism.sealedStructures())} · ${
-        force.local ? 'local' : 'global'
+        force.local ? 'link' : 'grid'
       } frame`,
       crossing: this.crossing(force),
     };
@@ -1327,7 +1327,7 @@ export class ContextMenuBuilderService {
             // "Make Force Global" was a verb whose label flipped as it was
             // used. The frame is a state, so it reads as one.
             new MenuRow({
-              label: 'Global Frame',
+              label: 'Grid Frame',
               // The app's own force_global glyph carries its own colors, so
               // it stays blue on an unticked row and reads as already on --
               // the one icon in the menu that does not take the row's color.
@@ -1394,7 +1394,7 @@ export class ContextMenuBuilderService {
       icon: 'delete_mechanism',
       destructive: true,
       hint: joints > 0 ? `${joints} ${joints === 1 ? 'joint' : 'joints'}` : undefined,
-      tip: 'Deletes the whole mechanism this part belongs to — every joint, link and force in it.',
+      tip: 'Deletes the entire mechanism this part belongs to—every joint, link, and force in it.',
       action: () => this.mechanism.deleteMechanism(index),
       refusal: partition
         ? undefined

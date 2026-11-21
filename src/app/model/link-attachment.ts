@@ -5,7 +5,7 @@ export function compoundAttachmentRefusal(link: RealLink) {
   return link.isWelded && link.lastSelectedSublink == null
     ? {
         short: 'pick a sub-link',
-        long: 'This is a welded compound. Click one of the links it is made of, so the new member knows which body it joins.',
+        long: 'This is a welded compound link. Click one of its individual links to choose where to attach.',
       }
     : undefined;
 }

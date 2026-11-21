@@ -650,7 +650,7 @@ check(
 const forceTarget = await openOnForce('F1');
 check(
   'a force menu names the frame it is in and offers the state, not a verb',
-  /frame$/.test(forceTarget?.subtitle ?? '') && !!rowNamed(forceTarget, 'Global Frame'),
+  /frame$/.test(forceTarget?.subtitle ?? '') && !!rowNamed(forceTarget, 'Grid Frame'),
   forceTarget
 );
 check(

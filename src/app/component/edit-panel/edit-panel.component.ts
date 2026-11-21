@@ -1972,7 +1972,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
         // turned the picture invisible -- and then the panel reported 0% as
         // though that had been asked for.
         if (typed === '' || !Number.isFinite(percent) || percent < 0 || percent > 100) {
-          this.notify.refusal('bgImage.opacity', 'Opacity has to be a number from 0 to 100.');
+          this.notify.refusal('bgImage.opacity', 'Opacity must be a number from 0 to 100.');
         } else {
           this.bgImage.place({ opacity: percent / 100 });
         }
@@ -2117,8 +2117,10 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
   /** Why Draw as a Disc is unavailable, in terms of this particular body. */
   whyNotCircular(): string {
     if (this.selectedCylinder) {
-      return `A disc is centered on the pin its link turns about. This is half of a cylinder, which
-        slides along its own axis rather than turning about a pin.`;
+      return (
+        'A disc is centered on a fixed pin. This is part of a cylinder, which slides along its ' +
+        'own axis rather than rotating around a pin.'
+      );
     }
     const link = this.activeSrv.selectedLink;
     const grounded = link.joints.filter(
@@ -2126,19 +2128,27 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
     );
     const held = link.isCircle ? 'Drawn as a bar: a' : 'A';
     if (link.subset.length > 0) {
-      return `${held} disc is centered on one fixed pin, and a welded compound is drawn from the
-        shapes of its parts. Unweld it to draw a part of it as a disc.`;
+      return (
+        `${held} disc is centered on a fixed pin. This compound link is welded across multiple ` +
+        'links, so it can’t be drawn as a single disc.'
+      );
     }
     if (grounded.length === 0) {
-      return `${held} disc is centered on the pin its link turns about, and this link has no fixed
-        pin. Ground one of its joints to draw it as a disc.`;
+      return (
+        `${held} disc requires a fixed pin, and this link has no ground joint. ` +
+        'Ground one of its joints to draw it as a disc.'
+      );
     }
     if (grounded.length > 1) {
-      return `${held} disc is centered on the pin its link turns about, and this link is fixed at
-        ${grounded.length} joints, so it does not turn about any of them.`;
+      return (
+        `${held} disc requires a single fixed pin, and this link is grounded at ` +
+        `${grounded.length} joints, so it cannot rotate around any of them.`
+      );
     }
-    return `${held} disc is centered on a fixed revolute pin; this link's fixed joint is a slider,
-      which anchors a slot rather than a pivot.`;
+    return (
+      `${held} disc requires a fixed revolute pin; this link’s grounded joint is a slider, ` +
+      'which anchors a slot rather than a pivot.'
+    );
   }
 
   /**
@@ -2402,7 +2412,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
       .join(', ');
     this.notify.refusal(
       'hold.typed',
-      `No position of the linkage gives this ${which} while ${named} holds. Release one, or ask for a value they allow.`,
+      `No mechanism position satisfies this ${which} while ${named} is fixed. Release a constraint, or enter a reachable value.`,
       {
         actions:
           holds.length > 0
@@ -2640,7 +2650,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
   distanceBarAngleHelp(row: DistanceNeighbor): string {
     return (
       `Angle of the welded link from joint ${this.activeSrv.selectedJoint.name} to joint ` +
-      `${row.joint.name}, measured from the positive x axis. The padlock keeps it fixed.`
+      `${row.joint.name}, measured from the positive x-axis. Use the padlock to keep it fixed.`
     );
   }
 
@@ -2826,7 +2836,7 @@ export class EditPanelComponent implements OnInit, AfterContentInit, DoCheck, On
     this.tutorial.dismissOffer();
     this.notify.success(
       'tutorial.dismissed',
-      'Tutorial dismissed. It is in the project menu, at the top left, if you change your mind.'
+      'Tutorial dismissed. You can reopen it anytime from the top-left project menu.'
     );
   }
 }

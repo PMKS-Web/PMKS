@@ -128,7 +128,7 @@ export class AnalysisSetupComponent {
   }
 
   get title(): string {
-    return this.mode() === 'force' ? 'Force Analysis setup' : 'Analysis setup';
+    return this.mode() === 'force' ? 'Force Analysis Setup' : 'Analysis Setup';
   }
 
   /**
@@ -366,7 +366,7 @@ export class AnalysisSetupComponent {
       const index = this.mechanism.indexOfMechanismContaining(row.body);
       (index === -1 ? loose : groups[index].rows).push(row);
     }
-    if (loose.length > 0) groups.push({ label: 'Not in a mechanism', rows: loose });
+    if (loose.length > 0) groups.push({ label: 'Not in a Mechanism', rows: loose });
     return groups.filter((group) => group.rows.length > 0);
   }
 

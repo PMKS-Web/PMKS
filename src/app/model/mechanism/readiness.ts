@@ -295,11 +295,11 @@ function issueForFailure(
           ? prose`The input at ${jointRef(driven)} starts exactly at the end of its travel.`
           : prose`The input starts at the end of its travel and can't move either way.`,
         explain:
-          "At a limit, two links line up and the input can't move either way. The animation needs to start a little short of it.",
+          'At a limit, two links line up and the input can’t move either way. Start the mechanism slightly away from the limit.',
         fixes: [
           mover
-            ? prose`Drag ${jointRef(mover)} a little way off the limit`
-            : prose`Drag a joint a little way off the limit`,
+            ? prose`Drag ${jointRef(mover)} slightly off the limit`
+            : prose`Drag a joint slightly off the limit`,
         ],
       };
     }
@@ -377,8 +377,8 @@ function issueForFailure(
       return {
         severity: 'blocker',
         title: `Only ${MOST_MACHINES} mechanisms run at once`,
-        summary: prose`Mechanism ${partition.id.replace(/^M/, '')} comes after the first ${MOST_MACHINES}, so it isn't simulated.`,
-        explain: `PMKS simulates up to ${MOST_MACHINES} mechanisms in one drawing, in the order of their joint letters. The rest are drawn but not simulated.`,
+        summary: prose`Mechanism ${partition.id.replace(/^M/, '')} is beyond the ${MOST_MACHINES}-mechanism limit, so it isn’t solved.`,
+        explain: `PMKS solves up to ${MOST_MACHINES} mechanisms per drawing, ordered by joint letter. Additional mechanisms stay visible but aren’t animated.`,
         fixes: [
           prose`Delete Mechanism ${partition.id.replace(/^M/, '')} if it's a leftover`,
           prose`Attach Link from it to another mechanism`,
@@ -523,11 +523,13 @@ function tangledInputIssue(
   };
 }
 
-/** "link AB or link AC", "link AB, link AC or link AD". */
+/** "link AB or link AC", "link AB, link AC, or link AD". */
 function orList(refs: PartRef[]): Prose {
   const pieces: (string | PartRef)[] = [];
   refs.forEach((ref, index) => {
-    if (index > 0) pieces.push(index === refs.length - 1 ? ' or ' : ', ');
+    if (index > 0) {
+      pieces.push(index === refs.length - 1 ? (refs.length === 2 ? ' or ' : ', or ') : ', ');
+    }
     pieces.push(ref);
   });
   return prose`${pieces}`;

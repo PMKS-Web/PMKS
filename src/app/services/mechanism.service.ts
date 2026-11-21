@@ -972,7 +972,7 @@ export class MechanismService {
     const dof = this.mobilityNear(near);
     const why =
       dof !== undefined && dof > 1
-        ? ` PMKS can only simulate one-degree-of-freedom mechanisms, and this one has ${dof} degrees of freedom.` +
+        ? ` PMKS only solves one-degree-of-freedom mechanisms, and this one has ${dof} degrees of freedom.` +
           ' Add a constraint, or build the parts as separate mechanisms.'
         : '';
     this.notify.news(
@@ -1194,7 +1194,7 @@ export class MechanismService {
     // The subject is written as it reads mid-sentence -- "this joint", "Joint
     // K" -- and this one leads with it.
     const lead = subject.charAt(0).toUpperCase() + subject.slice(1);
-    return `${lead} holds a bar that is anchored at every joint, so statics counts it as frame rather than as a body and solves no reaction here.`;
+    return `${lead} belongs to a link grounded at every joint, so force analysis treats it as part of the frame and solves no reaction here.`;
   }
 
   /**
@@ -1809,7 +1809,7 @@ export class MechanismService {
       if (this.reactionIsZeroAllCycle(series, part.id)) {
         return {
           short: 'carries no load',
-          long: 'The reaction at this joint is zero all cycle: the load is carried elsewhere, so there is nothing to draw.',
+          long: 'The reaction at this joint is zero throughout the cycle, so there is no vector to draw.',
         };
       }
       return undefined;
@@ -1819,8 +1819,8 @@ export class MechanismService {
     // opening a menu should not cost an analysis.
     if (part instanceof RealJoint && this.groundedInPlace(part)) {
       return {
-        short: 'it never moves',
-        long: `This joint is fixed to the frame, so its ${quantity} is zero at every instant.`,
+        short: 'fixed joint',
+        long: `This joint is grounded, so its ${quantity} is always zero.`,
       };
     }
     return undefined;
@@ -7956,13 +7956,13 @@ export class MechanismService {
   private sayBodyValuesDropped(compound: RealLink): void {
     const dropped = [
       compound.comIsCustom ? 'center of mass' : undefined,
-      compound.moiIsCustom ? 'moment of inertia' : undefined,
+      compound.moiIsCustom ? 'mass moment of inertia' : undefined,
     ].filter((value): value is string => value !== undefined);
     if (dropped.length === 0) return;
     this.notify.news(
       'weld.split-values',
-      `${this.bodyLabel(compound)} came apart, so the ${dropped.join(' and ')} you set ` +
-        `for it no longer applies. Each piece uses its own.`,
+      `${this.bodyLabel(compound)} was split, so its custom ${dropped.join(' and ')} ` +
+        `no longer applies. Each link now uses its own.`,
       {
         actions: [{ label: 'Undo', run: () => this.injector.get(SaveHistoryService).undo() }],
       }

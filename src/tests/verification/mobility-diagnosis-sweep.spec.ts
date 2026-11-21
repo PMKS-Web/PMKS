@@ -483,7 +483,7 @@ describe('readiness across every library drawing, broken one way at a time', () 
     // a dead center, and dragging the crank pin takes it off one.
     const yoke = drivenFrom('Scotch_Yoke', 'C');
     expect(yoke.map((check) => check.title)).toEqual(['Starts at a limit']);
-    expect(read(yoke[0]).fixes).toEqual(['Drag joint B a little way off the limit']);
+    expect(read(yoke[0]).fixes).toEqual(['Drag joint B slightly off the limit']);
     // A smaller initial step now starts this narrow drive. Its former first-
     // step refusal must not survive as a stale readiness diagnostic.
     const gear = drivenFrom('Aircraft_Landing_Gear', 'A');

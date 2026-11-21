@@ -11,7 +11,7 @@
     <div class="scopeNote">
       <mat-icon>architecture</mat-icon>
       <p>
-        <strong>Built from the start pose.</strong> Choose the geometry, layers and units below.
+        <strong>Built from the start pose.</strong> Choose the geometry, layers, and units below.
         These are the shapes the canvas draws, not a toleranced fabrication drawing.
       </p>
     </div>
@@ -21,7 +21,7 @@
     <div class="presetHead">
       <span class="presetTitle">What is this for?</span>
       @if (isCustom) {
-        <button class="linkButton" (click)="pick('build')">Reset to Build parts</button>
+        <button class="linkButton" (click)="pick('build')">Reset to Build Parts</button>
       }
     </div>
 
@@ -47,7 +47,7 @@
       >
         <span class="presetName"> <mat-icon>draw</mat-icon>Reference sketch </span>
         <span class="presetNote"
-          >Link centerlines, model coordinates and joint marks — for tracing over.</span
+          >Link centerlines, model coordinates, and joint marks—for reference tracing.</span
         >
       </button>
       <!-- Not a third card: nobody picks Custom, they arrive in it. -->
@@ -206,7 +206,9 @@
                 </span>
                 <span class="checkText">
                   <span class="checkName">Link dimensions</span>
-                  <span class="checkNote">Lines and a number between joint centers.</span>
+                  <span class="checkNote"
+                    >Dimension lines showing distances between joint centers.</span
+                  >
                 </span>
               </button>
             </div>
@@ -307,7 +309,7 @@
       </button>
       @if (open.data) {
         <div class="sectionBody">
-          <span class="groupName">Tables of joints, links and any applied forces.</span>
+          <span class="groupName">Tables of joints, links, and any applied forces.</span>
           @for (choice of dataChoices; track choice.value) {
             <button class="radioRow" (click)="touch({ dataFile: choice.value })">
               <span class="radio" [class.on]="options.dataFile === choice.value"></span>

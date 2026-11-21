@@ -127,7 +127,7 @@ describe('library dialog', () => {
       shown.length
     );
     expect(fixture.nativeElement.textContent).toContain('Four-Bar');
-    expect(fixture.nativeElement.textContent).toContain('short crank turns all the way round');
+    expect(fixture.nativeElement.textContent).toContain('short crank rotates continuously');
   });
 
   it('heads each family it has cards for, and stays quiet about the ones it does not', () => {
@@ -220,7 +220,7 @@ describe('library dialog', () => {
   it('keeps the library as it was behind the form, and the draft across a trip back', () => {
     const fixture = open();
     const component = fixture.componentInstance;
-    chip(fixture, 'Swing, Lift and Grip').click();
+    chip(fixture, 'Swing, Lift, and Grip').click();
     fixture.detectChanges();
     component.suggest();
     component.draft.controls.title.setValue('Half typed');

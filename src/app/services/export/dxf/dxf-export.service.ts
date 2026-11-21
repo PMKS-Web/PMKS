@@ -669,7 +669,7 @@ function handoffNotes(
           ...(has.cylinders
             ? [
                 'PMKS_CYLINDER_SLEEVES and PMKS_CYLINDER_RODS are the two halves of each',
-                'actuator; the sleeve is a tube, so extrude between its two loops.',
+                'cylinder; the barrel is a tube, so extrude between its two loops.',
               ]
             : []),
         ]
@@ -682,7 +682,7 @@ function handoffNotes(
       ? [
           'Cutting it',
           '----------',
-          '1. Open the SVG in your cutter software, Inkscape or Illustrator. It already',
+          '1. Open the SVG in your cutter software, Inkscape, or Illustrator. It already',
           '   carries its size, so there is no scale to set and nothing to get wrong.',
           '2. Each part is a layer. The closed outlines are the cuts; the circles inside',
           '   them are the holes, and they are already positioned to match between parts.',
@@ -765,7 +765,7 @@ function handoffNotes(
     '',
     'What a drawing cannot carry',
     '---------------------------',
-    'Joints, mates, motion and mass. Those are in the companion tables beside this',
+    'Joints, mates, motion, and mass. Those are in the companion tables beside this',
     'file, and in PMKS itself. What the drawing does carry is exact hole positions',
     'shared between mating parts, which is the part that is tedious to redo by hand.',
     'The pairing is the one thing left to say -- the geometry is already lined up',

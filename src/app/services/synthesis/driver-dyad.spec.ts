@@ -111,7 +111,7 @@ describe('sizing the driver dyad for a synthesised four-bar', () => {
     expect('refusal' in tooWide).toBe(true);
     if ('refusal' in tooWide) {
       expect(tooWide.refusal).toContain('°');
-      expect(tooWide.refusal).toContain('swapping which pin drives');
+      expect(tooWide.refusal).toContain('drive from the other pin');
     }
   });
 
