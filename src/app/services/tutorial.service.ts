@@ -12,9 +12,9 @@ import {
   TutorialStepId,
   chainedLinks,
   copyFor,
+  plainLinks,
   progressAt,
   progressFor,
-  readableJoints,
   stepOf,
 } from '../model/tutorial-steps';
 import { MechanismService } from './mechanism.service';
@@ -41,6 +41,14 @@ export interface TutorialReading {
 
 /** Remembered on this machine so the offer stops pestering someone who has met it. */
 const SEEN_KEY = 'tutorialSeen';
+
+/**
+ * A tutorial under way in this tab, kept across a reload. Session storage,
+ * because the drawing a reload brings back is this tab's too: a reload at step
+ * three restored the chain and lost the tutorial, and reopening it then asked
+ * to clear the very drawing it had been building.
+ */
+const IN_PROGRESS_KEY = 'tutorialInProgress';
 
 /**
  * The guided first build: five moves from a bare grid to a velocity.
@@ -134,23 +142,65 @@ export class TutorialService {
       this.checkForFinish();
     });
     this.activeObj.onActiveObjChange.subscribe(() => this.checkForFinish());
-    this.mechanism.onMechPositionChange.subscribe((step) => {
-      if (step > 0) this.hasPlayed = true;
-      this.checkForFinish();
-    });
+    // A moved pose finishes nothing on its own: scrubbing one step along at
+    // the start of the cycle completed the lesson at 0.00 s with Play never
+    // pressed. The step asks for Play, so only playing counts as having played.
+    this.mechanism.onMechPositionChange.subscribe(() => this.checkForFinish());
     this.urlProcessor.drawingReplaced.subscribe(() => {
       if (!this.started) return;
-      const arrived = this.history.currentEntry();
-      this.replacedAt = arrived === undefined || arrived === this.baseline ? null : arrived;
+      // The first replacement is the one that matters. A second template opened
+      // over the first moved this mark onto itself, and one undo then landed on
+      // the first template -- which the tutorial took for its own drawing.
+      if (this.replacedAt === null) return;
+      if (this.replacedAt === undefined || !this.history.standsOnOrPast(this.replacedAt)) {
+        const arrived = this.history.currentEntry();
+        this.replacedAt = arrived === undefined || arrived === this.baseline ? null : arrived;
+      }
       this.stepAside('Tutorial closed, because a different drawing was opened.');
     });
     this.history.restored.subscribe(() => {
-      if (this.isRunning() && !this.done && !this.ownsDrawing()) {
-        this.stepAside(
-          'Tutorial closed, because Undo brought back a drawing the tutorial did not build. Redo returns to the tutorial’s drawing.'
-        );
-      }
+      if (!this.isRunning() || this.ownsDrawing()) return;
+      // A finished card is about the four-bar it read, and is as wrong beside
+      // somebody else's drawing as a step card is.
+      this.stepAside(
+        this.done
+          ? 'Tutorial closed, because Undo brought back a drawing from before it started.'
+          : 'Tutorial closed, because Undo brought back a drawing the tutorial did not build. Redo returns to the tutorial’s drawing.'
+      );
     });
+    this.pickUpAfterReload();
+    window.addEventListener('pagehide', () => this.keepForReload());
+  }
+
+  /** A tutorial under way, and its drawing, came back with the page. */
+  private pickUpAfterReload(): void {
+    let kept: { exited?: boolean } | undefined;
+    try {
+      const raw = sessionStorage.getItem(IN_PROGRESS_KEY);
+      sessionStorage.removeItem(IN_PROGRESS_KEY);
+      kept = raw ? JSON.parse(raw) : undefined;
+    } catch {
+      kept = undefined;
+    }
+    if (!kept || !this.urlProcessor.restoredOnReturn) return;
+    this.started = true;
+    this.exited = kept.exited === true;
+    this.baseline = this.history.currentEntry();
+    this.knownStep = stepOf(this.mechanism.joints, this.mechanism.links);
+    this.landOn(this.knownStep);
+    if (!this.exited) this.showLetters();
+  }
+
+  private keepForReload(): void {
+    try {
+      if (this.canResume()) {
+        sessionStorage.setItem(IN_PROGRESS_KEY, JSON.stringify({ exited: this.exited }));
+      } else {
+        sessionStorage.removeItem(IN_PROGRESS_KEY);
+      }
+    } catch {
+      // Storage refused: a reload simply forgets the tutorial, as it used to.
+    }
   }
 
   /**
@@ -297,9 +347,23 @@ export class TutorialService {
     return blocker ? blocker.title : 'The mechanism cannot run yet';
   }
 
+  /** The chain of links the tutorial is reading, if there is one yet. */
+  private chain(): Link[] | undefined {
+    return chainedLinks(plainLinks(this.mechanism.joints, this.mechanism.links));
+  }
+
+  /** The moving joints of that chain: the ones whose velocity is the lesson. */
+  private chainMovers(): RealJoint[] {
+    const joints = new Set<RealJoint>();
+    for (const link of this.chain() ?? []) {
+      for (const joint of real(link.joints)) if (!joint.ground) joints.add(joint);
+    }
+    return [...joints];
+  }
+
   /** The input on the chain the tutorial is reading, if one is set. */
   private chainInput(): RealJoint | undefined {
-    const chain = chainedLinks(this.mechanism.links);
+    const chain = this.chain();
     if (!chain) return undefined;
     for (const link of chain) {
       for (const joint of link.joints) {
@@ -505,6 +569,9 @@ export class TutorialService {
     if (!this.hasPlayed || this.progress().step !== 5) return;
     const joint = this.activeObj.selectedJoint;
     if (!joint || this.activeObj.objType !== 'Joint' || joint.ground) return;
+    // A joint of the four-bar the student built. A bar of its own elsewhere,
+    // given an input and played, finished the tutorial on its velocity.
+    if (!this.chainMovers().includes(joint)) return;
     this.finishOn(joint);
   }
 
@@ -726,9 +793,28 @@ export class TutorialService {
     // chrome and there is no honest answer -- the canvas at least keeps the
     // mechanism where the view is looking.
     const MIN_CLEAR = 90;
-    const best =
-      beside.right - beside.left >= MIN_CLEAR && beside.bottom - beside.top >= MIN_CLEAR
-        ? beside
+    const fits = (
+      room: { left: number; right: number; top: number; bottom: number },
+      tall = MIN_CLEAR
+    ) => room.right - room.left >= MIN_CLEAR && room.bottom - room.top >= tall;
+
+    // On a phone the drawer is a card across the whole width, so there is no
+    // room beside it -- and falling back to the whole canvas built the
+    // four-bar under the very card that names its joints. Under the card is
+    // the other clear strip. It is short, so it is held to less height than
+    // the side strip: a four-bar is wider than it is tall.
+    const below = drawer
+      ? {
+          left: leftPanel && !this.viewport.isPhone() ? beside.left : box.left,
+          right: box.right,
+          top: Math.max(ceiling, drawer.bottom + gap),
+          bottom: floor,
+        }
+      : undefined;
+    const best = fits(beside)
+      ? beside
+      : below && fits(below, MIN_CLEAR / 1.5)
+        ? below
         : { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
 
     const from = this.svgGrid.screenToModelFromXY(best.left, best.top);
@@ -767,7 +853,7 @@ export class TutorialService {
     // newest free end of the whole drawing put both new bars on the second
     // piece -- the second exactly on top of the first's far end, a bar of no
     // length.
-    const piece = largestPiece(this.mechanism.links);
+    const piece = largestPiece(plainLinks(this.mechanism.joints, this.mechanism.links));
     if (!piece) return;
     const first = piece.links[0];
     const [from, to] = real(first.joints);
@@ -839,7 +925,7 @@ export class TutorialService {
   private fastestJoint(): RealJoint | undefined {
     let best: RealJoint | undefined;
     let fastest = -1;
-    for (const joint of readableJoints(this.mechanism.joints)) {
+    for (const joint of this.chainMovers()) {
       const speed = Number(this.readingFor(joint)?.magnitude ?? -1);
       if (speed > fastest) {
         fastest = speed;

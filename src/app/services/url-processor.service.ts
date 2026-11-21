@@ -155,6 +155,7 @@ export class UrlProcessorService {
     // stood on rather than walking backwards through the session. Refreshing
     // the work you are in the middle of is the case this exists for.
     const url = fromAddress ?? (!invalidAddress && returningToThePage() ? recallDrawing() : null);
+    this.restoredOnReturn = fromAddress === null && url !== null;
 
     // update the mechanism from the url
     //
@@ -219,6 +220,13 @@ export class UrlProcessorService {
    * opened file, a link. Not undo or redo, which are steps within one drawing.
    */
   readonly drawingReplaced = new Subject<void>();
+
+  /**
+   * The drawing on the grid at start-up is the one this tab was showing before
+   * a reload or a Back, recalled rather than sent by a link. The tutorial picks
+   * itself back up on exactly that.
+   */
+  restoredOnReturn = false;
 
   // Decode the url and update mechanism
   updateFromURL(

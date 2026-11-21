@@ -1,5 +1,6 @@
 @use 'sass:map';
 @use '@angular/material' as mat;
+@use 'src/app/component/left-tabs/left-tabs.vars' as nav;
 
 @mixin css($theme) {
   $color-config: mat.m2-get-color-config($theme);
@@ -25,6 +26,31 @@
     border-top: 5px solid $indigo;
     border-radius: var(--border-radius);
     box-shadow: var(--card-shadow);
+  }
+
+  // On a phone the card floats over the canvas across its whole width, and at
+  // full height it left no clear grid at all: on a 390 x 650 window it ran to
+  // within sixty pixels of the controls, and the four-bar it built for the
+  // student -- the one whose joints it then names -- went underneath it. So
+  // the card stops short of half the window, and only the step's words
+  // scroll: the title, the progress and the buttons stay put.
+  @media (max-width: nav.$phone-max-width) {
+    .tutorialCard:not(.doneCard) {
+      display: flex;
+      flex-direction: column;
+      max-height: 42vh;
+      overflow: hidden;
+
+      > * {
+        flex-shrink: 0;
+      }
+
+      .stepBody {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+      }
+    }
   }
 
   // Material sizes every icon box at 24px and hides what overflows it, from a

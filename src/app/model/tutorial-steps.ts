@@ -1,6 +1,7 @@
 import { Joint, RealJoint } from './joint';
 import { Link } from './link';
 import { canDrive } from './actuator';
+import { cylindersIn, cylindersOfLinkIn } from './cylinder';
 
 /**
  * The five moves the tutorial teaches, and how to tell from the drawing which
@@ -63,6 +64,9 @@ export function endJoints(joints: Joint[]): RealJoint[] {
  * left over from an earlier attempt does not hide the chain behind it.
  */
 export function chainedLinks(links: Link[]): Link[] | undefined {
+  // Walked only through the links it was given, so a cylinder left out of the
+  // count is not the bridge that makes two bars look chained either.
+  const allowed = new Set(links);
   const visited = new Set<Link>();
   for (const start of links) {
     if (visited.has(start)) continue;
@@ -73,7 +77,7 @@ export function chainedLinks(links: Link[]): Link[] | undefined {
       for (const joint of link.joints) {
         if (!(joint instanceof RealJoint)) continue;
         for (const neighbor of joint.links) {
-          if (!reached.has(neighbor)) {
+          if (allowed.has(neighbor) && !reached.has(neighbor)) {
             reached.add(neighbor);
             queue.push(neighbor);
           }
@@ -89,6 +93,45 @@ export function chainedLinks(links: Link[]): Link[] | undefined {
 /** Whether the drawing holds three links that are actually joined up. */
 export function linksAreChained(links: Link[]): boolean {
   return chainedLinks(links) !== undefined;
+}
+
+/**
+ * The links the tutorial counts: the ordinary bars and plates.
+ *
+ * A cylinder is two members in `links`, and the steps read it as "first bar
+ * drawn" -- after which Do This Step For Me had no bar to extend and said it
+ * could not continue. Everything welded into a cylinder is left out too.
+ */
+export function plainLinks(joints: Joint[], links: Link[]): Link[] {
+  const cylinders = cylindersIn(joints);
+  if (cylinders.length === 0) return links;
+  return links.filter((link) => cylindersOfLinkIn(cylinders, link).length === 0);
+}
+
+/**
+ * The chain's free ends: on each link at the end of the chain, the one joint
+ * that goes nowhere else.
+ *
+ * Not every joint on one link. A tracer point is a joint on one link too, and
+ * counting it as an end had the tutorial ring it, ground it for the student,
+ * and leave a four-bar that could not turn. So a link that joins the chain at
+ * two places has no ends of its own, and a link at the end of it has one: the
+ * grounded one if the student grounded one, else the first drawn.
+ */
+export function chainEnds(chain: Link[]): RealJoint[] {
+  const inChain = new Set(chain);
+  const ends: RealJoint[] = [];
+  for (const link of chain) {
+    const joints = real(link.joints);
+    const joins = joints.filter((joint) =>
+      joint.links.some((other) => other !== link && inChain.has(other))
+    );
+    if (joins.length !== 1) continue;
+    const loose = joints.filter((joint) => !joins.includes(joint) && joint.links.length === 1);
+    const end = loose.find((joint) => joint.ground) ?? loose[0];
+    if (end) ends.push(end);
+  }
+  return ends;
 }
 
 /** The joints the qualifying chain is made of. */
@@ -108,8 +151,7 @@ function chainJoints(chain: Link[]): RealJoint[] {
  * grounded joints count, so a drawing that arrives finished is not stuck being
  * asked for ends it does not have.
  */
-function groundedAnchors(own: RealJoint[]): RealJoint[] {
-  const ends = own.filter((joint) => joint.links.length === 1);
+function groundedAnchors(own: RealJoint[], ends: RealJoint[]): RealJoint[] {
   return (ends.length > 0 ? ends : own).filter((joint) => joint.ground);
 }
 
@@ -127,12 +169,13 @@ export function progressFor(joints: Joint[], links: Link[]): TutorialProgress {
 }
 
 /** The first of the five moves this drawing has not made. */
-export function stepOf(joints: Joint[], links: Link[]): TutorialStepId {
+export function stepOf(joints: Joint[], drawn: Link[]): TutorialStepId {
+  const links = plainLinks(joints, drawn);
   if (links.length < 1) return 1;
   const chain = chainedLinks(links);
   if (!chain) return 2;
   const own = chainJoints(chain);
-  if (groundedAnchors(own).length < 2) return 3;
+  if (groundedAnchors(own, chainEnds(chain)).length < 2) return 3;
   if (!own.some((joint) => joint.input)) return 4;
   return 5;
 }
@@ -146,20 +189,27 @@ export function stepOf(joints: Joint[], links: Link[]): TutorialStepId {
  * nothing: the sentence becomes a record of what was done rather than an
  * instruction, and a record still has to say which joint it was about.
  */
-export function progressAt(joints: Joint[], links: Link[], step: TutorialStepId): TutorialProgress {
+export function progressAt(joints: Joint[], drawn: Link[], step: TutorialStepId): TutorialProgress {
+  const links = plainLinks(joints, drawn);
   // Everything the card names comes off the qualifying chain, so the ringed
   // joint is one of the chain's own and not a lookalike on a stray component.
   const chain = chainedLinks(links);
   const own = chain ? chainJoints(chain) : real(joints);
-  const ends = own.filter((joint) => joint.links.length === 1);
-  const grounded = groundedAnchors(own);
+  const ends = chain ? chainEnds(chain) : [];
+  const grounded = groundedAnchors(own, ends);
   const input = own.find((joint) => joint.input);
 
   const offScript = chain ? chainTrouble(chain, own, ends) : looseTrouble(links);
 
   switch (step) {
     case 1:
-      return { step: 1 };
+      return {
+        step: 1,
+        offScript:
+          drawn.length > 0
+            ? 'A cylinder is not a link. Start the four-bar with Link, under Add, beside it.'
+            : undefined,
+      };
     case 2:
       return { step: 2, achieved: 'First bar drawn', offScript };
     case 3: {
@@ -170,7 +220,7 @@ export function progressAt(joints: Joint[], links: Link[], step: TutorialStepId)
         target: named[0],
         alsoTarget: named[1],
         achieved: 'Three links chained',
-        offScript: offScript ?? middleGrounded(own),
+        offScript: offScript ?? middleGrounded(own, ends),
       };
     }
     case 4: {
@@ -231,10 +281,9 @@ function looseTrouble(links: Link[]): string | undefined {
  * A joint grounded in the middle of the chain: the step stays where it is, as
  * it should, and the student is told why rather than left wondering.
  */
-function middleGrounded(own: RealJoint[]): string | undefined {
-  const middle = own.filter((joint) => joint.ground && joint.links.length > 1);
-  const hasEnds = own.some((joint) => joint.links.length === 1);
-  if (middle.length === 0 || !hasEnds) return undefined;
+function middleGrounded(own: RealJoint[], ends: RealJoint[]): string | undefined {
+  const middle = own.filter((joint) => joint.ground && !ends.includes(joint));
+  if (middle.length === 0 || ends.length === 0) return undefined;
   const names = middle.map(nameOf).join(' and ');
   const several = middle.length > 1;
   return `${several ? 'Joints' : 'Joint'} ${names} ${several ? 'are' : 'is'} in the middle of the chain, so grounding ${several ? 'them' : 'it'} holds the chain still. Turn off Grounded for ${several ? 'joints' : 'joint'} ${names}, and ground the two ends instead.`;

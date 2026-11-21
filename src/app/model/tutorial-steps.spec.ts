@@ -276,3 +276,38 @@ describe('off the script', () => {
     expect(progress.offScript).toContain('Turn off Grounded for joint B');
   });
 });
+
+// A tracer point is a joint on one link, which is what an end of the chain
+// looked like: the tutorial rang it, grounded it for the student, and left a
+// four-bar that could not turn.
+describe('a tracer point on the chain', () => {
+  function withTracer() {
+    const a = new RevJoint('A', -2, 0);
+    const b = new RevJoint('B', -2, 1);
+    const c = new RevJoint('C', 0.99, 2.82);
+    const d = new RevJoint('D', 2, 0);
+    const e = new RevJoint('E', -0.5, 2.2);
+    const coupler = new RealLink('BCE', [b, c, e], 1, 1, new Coord(0, 2));
+    for (const joint of [b, c, e]) joint.links.push(coupler);
+    const links = [bar(a, b), coupler, bar(c, d)];
+    return { joints: [a, b, c, d, e], links, a, d, e };
+  }
+
+  it('is not an end the card asks to ground', () => {
+    const { joints, links, a, d } = withTracer();
+    const progress = progressFor(joints, links);
+    expect(progress.step).toBe(3);
+    expect([progress.target, progress.alsoTarget]).toEqual([a, d]);
+    expect(progress.offScript).toBeUndefined();
+  });
+
+  it('does not stand in for an end once the real ends are grounded', () => {
+    const { joints, links, a, d, e } = withTracer();
+    a.ground = true;
+    e.ground = true;
+    expect(progressFor(joints, links).step).toBe(3);
+    d.ground = true;
+    e.ground = false;
+    expect(progressFor(joints, links).step).toBe(4);
+  });
+});

@@ -341,6 +341,228 @@ const EXTEND = `
   await page.context().close();
 }
 
+// ---- found by a second pass that went looking (PR #376) ----
+
+const doIt = async (page, times = 1) => {
+  for (let i = 0; i < times; i++) {
+    await page.locator('.doItButton').click();
+    await page.waitForTimeout(3600);
+  }
+};
+const startFresh = async (page) => {
+  await page.getByRole('button', { name: 'Start Tutorial', exact: true }).click();
+  await page.waitForTimeout(600);
+};
+const toKinematic = async (page) => {
+  await page
+    .locator('app-top-bar')
+    .getByText('Kinematic Analysis', { exact: true })
+    .first()
+    .click();
+  await page.waitForTimeout(700);
+};
+
+// 8. A tracer point on the coupler is not an end of the chain.
+{
+  const page = await freshPage();
+  await startFresh(page);
+  await doIt(page, 2);
+  await poke(
+    page,
+    `const link = srv.links[1];
+     srv.activeObjService.updateSelectedObj(link);
+     const [p, q] = link.joints;
+     srv.addJointAt({ x: (p.x + q.x) / 2 + 0.3, y: (p.y + q.y) / 2 + 0.3 });`
+  );
+  check('a tracer on the coupler leaves the step at 3', (await stepOn(page)) === 3);
+  check(
+    'and is not called a branch',
+    (await page.locator('.warnHint').count()) === 0,
+    (await page.locator('.warnHint').allInnerTexts()).join(' | ')
+  );
+  await doIt(page, 2);
+  const grounded = await poke(
+    page,
+    'return srv.joints.filter((j) => j.ground).map((j) => j.links.length + ":" + j.links[0].joints.length);'
+  );
+  check(
+    'Do This Step For Me grounds the two bar ends, not the tracer',
+    grounded.length === 2 && grounded.every((g) => g === '1:2'),
+    grounded.join(', ')
+  );
+  check('and the four-bar runs', (await page.locator('.warnHint').count()) === 0);
+  await page.screenshot({ path: `${OUT}/12-tracer.png` });
+  await page.context().close();
+}
+
+// 9. Two templates over the tutorial, then one undo, is still a template.
+{
+  const page = await freshPage();
+  await startFresh(page);
+  await doIt(page, 1);
+  for (const which of [2, 3]) {
+    await page.locator('.brandCard .iconButton').click();
+    await page.waitForTimeout(350);
+    await page.locator('#templatesButton').click();
+    await page.waitForTimeout(900);
+    await page.locator('#templates app-template-card').nth(which).click();
+    await page.waitForTimeout(600);
+    await page.getByRole('button', { name: 'Replace', exact: true }).click();
+    await page.waitForTimeout(1800);
+  }
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await page.waitForTimeout(900);
+  check(
+    'one undo after two templates offers no resume over the first',
+    (await page.locator('.resumeCard').count()) === 0
+  );
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await page.waitForTimeout(900);
+  check(
+    'a second undo reaches the tutorial’s bar again',
+    await page.locator('.resumeCard').isVisible()
+  );
+  await page.context().close();
+}
+
+// 10. A velocity read off a separate machine does not finish the tutorial.
+{
+  const page = await freshPage();
+  await startFresh(page);
+  await doIt(page, 4);
+  await poke(page, ADD_BAR, [8, 0, 8, 1]);
+  await poke(
+    page,
+    `const link = srv.links[srv.links.length - 1];
+     const [base] = link.joints;
+     srv.activeObjService.updateSelectedObj(base); srv.toggleGround();
+     srv.activeObjService.updateSelectedObj(base); srv.adjustInput();`
+  );
+  await toKinematic(page);
+  await page.getByRole('button', { name: 'Play' }).first().click();
+  await page.waitForTimeout(1200);
+  await poke(
+    page,
+    `const link = srv.links[srv.links.length - 1];
+     srv.activeObjService.updateSelectedObj(link.joints[1]);`
+  );
+  await page.waitForTimeout(600);
+  check(
+    'the other machine’s joint does not complete it',
+    (await page.locator('.doneCard').count()) === 0
+  );
+  await page.screenshot({ path: `${OUT}/13-other-machine.png` });
+  await page.context().close();
+}
+
+// 11. A reload keeps the tutorial with the drawing it brings back.
+{
+  const page = await freshPage();
+  await startFresh(page);
+  await doIt(page, 2);
+  await page.reload({ waitUntil: 'networkidle' });
+  await waitForReady(page);
+  await page.waitForTimeout(800);
+  check('after a reload the chain is back', (await jointCount(page)) === 4);
+  check(
+    'and so is the tutorial, at step 3',
+    (await stepOn(page)) === 3,
+    String(await stepOn(page))
+  );
+  await page.screenshot({ path: `${OUT}/14-reload.png` });
+  await page.context().close();
+}
+
+// 12. The finished card goes too when undo passes the tutorial's start.
+{
+  const page = await freshPage(SIX_BAR);
+  const before = await jointCount(page);
+  await menuTutorial(page);
+  await page.getByRole('button', { name: 'Clear and Start' }).click();
+  await page.waitForTimeout(900);
+  await doIt(page, 5);
+  check('it finishes on a cleared grid', await page.locator('.doneCard').isVisible());
+  for (let i = 0; i < 20 && (await jointCount(page)) !== before; i++) {
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await page.waitForTimeout(500);
+  }
+  check('undo reaches the six-bar', (await jointCount(page)) === before);
+  check('and the finished card is gone', !(await page.locator('.doneCard').isVisible()));
+  await page.context().close();
+}
+
+// 13. A cylinder is not a first bar.
+{
+  const page = await freshPage();
+  await startFresh(page);
+  await poke(page, 'srv.createCylinderFrom({ x: -2, y: 0 }, { x: 2, y: 0 });');
+  await page.waitForTimeout(3000);
+  check('a lone cylinder leaves step 1', (await stepOn(page)) === 1, String(await stepOn(page)));
+  check(
+    'and says to start with a Link',
+    /cylinder is not a link/i.test(
+      await page
+        .locator('.warnHint')
+        .innerText()
+        .catch(() => '')
+    )
+  );
+  await doIt(page, 1);
+  check('Do This Step For Me then draws the bar', (await stepOn(page)) === 2);
+  await page.screenshot({ path: `${OUT}/15-cylinder.png` });
+  await page.context().close();
+}
+
+// 14. Scrubbing is not Play.
+{
+  const page = await freshPage();
+  await startFresh(page);
+  await doIt(page, 4);
+  await toKinematic(page);
+  await poke(
+    page,
+    `const mover = srv.joints.find((j) => !j.ground);
+     srv.activeObjService.updateSelectedObj(mover);
+     srv.animate(5, false);`
+  );
+  await page.waitForTimeout(600);
+  check('a scrub alone does not finish step 5', (await page.locator('.doneCard').count()) === 0);
+  await page.context().close();
+}
+
+// 15. On a short phone the four-bar is built where the card does not cover it.
+{
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 650 },
+    hasTouch: true,
+    isMobile: true,
+  });
+  const page = await context.newPage();
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+  await waitForReady(page);
+  await menuTutorial(page);
+  await doIt(page, 2);
+  const covered = await page.evaluate(() => {
+    const card = document.querySelector('app-tutorial-panel');
+    const tutorial = ng.getComponent(card).tutorial;
+    const { target, alsoTarget } = tutorial.progress();
+    return [target, alsoTarget].filter(Boolean).map((joint) => {
+      const node = document.getElementById(`joint_${joint.id}`);
+      const box = node.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+      return `${joint.id}:${!!hit?.closest('#rightPanel, app-left-tabs, .topStrip, app-playback-bar')}`;
+    });
+  });
+  check(
+    'both named ends are clear of the chrome at 390×650',
+    covered.length === 2 && covered.every((c) => c.endsWith(':false')),
+    covered.join(', ')
+  );
+  await page.screenshot({ path: `${OUT}/16-phone.png` });
+  await context.close();
+}
+
 await browser.close();
 console.log(`\n${passed.length} passed, ${failed.length} failed`);
 if (errors.length) console.log('page errors:\n' + errors.slice(0, 10).join('\n'));
