@@ -184,7 +184,7 @@ describe('a welded body', () => {
 
     expect(news).toHaveBeenCalledWith(
       'weld.split-values',
-      expect.stringMatching(/center of mass you set/),
+      expect.stringMatching(/custom center of mass/),
       expect.anything()
     );
   });

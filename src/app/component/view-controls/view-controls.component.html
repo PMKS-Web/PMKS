@@ -13,7 +13,7 @@
     #viewButton
     (click)="toggleSheet(viewButton)"
     [attr.aria-expanded]="sheetOpen"
-    aria-label="Show on the drawing"
+    aria-label="Display Options"
   >
     <mat-icon>visibility</mat-icon>
   </button>
@@ -30,7 +30,7 @@
   >
     <div class="viewSheet" role="menu">
       <span class="viewSheetGrip" aria-hidden="true"></span>
-      <div class="viewSheetTitle">Show on the drawing</div>
+      <div class="viewSheetTitle">Display Options</div>
 
       <button class="viewRow" [disabled]="noMassiveLink()" (click)="showCenterOfMass()">
         <mat-icon [svgIcon]="isShowingCoM() ? 'com' : 'com_off'"></mat-icon>
@@ -51,7 +51,7 @@
         <span class="viewRowName">
           Traced paths
           @if (noTracedJoint()) {
-            <span class="viewRowWhy">No joint is tracing one yet</span>
+            <span class="viewRowWhy">No traced paths yet</span>
           }
         </span>
         <span class="viewRowSwitch" [class.on]="isShowingTraces()"></span>
@@ -63,12 +63,12 @@
            Reframing is the one thing pinching cannot do. -->
       <button class="viewRow" (click)="onReframePressed(); sheetOpen = false">
         <mat-icon svgIcon="fit_linkage"></mat-icon>
-        <span class="viewRowName">Fit to view</span>
+        <span class="viewRowName">Fit to View</span>
         <mat-icon class="viewRowGo">chevron_right</mat-icon>
       </button>
       <button class="viewRow" (click)="onFitFullMotionPressed(); sheetOpen = false">
         <mat-icon svgIcon="fit_motion"></mat-icon>
-        <span class="viewRowName">Fit full motion</span>
+        <span class="viewRowName">Fit Full Motion</span>
         <mat-icon class="viewRowGo">chevron_right</mat-icon>
       </button>
     </div>
@@ -130,13 +130,13 @@
          ring that point sweeps through. -->
     <app-view-button
       svg="fit_linkage"
-      tooltip="Fit to view"
+      tooltip="Fit to View"
       shortcut="view.reset"
       (pressed)="onReframePressed()"
     />
     <app-view-button
       svg="fit_motion"
-      tooltip="Fit full motion"
+      tooltip="Fit Full Motion"
       (pressed)="onFitFullMotionPressed()"
     />
   </div>

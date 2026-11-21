@@ -41,6 +41,13 @@ export class DragStateService {
   private pointerIsDown = false;
   private pointerMoved = false;
   private mechanismModified = false;
+  /** The creation states this press's release restores, set by `keepCreatingThroughRelease`. */
+  private reopenOnRelease?: {
+    grid: gridStates;
+    joint: jointStates;
+    link: linkStates;
+    force: forceStates;
+  };
 
   get grid(): gridStates {
     return this._grid;
@@ -134,6 +141,20 @@ export class DragStateService {
     this._grid = gridStates.createCylinder;
   }
 
+  /**
+   * Keep the creation gesture in flight open through this press's release,
+   * which otherwise clears every state. For a click that missed: Attach Link
+   * landing on the joint it started from.
+   */
+  keepCreatingThroughRelease(): void {
+    this.reopenOnRelease = {
+      grid: this._grid,
+      joint: this._joint,
+      link: this._link,
+      force: this._force,
+    };
+  }
+
   /** A creation gesture reached its second click and produced its object. */
   finishCreating(): void {
     this._grid = gridStates.waiting;
@@ -215,7 +236,14 @@ export class DragStateService {
       // graphs either way.
       travelled: this.pointerMoved,
     };
+    const reopen = this.reopenOnRelease;
     this.cancel();
+    if (reopen) {
+      this._grid = reopen.grid;
+      this._joint = reopen.joint;
+      this._link = reopen.link;
+      this._force = reopen.force;
+    }
     this.pointerIsDown = false;
     // The credit itself is cleared by the next press(), not here — a released
     // gesture has nothing left to owe.
@@ -234,6 +262,7 @@ export class DragStateService {
     // reader had just seen happen.
     this.pointerMoved = false;
     this.mechanismModified = false;
+    this.reopenOnRelease = undefined;
     this._grid = gridStates.waiting;
     this._joint = jointStates.waiting;
     this._link = linkStates.waiting;

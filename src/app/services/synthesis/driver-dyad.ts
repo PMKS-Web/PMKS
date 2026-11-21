@@ -80,12 +80,12 @@ export type DriverDyadResult = { dyad: DriverDyad } | { refusal: string };
  */
 export function driverDyadFor(pivot: Coord, drivenPin: Coord[]): DriverDyadResult {
   if (drivenPin.length < 2) {
-    return { refusal: 'A driver needs at least two poses to know what swing to deliver.' };
+    return { refusal: 'A driver requires at least two positions to determine its swing.' };
   }
 
   const radius = pivot.getDistanceTo(drivenPin[0]);
   if (!(radius > 0)) {
-    return { refusal: 'The four-bar has no input crank to drive: its two pins are in one place.' };
+    return { refusal: 'The four-bar has no input crank to drive because its two pins coincide.' };
   }
 
   const angles = drivenPin.map((pin) => Math.atan2(pin.y - pivot.y, pin.x - pivot.x));
@@ -103,9 +103,9 @@ export function driverDyadFor(pivot: Coord, drivenPin: Coord[]): DriverDyadResul
   if (span >= WIDEST_SWING) {
     return {
       refusal:
-        `The input has to swing ${Math.round((span * 180) / Math.PI)}° between these poses, ` +
-        'which is more than a single driver crank can deliver. Moving the middle pose closer ' +
-        'to the others, or swapping which pin drives, brings it back in reach.',
+        `The input must swing ${Math.round((span * 180) / Math.PI)}° between these positions, ` +
+        'which exceeds what a single driver crank can deliver. Move the middle position closer ' +
+        'to the others, or drive from the other pin.',
     };
   }
   const margin = Math.min((span * OVERTRAVEL) / 2, (WIDEST_SWING - span) / 2);
@@ -129,7 +129,7 @@ export function driverDyadFor(pivot: Coord, drivenPin: Coord[]): DriverDyadResul
   // the swing rather than at either end, so it has to be intersected for.
   const elbow = elbowAt(ground, crankLength, drivenPin[0], couplerLength);
   if (elbow === undefined) {
-    return { refusal: 'The driver cannot be assembled in the pose the linkage is drawn in.' };
+    return { refusal: 'The driver cannot be assembled in the mechanism’s current pose.' };
   }
 
   return { dyad: { ground, elbow, crankLength, couplerLength, swing } };

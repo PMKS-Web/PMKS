@@ -240,7 +240,7 @@ export class MultiEditPanelComponent implements OnInit, DoCheck {
     // forces spread over four bars have no one bar to name, so the word carries
     // the meaning on its own -- and the field is narrow enough that a longer
     // phrase would be clipped rather than read.
-    return body ? `Local (${body})` : 'Local (own link)';
+    return body ? `Link (${body})` : 'Link (own link)';
   }
 
   forceValue(field: 'magnitude' | 'angle'): CommonValue<number> {

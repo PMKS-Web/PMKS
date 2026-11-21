@@ -42,7 +42,7 @@ check(
 );
 
 await page.getByRole('button', { name: 'Synthesis', exact: true }).click();
-await page.getByRole('button', { name: /Motion — 3 positions/ }).click();
+await page.getByRole('button', { name: /Motion — 3 Positions/ }).click();
 await enter('Position 1 X', '1 cm');
 await enter('Position 1 Y', '1 cm');
 await enter('Position 1 angle', '0 deg');
@@ -99,7 +99,7 @@ await contactSheet(`${OUT}/meter-film/*-switch.png`, `${OUT}/meter-film.png`, 4)
 await openMechanism(page, `${BASE}/?${payloads['4-Bar']}`);
 await page.locator('#linkHolder path').nth(1).click({ force: true });
 await page.getByRole('button', { name: /Kinematic Analysis/ }).click();
-await page.getByRole('tab', { name: 'Center of mass', exact: true }).click();
+await page.getByRole('tab', { name: 'Center of Mass', exact: true }).click();
 const analysis = await page.locator('app-analysis-panel').evaluate((host) => {
   const chips = [...host.querySelectorAll('.drawingChips .viewButton')];
   const labels = [...host.querySelectorAll('.drawingChips .viewButtonLabel')];
@@ -136,7 +136,7 @@ check(
   analysis.heading.startsWith('Kinematics for Link') &&
     analysis.headingSize === 20 &&
     analysis.rowNames.join('|') === 'Position|Velocity|Acceleration' &&
-    analysis.fullNames.every((name) => name.startsWith('Center of mass ')) &&
+    analysis.fullNames.every((name) => name.startsWith('Center of Mass ')) &&
     analysis.leftSpread < 1.5 &&
     analysis.rowSize === 13.5 &&
     analysis.controlsSize < analysis.rowSize &&

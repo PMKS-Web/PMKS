@@ -322,7 +322,7 @@ await page.waitForTimeout(250);
 // --- it runs, and the skin rides the body -----------------------------------
 await tab('Kinematic').click();
 await page.waitForTimeout(500);
-await page.locator('button[aria-label="Fit full motion"]').click();
+await page.locator('button[aria-label="Fit Full Motion"]').click();
 await page.waitForTimeout(500);
 
 const along = () =>

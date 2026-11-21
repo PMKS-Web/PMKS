@@ -1,7 +1,7 @@
 /**
  * A link's Mass Settings, read the way a reader reads them.
  *
- * - The CoM frame choice is labeled "CoM measured from", with a help mark just
+ * - The CoM frame choice is labeled "CoM Measured From", with a help mark just
  *   after "from" that names both of the choice's jobs: what X and Y count from,
  *   and what the point keeps its place against while editing.
  * - The help opens to the right, toward the canvas, and the pointer passes
@@ -137,7 +137,7 @@ const after = await page.evaluate((id) => {
 await page.locator('app-edit-panel .massArea').screenshot({ path: `${OUT}/from-joint.png` });
 
 const results = [
-  ['the frame choice is labeled "CoM measured from"', layout.label === 'CoM measured from'],
+  ['the frame choice is labeled "CoM Measured From"', layout.label === 'CoM Measured From'],
   [
     'its help mark sits just after "from", on the same line',
     layout.gap >= -1 && layout.gap <= 8 && layout.sameLine <= 3,
@@ -156,7 +156,7 @@ const results = [
     'the help opens beside the select, and the pointer goes through it',
     overlap.beside && overlap.passesThrough,
   ],
-  ['the select is named by its label', layout.named === 'CoM measured from'],
+  ['the select is named by its label', layout.named === 'CoM Measured From'],
   ['the select stays inside the panel', layout.selectInside],
   [
     'picking a joint leaves the point where it was',

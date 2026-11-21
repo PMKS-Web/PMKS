@@ -208,11 +208,11 @@ const menu = await page
   .catch(() => '');
 record(
   'the chip offers both ways back',
-  /Back to the start/i.test(menu) && /Move the start here/i.test(menu),
+  /Return to Start/i.test(menu) && /Set Start Pose Here/i.test(menu),
   menu
 );
 await page.screenshot({ path: `${SHOTS}/4-set-start-menu.png` });
-await page.getByText('Move the start here').click();
+await page.getByText('Set Start Pose Here').click();
 await page.waitForTimeout(800);
 const promoted = await look();
 record('promoting it leaves the drawing at its start', promoted.atStart, promoted);

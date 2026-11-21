@@ -55,7 +55,7 @@ describe('MechanismPanelComponent', () => {
 
   it('lists every machine, with what PMKS recognized, when none is picked', async () => {
     const { fixture } = await createPanel(TEMPLATE_LINKAGES['Straight_Line_Pair']);
-    expect(text(fixture, '.mechTitle')).toEqual(['All mechanisms']);
+    expect(text(fixture, '.mechTitle')).toEqual(['All Mechanisms']);
     const rows = text(fixture, '.machineRow');
     expect(rows).toHaveLength(2);
     // By the name the library gives it; the family PMKS recognized beside it.
@@ -76,7 +76,7 @@ describe('MechanismPanelComponent', () => {
 
     (fixture.nativeElement.querySelector('.backLink') as HTMLElement).click();
     fixture.detectChanges();
-    expect(text(fixture, '.mechTitle')).toEqual(['All mechanisms']);
+    expect(text(fixture, '.mechTitle')).toEqual(['All Mechanisms']);
     fixture.destroy();
   });
 

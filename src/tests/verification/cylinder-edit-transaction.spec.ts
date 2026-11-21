@@ -527,7 +527,7 @@ describe('a cylinder carried past what it can reach', () => {
     // back the mock that is there, calls and all, so `calls[0]` here is the
     // first refusal of the whole describe block rather than this test's.
     const [, text] = notify.mock.calls.at(-1)!;
-    expect(text).toContain('already closed as far as it goes');
+    expect(text).toContain('already fully closed');
     expect(text).not.toContain('Held by');
   });
 

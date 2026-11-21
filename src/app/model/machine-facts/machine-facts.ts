@@ -125,7 +125,7 @@ export function familyReading(
   if (pinsOnly && free && counted) {
     return {
       name: counted,
-      basis: `Named by its ${bodies} bodies, ground included. Not matched to a named type.`,
+      basis: `Classified by its ${bodies} bodies (including ground); does not match a named mechanism family.`,
       kind: 'counted',
     };
   }

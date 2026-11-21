@@ -163,7 +163,7 @@ for (let press = 0; press < 2; press++) {
     .locator('app-analysis-setup')
     .innerText()
     .catch(() => '');
-  if (showing.includes('Analysis setup')) break;
+  if (showing.includes('Analysis Setup')) break;
   await page.locator('.tabButton', { hasText: 'Kinematic' }).click();
   await page.waitForTimeout(700);
 }

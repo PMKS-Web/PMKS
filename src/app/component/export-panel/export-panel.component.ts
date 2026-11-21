@@ -93,7 +93,7 @@ export class ExportPanelComponent implements OnInit, OnDestroy {
     {
       key: 'report',
       name: 'Report (PDF)',
-      note: 'The mechanism, the graphs and the table.',
+      note: 'The mechanism, graphs, and data table.',
     },
   ];
 
@@ -107,21 +107,20 @@ export class ExportPanelComponent implements OnInit, OnDestroy {
    * one row of it.
    */
   readonly help: Record<string, string> = {
-    decimals:
-      'How many digits after the point every number keeps. Full writes exactly what the solver produced.',
+    decimals: 'Number of decimal places to include. Full exports raw solver precision.',
     files:
       'Per mechanism puts its chosen objects against one time column. Per object writes a separate file for each object. Mechanisms have separate files because each has its own time range.',
     sheets:
       'By analysis puts kinematics and forces on sheets of their own. By object gives every chosen joint and link a sheet.',
     images:
-      'SVG stays sharp at any size and can be opened and edited; PNG drops into a document that will not take a vector. Both carry the PMKS mark.',
-    name: 'The start of every exported file’s name. With several files, each name ends with what that file holds.',
+      'SVG scales cleanly and stays editable; PNG works in apps that don’t support vectors. Both include the PMKS watermark.',
+    name: 'Prefix for exported filenames. When exporting multiple files, each filename includes a suffix describing its contents.',
     analysis:
       'Static solves the mechanism held still at each position — the equilibrium a hand calculation gives. In-motion adds the inertia of the moving parts.',
     components:
       'X and Y are the components along the axes. Magnitude is √(X² + Y²) — the size of the vector, without its direction.',
     timeSteps:
-      'This mechanism is solved at extra positions near a toggle. Evenly spaced leaves those out so every time step is equal, and Every position keeps them all.',
+      'This mechanism uses extra steps near a toggle position. Evenly spaced omits them for uniform time steps; Every position includes them all.',
   };
 
   /**
@@ -153,7 +152,9 @@ export class ExportPanelComponent implements OnInit, OnDestroy {
   }
 
   get deliveryNote(): string {
-    if (this.flow.format === 'report') return 'Opens the print dialog, where Save as PDF writes it';
+    if (this.flow.format === 'report') {
+      return 'Opens the print dialog—choose Save as PDF to save the report.';
+    }
     const count = this.flow.format === 'images' ? this.pictureCount() : this.writer.summary().files;
     if (count > 2) return `${count} files, in one zip folder`;
     if (count > 1) return `${count} files`;
@@ -414,7 +415,7 @@ export class ExportPanelComponent implements OnInit, OnDestroy {
         'export.done',
         this.flow.format === 'report'
           ? 'The report is ready to print or save as PDF.'
-          : `${arriving} is on its way.`
+          : `Downloading ${arriving}.`
       );
     } catch {
       this.notify.failure('export.failed', 'The export could not be written.');

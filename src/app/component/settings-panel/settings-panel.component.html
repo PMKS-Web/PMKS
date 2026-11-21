@@ -1,7 +1,7 @@
 <div id="settingsWrapper">
   <panel-section>
     <!-- {{ this.currentAngleUnit }} -->
-    <title-block> Settings</title-block>
+    <title-block>Settings</title-block>
     <collapsible-subsection #basicSettings titleLabel="Basic Settings" [expanded]="true">
       <!-- The Edit panel's own strip, verbatim: same indigo, same glyph, same
            underlined way out. It was a bare sentence here, which read as a
@@ -37,7 +37,7 @@
           option2="Kilogram (kg)"
           [formGroup]="this.settingsForm"
           _formControl="massunit"
-          [tooltip]="'The unit masses and moments of inertia are shown in.' + lockedNote()"
+          [tooltip]="'Unit used for mass and mass moment of inertia.' + lockedNote()"
           [disabled]="!documentEditable()"
           >Mass Units
         </radio-block>
@@ -48,7 +48,7 @@
           option2="Kilogram-force (kgf)"
           [formGroup]="this.settingsForm"
           _formControl="forceunit"
-          [tooltip]="'The unit forces, reactions and torque are shown in.' + lockedNote()"
+          [tooltip]="'Unit used for forces, reactions, and torque.' + lockedNote()"
           [disabled]="!documentEditable()"
           >Force Units
         </radio-block>
@@ -59,7 +59,9 @@
         option2="Radian (rad)"
         [formGroup]="this.settingsForm"
         _formControl="angleunit"
-        [tooltip]="'The unit for angles, angular velocity and angular acceleration.' + lockedNote()"
+        [tooltip]="
+          'The unit for angles, angular velocity, and angular acceleration.' + lockedNote()
+        "
         [disabled]="!documentEditable()"
         >Angle Units
       </radio-block>
@@ -67,7 +69,7 @@
         [formGroup]="this.settingsForm"
         _formControl="gravity"
         [tooltip]="
-          'Weight loads every link that has mass. Turn it off to analyze forces without gravity.' +
+          'Applies downward weight to every link with mass. Turn off to analyze forces without gravity.' +
           lockedNote()
         "
         [disabled]="!documentEditable()"
@@ -82,7 +84,7 @@
       <toggle-block
         [formGroup]="this.settingsForm"
         _formControl="showMajorGrid"
-        tooltip="Show / hide the major grid lines."
+        tooltip="Show or hide the major grid lines."
       >
         Grid
       </toggle-block>
@@ -90,7 +92,7 @@
         <toggle-block
           [formGroup]="this.settingsForm"
           _formControl="showMinorGrid"
-          tooltip="Show / hide the minor grid lines."
+          tooltip="Show or hide the minor grid lines."
         >
           Minor Gridlines
         </toggle-block>
@@ -98,14 +100,22 @@
       <toggle-block
         [formGroup]="this.settingsForm"
         _formControl="snapToGrid"
-        tooltip="Dragging a joint or a link lands it on the nearest grid square. Hold Option to drag free of it."
+        [tooltip]="
+          'Snaps dragged joints and links to the grid. Hold ' +
+          altKey +
+          ' while dragging to bypass snapping.'
+        "
       >
         Snap to Grid
       </toggle-block>
       <toggle-block
         [formGroup]="this.settingsForm"
         _formControl="snapToAlignment"
-        tooltip="Dragging squares a joint up with one it is nearly level with. Hold Option to drag free of it."
+        [tooltip]="
+          'Snaps a dragged joint into horizontal or vertical alignment with nearby joints. Hold ' +
+          altKey +
+          ' while dragging to bypass.'
+        "
       >
         Snap to Alignment
       </toggle-block>

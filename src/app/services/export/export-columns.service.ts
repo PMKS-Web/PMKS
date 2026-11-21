@@ -73,11 +73,11 @@ export class ExportColumnsService {
         tab: 'kinematics',
         columns: [
           this.kinematic(links, 'l:ang', 'Angle', angle, [['Angle', 'Angular Link Pos', angle, 1]]),
-          this.kinematic(links, 'l:angvel', 'Angular velocity', `${angle}/s`, [
-            ['Angular velocity', 'Angular Link Vel', `${angle}/s`, 1],
+          this.kinematic(links, 'l:angvel', 'Angular Velocity', `${angle}/s`, [
+            ['Angular Velocity', 'Angular Link Vel', `${angle}/s`, 1],
           ]),
-          this.kinematic(links, 'l:angacc', 'Angular acceleration', `${angle}/s²`, [
-            ['Angular acceleration', 'Angular Link Acc', `${angle}/s²`, 1],
+          this.kinematic(links, 'l:angacc', 'Angular Acceleration', `${angle}/s²`, [
+            ['Angular Acceleration', 'Angular Link Acc', `${angle}/s²`, 1],
           ]),
         ],
       });
@@ -94,17 +94,17 @@ export class ExportColumnsService {
       // say so.
       groups.push({
         key: 'link-com',
-        title: 'Center of mass',
+        title: 'Center of Mass',
         tab: 'kinematics',
         columns: [
           this.kinematic(links, 'l:compos', 'Position', length, [
-            ['Center of mass position', "Linear Link's CoM Pos", length, 2],
+            ['Center of Mass Position', "Linear Link's CoM Pos", length, 2],
           ]),
           this.kinematic(links, 'l:comvel', 'Velocity', `${length}/s`, [
-            ['Center of mass velocity', "Linear Link's CoM Vel", `${length}/s`, 3],
+            ['Center of Mass Velocity', "Linear Link's CoM Vel", `${length}/s`, 3],
           ]),
           this.kinematic(links, 'l:comacc', 'Acceleration', `${length}/s²`, [
-            ['Center of mass acceleration', "Linear Link's CoM Acc", `${length}/s²`, 3],
+            ['Center of Mass Acceleration', "Linear Link's CoM Acc", `${length}/s²`, 3],
           ]),
         ],
       });
@@ -248,7 +248,7 @@ export class ExportColumnsService {
           : this.catalog.drivenJointOf(part.id);
       if (driven) {
         const torque = !(driven instanceof PrisJoint);
-        const effort = torque ? 'Input torque' : 'Input force';
+        const effort = torque ? 'Input Torque' : 'Input Force';
         columns.push(
           this.force(
             effort,

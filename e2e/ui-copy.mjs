@@ -47,13 +47,15 @@ const BANNED = [
   [/\b(driven|guided|hydraulic)\s+rams?\b/i, 'ram — say cylinder'],
   [/\bram\s+(mount|barrel|rod|joint)/i, 'ram — say cylinder'],
   [/\bsimulation\b/i, 'simulation — say animation'],
+  [/\bsimulated\b/i, 'simulated — say solved or animated'],
   [/\bactuator\b/i, 'actuator — say driven'],
   [/\bcolour\b/i, 'colour — spell American'],
   [/\bcentred?\b/i, 'centred/centre — spell American'],
   [/\bneighbour/i, 'neighbour — spell American'],
+  [/\bcapitalis(e|ed|ing)\b/i, 'capitalise — spell American'],
   [/\banalyse[ds]?\b/i, 'analyse — spell American'],
   [/\bTODO\b/, 'TODO placeholder'],
-  [/not available yet/i, 'not available yet — say "Not built yet."'],
+  [/not available yet/i, 'not available yet — say "Coming soon"'],
   [/\bT\s*=\s*0\b/, 'T=0 — the app calls it the start'],
 ];
 
@@ -218,9 +220,9 @@ screen('Settings', settingsTips);
 record(
   'the alignment-snap tooltip parses as a sentence',
   settingsTips.some((t) =>
-    /^Dragging squares a joint up with one it is nearly level with\./.test(t)
+    /^Snaps a dragged joint into horizontal or vertical alignment with nearby joints\./.test(t)
   ),
-  settingsTips.filter((t) => t.startsWith('Dragging squares'))
+  settingsTips.filter((t) => t.startsWith('Snaps a dragged joint'))
 );
 
 // --- the view switches -------------------------------------------------------
@@ -280,7 +282,7 @@ await page.waitForTimeout(700);
 const midCycle = await unitsTip();
 record(
   'and sends a reader parked mid-cycle to the start rather than to Edit',
-  /^The unit for angles/.test(midCycle) && /Reset to the starting pose to change\.$/.test(midCycle),
+  /^The unit for angles/.test(midCycle) && /Return to the start pose to change\.$/.test(midCycle),
   midCycle
 );
 await page

@@ -94,7 +94,7 @@
         @if (found.stopped) {
           <div class="warnNote">
             <mat-icon aria-hidden="true">warning</mat-icon>
-            <span>{{ found.stopped }} Fix it in Edit first, or send it as it is.</span>
+            <span>{{ found.stopped }} Fix it in Edit first, or submit it as is.</span>
           </div>
         }
         @if (found.inLibrary; as card) {
@@ -108,7 +108,7 @@
         }
         @if (source === 'open-mechanism' && !viewport.isPhone()) {
           <p class="srcNote">
-            We send the drawing as it is now. Edits you make after sending are not included.
+            This submits a snapshot of your current mechanism. Later edits won’t be included.
           </p>
         }
       }
@@ -240,7 +240,9 @@
           <mat-icon aria-hidden="true">expand_more</mat-icon>
         </div>
         @if (!viewport.isPhone()) {
-          <div class="hintRow"><span>Pick the closest, or leave it as Not Sure.</span></div>
+          <div class="hintRow">
+            <span>Pick the closest category, or leave it as Not Sure.</span>
+          </div>
         }
       </div>
     </ng-template>

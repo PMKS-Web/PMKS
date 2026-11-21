@@ -95,7 +95,7 @@ await open(payloads['4-Bar']);
 let text = await panelText();
 record(
   'a lone machine shows in detail, with nothing to go back to',
-  text.includes('Edit Mechanism 1') && !text.includes('All mechanisms'),
+  text.includes('Edit Mechanism 1') && !text.includes('All Mechanisms'),
   text
 );
 // Building, the panel is about what an edit changes: how free the machine is
@@ -233,7 +233,7 @@ await open(payloads['Straight_Line_Pair']);
 text = await panelText();
 record(
   'several machines list every one, with how free each is',
-  text.includes('All mechanisms') && text.includes('1 degree of freedom'),
+  text.includes('All Mechanisms') && text.includes('1 degree of freedom'),
   text
 );
 record('and nothing is faded before one is picked', (await muted()).links === 0, await muted());
@@ -253,7 +253,7 @@ text = await panelText();
 // `Edit Mechanism 2`.
 record(
   'picking a row shows that machine',
-  text.includes('Edit Peaucellier (exact)') && text.includes('All mechanisms'),
+  text.includes('Edit Peaucellier (exact)') && text.includes('All Mechanisms'),
   text
 );
 const faded = await muted();
@@ -265,7 +265,7 @@ record(
 
 await page.locator('.backLink').click();
 await page.waitForTimeout(300);
-record('"All mechanisms" goes back to the list', (await panelText()).includes('All mechanisms'));
+record('"All Mechanisms" goes back to the list', (await panelText()).includes('All Mechanisms'));
 record('and the grid is whole again', (await muted()).links === 0, await muted());
 
 // --- a background click is the list, in an analysis mode too ------------------
@@ -277,14 +277,14 @@ await page.waitForTimeout(300);
 text = await panelText();
 record(
   'the analysis panel lists the machines too, each with its family',
-  text.includes('All mechanisms') &&
+  text.includes('All Mechanisms') &&
     text.includes('Chebyshev straight-line linkage') &&
     text.includes('Peaucellier-Lipkin straight-line linkage'),
   text
 );
 record(
   'and says a joint or link opens its graphs straight from the list',
-  text.includes('for its position, velocity and acceleration graphs'),
+  text.includes('to view its position, velocity, and acceleration graphs'),
   text
 );
 await page.locator('.machineRow').nth(0).click();
@@ -477,7 +477,7 @@ record(
 );
 record(
   'and its Overview says when its motion is worked out',
-  text.includes('worked out when you press Play'),
+  text.includes('Motion is solved when you press Play'),
   text.slice(0, 300)
 );
 

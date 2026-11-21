@@ -73,7 +73,7 @@ try {
   // The overview's member button selects the member in Edit; return to analysis afterward.
   await page.getByRole('button', { name: 'BC', exact: true }).click();
   await page.getByRole('button', { name: /Kinematic Analysis/ }).click();
-  await page.getByRole('button', { name: /Angular acceleration/ }).click();
+  await page.getByRole('button', { name: /Angular Acceleration/ }).click();
   await page.waitForFunction(() =>
     [...document.querySelectorAll('app-analysis-graph')].some(
       (el) => ng.getComponent(el).mechProp === 'Angular Link Acc'

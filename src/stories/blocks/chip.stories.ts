@@ -57,7 +57,7 @@ export const InForce: Story = {
  * A size down, for the synthesis panel's chooser — where a chip rides inside a
  * card rather than beside a heading, and the heading's size would crowd it.
  */
-export const Small: Story = { args: { size: 'small', label: 'Not built yet' } };
+export const Small: Story = { args: { size: 'small', label: 'Coming soon' } };
 
 /**
  * The three status colors together, which is how a reader meets them: the same

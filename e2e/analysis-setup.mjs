@@ -82,7 +82,7 @@ await page.waitForTimeout(600);
 let text = await drawerText();
 record(
   'pressing a mode it cannot enter opens the list',
-  text.includes('Force Analysis setup'),
+  text.includes('Force Analysis Setup'),
   text
 );
 // Each mode has a drawer of its own: a reader refused by one should not have
@@ -154,7 +154,7 @@ const inertiaHead = await page.evaluate(() => {
 });
 record(
   'the inertia column says mass moment of inertia, inside its column',
-  inertiaHead.text === 'Mass moment of inertia' && inertiaHead.fits,
+  inertiaHead.text === 'Mass Moment of Inertia' && inertiaHead.fits,
   inertiaHead
 );
 await massNames.nth(1).hover();
@@ -288,11 +288,7 @@ await page.waitForTimeout(400);
 await tab('Kinematic').click();
 await page.waitForTimeout(600);
 text = await drawerText();
-record(
-  'geometry in no mechanism gets its own section',
-  text.includes('Not in any mechanism'),
-  text
-);
+record('geometry in no mechanism gets its own section', text.includes('Not in a Mechanism'), text);
 
 // --- the wrong number of degrees of freedom: which part, and what fixes it ---
 // The count alone ("This mechanism has 3 degrees of freedom") is where the app
@@ -448,7 +444,7 @@ await page.waitForTimeout(600);
 text = await openText();
 record(
   'a real dead center says which joint to drag',
-  text.includes('Starts at a limit') && text.includes('Drag joint B a little way off the limit'),
+  text.includes('Starts at a limit') && text.includes('Drag joint B slightly off the limit'),
   text
 );
 await partLink('joint B').click();

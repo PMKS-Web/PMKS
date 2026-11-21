@@ -72,7 +72,7 @@ async function pressAndWatch(what, query, button) {
 }
 
 const browser = await chromium.launch();
-for (const button of ['Fit to view', 'Fit full motion']) {
+for (const button of ['Fit to View', 'Fit Full Motion']) {
   await pressAndWatch('an empty grid', '', button);
   await pressAndWatch('a Watt six-bar', payloads['Watt_I'], button);
 }

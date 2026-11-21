@@ -368,9 +368,9 @@ export class SynthesisSolutionService {
     // because the panel promises "one full turn".
     return this.driverTravel(cand, sized.dyad).full
       ? undefined
-      : 'A driver sized for these positions cannot turn a whole revolution — the ' +
-          'four-bar jams partway round. Moving a position, or driving from the ' +
-          'other pin, usually frees it.';
+      : 'A driver sized for these positions cannot complete a full revolution—the ' +
+          'four-bar jams partway through. Move a position, or drive from the ' +
+          'other pin.';
   }
 
   /** The driver dyad for the current solution, if one is wanted and works. */

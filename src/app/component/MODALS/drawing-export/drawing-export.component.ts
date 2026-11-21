@@ -155,7 +155,7 @@ export class DrawingExportComponent {
     },
     {
       label: 'Centerlines',
-      note: 'One line per link. A drawing to trace over, not a part.',
+      note: 'One line per link—a reference sketch, not an extrudable part.',
       value: 'centerlines',
     },
   ];
@@ -170,7 +170,7 @@ export class DrawingExportComponent {
     { label: 'None', note: 'The drawing on its own.', value: 'none' },
     {
       label: 'CSV',
-      note: 'Separate files for joints, links and any applied forces.',
+      note: 'Separate files for joints, links, and any applied forces.',
       value: 'csv',
     },
     { label: 'JSON', note: 'The same tables, one structured file.', value: 'json' },

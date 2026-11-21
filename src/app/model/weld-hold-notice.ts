@@ -39,7 +39,10 @@ export function weldHoldNotice(
     );
   }
   const names = held.map(nameOf);
-  const listed = `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  const listed =
+    names.length === 2
+      ? `${names[0]} and ${names[1]}`
+      : `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
   return (
     `Links ${listed} keep their ${settings} in the welded body. To change one, select a ` +
     'joint on it and use Distance to Joints.'

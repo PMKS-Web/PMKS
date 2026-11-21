@@ -234,7 +234,8 @@ record(
   'a driven pin can be nothing else, and every grayed type carries the model’s reason',
   ['Prismatic', 'Pin-in-slot', 'Welded'].every(
     (label) =>
-      refusedOn(label)?.off === true && /Remove the input first/.test(refusedOn(label).reason ?? '')
+      refusedOn(label)?.off === true &&
+      /Remove the input before changing its type/.test(refusedOn(label).reason ?? '')
   ) && refusedOn('Revolute')?.off === false,
   driven.options
 );
@@ -242,7 +243,11 @@ record(
 await page.hover('app-edit-panel segmented-block .cell:nth-child(5)');
 await page.waitForTimeout(900);
 const tip = await page.locator('.mat-mdc-tooltip').first().textContent();
-record('and pointing at one says the same thing', /Remove the input first/.test(tip ?? ''), tip);
+record(
+  'and pointing at one says the same thing',
+  /Remove the input before changing its type/.test(tip ?? ''),
+  tip
+);
 await page.screenshot({ path: `${OUT}/3-refused.png` });
 
 // ------------------------------------- 3b. where that reason opens, and what

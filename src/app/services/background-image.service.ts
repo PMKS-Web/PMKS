@@ -263,7 +263,7 @@ function measure(src: string): Promise<{ width: number; height: number }> {
     const probe = new Image();
     probe.onload = () => {
       if (!probe.naturalWidth || !probe.naturalHeight) {
-        reject(new Error('That image has no size the browser could read.'));
+        reject(new Error('The browser could not read the dimensions of that image.'));
         return;
       }
       resolve({ width: probe.naturalWidth, height: probe.naturalHeight });

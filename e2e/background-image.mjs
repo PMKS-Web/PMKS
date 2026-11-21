@@ -154,10 +154,9 @@ record(
 );
 record(
   'the panel says the picture is not in the shared address',
-  // "Link" means a bar here, so the reader-facing word for the URL is the
-  // project web address, in the panel, the tutorial and the notification alike.
+  // docs/ui-vocabulary.md names the shareable URL the "project link".
   (await page.locator('app-edit-panel .bgNote').innerText()).includes(
-    'not saved in the project web address'
+    'aren’t saved in the project link'
   )
 );
 record(

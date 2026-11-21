@@ -31,7 +31,7 @@ page.on('pageerror', (error) => errors.push(String(error)));
 await page.goto(`${BASE}/?${payloads['Cylinder_Boom']}`, { waitUntil: 'domcontentloaded' });
 await waitForReady(page);
 
-// *Starts at* is the slide's own field since Stage 2c (D9), so the square
+// *Starts At* is the slide's own field since Stage 2c (D9), so the square
 // mid-skin is what this selects to reach it.
 await inAngular(page, () => {
   const grid = ng.getComponent(document.querySelector('app-new-grid'));
@@ -42,7 +42,7 @@ await page.waitForTimeout(700);
 async function setStart(value) {
   const handle = await page.evaluateHandle(() => {
     for (const block of document.querySelectorAll('#input-block'))
-      if (block.querySelector('.label')?.textContent?.trim() === 'Starts at')
+      if (block.querySelector('.label')?.textContent?.trim() === 'Starts At')
         return block.querySelector('input');
     return null;
   });

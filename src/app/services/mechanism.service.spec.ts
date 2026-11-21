@@ -876,7 +876,7 @@ describe('MechanismService keeping forces off joints that refuse them', () => {
       (scene.c.y - scene.d.y) * (force.startCoord.x - scene.d.x);
     expect(cross).toBeCloseTo(0, 9);
     expect(said(scene.service)).toEqual([
-      `Force F1 moved off joint C onto link CD: 2 links meet there, so the force would not say which one carries it.`,
+      `Force F1 moved off joint C onto link CD: 2 links meet here, so it’s ambiguous which link carries the force.`,
     ]);
   });
 
@@ -914,7 +914,7 @@ describe('MechanismService keeping forces off joints that refuse them', () => {
     expect(t.ground).toBe(true);
     expect(t.x).toBeCloseTo(2.5, 6);
     expect(Math.hypot(force.startCoord.x - t.x, force.startCoord.y - t.y)).toBeGreaterThan(0.5);
-    expect(said(harness.service)[0]).toContain('the joint is grounded');
+    expect(said(harness.service)[0]).toContain('this joint is grounded');
   });
 
   it('moves a force off a tracer point that is then grounded', () => {
@@ -929,7 +929,7 @@ describe('MechanismService keeping forces off joints that refuse them', () => {
     expect(Math.hypot(force.startCoord.x - b.x, force.startCoord.y - b.y)).toBeGreaterThan(0);
     expect(force.startCoord.x).toBeGreaterThan(a.x);
     expect(force.startCoord.x).toBeLessThan(b.x);
-    expect(said(harness.service)[0]).toContain('the joint is grounded');
+    expect(said(harness.service)[0]).toContain('this joint is grounded');
   });
 
   it('opens a drawing with a load on a grounded pin with the load moved off it', () => {

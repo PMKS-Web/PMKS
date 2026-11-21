@@ -65,7 +65,7 @@ try {
         const m = g.mechanismSrv;
         m.seekMechanism(0, m.mechanisms[0].cyclePeriod / 3);
       });
-      await page.getByRole('button', { name: 'Fit to view', exact: true }).click();
+      await page.getByRole('button', { name: 'Fit to View', exact: true }).click();
       await page.waitForTimeout(700);
     }
     const before = await read();

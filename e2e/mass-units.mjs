@@ -136,7 +136,7 @@ record(
 );
 record(
   'and the note says what torque and inertia come to',
-  (await note()) === 'Torque reads in N·cm and inertia in g·cm².',
+  (await note()) === 'Torque is shown in N·cm and inertia in g·cm².',
   await note()
 );
 await shot('settings-cm-grams');
@@ -165,7 +165,7 @@ record('and the inertia in kg·cm²', /kg·cm²$/.test(inKg.shownInertia ?? ''),
 record('and the strip names kg', /\bcm, kg, N\b/.test(inKg.strip), inKg.strip);
 record(
   'and the note follows the mass',
-  (await note()) === 'Torque reads in N·cm and inertia in kg·cm².',
+  (await note()) === 'Torque is shown in N·cm and inertia in kg·cm².',
   await note()
 );
 await shot('settings-cm-kilograms');
@@ -230,7 +230,7 @@ record('and the Force Units row', (await pill('Force Units')) === null, await pi
 record(
   'and the note names both, with what follows from them',
   (await note()) ===
-    'Mass is in lbm and force in lbf. Torque reads in lbf·in and inertia in lbm·in².',
+    'Mass is in lbm and force in lbf. Torque is shown in lbf·in and inertia in lbm·in².',
   await note()
 );
 record('the strip names lbm and lbf', /\bin, lbm, lbf\b/.test(inInches.strip), inInches.strip);

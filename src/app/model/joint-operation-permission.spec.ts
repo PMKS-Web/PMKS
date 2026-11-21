@@ -83,7 +83,9 @@ describe('whether a weld may be made at a joint', () => {
     expect(refuseJointOperation(lone, 'weld', context)?.long).toContain('only one meets here');
 
     const loose = new RevJoint('X', 50, 50);
-    expect(refuseJointOperation(loose, 'weld', context)?.long).toContain('is on none');
+    expect(refuseJointOperation(loose, 'weld', context)?.long).toContain(
+      'isn’t connected to any links'
+    );
   });
 
   /**

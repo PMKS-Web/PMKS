@@ -113,7 +113,7 @@ export class HoldFieldComponent {
     }
     return (
       this.angleHelp() ??
-      'Angle of this link measured from the positive x axis. Counter-clockwise is positive.'
+      'Angle of this link measured from the positive x-axis. Counter-clockwise is positive.'
     );
   }
 
@@ -172,8 +172,8 @@ export class HoldFieldComponent {
 
   protected padlockTitle(which: Which): string {
     if (this.held(which))
-      return `Release the fixed ${which}. Typing a number keeps it fixed at that number`;
-    return `Fix the ${which}`;
+      return `Release the fixed ${which}. Typing a number keeps it fixed at that value.`;
+    return `Fix the ${which}.`;
   }
 
   protected toggle(which: Which, event: Event): void {

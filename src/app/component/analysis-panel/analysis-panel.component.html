@@ -40,9 +40,9 @@
         [compact]="true"
         [formGroup]="compareForm"
         _formControl="compare"
-        ariaLabel="Compare with before drag"
+        ariaLabel="Compare to Before Drag"
         tooltip="Shows the curves from before your last drag, dashed and faded, under the live ones."
-        >Compare with before drag</toggle-block
+        >Compare to Before Drag</toggle-block
       >
     }
   </ng-template>
@@ -66,9 +66,9 @@
       }
       @if (usesTabs) {
         <app-tabs-block
-          [options]="showKinematic ? ['Rotation', 'Center of mass'] : ['Static', 'In-motion']"
+          [options]="showKinematic ? ['Rotation', 'Center of Mass'] : ['Static', 'In-motion']"
           [selected]="panelTabIndex"
-          [tooltips]="showKinematic ? [] : ['Holds the mechanism still', 'Includes inertia']"
+          [tooltips]="showKinematic ? [] : ['Holds the mechanism still.', 'Includes inertia.']"
           [label]="showKinematic ? 'Link kinematics' : 'Force analysis type'"
           idPrefix="analysis"
           [panelIds]="['analysis-tabpanel-0', 'analysis-tabpanel-1']"
@@ -88,8 +88,8 @@
             class="drawingSwitchesHelp"
             [matTooltip]="
               showKinematic && shownType === 'Link'
-                ? 'Draws the path, velocity and acceleration of this link’s center of mass on the mechanism.'
-                : 'Draws the part’s path, and which way its velocity, acceleration or the force it carries points, on the mechanism itself.'
+                ? 'Draws the path, velocity, and acceleration of this link’s center of mass on the grid.'
+                : 'Draws this part’s path, velocity, acceleration, or reaction force vectors directly on the mechanism.'
             "
             matTooltipShowDelay="400"
             >help_outline</mat-icon
@@ -175,7 +175,7 @@
                 @for (row of jointForceRows(); track row.linkId) {
                   <app-analysis-graph-section
                     [label]="row.label"
-                    help="The reaction that link carries at this joint"
+                    help="Reaction force this link carries at this joint."
                     analysis="force"
                     [analysisType]="forceAnalysisMode()"
                     mechProp="Joint Forces"
@@ -188,7 +188,7 @@
                 @if (shownJoint.input) {
                   <app-analysis-graph-section
                     label="Input {{ inputEffortLabel() }}"
-                    help="The effort the input has to supply to drive the mechanism"
+                    help="Effort the input must supply to drive the mechanism."
                     analysis="force"
                     [analysisType]="forceAnalysisMode()"
                     mechProp="Input Effort"
@@ -203,7 +203,7 @@
                 @for (row of linkForceRows(); track row.jointId) {
                   <app-analysis-graph-section
                     [label]="row.label"
-                    help="The reaction this link carries at that joint"
+                    help="Reaction force this link carries at that joint."
                     analysis="force"
                     [analysisType]="forceAnalysisMode()"
                     mechProp="Joint Forces"
@@ -220,7 +220,7 @@
                 @if (inputEffortJoint(); as driven) {
                   <app-analysis-graph-section
                     label="Input {{ inputEffortLabel(driven) }}"
-                    help="The effort the input has to supply to drive the mechanism"
+                    help="Effort the input must supply to drive the mechanism."
                     analysis="force"
                     [analysisType]="forceAnalysisMode()"
                     mechProp="Input Effort"
@@ -245,7 +245,7 @@
         <div class="rowList">
           <app-analysis-graph-section
             label="Position"
-            help="Where this joint is, through the cycle"
+            help="Position of this joint through the cycle."
             analysis="kinematic"
             analysisType="loop"
             mechProp="Linear Joint Pos"
@@ -255,7 +255,7 @@
           ></app-analysis-graph-section>
           <app-analysis-graph-section
             label="Velocity"
-            help="How fast this joint moves, and which way"
+            help="Velocity of this joint through the cycle."
             analysis="kinematic"
             analysisType="loop"
             mechProp="Linear Joint Vel"
@@ -265,7 +265,7 @@
           ></app-analysis-graph-section>
           <app-analysis-graph-section
             label="Acceleration"
-            help="How this joint’s velocity changes"
+            help="Acceleration of this joint through the cycle."
             analysis="kinematic"
             analysisType="loop"
             mechProp="Linear Joint Acc"
@@ -297,7 +297,7 @@
             <div class="rowList">
               <app-analysis-graph-section
                 label="Angle"
-                help="The angle of this link above the horizontal"
+                help="Angle of this link measured from the positive x-axis."
                 analysis="kinematic"
                 analysisType="loop"
                 mechProp="Angular Link Pos"
@@ -306,8 +306,8 @@
                 (expandedChange)="setExpanded('LAng', $event)"
               ></app-analysis-graph-section>
               <app-analysis-graph-section
-                label="Angular velocity"
-                help="How fast this link turns, and which way"
+                label="Angular Velocity"
+                help="Angular velocity of this link through the cycle."
                 analysis="kinematic"
                 analysisType="loop"
                 mechProp="Angular Link Vel"
@@ -316,8 +316,8 @@
                 (expandedChange)="setExpanded('LAngVel', $event)"
               ></app-analysis-graph-section>
               <app-analysis-graph-section
-                label="Angular acceleration"
-                help="How this link’s turning rate changes"
+                label="Angular Acceleration"
+                help="Angular acceleration of this link through the cycle."
                 analysis="kinematic"
                 analysisType="loop"
                 mechProp="Angular Link Acc"
@@ -338,9 +338,9 @@
           @if (panelTabIndex === 1) {
             <div class="rowList rowList--com">
               <app-analysis-graph-section
-                label="Center of mass position"
+                label="Center of Mass Position"
                 rowLabel="Position"
-                help="Where this link’s center of mass is"
+                help="Position of this link’s center of mass."
                 analysis="kinematic"
                 analysisType="loop"
                 mechProp="Linear Link's CoM Pos"
@@ -349,9 +349,9 @@
                 (expandedChange)="setExpanded('LPos', $event)"
               ></app-analysis-graph-section>
               <app-analysis-graph-section
-                label="Center of mass velocity"
+                label="Center of Mass Velocity"
                 rowLabel="Velocity"
-                help="How fast this link’s center of mass moves"
+                help="Velocity of this link’s center of mass."
                 analysis="kinematic"
                 analysisType="loop"
                 mechProp="Linear Link's CoM Vel"
@@ -360,9 +360,9 @@
                 (expandedChange)="setExpanded('LVel', $event)"
               ></app-analysis-graph-section>
               <app-analysis-graph-section
-                label="Center of mass acceleration"
+                label="Center of Mass Acceleration"
                 rowLabel="Acceleration"
-                help="How this link’s center of mass changes speed"
+                help="Acceleration of this link’s center of mass."
                 analysis="kinematic"
                 analysisType="loop"
                 mechProp="Linear Link's CoM Acc"
@@ -392,7 +392,7 @@
            way there is a control rather than an instruction -- a panel that
            can name the link can select it. -->
       <title-block
-        description="A force is an input, so it has no curve of its own. It shows up in the reactions on the part it acts on."
+        description="An applied force is an input, so it has no graph of its own. Its effect appears in the reactions on the link it acts on."
         >{{ modeNoun }} for Force {{ shownForce.name }}</title-block
       >
       <div class="helpRule"></div>
@@ -412,7 +412,7 @@
             <button type="button" class="forceRedirectAction" (click)="goToForceAnalysis()">
               Switch to Force Analysis
             </button>
-            to read what it does to {{ forceBodyLabel }}.
+            to see its reactions on {{ forceBodyLabel }}.
           }
         </span>
       </div>

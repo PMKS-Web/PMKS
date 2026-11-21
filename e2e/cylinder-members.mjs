@@ -10,7 +10,7 @@
 // Structured as named sections because each package of Stage 2 appended its
 // own. Sections 6 to 10 are the panel's: the Barrel and Rod panels and the
 // slide's own (D12, D9), the one angle stated in three places (D10), and every
-// rung of what gives when *Starts at* is typed (D11). Section 11 is an end
+// rung of what gives when *Starts At* is typed (D11). Section 11 is an end
 // joint as an ordinary pin (D13), and section 12 is a driven cylinder's full
 // out-and-back cycle, frame by frame, with a contact sheet to read it on.
 //
@@ -922,7 +922,7 @@ console.log("\nthe slide's own panel");
 await pick('seal');
 card = await panelSays();
 check(
-  'the slide opens as an ordinary joint, with Slider Angle and Starts at',
+  'the slide opens as an ordinary joint, with Slider Angle and Starts At',
   /^Edit Joint /.test(card.title) && card.sliderAngle !== null && card.startsAt !== null,
   JSON.stringify({ title: card.title, sliderAngle: card.sliderAngle, startsAt: card.startsAt })
 );
@@ -1149,8 +1149,8 @@ check(
   JSON.stringify({ a: [part.a.y, after.a.y], b: [part.b.y, after.b.y], said })
 );
 
-// ---------------------------------------------- 10. D11: Starts at, and what gives
-console.log('\nStarts at, and what gives');
+// ---------------------------------------------- 10. D11: Starts At, and what gives
+console.log('\nStarts At, and what gives');
 
 /** Type a percentage into the slide's own field. */
 async function setStart(value) {

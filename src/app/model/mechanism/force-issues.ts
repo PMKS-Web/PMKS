@@ -123,10 +123,10 @@ function unbalanced(status: ForceAnalysisStatus, message: string | undefined): S
     const fact = message?.split(/(?<=\.)\s/)[0];
     return {
       ...base,
-      summary: prose`${fact ?? "A mass, mass moment of inertia or force value isn't a usable number."}`,
+      summary: prose`${fact ?? 'A mass, mass moment of inertia, or force value isn’t a valid number.'}`,
       explain:
-        'Force analysis needs a real number for every mass, mass moment of inertia and force before it can balance them.',
-      fixes: [prose`Type the value again in the Masses table`],
+        'Force analysis needs a real number for every mass, mass moment of inertia, and force before it can balance them.',
+      fixes: [prose`Re-enter the value in the Masses table`],
     };
   }
   if (message === SECOND_ORDER_LOCK_MESSAGE) {
@@ -134,8 +134,8 @@ function unbalanced(status: ForceAnalysisStatus, message: string | undefined): S
       ...base,
       summary: prose`No finite reactions balance the loads at this pose.`,
       explain:
-        "Some loads push along a direction the mechanism only resists after a tiny sag. A rigid support can't answer that with a finite force.",
-      fixes: [prose`Add another support to the moving part`, prose`Take the load off that part`],
+        'Some loads push in a direction the mechanism only resists after deflecting. A rigid-body model cannot balance them with finite forces.',
+      fixes: [prose`Add a support to the moving link`, prose`Remove the load from that link`],
     };
   }
   if (status === 'missing-kinematics') {

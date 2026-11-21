@@ -20,7 +20,7 @@ export function groupHoldRefusal(
     values.has('length') ? 'Fixed Length' : undefined,
     values.has('angle') ? 'Fixed Angle' : undefined,
   ].filter((control): control is string => control !== undefined);
-  const gesture = mode === 'rotate' ? 'Turning' : 'Resizing';
+  const gesture = mode === 'rotate' ? 'Rotating' : 'Scaling';
   const whose = broken.length === 1 ? 'its' : 'their';
   return (
     `${gesture} the selection would change ${holdList(
@@ -49,6 +49,6 @@ export function groupTransformRefusal(
   const names = result.lockedJointIds.join(', ');
   return {
     key: 'selection.transform-locked',
-    text: `The selection is held by ${names || 'a Lock'}. Unlock it before transforming the group.`,
+    text: `The selection is locked by ${names || 'a lock'}. Unlock it before transforming the group.`,
   };
 }

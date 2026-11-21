@@ -192,7 +192,7 @@ export class AnalysisGraphSectionComponent {
   }
 
   /** The two halves of the split, held so the pill is not handed a new array each pass. */
-  readonly splitOptions = ['Magnitude', 'X & Y components'];
+  readonly splitOptions = ['Magnitude', 'X & Y Components'];
 
   /** Whether this plot has a magnitude and its components to choose between. */
   get hasSplit(): boolean {

@@ -193,7 +193,7 @@ function refuseWeld(
     return {
       code: 'cylinder.sealed-weld',
       short: 'inside a cylinder',
-      long: 'This joint is inside a cylinder, and fusing anything to it would weld the part to its own workings. Weld one of the joints at its ends instead.',
+      long: 'This joint is inside a cylinder and can’t be welded. Weld one of the end joints instead.',
     };
   }
 
@@ -261,7 +261,7 @@ export function weldNeedsLinks(
     return {
       code: 'weld.needs-a-rider',
       short: 'nothing rides it',
-      long: 'A Slide holds what rides the slot still against it, and nothing rides this one.',
+      long: 'A Prismatic joint locks a link’s angle to the slot, and no link is connected to this joint.',
     };
   }
   const meeting = joint.links.length;
@@ -273,7 +273,7 @@ export function weldNeedsLinks(
     short: 'needs 2 links',
     long:
       meeting <= 0
-        ? 'A weld fuses the links that meet at a joint, and this joint is on none.'
+        ? 'A weld fuses links that meet at a joint, and this joint isn’t connected to any links.'
         : after === 'remove-slider'
           ? 'A weld fuses the links that meet at a joint, and without its slot only one meets here.'
           : 'A weld fuses the links that meet at a joint, and only one meets here.',
@@ -321,7 +321,7 @@ function refuseAddSlider(
     return {
       code: 'cylinder.sealed-slider',
       short: 'inside a cylinder',
-      long: 'This joint is inside a cylinder, which slides already, so it takes no second slider. Add one at a joint at either end instead.',
+      long: 'This joint already slides inside a cylinder and can’t be converted into another slider. Convert one of its end joints instead.',
     };
   }
 
@@ -333,7 +333,7 @@ function refuseAddSlider(
     return {
       code: 'slider.is-driven',
       short: 'it is an input',
-      long: 'This joint is the drive, and a drive on a pin turns where a drive on a slot travels. Remove the input first.',
+      long: 'This joint is a rotational input, while a slider takes a linear input. Remove the input before changing its type.',
     };
   }
   return undefined;

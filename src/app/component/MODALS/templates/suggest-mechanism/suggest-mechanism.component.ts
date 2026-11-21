@@ -204,7 +204,7 @@ export class SuggestMechanismComponent implements OnInit, OnDestroy {
         };
       case 'broken':
         return {
-          text: 'That link is cut short, so it does not open. Copy the whole link again.',
+          text: 'That link looks incomplete and couldn’t be opened. Copy the full link and try again.',
           bad: true,
         };
       default:
@@ -285,8 +285,8 @@ export class SuggestMechanismComponent implements OnInit, OnDestroy {
       icon: 'photo_camera',
       text:
         this.source === 'open-mechanism'
-          ? 'The picture is a still of your grid. If we add it, we draw a clean one and an animation for it.'
-          : 'The picture is drawn from the link. If we add it, we draw a clean one and an animation for it.',
+          ? 'Preview captured from your grid. If accepted, we’ll create a clean thumbnail and animation for the library.'
+          : 'Preview generated from the link. If accepted, we’ll create a clean thumbnail and animation for the library.',
     };
   }
 

@@ -36,7 +36,7 @@ describe('a suggestion', () => {
 
   it('asks for permission, and for a real address only when one is given', () => {
     const form = blankSuggestion();
-    expect(fieldError(form, 'consent')).toContain('Tick this to send it.');
+    expect(fieldError(form, 'consent')).toContain('Check this box to submit.');
     expect(fieldError(form, 'email')).toBe('');
     form.controls.email.setValue('pat@');
     expect(fieldError(form, 'email')).toBe('That is not an email address.');

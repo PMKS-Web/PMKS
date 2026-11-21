@@ -746,7 +746,7 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
         // READINESS in ui-text.
         count: !setupNeeded && blockers.length ? READINESS.fixes(blockers.length) : undefined,
         text: setupNeeded ? 'Ground a joint and set one joint as an input.' : 'before it will run.',
-        action: 'Analysis setup',
+        action: 'Analysis Setup',
       });
     });
     if (rows.length) return rows;
@@ -789,7 +789,7 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
           text: stuck
             ? `The input at joint ${stuck.name || stuck.id} cannot turn.`
             : 'Ground a joint and set one joint as an input.',
-          action: 'Analysis setup',
+          action: 'Analysis Setup',
         });
       }
       return {
@@ -1284,7 +1284,7 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
     // rather than freezing the window with no sign that anything is happening.
     if (this.mechanism.solvingIsDeferred) {
       void this.loading
-        .during('Working out the motion…', () => this.mechanism.solveNow())
+        .during('Solving motion…', () => this.mechanism.solveNow())
         .then(() => this.startPlaying());
       return;
     }
