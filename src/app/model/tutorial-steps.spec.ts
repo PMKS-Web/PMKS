@@ -218,3 +218,96 @@ describe('what the card says', () => {
     }
   });
 });
+
+// A student who builds something else is never refused a step -- the steps are
+// read off the drawing -- but four of the shapes that pass "three links
+// chained" then cannot run, and the card has to say so at the step where it
+// can still be fixed rather than leave them at a Play button that does nothing.
+describe('off the script', () => {
+  it('says why three bars that do not touch are not a chain', () => {
+    const { joints, links } = looseBars();
+    const progress = progressFor(joints, links);
+    expect(progress.step).toBe(2);
+    expect(progress.offScript).toContain('do not touch');
+    expect(progress.offScript).toContain('Attach');
+  });
+
+  it('says nothing while the chain is simply unfinished', () => {
+    const a = new RevJoint('A', 0, 0);
+    const b = new RevJoint('B', 1, 0);
+    const c = new RevJoint('C', 2, 0);
+    expect(progressFor([a, b, c], [bar(a, b), bar(b, c)]).offScript).toBeUndefined();
+  });
+
+  it('says nothing about the chain the tutorial asked for', () => {
+    const { joints, links } = chain();
+    expect(progressFor(joints, links).offScript).toBeUndefined();
+  });
+
+  it('warns about a chain of four, which would need two inputs', () => {
+    const { joints, links, d } = chain();
+    const e = new RevJoint('E', 3, 1);
+    const progress = progressFor([...joints, e], [...links, bar(d, e)]);
+    expect(progress.step).toBe(3);
+    expect(progress.offScript).toContain('4 links');
+  });
+
+  it('warns about a closed triangle, which cannot move', () => {
+    const a = new RevJoint('A', 0, 0);
+    const b = new RevJoint('B', 1, 0);
+    const c = new RevJoint('C', 0, 1);
+    const progress = progressFor([a, b, c], [bar(a, b), bar(b, c), bar(c, a)]);
+    expect(progress.offScript).toContain('triangle');
+  });
+
+  it('warns about a branch and names the joint it branches at', () => {
+    const hub = new RevJoint('A', 0, 0);
+    const spokes = ['B', 'C', 'D'].map((id, i) => new RevJoint(id, Math.cos(i), Math.sin(i)));
+    const links = spokes.map((spoke) => bar(hub, spoke));
+    const progress = progressFor([hub, ...spokes], links);
+    expect(progress.offScript).toContain('branches at joint A');
+  });
+
+  it('explains a ground in the middle of the chain with the control that undoes it', () => {
+    const { joints, links, b } = chain();
+    b.ground = true;
+    const progress = progressFor(joints, links);
+    expect(progress.step).toBe(3);
+    expect(progress.offScript).toContain('Turn off Grounded for joint B');
+  });
+});
+
+// A tracer point is a joint on one link, which is what an end of the chain
+// looked like: the tutorial rang it, grounded it for the student, and left a
+// four-bar that could not turn.
+describe('a tracer point on the chain', () => {
+  function withTracer() {
+    const a = new RevJoint('A', -2, 0);
+    const b = new RevJoint('B', -2, 1);
+    const c = new RevJoint('C', 0.99, 2.82);
+    const d = new RevJoint('D', 2, 0);
+    const e = new RevJoint('E', -0.5, 2.2);
+    const coupler = new RealLink('BCE', [b, c, e], 1, 1, new Coord(0, 2));
+    for (const joint of [b, c, e]) joint.links.push(coupler);
+    const links = [bar(a, b), coupler, bar(c, d)];
+    return { joints: [a, b, c, d, e], links, a, d, e };
+  }
+
+  it('is not an end the card asks to ground', () => {
+    const { joints, links, a, d } = withTracer();
+    const progress = progressFor(joints, links);
+    expect(progress.step).toBe(3);
+    expect([progress.target, progress.alsoTarget]).toEqual([a, d]);
+    expect(progress.offScript).toBeUndefined();
+  });
+
+  it('does not stand in for an end once the real ends are grounded', () => {
+    const { joints, links, a, d, e } = withTracer();
+    a.ground = true;
+    e.ground = true;
+    expect(progressFor(joints, links).step).toBe(3);
+    d.ground = true;
+    e.ground = false;
+    expect(progressFor(joints, links).step).toBe(4);
+  });
+});

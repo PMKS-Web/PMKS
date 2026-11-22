@@ -281,6 +281,7 @@ Use the component that does the job:
 | A switch | `toggle-block` |
 | The panel's stroked button | `button-block` |
 | Two buttons on one row | `dual-button` |
+| A button in a dialog's action row | `dialogButton` on the `<button>`: Cancel `quiet`, the action the dialog asks about `filled`, a second way forward `outlined` |
 | A view toggle that shows its state | `app-view-button` |
 | A panel card, and a section of it that folds | `panel-section`, `collapsible-subsection` |
 | A heading, large or small | `title-block`, `subtitle-block` |

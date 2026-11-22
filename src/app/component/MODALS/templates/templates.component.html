@@ -248,9 +248,9 @@
       <p>There is already a mechanism on the grid. Replacing it can be undone.</p>
     </div>
     <div mat-dialog-actions align="end">
-      <button class="choiceQuiet" mat-dialog-close>Cancel</button>
-      <button class="choiceOutlined" [mat-dialog-close]="'new-tab'">New Tab</button>
-      <button class="choiceFilled" cdkFocusInitial [mat-dialog-close]="'replace'">Replace</button>
+      <button dialogButton="quiet" mat-dialog-close>Cancel</button>
+      <button dialogButton="outlined" [mat-dialog-close]="'new-tab'">New Tab</button>
+      <button dialogButton="filled" cdkFocusInitial [mat-dialog-close]="'replace'">Replace</button>
     </div>
   </div>
 </ng-template>

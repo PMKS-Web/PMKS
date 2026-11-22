@@ -1,23 +1,10 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  DoCheck,
-  TemplateRef,
-  inject,
-  viewChild,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, DoCheck, inject } from '@angular/core';
 import { animate, style, transition, trigger } from '@angular/animations';
-import {
-  MatDialog,
-  MatDialogActions,
-  MatDialogClose,
-  MatDialogContent,
-  MatDialogTitle,
-} from '@angular/material/dialog';
-import { MatButton } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
 import { MatIcon } from '@angular/material/icon';
 import { ChipComponent } from '../BLOCKS/chip/chip.component';
 import { TutorialService } from '../../services/tutorial.service';
+import { TutorialEntryService } from '../../services/tutorial-entry.service';
 import { MechanismService } from '../../services/mechanism.service';
 import { UrlGenerationService } from '../../services/url-generation.service';
 import { NotificationService } from '../../services/notification.service';
@@ -52,16 +39,7 @@ import { CloseButtonComponent } from '../BLOCKS/close-button/close-button.compon
       transition(':decrement', arrive(-26)),
     ]),
   ],
-  imports: [
-    MatIcon,
-    MatButton,
-    MatDialogTitle,
-    MatDialogContent,
-    MatDialogActions,
-    MatDialogClose,
-    ChipComponent,
-    CloseButtonComponent,
-  ],
+  imports: [MatIcon, ChipComponent, CloseButtonComponent],
 })
 export class TutorialPanelComponent implements DoCheck {
   tutorial = inject(TutorialService);
@@ -70,8 +48,7 @@ export class TutorialPanelComponent implements DoCheck {
   private notify = inject(NotificationService);
   private exportFlow = inject(ExportFlowService);
   private dialog = inject(MatDialog);
-
-  readonly confirmRestart = viewChild.required<TemplateRef<unknown>>('confirmRestart');
+  private entry = inject(TutorialEntryService);
 
   /**
    * Ask the drawing whether the step has changed, once per cycle.
@@ -153,22 +130,18 @@ export class TutorialPanelComponent implements DoCheck {
    * one answer.
    */
   restart(): void {
-    if (!this.tutorial.restartWouldDiscard()) {
-      this.tutorial.restart();
-      return;
-    }
-    this.dialog
-      // Sized, because a Material dialog left to itself takes most of the
-      // window and two sentences do not need it.
-      .open(this.confirmRestart(), { width: '440px', autoFocus: false })
-      .afterClosed()
-      .subscribe((choice) => {
-        if (choice === 'restart') this.tutorial.restart();
-      });
+    this.entry.restart();
   }
 
+  /**
+   * The last step, on a mechanism that will not run, cannot be done for the
+   * student: there is nothing to read. What can be done is to show them the
+   * list of what is missing, under the card that sent them there.
+   */
   doStepForMe(): void {
-    this.tutorial.doStepForMe();
+    if (!this.tutorial.doStepForMe()) {
+      RightPanelComponent.insistOn(RightPanelComponent.KINEMATIC_SETUP_TAB);
+    }
   }
 
   // ---------- the three doors ----------

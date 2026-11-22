@@ -493,6 +493,12 @@ Not suites — import them from one.
   the boot splash, and the loading cover for templates and `.pmks` files.
 - `tutorial.mjs` — the guided first build from a bare grid to a velocity, with the step read off
   the drawing.
+- `tutorial-edge-cases.mjs` — the tutorial driven by a student who does not follow it: started
+  over somebody else's mechanism (it asks to clear the grid), undone past its start, a template
+  opened mid-way, loose bars, a chain of four, a ground in the middle, a mechanism that cannot run,
+  the wrong mode, a finished tutorial started again (#375); and from a second pass, a tracer point
+  on the coupler, two templates and one undo, a separate machine's velocity, a reload, undo past a
+  finished tutorial, a lone cylinder, a scrub instead of Play, and a 390 x 650 phone.
 - `background-image.mjs` — placing, moving, resizing, fading and deleting a background image, which
   cannot be clicked or dragged and follows the grid's zoom.
 - `brand.mjs` — the logo, favicons and icons as a browser receives them: every icon the page head

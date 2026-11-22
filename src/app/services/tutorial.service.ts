@@ -1,6 +1,7 @@
 import { AnalyticsService } from './analytics.service';
 import { Injectable, inject } from '@angular/core';
 import { Joint, RealJoint } from '../model/joint';
+import { Link } from '../model/link';
 import { Coord } from '../model/coord';
 import { MODEL_SCALE } from '../model/render-scale';
 import { LengthUnit, TimeUnit } from '../model/unit-enums';
@@ -9,12 +10,11 @@ import {
   TutorialCopy,
   TutorialProgress,
   TutorialStepId,
+  chainedLinks,
   copyFor,
-  endJoints,
-  linksAreChained,
+  plainLinks,
   progressAt,
   progressFor,
-  readableJoints,
   stepOf,
 } from '../model/tutorial-steps';
 import { MechanismService } from './mechanism.service';
@@ -26,6 +26,9 @@ import { SelectedTabService, TabID } from '../selected-tab.service';
 import { SvgGridService } from './svg-grid.service';
 import { local_storage_available } from '../model/utils';
 import { ViewportService } from './viewport.service';
+import { SaveHistoryService } from './save-history.service';
+import { UrlProcessorService } from './url-processor.service';
+import { NotificationService } from './notification.service';
 
 /** The velocity the tutorial ends on, frozen at the moment it was read. */
 export interface TutorialReading {
@@ -40,14 +43,24 @@ export interface TutorialReading {
 const SEEN_KEY = 'tutorialSeen';
 
 /**
+ * A tutorial under way in this tab, kept across a reload. Session storage,
+ * because the drawing a reload brings back is this tab's too: a reload at step
+ * three restored the chain and lost the tutorial, and reopening it then asked
+ * to clear the very drawing it had been building.
+ */
+const IN_PROGRESS_KEY = 'tutorialInProgress';
+
+/**
  * The guided first build: five moves from a bare grid to a velocity.
  *
  * The service holds only what the drawing cannot say for itself — whether the
  * student asked for the tutorial, whether they walked out of it, and the
  * reading it finished on. *Which step they are on* is never stored, because
- * the drawing already knows: see `progressFor`. That is what lets the tutorial
- * be started on a half-built mechanism, and what stops it insisting on a step
- * the student has just undone.
+ * the drawing already knows: see `progressFor`. That is what stops it insisting
+ * on a step the student has just undone. And it is why the tutorial only
+ * believes a drawing it watched being built (`ownsDrawing`): it begins on a
+ * cleared grid, and steps aside when a template, a file or an undo puts
+ * somebody else's drawing back.
  */
 @Injectable({ providedIn: 'root' })
 export class TutorialService {
@@ -60,6 +73,29 @@ export class TutorialService {
   private nup = inject(NumberUnitParserService);
   private tabs = inject(SelectedTabService);
   private svgGrid = inject(SvgGridService);
+  private history = inject(SaveHistoryService);
+  private urlProcessor = inject(UrlProcessorService);
+  private notify = inject(NotificationService);
+
+  /**
+   * The history entry the tutorial's drawing began at: the cleared grid, or
+   * the bare one it was started on.
+   *
+   * The tutorial reads its step off the drawing, so it is only telling the
+   * truth about a drawing it watched being built. Somebody else's six-bar read
+   * as "step 5 of 5, build a four-bar", with an input it never asked for
+   * already reported done. An undo back past this entry brings that drawing
+   * back, and so does opening a file or a template.
+   */
+  private baseline: number | undefined;
+
+  /**
+   * The history entry a different drawing arrived as, once one has -- a
+   * template or an opened file. Undo back before it and the tutorial's drawing
+   * is on the grid again, and its own once more. `null` is an arrival that left
+   * no entry to undo, which is for good.
+   */
+  private replacedAt: number | null | undefined;
 
   started = false;
   exited = false;
@@ -101,15 +137,89 @@ export class TutorialService {
   private knownStep: TutorialStepId = 1;
 
   constructor() {
-    this.settings.animating.subscribe((animating) => {
-      if (animating) this.hasPlayed = true;
-      this.checkForFinish();
-    });
+    // `animating` also turns on for a scrubbed pose, so it is a cue to look,
+    // not proof of a play: only the chain's own machine running counts.
+    this.settings.animating.subscribe(() => this.noticePlay());
     this.activeObj.onActiveObjChange.subscribe(() => this.checkForFinish());
-    this.mechanism.onMechPositionChange.subscribe((step) => {
-      if (step > 0) this.hasPlayed = true;
-      this.checkForFinish();
+    // A moved pose finishes nothing on its own: scrubbing one step along at
+    // the start of the cycle completed the lesson at 0.00 s with Play never
+    // pressed. The step asks for Play, so only playing counts as having played.
+    // A row's own Play, unsynced, starts its machine without touching
+    // `animating`, so the frames it draws are where that play is seen.
+    this.mechanism.onMechPositionChange.subscribe(() => this.noticePlay());
+    this.urlProcessor.drawingReplaced.subscribe(() => {
+      if (!this.started) return;
+      // The first replacement is the one that matters. A second template opened
+      // over the first moved this mark onto itself, and one undo then landed on
+      // the first template -- which the tutorial took for its own drawing.
+      if (this.replacedAt === null) return;
+      if (this.replacedAt === undefined || !this.history.standsOnOrPast(this.replacedAt)) {
+        const arrived = this.history.currentEntry();
+        this.replacedAt = arrived === undefined || arrived === this.baseline ? null : arrived;
+      }
+      this.stepAside('Tutorial closed, because a different drawing was opened.');
     });
+    this.history.restored.subscribe(() => {
+      if (!this.isRunning() || this.ownsDrawing()) return;
+      // A finished card is about the four-bar it read, and is as wrong beside
+      // somebody else's drawing as a step card is.
+      this.stepAside(
+        this.done
+          ? 'Tutorial closed, because Undo brought back a drawing from before it started.'
+          : 'Tutorial closed, because Undo brought back a drawing the tutorial did not build. Redo returns to the tutorial’s drawing.'
+      );
+    });
+    this.pickUpAfterReload();
+    window.addEventListener('pagehide', () => this.keepForReload());
+  }
+
+  /** A tutorial under way, and its drawing, came back with the page. */
+  private pickUpAfterReload(): void {
+    let kept: { exited?: boolean } | undefined;
+    try {
+      const raw = sessionStorage.getItem(IN_PROGRESS_KEY);
+      sessionStorage.removeItem(IN_PROGRESS_KEY);
+      kept = raw ? JSON.parse(raw) : undefined;
+    } catch {
+      kept = undefined;
+    }
+    if (!kept || !this.urlProcessor.restoredOnReturn) return;
+    this.started = true;
+    this.exited = kept.exited === true;
+    this.baseline = this.history.currentEntry();
+    this.knownStep = stepOf(this.mechanism.joints, this.mechanism.links);
+    this.landOn(this.knownStep);
+    if (!this.exited) this.showLetters();
+  }
+
+  private keepForReload(): void {
+    try {
+      if (this.canResume()) {
+        sessionStorage.setItem(IN_PROGRESS_KEY, JSON.stringify({ exited: this.exited }));
+      } else {
+        sessionStorage.removeItem(IN_PROGRESS_KEY);
+      }
+    } catch {
+      // Storage refused: a reload simply forgets the tutorial, as it used to.
+    }
+  }
+
+  /**
+   * Whether the drawing on the grid is the one this tutorial has been
+   * building: nothing else has been opened over it, and undo has not gone back
+   * past the grid it started on.
+   */
+  ownsDrawing(): boolean {
+    if (!this.started || this.replacedAt === null) return false;
+    if (this.replacedAt !== undefined && this.history.standsOnOrPast(this.replacedAt)) return false;
+    return this.baseline === undefined || this.history.standsOnOrPast(this.baseline);
+  }
+
+  /** Put the card away because the drawing under it stopped being its own. */
+  private stepAside(why: string): void {
+    if (!this.isRunning()) return;
+    this.exited = true;
+    this.notify.news('tutorial.stepped-aside', why);
   }
 
   /**
@@ -130,6 +240,11 @@ export class TutorialService {
     if (now === this.knownStep) return;
     const wasOn = this.knownStep;
     this.knownStep = now;
+    // Having played belongs to the mechanism that played. Undo the input, or
+    // the chain, and build it again, and the last step must ask for Play
+    // again -- otherwise clicking a joint at the start pose finishes the
+    // tutorial on a velocity that has never been anything but the start.
+    if (now < 5) this.hasPlayed = false;
 
     if (!this.isRunning() || this.done) {
       this.landOn(now);
@@ -213,6 +328,77 @@ export class TutorialService {
     this.landOn(wanted);
   }
 
+  /**
+   * Why the last step cannot be finished yet, when the mechanism the student
+   * built will not run.
+   *
+   * Without this the card said "press Play" over a Play button that did
+   * nothing, and Do This Step For Me changed the mode and stopped there. The
+   * reason is the setup drawer's own first blocker, quoted, so the card and the
+   * drawer cannot disagree about what is wrong.
+   */
+  stuckReason(): string | undefined {
+    if (this.done || this.step() !== 5) return undefined;
+    const input = this.chainInput();
+    if (!input) return undefined;
+    const machine = this.mechanism.mechanismContaining(input);
+    if (machine?.isMechanismValid()) return undefined;
+    const readiness = this.mechanism.readinessOfPart(input);
+    const blocker = readiness?.checks.find((check) => check.severity === 'blocker');
+    return blocker ? blocker.title : 'The mechanism cannot run yet';
+  }
+
+  /** The chain of links the tutorial is reading, if there is one yet. */
+  private chain(): Link[] | undefined {
+    return chainedLinks(plainLinks(this.mechanism.joints, this.mechanism.links));
+  }
+
+  /** The moving joints of that chain: the ones whose velocity is the lesson. */
+  private chainMovers(): RealJoint[] {
+    const joints = new Set<RealJoint>();
+    for (const link of this.chain() ?? []) {
+      for (const joint of real(link.joints)) if (!joint.ground) joints.add(joint);
+    }
+    return [...joints];
+  }
+
+  /** Record a play of the chain's machine if one is running, then check. */
+  private noticePlay(): void {
+    const input = this.chainInput();
+    if (input) {
+      const index = this.mechanism.indexOfMechanismContaining(input);
+      if (index !== -1 && this.mechanism.isMechanismPlaying(index)) this.hasPlayed = true;
+    }
+    this.checkForFinish();
+  }
+
+  /** The input on the chain the tutorial is reading, if one is set. */
+  private chainInput(): RealJoint | undefined {
+    const chain = this.chain();
+    if (!chain) return undefined;
+    for (const link of chain) {
+      for (const joint of link.joints) {
+        if (joint instanceof RealJoint && joint.input) return joint;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Where the card is asking for a move the current mode does not offer.
+   *
+   * Adding a link is in the Edit menus only, and Synthesis has a menu of its
+   * own, so a student who wandered into another mode mid-build right-clicked
+   * the grid and found no Link anywhere.
+   */
+  wrongMode(): boolean {
+    if (!this.isRunning() || this.done) return false;
+    const step = this.viewedStep;
+    if (this.viewingCompleted() || step === 5) return false;
+    const tab = this.tabs.getCurrentTab();
+    return tab === TabID.SYNTHESIZE || (step <= 2 && tab !== TabID.EDIT);
+  }
+
   /** Live, so the tutorial is never running beside a card nobody asked for. */
   isRunning(): boolean {
     return this.started && !this.exited;
@@ -261,7 +447,24 @@ export class TutorialService {
    * then, and the project menu is a thing you have to already know about.
    */
   resumeVisible(): boolean {
-    return this.started && !this.done && !this.onScreen;
+    return this.canResume() && !this.onScreen;
+  }
+
+  /**
+   * Whether opening the tutorial now carries on with its own drawing rather
+   * than starting again: it is under way, unfinished, and the drawing on the
+   * grid is still the one it has been building.
+   */
+  canResume(): boolean {
+    return this.started && !this.done && this.ownsDrawing();
+  }
+
+  /**
+   * Whether starting the tutorial now would clear somebody's work: it would
+   * start afresh, and the grid is not empty.
+   */
+  startWouldDiscard(): boolean {
+    return !this.canResume() && this.restartWouldDiscard();
   }
 
   resumeLabel(): string {
@@ -270,16 +473,42 @@ export class TutorialService {
 
   // ---------- entering and leaving ----------
 
+  /**
+   * Open the tutorial: carry on where it was, or begin it on a bare grid.
+   *
+   * Beginning clears whatever is drawn, so a caller with a drawing on the grid
+   * asks first -- see `startWouldDiscard` and `TutorialEntryService`. It never
+   * begins on a drawing it did not build: every step is read off the drawing,
+   * and somebody else's mechanism reads as steps they never took.
+   */
   start(): void {
-    // Resume calls this too, and a resumed tutorial is not a new one.
-    if (!this.started) this.analytics.track('tutorial_begin');
-    this.started = true;
+    if (this.canResume()) {
+      this.resume();
+      return;
+    }
+    this.restart();
+  }
+
+  private resume(): void {
     this.exited = false;
     this.knownStep = stepOf(this.mechanism.joints, this.mechanism.links);
+    // An undo while the card was away may have taken the input back off. The
+    // play that came before it was of a machine that is no longer there.
+    if (this.knownStep < 5) this.hasPlayed = false;
     this.landOn(this.knownStep);
-    // The copy names joints by letter -- "right-click joint A, the ringed one"
-    // -- and the letters are off by default. A tutorial that points at a name
-    // the student cannot see on the grid is pointing at nothing.
+    // Steps one to four are made from the Edit menus. Adding a link is offered
+    // nowhere else, so a resume from an analysis mode would otherwise send the
+    // student to a right-click that does not have the item it names.
+    if (this.knownStep < 5) this.tabs.setTab(TabID.EDIT);
+    this.showLetters();
+  }
+
+  /**
+   * The copy names joints by letter -- "right-click joint A, the ringed one"
+   * -- and the letters are off by default. A tutorial that points at a name
+   * the student cannot see on the grid is pointing at nothing.
+   */
+  private showLetters(): void {
     this.settings.isShowID.next(true);
   }
 
@@ -304,15 +533,24 @@ export class TutorialService {
   /** Back to a bare grid and step one. The only thing that discards work. */
   restart(): void {
     this.analytics.track('tutorial_begin');
+    // Stopped first: a drawing cleared while it plays leaves the transport
+    // running over an empty grid, and the first bar drawn is then mid-play.
+    this.mechanism.setAllPlaying(false);
+    this.settings.animating.next(false);
     this.mechanism.deleteAll();
     this.started = true;
     this.exited = false;
     this.done = false;
+    this.replacedAt = undefined;
     this.reading = undefined;
     this.hasPlayed = false;
+    // The entry the clear made, or the bare grid's own when there was nothing
+    // to clear. Undo before it is somebody else's drawing.
+    this.baseline = this.history.currentEntry();
     this.knownStep = 1;
     this.landOn(1);
     this.tabs.setTab(TabID.EDIT);
+    this.showLetters();
   }
 
   /**
@@ -345,6 +583,9 @@ export class TutorialService {
     if (!this.hasPlayed || this.progress().step !== 5) return;
     const joint = this.activeObj.selectedJoint;
     if (!joint || this.activeObj.objType !== 'Joint' || joint.ground) return;
+    // A joint of the four-bar the student built. A bar of its own elsewhere,
+    // given an input and played, finished the tutorial on its velocity.
+    if (!this.chainMovers().includes(joint)) return;
     this.finishOn(joint);
   }
 
@@ -418,11 +659,35 @@ export class TutorialService {
    * Every branch goes through the same service call the context menu uses, so
    * what lands is what they would have drawn, undoable in the usual way.
    */
-  doStepForMe(): void {
+  doStepForMe(): boolean {
     // The drawing's step, never the viewed one: the button offers to make the
     // move that is actually outstanding, even if the card has been turned back
     // to re-read something finished.
-    switch (this.step()) {
+    const before = this.step();
+    if (before < 5) {
+      // Made where the student would make it, and on a still drawing: the
+      // edits below are the Edit menus' own, and a structural edit mid-play is
+      // one the app refuses everywhere else.
+      this.mechanism.setAllPlaying(false);
+      this.settings.animating.next(false);
+      if (this.tabs.getCurrentTab() !== TabID.EDIT) this.tabs.setTab(TabID.EDIT);
+    } else if (this.stuckReason()) {
+      // Playing a mechanism that cannot run reads nothing. The card says why,
+      // and the caller opens the setup that lists the fix.
+      return false;
+    }
+    this.makeStep(before);
+    if (before < 5 && this.step() === before) {
+      this.notify.news(
+        'tutorial.cannot-do',
+        'This step can’t be done for you on this drawing. Follow the card by hand, or choose Start Over to clear the grid.'
+      );
+    }
+    return true;
+  }
+
+  private makeStep(step: number): void {
+    switch (step) {
       case 1:
         this.drawFirstBar();
         break;
@@ -542,9 +807,28 @@ export class TutorialService {
     // chrome and there is no honest answer -- the canvas at least keeps the
     // mechanism where the view is looking.
     const MIN_CLEAR = 90;
-    const best =
-      beside.right - beside.left >= MIN_CLEAR && beside.bottom - beside.top >= MIN_CLEAR
-        ? beside
+    const fits = (
+      room: { left: number; right: number; top: number; bottom: number },
+      tall = MIN_CLEAR
+    ) => room.right - room.left >= MIN_CLEAR && room.bottom - room.top >= tall;
+
+    // On a phone the drawer is a card across the whole width, so there is no
+    // room beside it -- and falling back to the whole canvas built the
+    // four-bar under the very card that names its joints. Under the card is
+    // the other clear strip. It is short, so it is held to less height than
+    // the side strip: a four-bar is wider than it is tall.
+    const below = drawer
+      ? {
+          left: leftPanel && !this.viewport.isPhone() ? beside.left : box.left,
+          right: box.right,
+          top: Math.max(ceiling, drawer.bottom + gap),
+          bottom: floor,
+        }
+      : undefined;
+    const best = fits(beside)
+      ? beside
+      : below && fits(below, MIN_CLEAR / 1.5)
+        ? below
         : { left: box.left, right: box.right, top: box.top, bottom: box.bottom };
 
     const from = this.svgGrid.screenToModelFromXY(best.left, best.top);
@@ -577,28 +861,33 @@ export class TutorialService {
    */
   private extendChain(): void {
     const { a, b, c, d } = TutorialService.SHAPE;
-    const first = this.firstBarEnds();
-    if (!first) return;
-    const map = similarity(a, b, first.from, first.to);
+    // Extend the biggest piece of chain there is, from its own first bar. The
+    // first bar in the drawing is not necessarily on it: a student who drew
+    // two bars that do not touch has two pieces, and extending from the
+    // newest free end of the whole drawing put both new bars on the second
+    // piece -- the second exactly on top of the first's far end, a bar of no
+    // length.
+    const piece = largestPiece(plainLinks(this.mechanism.joints, this.mechanism.links));
+    if (!piece) return;
+    const first = piece.links[0];
+    const [from, to] = real(first.joints);
+    if (!from || !to) return;
+    const map = similarity(a, b, coordOf(from), coordOf(to));
 
     // Until the step is *done*, not one bar per press: the button offers to
     // make the move the card is asking for, and the card is asking for a chain
-    // of three. Bounded so a drawing this cannot finish -- a chain that is
-    // already branched -- stops rather than spins.
-    for (let guard = 0; guard < 2 && !linksAreChained(this.mechanism.links); guard++) {
-      const free = endJoints(this.mechanism.joints);
-      const anchor = free[free.length - 1];
-      if (!anchor) return;
-      this.mechanism.addBarFrom(anchor, map(this.mechanism.links.length === 1 ? c : d));
+    // of three.
+    if (piece.links.length === 1) {
+      const middle = this.mechanism.addBarFrom(to, map(c));
+      const newest = middle ? real(middle.joints).find((joint) => joint !== to) : undefined;
+      if (newest) this.mechanism.addBarFrom(newest, map(d));
+      return;
     }
-  }
-
-  /** The two ends of the bar the student drew first, oldest joint first. */
-  private firstBarEnds(): { from: Coord; to: Coord } | undefined {
-    const link = this.mechanism.links[0];
-    if (!link || link.joints.length < 2) return undefined;
-    const [from, to] = link.joints;
-    return { from: new Coord(from.x, from.y), to: new Coord(to.x, to.y) };
+    // Two bars already joined: one more, from whichever free end is not the
+    // first bar's, so the chain grows away from where it started.
+    const ends = piece.joints.filter((joint) => joint.links.length === 1);
+    const anchor = ends.find((joint) => !first.joints.includes(joint)) ?? ends[0];
+    if (anchor) this.mechanism.addBarFrom(anchor, clearOf(map(d), piece.joints));
   }
 
   private groundEnds(): void {
@@ -650,7 +939,7 @@ export class TutorialService {
   private fastestJoint(): RealJoint | undefined {
     let best: RealJoint | undefined;
     let fastest = -1;
-    for (const joint of readableJoints(this.mechanism.joints)) {
+    for (const joint of this.chainMovers()) {
       const speed = Number(this.readingFor(joint)?.magnitude ?? -1);
       if (speed > fastest) {
         fastest = speed;
@@ -681,6 +970,59 @@ function similarity(fromA: Coord, fromB: Coord, toA: Coord, toB: Coord): (point:
     const dy = point.y - fromA.y;
     return new Coord(toA.x + scaleX * dx - scaleY * dy, toA.y + scaleY * dx + scaleX * dy);
   };
+}
+
+const real = (joints: Joint[]): RealJoint[] =>
+  joints.filter((joint): joint is RealJoint => joint instanceof RealJoint);
+
+const coordOf = (joint: RealJoint): Coord => new Coord(joint.x, joint.y);
+
+/**
+ * The connected piece of the drawing with the most links, oldest link first,
+ * and its joints. Ties go to the piece holding the oldest link.
+ */
+function largestPiece(links: Link[]): { links: Link[]; joints: RealJoint[] } | undefined {
+  const seen = new Set<Link>();
+  let best: Link[] | undefined;
+  for (const start of links) {
+    if (seen.has(start)) continue;
+    const piece = new Set<Link>([start]);
+    const queue = [start];
+    while (queue.length > 0) {
+      for (const joint of real(queue.pop()!.joints)) {
+        for (const next of joint.links) {
+          // Only through the links asked about: two bars joined by a cylinder
+          // are two pieces, or the step is handed one bar too few.
+          if (links.includes(next) && !piece.has(next)) {
+            piece.add(next);
+            queue.push(next);
+          }
+        }
+      }
+    }
+    piece.forEach((link) => seen.add(link));
+    if (!best || piece.size > best.length) best = links.filter((link) => piece.has(link));
+  }
+  if (!best) return undefined;
+  const joints = new Set<RealJoint>();
+  best.forEach((link) => real(link.joints).forEach((joint) => joints.add(joint)));
+  return { links: best, joints: [...joints] };
+}
+
+/**
+ * A point nudged off any joint it would land on. A bar ending on an existing
+ * joint is a bar of no length or a merge nobody asked for, and the similarity
+ * puts the last point exactly on one whenever the student's own second bar
+ * already went where the tutorial's would have.
+ */
+function clearOf(point: Coord, joints: RealJoint[]): Coord {
+  const span = joints.reduce(
+    (most, joint) => Math.max(most, Math.hypot(joint.x - point.x, joint.y - point.y)),
+    0
+  );
+  const near = span * 0.05;
+  const crowded = joints.some((joint) => Math.hypot(joint.x - point.x, joint.y - point.y) < near);
+  return crowded ? new Coord(point.x + span * 0.3, point.y) : point;
 }
 
 /** An element's box, if it is actually taking up room on screen. */

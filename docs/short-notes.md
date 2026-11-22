@@ -1535,6 +1535,10 @@ claiming the feature works; cite the fixtures when checking arithmetic.
 Building a fixture *through the service*, the way the canvas does, is the only honest way to write a
 browser suite here — and four of the doors have a shape their names do not give away.
 
+- **A history index is not an identity.** Undo past an entry and then edit, and the next save takes
+  that index over for a different drawing. `SaveHistoryService.currentEntry()` /
+  `standsOnOrPast(id)` name entries with ids no later entry reuses; the tutorial keys "is this still
+  my drawing?" on them, and anything else that wants to remember a point in history should too.
 - **`animate(progress)` takes a sample index, not a fraction of the cycle.** It rounds and clamps to
   `masterMechanism().joints.length`, so `animate(0.35, false)` is `animate(0)` — the start pose,
   silently. A test that means "a third of the way round" has to ask the machine how many samples it

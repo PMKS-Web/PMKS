@@ -28,6 +28,7 @@ import { SvgGridService } from 'src/app/services/svg-grid.service';
 import { TemplatesComponent } from '../MODALS/templates/templates.component';
 import { NotificationService } from '../../services/notification.service';
 import { TutorialService } from '../../services/tutorial.service';
+import { TutorialEntryService } from '../../services/tutorial-entry.service';
 import { LOGO_URL } from '../../model/brand';
 import { MatTooltip } from '@angular/material/tooltip';
 import { MatIcon } from '@angular/material/icon';
@@ -172,6 +173,7 @@ export class TopBarComponent implements AfterViewInit, AfterViewChecked, OnDestr
   private exportFlow = inject(ExportFlowService);
   private notify = inject(NotificationService);
   private tutorial = inject(TutorialService);
+  private tutorialEntry = inject(TutorialEntryService);
 
   TabID = TabID;
   menuOpen = false;
@@ -857,12 +859,12 @@ export class TopBarComponent implements AfterViewInit, AfterViewChecked, OnDestr
   /**
    * The way back to the tutorial once its offer has been dismissed for good.
    *
-   * It opens at whichever step the drawing has not satisfied, so this works on
-   * a mechanism already on the grid as well as on a bare one.
+   * A tutorial under way carries on; otherwise it starts on a bare grid,
+   * asking first when that would clear the drawing.
    */
   openTutorial(): void {
     this.closeMenu();
-    this.tutorial.start();
+    this.tutorialEntry.open();
   }
 
   openDebug(): void {

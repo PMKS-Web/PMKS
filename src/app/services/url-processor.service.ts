@@ -1,3 +1,4 @@
+import { Subject } from 'rxjs';
 import { Injectable, Injector, inject } from '@angular/core';
 import { MechanismService } from './mechanism.service';
 import { recallDrawing } from './last-drawing';
@@ -154,6 +155,7 @@ export class UrlProcessorService {
     // stood on rather than walking backwards through the session. Refreshing
     // the work you are in the middle of is the case this exists for.
     const url = fromAddress ?? (!invalidAddress && returningToThePage() ? recallDrawing() : null);
+    this.restoredOnReturn = fromAddress === null && url !== null;
 
     // update the mechanism from the url
     //
@@ -213,6 +215,19 @@ export class UrlProcessorService {
     });
   }
 
+  /**
+   * A different drawing has replaced the one on the grid: a template, an
+   * opened file, a link. Not undo or redo, which are steps within one drawing.
+   */
+  readonly drawingReplaced = new Subject<void>();
+
+  /**
+   * The drawing on the grid at start-up is the one this tab was showing before
+   * a reload or a Back, recalled rather than sent by a link. The tutorial picks
+   * itself back up on exactly that.
+   */
+  restoredOnReturn = false;
+
   // Decode the url and update mechanism
   updateFromURL(
     url: string | null,
@@ -230,13 +245,16 @@ export class UrlProcessorService {
     // template that runs is not reported as a mechanism they made run.
     const mechanismSrv = this.injector.get(MechanismService);
     mechanismSrv.arriving = !continuingHistory;
+    let replaced = false;
     try {
-      this.decode(url, resetSvgScale, updateSettings, save, continuingHistory);
+      replaced = this.decode(url, resetSvgScale, updateSettings, save, continuingHistory);
     } finally {
       // An undo or redo is not the reader building either: what runs after
       // one is the new starting point, or the next edit would be credited
       // with what the undo did.
       mechanismSrv.arrived();
+      // A file that would not open left the drawing where it was.
+      if (!continuingHistory && replaced) this.drawingReplaced.next();
     }
   }
 
@@ -246,7 +264,8 @@ export class UrlProcessorService {
     updateSettings: boolean,
     save: boolean,
     continuingHistory: boolean
-  ) {
+  ): boolean {
+    let replaced = false;
     const mechanismSrv = this.injector.get(MechanismService);
     // A different mechanism reuses the same joint letters and means something
     // different by them, so nothing remembered per joint may carry across.
@@ -320,6 +339,7 @@ export class UrlProcessorService {
         // permission model believed the transport. Pose is not part of
         // history (plan §6.4); neither is the number that names one.
         builder.build(updateSettings, false);
+        replaced = true;
         // After the mechanism, because a design is about a machine that is not
         // on the grid yet and so has nothing in the build to wait for -- but
         // before the rebuild below, so the panel and the canvas come up
@@ -370,7 +390,7 @@ export class UrlProcessorService {
         if (looksLikeQueryParameters(url)) {
           this.decoded = 'not-a-mechanism';
           window.history.replaceState({}, document.title, window.location.pathname);
-          return;
+          return false;
         }
         // Deferred because this can run inside the service's own constructor,
         // before there is an overlay to open into. A failure, and it waits to
@@ -481,6 +501,7 @@ export class UrlProcessorService {
     } else {
       this.svgGrid.compensateForUnitChange(unitBefore, this.settingsSrv.lengthUnit.value);
     }
+    return replaced;
   }
 }
 

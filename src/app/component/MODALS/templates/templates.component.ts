@@ -39,6 +39,7 @@ import { MatButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
 import { NgTemplateOutlet } from '@angular/common';
 import { CdkTrapFocus } from '@angular/cdk/a11y';
+import { DialogButtonComponent } from '../../BLOCKS/dialog-button/dialog-button.component';
 import { CloseButtonComponent } from '../../BLOCKS/close-button/close-button.component';
 import { ViewportService } from 'src/app/services/viewport.service';
 import { TemplateCardComponent } from './template-card/template-card.component';
@@ -91,6 +92,7 @@ export interface TemplateGroup {
     NgTemplateOutlet,
     CdkTrapFocus,
     CloseButtonComponent,
+    DialogButtonComponent,
     TemplateCardComponent,
     SuggestMechanismComponent,
     SuggestionSentComponent,
