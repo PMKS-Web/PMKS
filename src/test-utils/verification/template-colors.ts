@@ -206,7 +206,7 @@ const TEMPLATE_PARTS: Partial<Record<LibraryTemplateID, TemplateParts>> = {
     machines: [
       ['AB', 'BC', 'AD'],
       ['FG', 'EH', 'EF'],
-      ['IJ', 'IK', 'KLM', 'JN'],
+      ['IJ', 'IK', 'KM', 'JN'],
       ['OP', 'PQ', 'QR'],
     ],
     fixed: {
@@ -218,7 +218,7 @@ const TEMPLATE_PARTS: Partial<Record<LibraryTemplateID, TemplateParts>> = {
       EF: 4,
       IJ: 4,
       IK: 2,
-      KLM: 5,
+      KM: 5,
       JN: 1,
       OP: 2,
       PQ: 4,
