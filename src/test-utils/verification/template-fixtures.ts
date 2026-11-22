@@ -256,7 +256,7 @@ export const LIBRARY_TEMPLATE_NAMES: Record<LibraryTemplateID, Record<string, st
     A: 'Engine (L1 grounded)',
     F: 'Quick return (L2 grounded)',
     I: 'Oscillating cylinder (L3 grounded)',
-    O: 'Pendulum pump (L4 grounded)',
+    P: 'Pendulum pump (L4 grounded)',
   },
   Locking_Pliers: { A: 'Locking pliers' },
   Double_Wishbone: { A: 'Double wishbone' },

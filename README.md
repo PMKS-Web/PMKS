@@ -359,14 +359,14 @@ tab, replace the current drawing (undoable), or cancel.
 
 | Category | Mechanisms |
 | --- | --- |
-| **Start Here** | Four-Bar · Slider-Crank · Cylinder-Driven Boom · Parallelogram · Four-Bar with Fixed Lengths · Four-Bar Inversions · Slider-Crank Inversions |
+| **Start Here** | Four-Bar · Slider-Crank · Cylinder-Driven Boom · Parallelogram · Four-Bar with Fixed Lengths |
 | **Real Machines** | Aircraft Landing Gear · Car Hood Hinge · Excavator Bucket · Car Steering · Locking Pliers · Double-Wishbone Suspension · Steam Locomotive |
 | **Back-and-Forth Motion** | Scotch Yoke · Engine with a Flywheel · Radial Engine · Whitworth Quick-Return · Shaper Quick-Return · Pumpjack |
 | **Swing, Lift, and Grip** | Windshield Wiper · Oscillating Fan · Parallel Gripper · Scissor Lift · Bracketed Hatch |
 | **Drawing a Path** | Chebyshev Straight-Line · Watt’s Straight-Line · Peaucellier-Lipkin · Elliptical Trammel · Pantograph · Jansen Leg |
 | **Forces** | Punch Press · Toggle Clamp (in inches) · Crane with Two Loads · Offset Load Rocker · Reciprocating Saw · Slotted Tool Drive |
 | **Six-Bars and Beyond** | Bell Crank · Six-Bar with a Dwell · Watt I · Watt II · Stephenson III · Elliptical Crank · Double Butterfly · Running Horse |
-| **Multiple Mechanisms** | Walking Pair · Pumping Field · Approximate and Exact |
+| **Multiple Mechanisms** | Walking Pair · Pumping Field · Approximate and Exact · Four-Bar Inversions · Slider-Crank Inversions |
 
 </details>
 
