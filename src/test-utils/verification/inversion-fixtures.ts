@@ -367,8 +367,9 @@ export function sliderCrankInversionsFixture(): MechanismFixture {
   // pump's guide below it on the same vertical line. The crank links the
   // pendulum to L1, the frame, which is the pump rod now, running up and
   // down in the guide. The pendulum can swing only as far as the crank can
-  // still reach the line, asin(CRANK / ROD) either side of it, and it is
-  // driven between those two toggles.
+  // still reach the line, asin(CRANK / ROD) either side of it. The drive is
+  // at the crank pin P, where the short crank goes right round against the
+  // pendulum, so a steady input runs the pump without stopping at a toggle.
   //
   // The guide is drawn as ground rather than as a bar of its own: a bar
   // carrying the slot sits on the same line as the rod and is hidden under
@@ -385,8 +386,8 @@ export function sliderCrankInversionsFixture(): MechanismFixture {
   const PUMP_ROD = 1.5;
   const pump: MechanismFixture = {
     joints: [
-      { id: 'O', ...pumpAt, ground: true, input: true, driveSpeed: LIBRARY_RPM },
-      { id: 'P', ...pendulumEnd },
+      { id: 'O', ...pumpAt, ground: true },
+      { id: 'P', ...pendulumEnd, input: true, driveSpeed: LIBRARY_RPM },
       { id: 'Q', ...rodTop },
       { id: 'R', x: pumpAt.x, y: rodTop.y - PUMP_ROD },
     ],

@@ -146,24 +146,6 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
     thumbnail: 'assets/gifs/locked-four-bar.png',
     animation: 'assets/gifs/locked-four-bar.gif',
   },
-  {
-    id: 'Four_Bar_Inversions',
-    name: 'Four-Bar Inversions',
-    category: 'start',
-    description:
-      'The same four links, each time with a different one held still: watch a crank in one become the coupler in another.',
-    thumbnail: 'assets/gifs/four-bar-inversions.png',
-    animation: 'assets/gifs/four-bar-inversions.gif',
-  },
-  {
-    id: 'Slider_Crank_Inversions',
-    name: 'Slider-Crank Inversions',
-    category: 'start',
-    description:
-      'Four inversions of a slider-crank: an engine, a quick-return, an oscillating cylinder, and a hand pump.',
-    thumbnail: 'assets/gifs/slider-crank-inversions.png',
-    animation: 'assets/gifs/slider-crank-inversions.gif',
-  },
 
   // Real Machines: each traced by hand over a picture of the machine,
   // and each card opens on that picture. The placements are in centimeters,
@@ -604,6 +586,24 @@ export const TEMPLATE_CARDS: readonly TemplateCard[] = [
       'Chebyshev’s line beside Peaucellier’s: one bows very slightly, the other is perfectly straight.',
     thumbnail: 'assets/gifs/straight-line-pair.png',
     animation: 'assets/gifs/straight-line-pair.gif',
+  },
+  {
+    id: 'Four_Bar_Inversions',
+    name: 'Four-Bar Inversions',
+    category: 'machines',
+    description:
+      'The same four links, each time with a different one held still: watch a crank in one become the coupler in another.',
+    thumbnail: 'assets/gifs/four-bar-inversions.png',
+    animation: 'assets/gifs/four-bar-inversions.gif',
+  },
+  {
+    id: 'Slider_Crank_Inversions',
+    name: 'Slider-Crank Inversions',
+    category: 'machines',
+    description:
+      'Four inversions of a slider-crank: an engine, a quick-return, an oscillating cylinder, and a hand pump.',
+    thumbnail: 'assets/gifs/slider-crank-inversions.png',
+    animation: 'assets/gifs/slider-crank-inversions.gif',
   },
 ];
 
