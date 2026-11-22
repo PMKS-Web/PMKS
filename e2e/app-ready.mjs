@@ -38,6 +38,9 @@
  * fitted, so there is nothing left to wait out.
  */
 
+// Software compositing for headless Chromium; see headless-chromium.mjs.
+import './headless-chromium.mjs';
+
 const READY_TIMEOUT_MS = 12000;
 const POLL_MS = 40;
 /** How long the picture must hold still to count as settled. */

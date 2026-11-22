@@ -37,7 +37,7 @@ import { copyFile, mkdir, readdir, stat, writeFile } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import path from 'node:path';
 import { readdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { NOT_RUN, SUITES, lanesOf } from './suites.mjs';
 
 const argv = process.argv.slice(2);
@@ -131,7 +131,9 @@ if (strangers.length)
 function attempt(suite, logPath, append) {
   return new Promise((resolve) => {
     const log = createWriteStream(logPath, { flags: append ? 'a' : 'w' });
-    const child = spawn(process.execPath, [path.join('e2e', `${suite.name}.mjs`)], {
+    // Preloaded so the few suites that do not load app-ready.mjs get it too.
+    const preload = ['--import', pathToFileURL(path.resolve('e2e/headless-chromium.mjs')).href];
+    const child = spawn(process.execPath, [...preload, path.join('e2e', `${suite.name}.mjs`)], {
       env: { ...process.env, ...suite.env },
       stdio: ['ignore', 'pipe', 'pipe'],
     });

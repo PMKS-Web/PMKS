@@ -575,12 +575,19 @@ record(
 await page.mouse.move(700, 500);
 await page.waitForTimeout(300);
 
-// --- a joint two machines share is two rows, and two ticks ------------------
-// A chain bolted to another machine's ground shares that pin. Keyed by its
-// letter alone, ticking it under one machine ticked it under the other, and
-// the export wrote a file for a machine nobody had asked about.
+// --- a chain bolted to another machine's ground joins that machine ---------
+// This used to be two machines sharing pin D, listed under each and keyed by
+// machine so a tick under one did not tick the other. A shared joint now joins
+// what meets at it, a grounded pivot included, so the chain and the four-bar are
+// one machine with two inputs -- and the second is let go, with a sentence.
 await page.goto(`${BASE}/?${payloads['4-Bar']}`, { waitUntil: 'domcontentloaded' });
 await waitForReady(page);
+const drivenBefore = await page.evaluate(() =>
+  ng
+    .getComponent(document.querySelector('app-new-grid'))
+    .mechanismSrv.joints.filter((joint) => joint.input)
+    .map((joint) => joint.id)
+);
 await page.evaluate(() => {
   const srv = ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv;
   const JointClass = Object.getPrototypeOf(srv.joints[0]).constructor;
@@ -608,54 +615,36 @@ await page.evaluate(() => {
   srv.updateMechanism(true);
 });
 await page.waitForTimeout(1400);
+const joined = await page.evaluate(() => {
+  const grid = ng.getComponent(document.querySelector('app-new-grid'));
+  const srv = grid.mechanismSrv;
+  return {
+    machines: srv.partitions.length,
+    inputs: srv.joints.filter((joint) => joint.input).map((joint) => joint.id),
+    said: grid.notify.live.filter((one) => one.id === 'input.oneDriven').map((one) => one.text),
+  };
+});
+record(
+  "a chain bolted to another machine's ground is part of that machine, driven once",
+  joined.machines === 1 && joined.inputs.length === 1,
+  joined
+);
+// The four-bar's own drive is the one kept -- the first in the machine's order,
+// which is what was already running -- and the chain's is let go out loud.
+record(
+  'and the drive kept is the one that was running, with a sentence for the other',
+  drivenBefore.length === 1 &&
+    joined.inputs[0] === drivenBefore[0] &&
+    joined.said.some((text) => text.includes('G is no longer driven')),
+  { drivenBefore, ...joined }
+);
+
+// Two machines of their own, for the archive below.
+await page.goto(`${BASE}/?${TWO_FOUR_BARS}`, { waitUntil: 'domcontentloaded' });
+await waitForReady(page);
 await page.locator('.tabButton', { hasText: 'Kinematic' }).click();
 await page.waitForTimeout(700);
 await openDrawer();
-const shownNames = await drawer().locator('.pickRow .rowName').allInnerTexts();
-record(
-  'a joint two machines share is listed under each of them',
-  shownNames.filter((name) => name === 'Joint D').length === 2,
-  shownNames
-);
-await drawer().locator('.pickRow', { hasText: 'Joint D' }).first().click();
-await page.waitForTimeout(400);
-record(
-  'and ticking it under one leaves the other alone',
-  (await drawer().locator('.pickRow.on').count()) === 1 &&
-    (await drawer().locator('.footNote').innerText()).includes('M1'),
-  await drawer().locator('.footNote').innerText()
-);
-await goToFile();
-record(
-  'so the export is one file, for the machine that was asked about',
-  (await drawer().locator('.summaryCard').innerText()).includes('One file'),
-  await drawer().locator('.summaryCard').innerText()
-);
-
-// Both machines' copies of the shared joint, as pictures. `Position of Joint D`
-// is the title under either of them, and two entries of one name in one archive
-// is one picture quietly writing over the other.
-await goToParts();
-await drawer().locator('.pickRow', { hasText: 'Joint D' }).nth(1).click();
-await page.waitForTimeout(300);
-await goToFile();
-await drawer().locator('.formatRow', { hasText: 'Graph images' }).click();
-await page.waitForTimeout(200);
-await drawer().locator('.segmented button', { hasText: 'SVG' }).click();
-await page.waitForTimeout(300);
-const shared = await grab(() => page.locator('.nextButton').click());
-const inArchive = readStoredZip(readFileSync(shared.path)).map((entry) => entry.name);
-record(
-  'and a joint exported from both machines gives a picture each, under names of their own',
-  inArchive.length > 2 && new Set(inArchive).size === inArchive.length,
-  inArchive
-);
-
-// Back to the parts, and back to CSV, for the next question — this drawing has
-// two machines and enough parts between them to need an archive.
-await drawer().locator('.formatRow', { hasText: 'CSV' }).click();
-await page.waitForTimeout(300);
-await goToParts();
 
 // --- more than two files arrive as one download -----------------------------
 await drawer().locator('.linkButton', { hasText: 'Select All' }).click();
@@ -669,6 +658,36 @@ record(
   'more than two files come down as one archive, not one prompt each',
   archive.name.endsWith('.zip') && zipped[0] === 0x50 && zipped.includes(Buffer.from('.csv')),
   archive.name
+);
+
+// Every picture of two machines, in one archive: each needs a name of its own,
+// or one entry quietly writes over another.
+await drawer().locator('.formatRow', { hasText: 'Graph images' }).click();
+await page.waitForTimeout(200);
+await drawer().locator('.segmented button', { hasText: 'SVG' }).click();
+await page.waitForTimeout(300);
+const bothMachines = await grab(() => page.locator('.nextButton').click());
+const pictureNames = readStoredZip(readFileSync(bothMachines.path)).map((entry) => entry.name);
+record(
+  "two machines' pictures come down under names of their own",
+  pictureNames.length > 2 && new Set(pictureNames).size === pictureNames.length,
+  pictureNames
+);
+// And every machine is in it: each joint either machine is made of has its
+// position graph, under that machine's name -- an export that dropped one
+// machine would still have names of their own.
+const owned = await page.evaluate(() =>
+  ng
+    .getComponent(document.querySelector('app-new-grid'))
+    .mechanismSrv.partitions.map((partition) => partition.ownJoints.map((joint) => joint.id))
+);
+const missingPictures = owned
+  .flatMap((ids, at) => ids.map((id) => `_M${at + 1}_Position_of_Joint_${id}.svg`))
+  .filter((ending) => !pictureNames.some((name) => name.endsWith(ending)));
+record(
+  'and both machines are in it, every joint of each',
+  owned.length === 2 && missingPictures.length === 0,
+  { owned, missingPictures }
 );
 
 // --- a long list scrolls, and its decisions do not --------------------------

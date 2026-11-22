@@ -59,6 +59,9 @@ const force = () =>
     return {
       start: [Math.round(held.startCoord.x), Math.round(held.startCoord.y)],
       end: [Math.round(held.endCoord.x), Math.round(held.endCoord.y)],
+      // Unrounded, for "did not move": a head at 241.5 rounds to 242 before a
+      // drag and to 241 after one that left it 6e-14 lower.
+      exactEnd: [held.endCoord.x, held.endCoord.y],
       snapped: grid.forceSnappedJoint(held)?.id,
       link: held.link.id,
     };
@@ -393,7 +396,8 @@ for (const template of ['Punch_Press', 'Derrick_Crane', 'Toggle_Clamp', 'Offset_
   // The tail alone: the head is the direction, and it stays where it was put.
   record(
     `${template}: and the head stays where it was`,
-    dragged.end[0] === held.end[0] && dragged.end[1] === held.end[1],
+    Math.hypot(dragged.exactEnd[0] - held.exactEnd[0], dragged.exactEnd[1] - held.exactEnd[1]) <
+      1e-6,
     {
       held,
       dragged,

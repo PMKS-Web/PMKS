@@ -572,9 +572,14 @@ const FORMS = {
   // gave the barrel and the rod a link panel each and the slide a joint's, so
   // a cylinder's parts are audited through the two forms above.
 };
+// Not a force's magnitude: how hard it pushes is the same at every pose, so
+// model/edit-permission.ts offers it (a 'load') wherever the reader stands.
 const POSE_FIELDS =
-  /^(xPos|yPos|prisAngle|length|angle|comX|comY|magnitude|xComp|yComp|isGlobal|inputSpeed)$/;
+  /^(xPos|yPos|prisAngle|length|angle|comX|comY|xComp|yComp|isGlobal|inputSpeed)$/;
 const CAPTURING_FIELDS = /^(slider|weld)$/;
+// What a load is, which is offered at every pose: refusing it while displaced,
+// or taking it without a change to undo, is a finding.
+const LOAD_FIELDS = /^magnitude$/;
 
 for (const mechanism of MECHANISMS) {
   current = mechanism;
@@ -617,6 +622,11 @@ for (const mechanism of MECHANISMS) {
         ledger.push([what, 'absent', 'no such control']);
         continue;
       }
+      if (control.disabled && LOAD_FIELDS.test(field)) {
+        record(`${what} — a load is editable while displaced`, false, control);
+        ledger.push([what, 'refused', 'a load refused while displaced']);
+        continue;
+      }
       if (control.disabled) {
         // The strip's words, less the icon ligature innerText puts first.
         const banner = (
@@ -637,11 +647,14 @@ for (const mechanism of MECHANISMS) {
         ([form, field, value]) => {
           const panel = ng.getComponent(document.querySelector('app-edit-panel'));
           const c = panel[form + 'Form'].get(field);
+          // A field that carries its unit reads `1.00 N`; the number is moved and
+          // the unit kept, or the edit would hand back what was there.
+          const withUnit =
+            typeof value === 'string' ? /^\s*(-?\d+(?:\.\d+)?)(\s*\D*)$/.exec(value) : null;
           let next;
           if (typeof value === 'boolean') next = !value;
           else if (typeof value === 'number') next = value + 0.25;
-          else if (typeof value === 'string' && value !== '' && !isNaN(Number(value)))
-            next = String(Number(value) + 0.25);
+          else if (withUnit) next = `${Number(withUnit[1]) + 0.25}${withUnit[2]}`;
           else next = value;
           c.setValue(next);
         },
@@ -660,6 +673,13 @@ for (const mechanism of MECHANISMS) {
         continue;
       }
       judge(what, kindOfEdit, before, after, afterUndo, later);
+      if (LOAD_FIELDS.test(field)) {
+        record(
+          `${what} — the new value is taken, as one entry to undo`,
+          after.history[1] === before.history[1] + 1 && after.design !== before.design,
+          { from: control.value, history: [before.history, after.history] }
+        );
+      }
     }
   }
 }

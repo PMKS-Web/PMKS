@@ -233,6 +233,10 @@ export const NOT_RUN = [
     why: 'Object Size was retired by Drawing Style. The drawing-styles gate covers cylinder geometry through style, zoom, and Fit changes.',
   },
   { name: 'app-ready', why: 'A helper the suites import: `waitForReady` and `openMechanism`.' },
+  {
+    name: 'headless-chromium',
+    why: 'A helper: launches headless Chromium as Chrome, which keeps drawing frames.',
+  },
   { name: 'filmstrip', why: 'A helper: burst frames and the contact sheet that tiles them.' },
   { name: 'quiet-start', why: 'A helper: seeds `localStorage` so no dialog covers the canvas.' },
   { name: 'template-payloads', why: 'A helper: the one reader of `template-linkages.ts`.' },

@@ -12,6 +12,7 @@ const playwright = process.env.PMKS_PLAYWRIGHT_DIR ?? '/tmp/pmks-playwright';
 const { chromium } = await import(playwright + '/node_modules/playwright/index.mjs');
 import { mkdirSync } from 'node:fs';
 import { openMechanism } from './app-ready.mjs';
+import { inAngular } from './in-angular.mjs';
 import { startQuiet } from './quiet-start.mjs';
 import { TEMPLATE_LINKAGES } from './template-payloads.mjs';
 
@@ -659,6 +660,15 @@ const transport = () =>
       seats: document.querySelectorAll('.anchorSeat').length,
       seatCentre: seatBox ? seatBox.left + seatBox.width / 2 : null,
       wantSeatAt: row.anchorAt === undefined ? null : centreAt(row.anchorAt),
+      // The longest step between two neighboring samples, in the handle's own
+      // thousandths: a rocker's samples are evenly spaced in time, not along
+      // its swing, so one sample can cover more of the track in mid-swing.
+      sample: Math.max(
+        0,
+        ...(bar.mechanism.driveProfileOf(0)?.along ?? []).map((at, i, along) =>
+          i === 0 ? 0 : Math.abs(at - along[i - 1]) * 1000
+        )
+      ),
     };
   });
 
@@ -675,7 +685,9 @@ record(
   rocker
 );
 
-await page.evaluate(() =>
+// Inside Angular, as a drag of the handle would be: the seat is drawn by a
+// render pass that a seek from outside it never asks for.
+await inAngular(page, () =>
   window.ng
     .getComponent(document.querySelector('app-playback-bar'))
     .mechanism.seekMechanismTo(0, 0.85)
@@ -703,7 +715,7 @@ record(
 // its start.
 record('the chip says a distance, not the reading beside it', away.chip !== rocker.chip, away);
 
-await page.evaluate(() => {
+await inAngular(page, () => {
   const bar = window.ng.getComponent(document.querySelector('app-playback-bar'));
   bar.moveStartHere(bar.rows[0]);
 });
@@ -711,10 +723,19 @@ await page.waitForTimeout(700);
 const moved = await transport();
 record(
   'moving the start here moves the mark with it',
-  moved.anchorAt === away.scrub && moved.seats === 0 && moved.chip === null,
+  // Within two samples: the cycle is re-solved from the new start, and a
+  // rocker's track is as long as its swing, which is found a sample at a time
+  // at each end -- so the same pose can sit a sample or two along it. The
+  // sample is the widest step the track has, so the allowance holds anywhere.
+  Math.abs(moved.anchorAt - away.scrub) <= 2 * moved.sample &&
+    moved.anchorAt === moved.scrub &&
+    moved.seats === 0 &&
+    moved.chip === null,
   moved
 );
-await page.evaluate(() =>
+// Inside Angular, as a drag of the handle would be: the seat is drawn by a
+// render pass that a seek from outside it never asks for.
+await inAngular(page, () =>
   window.ng
     .getComponent(document.querySelector('app-playback-bar'))
     .mechanism.seekMechanismTo(0, 0.2)
@@ -723,7 +744,7 @@ await page.waitForTimeout(400);
 const afterMove = await transport();
 record(
   'and the seat is at the new start once the handle leaves it',
-  afterMove.seats === 1 && afterMove.anchorAt === away.scrub,
+  afterMove.seats === 1 && afterMove.anchorAt === moved.anchorAt,
   afterMove
 );
 

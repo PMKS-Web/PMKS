@@ -21,6 +21,7 @@
 const { chromium } = await import(
   (process.env.PMKS_PLAYWRIGHT_DIR ?? '/tmp/pmks-playwright') + '/node_modules/playwright/index.mjs'
 );
+import './headless-chromium.mjs';
 import { TEMPLATE_LINKAGES as payloads } from './template-payloads.mjs';
 
 const BASE = process.env.PMKS_BASE_URL ?? 'http://localhost:4200';

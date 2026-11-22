@@ -443,32 +443,10 @@ await page.screenshot({ path: `${OUT}/13-bad-angle.png` });
 // -------------------------------------------------- things that must not break
 console.log('\nhostile input');
 
-// Object Scale multiplies every dimension in the mark system, so a value that is
-// not a positive number does not degrade the drawing -- it erases it, behind
-// dozens of invalid-SVG errors. The pattern used an unescaped dot, so "1x2"
-// validated and Number() turned it into NaN.
-await load(FOUR_BAR);
-// Settings is a project-menu entry now, so the hamburger opens first.
-await page.locator('.topStrip .iconButton').first().click();
-await page.locator('.projectMenu .menuItem', { hasText: 'Settings' }).click();
-await page.waitForTimeout(900);
-const scaleField = page.locator('app-settings-panel input').first();
-let scaleOk = true;
-for (const bad of ['1x2', 'abc', '-3', '0']) {
-  await scaleField.fill(bad);
-  await scaleField.press('Enter');
-  await page.waitForTimeout(400);
-  const shown = await scaleField.inputValue();
-  const nan = await page.evaluate(
-    () =>
-      [
-        ...document.querySelectorAll('#linkHolder path, #sliderHolder path, #railHolder line'),
-      ].filter((n) => /NaN/.test(n.getAttribute('d') ?? n.getAttribute('x1') ?? '')).length
-  );
-  if (shown === bad || nan > 0) scaleOk = false;
-}
-checkThat('a nonsensical object scale is refused rather than drawn', scaleOk);
-await page.screenshot({ path: `${OUT}/14-bad-scale.png` });
+// A typed Object Scale used to be checked here: "1x2" once validated and
+// erased the drawing behind invalid-SVG errors. Drawing Style replaced that
+// field, and Settings has nothing left to type a scale into, so the check went
+// with it (#374). A URL still carries a scale, but as a decoded number.
 
 // A gesture in flight targets a joint that is about to stop existing.
 await load(FOUR_BAR);

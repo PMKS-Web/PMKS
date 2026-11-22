@@ -63,10 +63,22 @@ try {
   await page.goto(baseUrl + '?' + INVERTED_SLIDER_CRANK, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2500);
 
+  // Four, not five: the URL was written when a slider was a pin (B) on a block
+  // of its own (P). Since Stage 1 of docs/joint-type-and-cylinder-plan.md a
+  // slider is one prismatic joint, so the reader folds P into B.
   const joints = await jointState(page);
-  record('the floating-slot URL decodes into all five joints', joints.length === 5, {
-    ids: joints.map((joint) => joint.id).join(''),
-  });
+  const sliding = await page.evaluate(() =>
+    ng
+      .getComponent(document.querySelector('app-new-grid'))
+      .mechanismSrv.joints.filter((joint) => joint.constructor.name === 'PrisJoint')
+      .map((joint) => joint.id)
+      .join('')
+  );
+  record(
+    'the floating-slot URL decodes into its four joints, B the one that slides',
+    joints.map((joint) => joint.id).join('') === 'ABCD' && sliding === 'B',
+    { ids: joints.map((joint) => joint.id).join(''), sliding }
+  );
 
   // The lever tip: if the slot were still being treated as grounded, D would
   // sit where the old angle put it rather than on the ray through the block.

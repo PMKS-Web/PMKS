@@ -167,7 +167,16 @@ await page.goto(`${BASE}?library`, { waitUntil: 'domcontentloaded' });
 await waitForReady(page);
 await page.waitForTimeout(1200);
 await page.locator('#templates [data-template="Excavator_Bucket"]').click();
-await page.waitForTimeout(3000);
+// Waited for rather than slept on: the card opens behind the loading cover and
+// the picture lands after the drawing is framed, which on a CI runner took
+// longer than the three seconds this used to allow.
+await page
+  .waitForFunction(
+    () => ng.getComponent(document.querySelector('app-new-grid')).bgImage.image()?.width > 0,
+    null,
+    { timeout: 15000 }
+  )
+  .catch(() => {});
 const opened = await backdropNow();
 check(
   'a card with a backdrop opens on top of it',
@@ -188,6 +197,13 @@ await page.goto(`${BASE}?${payloads['Excavator_Bucket']}#backdrop=Excavator_Buck
 });
 await waitForReady(page);
 await page.waitForTimeout(2500);
+await page
+  .waitForFunction(
+    () => ng.getComponent(document.querySelector('app-new-grid')).bgImage.image(),
+    null,
+    { timeout: 15000 }
+  )
+  .catch(() => {});
 const inNewTab = await backdropNow();
 const withFragment = await linkCount(page);
 check(

@@ -114,6 +114,9 @@ const shot = (name) => page.locator('#settingsWrapper').screenshot({ path: `${OU
 
 await openMechanism(page, `${BASE}/?${payloads['Crane_Two_Loads']}`);
 await openSettings();
+// The library draws its machines at their real size (#315), so the crane opens
+// in meters. The checks start from centimeters, where grams are the default.
+await pick('Length Units', 'Centimeter (cm)');
 
 // ---- The rows are the units, not named systems ------------------------------
 const length = await pill('Length Units');

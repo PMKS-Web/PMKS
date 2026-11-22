@@ -14,6 +14,7 @@ const { chromium } = await import(
   (process.env.PMKS_PLAYWRIGHT_DIR ?? '/tmp/pmks-playwright') + '/node_modules/playwright/index.mjs'
 );
 import { waitForReady } from './app-ready.mjs';
+import { inAngular } from './in-angular.mjs';
 
 const BASE = process.env.PMKS_BASE_URL ?? 'http://localhost:4200';
 
@@ -56,8 +57,11 @@ const drain = () =>
     return said;
   });
 
+// Inside Angular, as the app's own callers are: a message said from outside
+// it sits in the list unrendered until something else causes a pass.
 const say = (kind, id, text, options) =>
-  page.evaluate(
+  inAngular(
+    page,
     ({ kind, id, text, options }) =>
       ng.getComponent(document.querySelector('app-new-grid')).notify[kind](id, text, options),
     { kind, id, text, options }
@@ -65,7 +69,7 @@ const say = (kind, id, text, options) =>
 
 const showing = () => page.locator('.notification').count();
 const clear = async () => {
-  await page.evaluate(() =>
+  await inAngular(page, () =>
     ng.getComponent(document.querySelector('app-new-grid')).notify.dismissAll()
   );
   await page.waitForTimeout(350);
@@ -180,7 +184,7 @@ await clear();
 // ---- a message that can fix the thing it is about ---------------------------
 
 await drain();
-const ran = await page.evaluate(async () => {
+const ran = await inAngular(page, async () => {
   const notify = ng.getComponent(document.querySelector('app-new-grid')).notify;
   let done = false;
   notify.warning('act.probe', 'Something is off.', {
@@ -196,84 +200,8 @@ const ran = await page.evaluate(async () => {
 record('a message can carry the fix for what it is about', ran.label === 'Put it right', ran);
 record('pressing it does the thing, and takes the message away', ran.done && ran.left === 0, ran);
 
-// ---- the zoom warning is the real one that carries them ----------------------
-
-// With a linkage on the grid: "Reset view" fits the view to the drawing, and an
-// empty grid has nothing to fit to -- the same as the Fit to view button.
-await page.goto(`${BASE}/?${FOUR_BAR}`, { waitUntil: 'domcontentloaded' });
-await waitForReady(page);
-await watch();
-
-await page.evaluate(() => {
-  const grid = ng.getComponent(document.querySelector('app-new-grid'));
-  for (let i = 0; i < 60; i++) grid.svgGrid.zoomOut();
-  grid.svgGrid.handleZoom(grid.svgGrid.getZoom());
-});
-await page.waitForTimeout(500);
-const zoomed = await page.evaluate(() => {
-  const grid = ng.getComponent(document.querySelector('app-new-grid'));
-  const one = grid.notify.live.find((n) => n.id.startsWith('zoom.'));
-  return { id: one?.id, labels: (one?.actions ?? []).map((a) => a.label) };
-});
-record(
-  'zooming past the band warns, with both ways out',
-  !!zoomed.id && zoomed.labels.join('|') === 'Auto-size objects|Fit to view',
-  zoomed
-);
-
-// Auto-size objects keeps the view and resizes the drawing.
-const fitted = await page.evaluate(async () => {
-  const grid = ng.getComponent(document.querySelector('app-new-grid'));
-  const zoomBefore = grid.svgGrid.getZoom();
-  document.querySelectorAll('.notificationAction')[0]?.click();
-  await new Promise((resolve) => setTimeout(resolve, 400));
-  const zoom = grid.svgGrid.getZoom();
-  return {
-    zoomHeld: Math.abs(zoom - zoomBefore) < zoomBefore * 0.01,
-    drawnAt: zoom * grid.settings.objectScale,
-  };
-});
-record(
-  'Auto-size objects resizes the drawing and leaves the view alone',
-  fitted.drawnAt > 5 && fitted.drawnAt < 200 && fitted.zoomHeld,
-  fitted
-);
-await clear();
-
-// Reset view keeps the drawing and moves the view. Zooming the *other* way, so
-// this raises `zoom.links-huge` -- `zoom.links-tiny` asked for a minute of quiet
-// when it spoke above, and per-message cooldowns are the point of them.
-await page.evaluate(() => {
-  const grid = ng.getComponent(document.querySelector('app-new-grid'));
-  for (let i = 0; i < 120; i++) grid.svgGrid.zoomIn();
-  grid.svgGrid.handleZoom(grid.svgGrid.getZoom());
-});
-await page.waitForTimeout(500);
-const scaleBefore = await page.evaluate(
-  () => ng.getComponent(document.querySelector('app-new-grid')).settings.objectScale
-);
-const zoomBefore = await page.evaluate(() =>
-  ng.getComponent(document.querySelector('app-new-grid')).svgGrid.getZoom()
-);
-// A real click, not a synthetic one. `scaleToFitLinkage` finishes in an
-// `afterNextRender`, so it needs a change-detection pass behind it -- calling
-// the method from the console leaves the fit permanently pending.
-await page.locator('.notificationAction', { hasText: 'Fit to view' }).click();
-await page.waitForTimeout(1500);
-const reset = await page.evaluate(() => {
-  const grid = ng.getComponent(document.querySelector('app-new-grid'));
-  return {
-    scale: grid.settings.objectScale,
-    zoom: grid.svgGrid.getZoom(),
-    left: grid.notify.live.length,
-  };
-});
-record(
-  'Reset view moves the view and leaves the drawing alone',
-  reset.scale === scaleBefore && reset.zoom !== zoomBefore && reset.left === 0,
-  { scaleBefore, zoomBefore, ...reset }
-);
-await clear();
+// The zoom warnings ("Auto-size objects", "Fit to view") went with the object
+// size controls in #34: zoom is presentation now and has nothing to warn about.
 
 // ---- Ctrl+Z undoes -----------------------------------------------------------
 

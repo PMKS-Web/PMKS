@@ -97,6 +97,11 @@ flake are the frames of the attempt that worked, which is the one nobody needs t
   (default under `/Applications/Google Chrome.app`) rather than Playwright's Chromium.
 - `PMKS_HEADED=1` — show the browser window. Only some suites read it; the rest are always headless.
 - `RUN_PREFIX` — prefix for screenshot and report filenames. Only some suites read it.
+- `PMKS_HEADLESS_SHELL=1` — launch Playwright's own headless shell, not Chrome in headless mode.
+  The shell can stop drawing frames for good on a large drawing (`headless-chromium.mjs` says
+  when), so this is for comparing the two, not for runs.
+  Any other value, `0` included, leaves Chrome on. `run-suites.mjs` applies the helper to every
+  suite; a suite run on its own gets it through `app-ready.mjs` or by importing it.
 
 Per-suite switches are listed with their suite: `ONLY`, `PMKS_ONLY`, `SEED`, `SHOTS`,
 `SHOT_WIDTH`/`SHOT_HEIGHT`, `PMKS_PERF_TOLERANCE`, `MOUSECTL`, `PW_CHROME`.
@@ -104,6 +109,10 @@ Per-suite switches are listed with their suite: `ONLY`, `PMKS_ONLY`, `SEED`, `SH
 ## Shared helpers
 
 Not suites — import them from one.
+
+- `headless-chromium.mjs` — imported for its effect: headless Chromium launches as Chrome
+  (`channel: 'chromium'`) rather than as the headless shell. `app-ready.mjs` imports it and
+  `run-suites.mjs` preloads it, so a suite needs nothing of its own.
 
 - `app-ready.mjs` — `waitForReady(page)` waits until the mechanism is built, solved (if it can be)
   and nothing on screen is still moving; `openMechanism(page, url)` loads a URL and waits the same

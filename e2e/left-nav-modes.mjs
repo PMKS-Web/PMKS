@@ -317,6 +317,9 @@ try {
       const grid = window.ng.getComponent(document.querySelector('app-new-grid'));
       grid.mechanismSrv.links.forEach((link) => (link.mass = mass));
       grid.mechanismSrv.updateMechanism(false);
+      // A poke from here runs outside Angular: without a render pass the
+      // switch keeps the disabled state it had while nothing weighed anything.
+      window.ng.applyChanges(grid);
     }, value);
   const comBefore = await comMarks();
   await setMasses(0);

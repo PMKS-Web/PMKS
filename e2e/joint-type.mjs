@@ -230,17 +230,26 @@ console.log('\nwhat a joint cannot be, and why');
 await select('A');
 const driven = await choice();
 const refusedOn = (label) => driven.options.find((one) => one.label === label);
+// A slide needs a linear input, so the input is what refuses the two sliding
+// types. Welded is refused too, but not by the input: a grounded input may be
+// welded (the weld fuses the bars to each other, not to the frame), and A has
+// only one link to fuse, so the weld's own reason is the true one.
 record(
   'a driven pin can be nothing else, and every grayed type carries the model’s reason',
-  ['Prismatic', 'Pin-in-slot', 'Welded'].every(
+  ['Prismatic', 'Pin-in-slot'].every(
     (label) =>
       refusedOn(label)?.off === true &&
       /Remove the input before changing its type/.test(refusedOn(label).reason ?? '')
-  ) && refusedOn('Revolute')?.off === false,
+  ) &&
+    refusedOn('Welded')?.off === true &&
+    /A weld fuses the links that meet at a joint, and only one meets here/.test(
+      refusedOn('Welded').reason ?? ''
+    ) &&
+    refusedOn('Revolute')?.off === false,
   driven.options
 );
 
-await page.hover('app-edit-panel segmented-block .cell:nth-child(5)');
+await page.hover('app-edit-panel segmented-block .cell:has-text("Prismatic")');
 await page.waitForTimeout(900);
 const tip = await page.locator('.mat-mdc-tooltip').first().textContent();
 record(
@@ -430,25 +439,39 @@ record(
 
 // ----------------------------------------------------- 4. parked mid-cycle
 console.log('\nthe same change, parked away from the start');
+// A change of type is a structural edit, and docs/editing-rules.md refuses
+// those away from the start pose: restructuring mid-cycle could leave a
+// mechanism that no longer runs. So the choice stays readable and says why.
 await openFourBar();
 await page.evaluate(() => ng.getComponent(document.querySelector('app-playback-bar')).stepBy(40));
 await page.waitForTimeout(700);
 await select('B');
 const parked = await state('B');
-const wasDisplaced = parked.atStart === false;
-await pick('Prismatic');
-const changed = await state('B');
+const parkedChoice = await choice();
+const prismatic = parkedChoice?.options.find((one) => one.label === 'Prismatic');
 record(
-  'parked mid-cycle, a change of both facts is still one entry and leaves nothing staged',
-  wasDisplaced &&
-    changed.slider &&
-    changed.welded &&
-    changed.entries - parked.entries === 1 &&
-    changed.staged === null,
-  { parked, changed }
+  'parked mid-cycle, the choice still shows Revolute and refuses the others with the way back',
+  parked.atStart === false &&
+    parkedChoice?.options.find((one) => one.chosen)?.label === 'Revolute' &&
+    parkedChoice.options
+      .filter((one) => !one.chosen)
+      .every((one) => one.off && /parked mid-cycle/.test(one.reason ?? '')),
+  { parked, parkedChoice }
 );
-await history('undo');
-record('and Undo takes it back', (await state('B')).slider === false, await state('B'));
+await page
+  .locator('app-edit-panel segmented-block button', { hasText: 'Prismatic' })
+  .first()
+  .click({ force: true });
+await page.waitForTimeout(500);
+const untouched = await state('B');
+record(
+  'and a press on a refused type changes nothing and adds no entry',
+  prismatic?.off === true &&
+    untouched.slider === false &&
+    untouched.entries === parked.entries &&
+    untouched.staged === null,
+  { parked, untouched }
+);
 
 // ------------------------------------------------------------- 5. a group
 console.log('\na group of joints takes a type in one press');
