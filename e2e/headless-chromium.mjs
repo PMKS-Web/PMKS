@@ -20,24 +20,46 @@
 
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-function playwrightChromium() {
-  const root = process.env.PMKS_PLAYWRIGHT_DIR ?? process.cwd();
-  try {
-    return createRequire(path.join(root, 'package.json'))('playwright').chromium;
-  } catch {
-    // No Playwright where it is looked for: the suite will say so itself.
-    return undefined;
+const here = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Every Playwright a suite can be holding, found the way the suites find it.
+ *
+ * Most import `<PMKS_PLAYWRIGHT_DIR>/node_modules/playwright/index.mjs`, with
+ * `/tmp/pmks-playwright` when it is unset; a relative directory -- CI sets
+ * `..` -- is resolved against `e2e/`, where those imports are written. A few
+ * import bare `playwright`, which is the repository's own copy. Those can be
+ * two installations with two `chromium` objects, and each needs the change.
+ */
+function playwrightChromiums() {
+  const dirs = [process.env.PMKS_PLAYWRIGHT_DIR ?? '/tmp/pmks-playwright', '..'];
+  const found = new Set();
+  for (const dir of dirs) {
+    const root = path.resolve(here, dir);
+    try {
+      found.add(createRequire(path.join(root, 'package.json'))('playwright').chromium);
+    } catch (error) {
+      // Nothing installed there is the ordinary case for one of the two, and a
+      // suite that needed it says so itself. Anything else is worth seeing.
+      if (error?.code !== 'MODULE_NOT_FOUND') throw error;
+    }
   }
+  return [...found].filter(Boolean);
 }
 
-const chromium = process.env.PMKS_HEADLESS_SHELL ? undefined : playwrightChromium();
+/** Add `channel: 'chromium'` unless the launch already chose its browser. */
+function asChrome(options = {}) {
+  return options.headless === false || options.channel || options.executablePath
+    ? options
+    : { ...options, channel: 'chromium' };
+}
 
-if (chromium && !chromium.launch.pmksRealChrome) {
-  const asChrome = (options = {}) =>
-    options.headless === false || options.channel || options.executablePath
-      ? options
-      : { ...options, channel: 'chromium' };
+const chromiums = process.env.PMKS_HEADLESS_SHELL === '1' ? [] : playwrightChromiums();
+
+for (const chromium of chromiums) {
+  if (chromium.launch.pmksRealChrome) continue;
   const launch = chromium.launch.bind(chromium);
   const persistent = chromium.launchPersistentContext.bind(chromium);
   chromium.launch = (options) => launch(asChrome(options));

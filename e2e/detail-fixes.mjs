@@ -96,14 +96,28 @@ const tags = await page.evaluate(() => {
   const grid = ng.getComponent(document.querySelector('app-new-grid'));
   return grid.mechanismSrv.getLinks().map((link) => {
     const tag = grid.linkLabelStyle(link);
-    return { id: link.id, name: tag.name, angle: tag.angle, joints: link.joints.length };
+    const [a, b] = link.joints;
+    const bearing = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+    return {
+      id: link.id,
+      name: tag.name,
+      angle: tag.angle,
+      joints: link.joints.length,
+      bearing: Math.round(bearing * 10) / 10,
+    };
   });
 });
 // Since #275 a bar's name runs along the bar whatever its length: whether two
 // letters lay flat used to depend on the drawing style's width.
+// Along it: the screen is y-down, so the label turns by minus the bar's bearing,
+// give or take a half turn to stay upright -- which keeps it in [-100, 80).
+const alongItsBar = (tag) => {
+  const off = (((tag.angle + tag.bearing) % 180) + 180) % 180;
+  return Math.min(off, 180 - off) < 0.5;
+};
 record(
   'a two-letter name runs along its bar, the right way up',
-  tags.every((tag) => tag.angle !== 0 && tag.angle >= -100 && tag.angle < 80),
+  tags.every((tag) => alongItsBar(tag) && tag.angle >= -100 && tag.angle < 80),
   tags
 );
 
@@ -328,10 +342,13 @@ record(
 );
 
 // --- a graph's playhead is on its own machine's clock -----------------------
-const playhead = await page.evaluate(async () => {
+// Inside Angular, as the clicks it stands in for would be, so the graph that is
+// read is the one this selection drew.
+const playhead = await inAngular(page, async () => {
   const grid = ng.getComponent(document.querySelector('app-new-grid'));
   const srv = grid.mechanismSrv;
   const bar = ng.getComponent(document.querySelector('app-playback-bar'));
+  const wait = (ms) => new Promise((done) => setTimeout(done, ms));
   if (bar.synced) bar.toggleSync();
   // A joint of one machine, graphed -- asked by ownership, since the order the
   // partition lists machines in is not this suite's to assume.
@@ -339,20 +356,24 @@ const playhead = await page.evaluate(async () => {
   const parkedIndex = srv.indexOfMechanismContaining(traced);
   const runningIndex = srv.mechanisms.findIndex((_, i) => i !== parkedIndex);
   grid.activeObjService.updateSelectedObj(traced);
-  await new Promise((done) => setTimeout(done, 700));
+  await wait(700);
   // Only if nothing is open: the sections remember which quantity was
   // expanded, so a click here would close the one already showing.
   if (!document.querySelector('app-analysis-graph')) {
     document.querySelector('app-analysis-graph-section .graphHeader')?.click();
-    await new Promise((done) => setTimeout(done, 1600));
+    await wait(1600);
   }
-  // Park it, and run the first machine instead.
+  const graph = document.querySelector('app-analysis-graph');
+  const graphOf = graph ? ng.getComponent(graph).mechPart : null;
+  // Park it, and run the first machine instead -- read once the seek is drawn.
   srv.seekMechanism(parkedIndex, 3);
+  await wait(500);
   if (!srv.isMechanismPlaying(runningIndex)) srv.toggleMechanismPlaying(runningIndex);
   // Where the playhead stands, as the line's own x: it carries no label now.
   const label = () =>
     document.querySelector('.apexcharts-xaxis-annotations line')?.getAttribute('x1') ?? '';
   const before = {
+    graphOf,
     at: label(),
     running: srv.secondsOf(runningIndex),
     parked: srv.secondsOf(parkedIndex),
@@ -375,7 +396,9 @@ record(
 );
 record(
   "a paused machine's graph keeps its playhead where the machine is",
-  playhead.before.at === playhead.after.at && playhead.after.at !== '',
+  playhead.before.graphOf === 'T' &&
+    playhead.before.at === playhead.after.at &&
+    playhead.after.at !== '',
   playhead
 );
 
@@ -649,8 +672,24 @@ await page.waitForTimeout(900);
 await page.setViewportSize({ width: 1500, height: 700 });
 // Only the folded ones, and by a real press: a section that starts open would
 // fold at one, and a click dispatched from here was never rendered.
-const folded = page.locator('app-analysis-setup .sectionHeader[aria-expanded="false"]');
-while ((await folded.count()) > 0) await folded.first().click();
+// Each once, and each must open: a header that took the click and stayed shut
+// would otherwise be clicked until the job timed out.
+const HEADERS = 'app-analysis-setup .sectionHeader';
+const headers = page.locator(HEADERS);
+for (let at = 0, count = await headers.count(); at < count; at++) {
+  if ((await headers.nth(at).getAttribute('aria-expanded')) !== 'false') continue;
+  await headers.nth(at).click();
+  await page
+    .waitForFunction(
+      ([selector, at]) =>
+        document.querySelectorAll(selector)[at]?.getAttribute('aria-expanded') === 'true',
+      [HEADERS, at],
+      { timeout: 3000 }
+    )
+    .catch(() => {});
+}
+const stillFolded = await page.locator(`${HEADERS}[aria-expanded="false"]`).count();
+record('every folded setup section opens at a press', stillFolded === 0, stillFolded);
 await page.waitForTimeout(800);
 const gapsSynced = await drawerGaps();
 record(

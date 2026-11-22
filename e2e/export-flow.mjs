@@ -582,6 +582,12 @@ await page.waitForTimeout(300);
 // one machine with two inputs -- and the second is let go, with a sentence.
 await page.goto(`${BASE}/?${payloads['4-Bar']}`, { waitUntil: 'domcontentloaded' });
 await waitForReady(page);
+const drivenBefore = await page.evaluate(() =>
+  ng
+    .getComponent(document.querySelector('app-new-grid'))
+    .mechanismSrv.joints.filter((joint) => joint.input)
+    .map((joint) => joint.id)
+);
 await page.evaluate(() => {
   const srv = ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv;
   const JointClass = Object.getPrototypeOf(srv.joints[0]).constructor;
@@ -615,13 +621,22 @@ const joined = await page.evaluate(() => {
   return {
     machines: srv.partitions.length,
     inputs: srv.joints.filter((joint) => joint.input).map((joint) => joint.id),
-    said: grid.notify.live.map((one) => one.text ?? one.message ?? ''),
+    said: grid.notify.live.filter((one) => one.id === 'input.oneDriven').map((one) => one.text),
   };
 });
 record(
   "a chain bolted to another machine's ground is part of that machine, driven once",
   joined.machines === 1 && joined.inputs.length === 1,
   joined
+);
+// The four-bar's own drive is the one kept -- the first in the machine's order,
+// which is what was already running -- and the chain's is let go out loud.
+record(
+  'and the drive kept is the one that was running, with a sentence for the other',
+  drivenBefore.length === 1 &&
+    joined.inputs[0] === drivenBefore[0] &&
+    joined.said.some((text) => text.includes('G is no longer driven')),
+  { drivenBefore, ...joined }
 );
 
 // Two machines of their own, for the archive below.
@@ -643,6 +658,20 @@ record(
   'more than two files come down as one archive, not one prompt each',
   archive.name.endsWith('.zip') && zipped[0] === 0x50 && zipped.includes(Buffer.from('.csv')),
   archive.name
+);
+
+// Every picture of two machines, in one archive: each needs a name of its own,
+// or one entry quietly writes over another.
+await drawer().locator('.formatRow', { hasText: 'Graph images' }).click();
+await page.waitForTimeout(200);
+await drawer().locator('.segmented button', { hasText: 'SVG' }).click();
+await page.waitForTimeout(300);
+const bothMachines = await grab(() => page.locator('.nextButton').click());
+const pictureNames = readStoredZip(readFileSync(bothMachines.path)).map((entry) => entry.name);
+record(
+  "two machines' pictures come down under names of their own",
+  pictureNames.length > 2 && new Set(pictureNames).size === pictureNames.length,
+  pictureNames
 );
 
 // --- a long list scrolls, and its decisions do not --------------------------

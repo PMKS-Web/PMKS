@@ -119,7 +119,9 @@ fade, composited on SwiftShader in Playwright's `chromium-headless-shell`, stopp
 screenshot, `isVisible` and click waited. Hiding the canvas or the splash, or dropping the fade,
 cured it; `--disable-gpu` and `--disable-gpu-compositing` did not. Chrome headed, or in its new
 headless mode (`channel: 'chromium'`), ran it every time, so readers do not meet it.
-`e2e/headless-chromium.mjs` makes every suite's `chromium.launch()` the new headless mode. If a
+`e2e/headless-chromium.mjs` makes `chromium.launch()` the new headless mode: for every suite
+`run-suites.mjs` starts, and for a suite run on its own when it imports `app-ready.mjs` or the
+helper itself. If a
 suite hangs on a template with no error, count frames before suspecting the app.
 
 ### An e2e suite that launches the machine's own Chrome is not portable

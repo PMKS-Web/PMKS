@@ -320,17 +320,17 @@ try {
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   check('existing multiword names can be saved unchanged', (await field('Name').count()) === 0);
   await page.getByRole('button', { name: 'Play', exact: true }).click();
-  // The fade is on each live button rather than the row: a disabled button
-  // already fades itself, and fading the row too left it at a third.
+  // The fade is on each button rather than the row: a disabled button already
+  // fades itself (`mini-buttons`), and fading the row too left it at a third.
+  // Every one is read, the disabled ones included, so a disabled button drawn
+  // at full strength is caught too.
   const headerButtons = () =>
     page
       .locator('editable-title-block .row .mini-buttons')
-      .evaluateAll((nodes) =>
-        nodes.map((n) => (n.disabled ? 0 : Number(getComputedStyle(n).opacity)))
-      );
+      .evaluateAll((nodes) => nodes.map((n) => Number(getComputedStyle(n).opacity)));
   await page.waitForFunction(() =>
     [...document.querySelectorAll('editable-title-block .row .mini-buttons')].every(
-      (n) => n.disabled || Number(getComputedStyle(n).opacity) < 0.7
+      (n) => Number(getComputedStyle(n).opacity) < 0.7
     )
   );
   const frozen = await headerButtons();
@@ -361,13 +361,20 @@ try {
   const speed = page.getByRole('textbox', { name: 'Input Speed', exact: true });
   await speed.fill('0');
   await speed.press('Tab');
+  // Waited for, not glanced at: `isVisible` answers at once, and the refusal is
+  // said a moment after the field lets go -- about one run in three it was not
+  // there yet.
   check(
     'zero Input Speed explains its refusal',
     await page
       .getByText('Input Speed must be a nonzero number. Use Pause to stop the animation.', {
         exact: true,
       })
-      .isVisible()
+      .waitFor({ state: 'visible', timeout: 3000 })
+      .then(
+        () => true,
+        () => false
+      )
   );
   await page.setViewportSize({ width: 760, height: 680 });
   await page.waitForTimeout(450);
