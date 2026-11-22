@@ -365,15 +365,21 @@ const playhead = await inAngular(page, async () => {
   }
   const graph = document.querySelector('app-analysis-graph');
   const graphOf = graph ? ng.getComponent(graph).mechPart : null;
+  // Where the playhead stands, as the line's own x: it carries no label now.
+  const label = () =>
+    document.querySelector('.apexcharts-xaxis-annotations line')?.getAttribute('x1') ?? '';
+  // Seeked twice, so the line is seen to follow its own machine's clock before
+  // it is asked to stay put: a line that never moved would pass the stay-put.
+  srv.seekMechanism(parkedIndex, 1);
+  await wait(500);
+  const atOne = label();
   // Park it, and run the first machine instead -- read once the seek is drawn.
   srv.seekMechanism(parkedIndex, 3);
   await wait(500);
   if (!srv.isMechanismPlaying(runningIndex)) srv.toggleMechanismPlaying(runningIndex);
-  // Where the playhead stands, as the line's own x: it carries no label now.
-  const label = () =>
-    document.querySelector('.apexcharts-xaxis-annotations line')?.getAttribute('x1') ?? '';
   const before = {
     graphOf,
+    atOne,
     at: label(),
     running: srv.secondsOf(runningIndex),
     parked: srv.secondsOf(parkedIndex),
@@ -397,6 +403,7 @@ record(
 record(
   "a paused machine's graph keeps its playhead where the machine is",
   playhead.before.graphOf === 'T' &&
+    playhead.before.atOne !== playhead.before.at &&
     playhead.before.at === playhead.after.at &&
     playhead.after.at !== '',
   playhead

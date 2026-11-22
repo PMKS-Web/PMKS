@@ -673,6 +673,22 @@ record(
   pictureNames.length > 2 && new Set(pictureNames).size === pictureNames.length,
   pictureNames
 );
+// And every machine is in it: each joint either machine is made of has its
+// position graph, under that machine's name -- an export that dropped one
+// machine would still have names of their own.
+const owned = await page.evaluate(() =>
+  ng
+    .getComponent(document.querySelector('app-new-grid'))
+    .mechanismSrv.partitions.map((partition) => partition.ownJoints.map((joint) => joint.id))
+);
+const missingPictures = owned
+  .flatMap((ids, at) => ids.map((id) => `_M${at + 1}_Position_of_Joint_${id}.svg`))
+  .filter((ending) => !pictureNames.some((name) => name.endsWith(ending)));
+record(
+  'and both machines are in it, every joint of each',
+  owned.length === 2 && missingPictures.length === 0,
+  { owned, missingPictures }
+);
 
 // --- a long list scrolls, and its decisions do not --------------------------
 await page.goto(`${BASE}/?${TWO_FOUR_BARS}`, { waitUntil: 'domcontentloaded' });

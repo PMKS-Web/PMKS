@@ -676,7 +676,7 @@ for (const mechanism of MECHANISMS) {
       if (LOAD_FIELDS.test(field)) {
         record(
           `${what} — the new value is taken, as one entry to undo`,
-          after.history[1] > before.history[1] && after.design !== before.design,
+          after.history[1] === before.history[1] + 1 && after.design !== before.design,
           { from: control.value, history: [before.history, after.history] }
         );
       }
