@@ -216,7 +216,7 @@ describe('one slider-crank chain, each link held still in turn', () => {
     expect(named('L1')).toEqual(['AD', 'EH', 'JN', 'QR']);
     expect(named('L2')).toEqual(['AB', 'EF', 'IJ', 'PQ']);
     expect(named('L3')).toEqual(['BC', 'FG', 'IK', 'OP']);
-    expect(named('L4')).toEqual(['KLM']);
+    expect(named('L4')).toEqual(['KM']);
     // The slide is between L1 and L4 every time: the block on L1's rail or
     // slot in the first two, L4's sleeve on L1's slot in the third, and L1's
     // rod in L4's guide, which is the ground, in the fourth.
@@ -224,8 +224,8 @@ describe('one slider-crank chain, each link held still in turn', () => {
       const on = fixture.sliders!.find((slider) => slider.at === at)!.on;
       return on ? fixture.links.find((link) => link.joints === on.carrier)!.name : 'ground';
     };
-    expect(['C', 'G', 'L', 'M', 'R'].map(carrier)).toEqual(['L1', 'L1', 'L1', 'L1', 'ground']);
-    expect(fixture.welds).toEqual(['R']);
+    expect(['C', 'G', 'M', 'R'].map(carrier)).toEqual(['L1', 'L1', 'L1', 'ground']);
+    expect(fixture.welds).toEqual(['M', 'R']);
   });
 
   it('holds a different link still each time, and draws it where it is a bar', () => {
@@ -262,7 +262,7 @@ describe('one slider-crank chain, each link held still in turn', () => {
       return Math.atan2(b.y - a.y, b.x - a.x);
     };
     cylinder.joints.forEach((frame) => {
-      const skew = heading(frame, 'J', 'N') - heading(frame, 'L', 'M');
+      const skew = heading(frame, 'J', 'N') - heading(frame, 'K', 'M');
       expect(Math.abs(Math.sin(skew))).toBeLessThan(1e-6);
     });
   });

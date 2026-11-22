@@ -326,38 +326,33 @@ export function sliderCrankInversionsFixture(): MechanismFixture {
   // piston, is the cylinder now, rocking on the trunnion; L1, which was the
   // frame, is the piston rod, pinned to the crank and sliding through it.
   //
-  // The cylinder is drawn as a short sleeve carrying two pins, one either
-  // side of the trunnion, that ride a slot down the piston rod. Two pins on
-  // one line hold the rod in line with the sleeve, which is what a piston in
-  // its bore does; the app cannot yet solve a rod welded to a block sliding
-  // in a slot that itself moves, so this is how the bore is drawn. The rod
-  // reaches past the sleeve at both ends of the stroke: the crank pin is
-  // between ROD - CRANK and ROD + CRANK from the trunnion.
+  // The cylinder is drawn as a short sleeve from the trunnion to one Slide,
+  // M, riding the piston rod. A Slide cannot turn against its slot, so the
+  // rod stays in line with the sleeve, which is what a piston in its bore
+  // does. The rod reaches past the sleeve at both ends of the stroke: the
+  // crank pin is between ROD - CRANK and ROD + CRANK from the trunnion.
   const cylinderAt = { x: 0, y: 0.5 };
   const trunnion = { x: cylinderAt.x, y: cylinderAt.y + ROD };
   const cylinderElbow = along(cylinderAt, turned(1, -30), CRANK);
   const bore = unit(cylinderElbow, trunnion);
-  const SLEEVE = 0.45;
-  const RAM = ROD + CRANK + SLEEVE + 0.5;
+  const SLEEVE = 0.6;
+  const RAM = ROD + CRANK + 0.95;
   const oscillating: MechanismFixture = {
     joints: [
       { id: 'I', ...cylinderAt, ground: true, input: true, driveSpeed: LIBRARY_RPM },
       { id: 'J', ...cylinderElbow },
       { id: 'K', ...trunnion, ground: true },
-      { id: 'L', ...along(trunnion, bore, -SLEEVE) },
-      { id: 'M', ...along(trunnion, bore, SLEEVE) },
+      { id: 'M', ...along(trunnion, bore, -SLEEVE) },
       { id: 'N', ...along(cylinderElbow, bore, RAM) },
     ],
     links: [
       { joints: 'IJ', name: 'L2', mass: 0, moi: 0 },
       { joints: 'IK', name: 'L3', mass: 0, moi: 0 },
-      { joints: 'KLM', name: 'L4', mass: 0, moi: 0 },
+      { joints: 'KM', name: 'L4', mass: 0, moi: 0 },
       { joints: 'JN', name: 'L1', mass: 0, moi: 0 },
     ],
-    sliders: [
-      { at: 'L', on: { carrier: 'JN', a: 'J', b: 'N' } },
-      { at: 'M', on: { carrier: 'JN', a: 'J', b: 'N' } },
-    ],
+    sliders: [{ at: 'M', on: { carrier: 'JN', a: 'J', b: 'N' } }],
+    welds: ['M'],
     inputAngVel: radPerSecond(LIBRARY_RPM),
   };
 
