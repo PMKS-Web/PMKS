@@ -54,7 +54,17 @@ const openTutorial = async () => {
     .locator('.menuItem', { hasText: /Tutorial/ })
     .first()
     .click();
+  // Over a drawing the tutorial asks before clearing the grid.
+  const clear = page.getByRole('button', { name: 'Clear and Start' });
+  if (await clear.isVisible({ timeout: 1500 }).catch(() => false)) await clear.click();
   await page.waitForTimeout(700);
+  // The clear leaves the export page nearly empty, and these checks are about a
+  // page too long to fit. The tutorial's own four-bar, built through step 4,
+  // fills it again and keeps the card pinned.
+  for (let step = 0; step < 4; step++) {
+    await page.locator('.doItButton').click();
+    await page.waitForTimeout(3200);
+  }
 };
 
 /** The cards in the drawer and the view controls, as boxes. */

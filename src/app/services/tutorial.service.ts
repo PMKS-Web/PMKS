@@ -481,6 +481,9 @@ export class TutorialService {
   private resume(): void {
     this.exited = false;
     this.knownStep = stepOf(this.mechanism.joints, this.mechanism.links);
+    // An undo while the card was away may have taken the input back off. The
+    // play that came before it was of a machine that is no longer there.
+    if (this.knownStep < 5) this.hasPlayed = false;
     this.landOn(this.knownStep);
     // Steps one to four are made from the Edit menus. Adding a link is offered
     // nowhere else, so a resume from an analysis mode would otherwise send the
@@ -977,7 +980,9 @@ function largestPiece(links: Link[]): { links: Link[]; joints: RealJoint[] } | u
     while (queue.length > 0) {
       for (const joint of real(queue.pop()!.joints)) {
         for (const next of joint.links) {
-          if (!piece.has(next)) {
+          // Only through the links asked about: two bars joined by a cylinder
+          // are two pieces, or the step is handed one bar too few.
+          if (links.includes(next) && !piece.has(next)) {
             piece.add(next);
             queue.push(next);
           }
