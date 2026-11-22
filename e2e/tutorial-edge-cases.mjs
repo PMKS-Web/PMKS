@@ -527,6 +527,35 @@ const toKinematic = async (page) => {
   );
   await page.waitForTimeout(600);
   check('a scrub alone does not finish step 5', (await page.locator('.doneCard').count()) === 0);
+  // The real slider, not a poke: it publishes the moved pose as motion.
+  await page.locator('.rowScrubber').first().focus();
+  for (let i = 0; i < 40; i++) await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(400);
+  await poke(
+    page,
+    `srv.activeObjService.updateSelectedObj(srv.joints.find((j) => !j.ground && !j.input));`
+  );
+  await page.waitForTimeout(600);
+  check(
+    'dragging the slider does not finish step 5 either',
+    (await page.locator('.doneCard').count()) === 0
+  );
+  // A machine's own row Play, unsynced, runs it without the shared transport.
+  await poke(
+    page,
+    `srv.syncMechanisms = false;
+     const mover = srv.joints.find((j) => !j.ground && !j.input);
+     srv.toggleMechanismPlaying(srv.indexOfMechanismContaining(mover));
+     srv.activeObjService.updateSelectedObj(mover);`
+  );
+  await page.waitForTimeout(1200);
+  check(
+    'a row’s own Play, unsynced, counts as playing',
+    await page
+      .locator('.doneCard')
+      .isVisible()
+      .catch(() => false)
+  );
   await page.context().close();
 }
 

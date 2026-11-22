@@ -137,15 +137,16 @@ export class TutorialService {
   private knownStep: TutorialStepId = 1;
 
   constructor() {
-    this.settings.animating.subscribe((animating) => {
-      if (animating) this.hasPlayed = true;
-      this.checkForFinish();
-    });
+    // `animating` also turns on for a scrubbed pose, so it is a cue to look,
+    // not proof of a play: only the chain's own machine running counts.
+    this.settings.animating.subscribe(() => this.noticePlay());
     this.activeObj.onActiveObjChange.subscribe(() => this.checkForFinish());
     // A moved pose finishes nothing on its own: scrubbing one step along at
     // the start of the cycle completed the lesson at 0.00 s with Play never
     // pressed. The step asks for Play, so only playing counts as having played.
-    this.mechanism.onMechPositionChange.subscribe(() => this.checkForFinish());
+    // A row's own Play, unsynced, starts its machine without touching
+    // `animating`, so the frames it draws are where that play is seen.
+    this.mechanism.onMechPositionChange.subscribe(() => this.noticePlay());
     this.urlProcessor.drawingReplaced.subscribe(() => {
       if (!this.started) return;
       // The first replacement is the one that matters. A second template opened
@@ -359,6 +360,16 @@ export class TutorialService {
       for (const joint of real(link.joints)) if (!joint.ground) joints.add(joint);
     }
     return [...joints];
+  }
+
+  /** Record a play of the chain's machine if one is running, then check. */
+  private noticePlay(): void {
+    const input = this.chainInput();
+    if (input) {
+      const index = this.mechanism.indexOfMechanismContaining(input);
+      if (index !== -1 && this.mechanism.isMechanismPlaying(index)) this.hasPlayed = true;
+    }
+    this.checkForFinish();
   }
 
   /** The input on the chain the tutorial is reading, if one is set. */
