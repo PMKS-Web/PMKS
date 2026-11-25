@@ -200,7 +200,12 @@ function refuseWeld(
   // A weld is the statement that the bodies at this joint do not move relative
   // to each other, and an input is the statement that they do. Both at once is
   // not a state the model can honor.
-  if (joint.input && (!joint.ground || joint instanceof PrisJoint)) {
+  //
+  // Except on a slider, where the weld is the Slide: it stops the riders
+  // turning against the slot and leaves them free to travel along it, which is
+  // the one motion a slider's (linear) input drives. A driven Pin-in-slot
+  // therefore becomes a driven Prismatic joint without losing its input (#384).
+  if (joint.input && !joint.ground && !(joint instanceof PrisJoint)) {
     return {
       code: 'weld.is-driven',
       short: 'it is an input',

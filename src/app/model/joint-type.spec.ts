@@ -150,6 +150,17 @@ describe('joint type', () => {
     expect(refuseJointType(driven, 'revolute', context)).toBeUndefined();
   });
 
+  it('lets a driven Pin-in-slot become Prismatic, keeping its linear input (#384)', () => {
+    // The Slide's weld stops the riders turning against the slot; the input
+    // drives travel along it, which the weld leaves alone.
+    const driven = pinOn(1, { block: true, driven: true });
+    expect(jointTypeAt(driven, context)).toBe('pin-in-slot');
+    expect(refuseJointType(driven, 'prismatic', context)).toBeUndefined();
+    expect(refuseJointType(pinOn(2, { block: true, driven: true }), 'prismatic', context)).toBe(
+      undefined
+    );
+  });
+
   it('draws the grounded set on every option of a grounded joint', () => {
     expect(jointTypeIcon('pin-in-slot', false)).toBe('joint_pin_in_slot');
     expect(jointTypeIcon('pin-in-slot', true)).toBe('joint_pin_in_slot_grounded');
