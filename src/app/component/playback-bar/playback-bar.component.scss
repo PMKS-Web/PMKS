@@ -681,6 +681,77 @@
     }
   }
 
+  // Notable poses along one mechanism's rail: amber diamonds for toggle/branch
+  // positions and red circles for peak input torque or force. Positioned with
+  // the exact thumb-center geometry `.anchorSeat` uses so clicking a marker
+  // parks the handle straight onto it.
+  .poiMarker {
+    position: absolute;
+    left: calc(12px + (100% - 24px) * var(--at, 0) / 100);
+    top: 50%;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform: translate(-50%, calc(-50% + var(--poi-y, 0px)));
+    cursor: pointer;
+    z-index: 2;
+
+    &:hover .poiGlyph,
+    &:focus-visible .poiGlyph {
+      transform: scale(1.3);
+    }
+
+    &.toggle:hover .poiGlyph,
+    &.toggle:focus-visible .poiGlyph {
+      transform: rotate(45deg) scale(1.3);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--brand);
+      outline-offset: 1px;
+      border-radius: 50%;
+    }
+
+    &.covered {
+      z-index: 0;
+      pointer-events: none;
+    }
+  }
+
+  .poiGlyph {
+    display: block;
+    box-sizing: border-box;
+    border: 1.5px solid var(--surface);
+    box-shadow: var(--thumb-shadow);
+    transition: transform 0.12s ease;
+  }
+
+  .poiMarker.toggle .poiGlyph {
+    width: 8px;
+    height: 8px;
+    border-radius: 1.5px;
+    background: var(--warning);
+    transform: rotate(45deg);
+  }
+
+  .poiMarker.maxEffort .poiGlyph {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--danger);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .poiGlyph {
+      transition: none;
+    }
+  }
+
   // A cycle that does not exist gets a rail and nothing else -- no cap, no
   // seat, no handle, because none of the three means anything. The card keeps
   // the shape it has in every other state; only its contents go inert.

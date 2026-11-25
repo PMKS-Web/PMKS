@@ -45,6 +45,9 @@ import { PrisJoint, RealJoint } from '../../model/joint';
 import { inputSetFor, NO_INPUT_SET } from '../../model/mechanism/readiness';
 import { StartMoveRefusal } from '../../model/start-move-refusal';
 import { snapsToStart } from '../../model/scrub-snap';
+import { Mechanism } from '../../model/mechanism/mechanism';
+import { PlaybackPoint, playbackPointsOf } from '../../model/playback-points';
+import { PlaybackRailMarker, projectPlaybackMarkers } from './playback-markers';
 import { CdkConnectedOverlay, CdkOverlayOrigin, ConnectedPosition } from '@angular/cdk/overlay';
 
 /** What the stylesheet is asked for, and what to assume if it has not loaded. */
@@ -175,6 +178,8 @@ export interface PlaybackRow {
    * meant "where this starts".
    */
   startMoved: boolean;
+  /** Notable poses (toggle/branch points and peak input effort) along this row's rail. */
+  points: PlaybackPoint[];
 }
 
 /** A row that cannot be played, in the three pieces the reading line draws. */
@@ -477,6 +482,59 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
   }
 
   /**
+   * Cached points of interest per solved `Mechanism` instance.
+   *
+   * `Mechanism` is immutable once solved (and its force series is cached on it),
+   * so keying by mechanism + analysis-mode string keeps `rows` free during 60fps
+   * playback while automatically refreshing after any edit or static/dynamic switch.
+   */
+  private readonly pointCache = new WeakMap<Mechanism, Map<string, PlaybackPoint[]>>();
+
+  private pointsFor(index: number): PlaybackPoint[] {
+    const mechanism = this.mechanism.mechanisms[index];
+    if (!mechanism?.isMechanismValid()) return [];
+    const includeMaxEffort = this.tabs.isAnalysisMode();
+    const forceMode = this.settings.forceAnalysisMode.value;
+    const key = includeMaxEffort ? forceMode : 'toggles';
+    let byMode = this.pointCache.get(mechanism);
+    if (!byMode) {
+      byMode = new Map();
+      this.pointCache.set(mechanism, byMode);
+    }
+    let cached = byMode.get(key);
+    if (!cached) {
+      cached = playbackPointsOf(mechanism, this.mechanism.driveProfileOf(index), {
+        includeMaxEffort,
+        forceMode,
+      });
+      byMode.set(key, cached);
+    }
+    return cached;
+  }
+
+  /** Project a row's points of interest into positioned, tooltip-ready rail markers. */
+  markersFor(row: PlaybackRow): PlaybackRailMarker[] {
+    return projectPlaybackMarkers(row.points, row.scrub, {
+      forceMode: this.settings.forceAnalysisMode.value,
+      forceUnit: this.settings.forceUnit.value,
+      lengthUnit: this.settings.lengthUnit.value,
+      nup: this.nup,
+    });
+  }
+
+  /** Jump straight to a point of interest on this machine's rail and pause there. */
+  jumpToPoint(row: PlaybackRow, point: PlaybackPoint): void {
+    if (row.index < 0) return;
+    this.startMenuFor = null;
+    this.mechanism.clearStartMoved();
+    if (this.mechanism.isMechanismPlaying(row.index)) {
+      this.mechanism.toggleMechanismPlaying(row.index);
+    }
+    this.mechanism.seekMechanism(row.index, point.timeSeconds);
+    this.publishMotion();
+  }
+
+  /**
    * Take back the edit that moved the start, and the old start with it.
    *
    * The same Undo the message carried: one thing happened, so one thing takes
@@ -655,6 +713,7 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
       // on a machine's own row: the combined row stands for several cycles, and
       // "142 degrees from start" is a fact about one input.
       displaced: combined ? undefined : this.displacementOf(index),
+      points: combined || this.mechanism.solvingIsDeferred ? [] : this.pointsFor(index),
     };
   }
 
@@ -823,6 +882,7 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
         inert: false,
         deferred: true,
         startMoved: false,
+        points: [],
       };
     });
   }
@@ -853,6 +913,7 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
       inert: true,
       deferred: false,
       startMoved: false,
+      points: [],
     };
   }
 

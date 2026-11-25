@@ -382,6 +382,24 @@
           aria-label="Return to start pose"
         ></button>
       }
+      @for (marker of markersFor(row); track marker.point.id) {
+        <button
+          type="button"
+          class="poiMarker"
+          [class.toggle]="marker.point.kind === 'toggle'"
+          [class.branch]="marker.point.toggleReason === 'branch'"
+          [class.maxEffort]="marker.point.kind === 'max-effort'"
+          [class.covered]="marker.covered"
+          [style.--at]="marker.percent"
+          [style.--poi-y.px]="marker.offsetY"
+          [matTooltip]="marker.tooltip"
+          matTooltipPosition="above"
+          [attr.aria-label]="marker.ariaLabel"
+          (click)="jumpToPoint(row, marker.point); $event.stopPropagation()"
+        >
+          <span class="poiGlyph" aria-hidden="true"></span>
+        </button>
+      }
     }
     <!-- The handle likewise: moving one machine along its own travel is
            watching it, not picking it. -->

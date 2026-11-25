@@ -177,6 +177,7 @@ export const SUITES = [
     lanes: NIGHTLY,
     note: 'Launches firefox, webkit. The gate installs neither, and the machine that timed this list had neither, so the number beside it is a boot, not a run.',
   },
+  { name: 'playback-points', seconds: 20, lanes: NIGHTLY },
   { name: 'playback-stepping', seconds: 159, lanes: NIGHTLY },
   {
     name: 'playback-timing',
