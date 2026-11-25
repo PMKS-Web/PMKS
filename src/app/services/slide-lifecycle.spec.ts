@@ -216,6 +216,30 @@ describe('a compound weld left describing nothing', () => {
     expect(pin.isWelded).toBe(false);
   });
 
+  it('is also stripped at the loose end of a compound welded at another joint', () => {
+    // Weld the rider CD to another bar DE at D to form compound CDE. C only
+    // touches the CD leaf, so taking C's slot off must strip C's arrived
+    // `isWelded` flag instead of treating CDE's weld at D as a weld at C.
+    const s = sliderWithRider();
+    const e = new RevJoint('E', 5, 2);
+    const de = new RealLink('DE', [s.d, e], 1, 1, new Coord(3.5, 2));
+    s.service.joints.push(e);
+    s.service.links.push(de);
+    wireGraph(s.service);
+    s.active.updateSelectedObj(s.d);
+    s.service.weldJoint();
+    s.active.updateSelectedObj(live(s, 'C')!);
+    s.service.weldJoint();
+
+    s.active.updateSelectedObj(live(s, 'C')!);
+    s.service.toggleSlider();
+
+    const pin = live(s, 'C')!;
+    expect(pin instanceof PrisJoint).toBe(false);
+    expect(pin.isWelded, 'only one leaf touches C, so the weld flag comes off').toBe(false);
+    expect(live(s, 'D')!.isWelded, 'the real weld at D stays').toBe(true);
+  });
+
   it('survives the ground toggle, which no longer takes the slot', () => {
     // `toggleGround` used to have its own slider-removal branch, so un-grounding
     // a Slide destroyed the block and stranded the weld flag. Ground and the

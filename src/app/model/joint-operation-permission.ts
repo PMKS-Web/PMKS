@@ -225,6 +225,22 @@ function refuseWeld(
 }
 
 /**
+ * How many leaf bars of `link` actually meet at `joint`.
+ *
+ * A compound link sits as one entry in `joint.links` whether its weld is *at*
+ * `joint` (two or more leaves touching `joint`) or at some other joint (only
+ * one leaf reaching `joint`). Counting the leaves that carry `joint` tells
+ * those two apart.
+ */
+export function memberBarsTouching(link: RealLink, joint: RealJoint): number {
+  if (link.subset.length === 0) return link.joints.includes(joint) ? 1 : 0;
+  return link.subset.reduce(
+    (count, child) => count + (child instanceof RealLink ? memberBarsTouching(child, joint) : 0),
+    0
+  );
+}
+
+/**
  * Whether a weld that a change of type *keeps* still has two bodies to fuse
  * once the slot leaves.
  *
@@ -235,17 +251,23 @@ function refuseWeld(
  * for it to be rigid about and takes it away: the reader who chose Welded would
  * be handed a Revolute without a word.
  *
- * Asked the way that reconciler looks — a compound already standing at the
- * joint, or two bars it can still fuse into one. A compound counts as one link,
- * which is why counting `links` is not enough.
+ * Asked by leaf bars touching the joint rather than by `links.length` or
+ * `subset.length > 0`: a compound fused *at* this joint counts once per leaf
+ * meeting here (two or more, so the weld survives), while a compound welded at
+ * some other joint has only one leaf reaching here and is refused just like a
+ * plain bar — matching Pin-in-slot to Welded.
  */
 export function weldOutlivesTheSlot(joint: RealJoint): OperationRefusal | undefined {
   const bars = joint.links.filter((link): link is RealLink => link instanceof RealLink);
-  if (bars.length >= 2 || bars.some((bar) => bar.subset.length > 0)) return undefined;
+  const meeting = bars.reduce((sum, bar) => sum + memberBarsTouching(bar, joint), 0);
+  if (meeting >= 2) return undefined;
   return {
     code: 'weld.needs-two-links',
     short: 'needs 2 links',
-    long: 'A weld fuses the links that meet at a joint, and without its slot only one meets here.',
+    long:
+      meeting <= 0
+        ? 'A weld fuses links that meet at a joint, and this joint isn’t connected to any links.'
+        : 'A weld fuses the links that meet at a joint, and without its slot only one meets here.',
   };
 }
 

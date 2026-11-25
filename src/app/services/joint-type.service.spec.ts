@@ -357,4 +357,32 @@ describe('JointTypeService', () => {
       expect(runs(), `runs after ${there} and back`).toBe(true);
     }
   });
+
+  it('refuses Welded from Prismatic at the loose end of a compound welded elsewhere', () => {
+    // Weld B so AB and BC fuse into compound ABC. At A, only the AB leaf
+    // touches A: Pin-in-slot and Prismatic must both refuse Welded, while B
+    // (where both AB and BC meet) can still go Welded -> Prismatic -> Welded.
+    const { harness, types, live } = bentBar();
+    expect(types.set(live('B'), 'welded')).toBe(true);
+    live('A').ground = true;
+    harness.service.updateMechanism(false);
+
+    for (const from of ['pin-in-slot', 'prismatic'] as const) {
+      expect(types.set(live('A'), from), `A to ${from}`).toBe(true);
+      const before = harness.saveCount();
+
+      expect(types.refusal(live('A'), 'welded')?.code, `A from ${from}`).toBe(
+        'weld.needs-two-links'
+      );
+      expect(types.set(live('A'), 'welded'), `A from ${from}`).toBe(false);
+      expect(types.typeOf(live('A')), `A stays ${from}`).toBe(from);
+      expect(harness.saveCount(), `A from ${from} saves nothing`).toBe(before);
+    }
+
+    // At B, both leaves meet, so Prismatic -> Welded stays allowed.
+    expect(types.set(live('B'), 'prismatic')).toBe(true);
+    expect(types.refusal(live('B'), 'welded')).toBeUndefined();
+    expect(types.set(live('B'), 'welded')).toBe(true);
+    expect(types.typeOf(live('B'))).toBe('welded');
+  });
 });

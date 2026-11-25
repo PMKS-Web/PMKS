@@ -112,6 +112,28 @@ describe('joint type', () => {
     compound.subset = [new RealLink('BC', [slideOnTwo, c]), new RealLink('BD', [slideOnTwo, d])];
     slideOnTwo.links.unshift(compound);
     expect(refuseJointType(slideOnTwo, 'welded', context)).toBeUndefined();
+    // But a compound welded at *another* joint (here C, joining BC and CD) has
+    // only one leaf touching B: removing B's slot leaves nothing welded at B,
+    // so Prismatic to Welded must refuse just as Pin-in-slot to Welded does.
+    const slideOnRemoteCompound = pinOn(0, { block: true, welded: true });
+    const remoteElbow = new RevJoint('C', 1, 1);
+    const remoteTip = new RevJoint('D', 2, 1);
+    const remoteCompound = new RealLink('BCD', [slideOnRemoteCompound, remoteElbow, remoteTip]);
+    remoteCompound.subset = [
+      new RealLink('BC', [slideOnRemoteCompound, remoteElbow]),
+      new RealLink('CD', [remoteElbow, remoteTip]),
+    ];
+    slideOnRemoteCompound.links.unshift(remoteCompound);
+    expect(refuseJointType(slideOnRemoteCompound, 'welded', context)?.code).toBe(
+      'weld.needs-two-links'
+    );
+    expect(refuseJointType(slideOnRemoteCompound, 'welded', context)?.long).toContain(
+      'without its slot'
+    );
+    // And a bare Prismatic joint with no links at all says it isn't connected.
+    expect(
+      refuseJointType(pinOn(0, { block: true, welded: true }), 'welded', context)?.long
+    ).toContain('isn’t connected to any links');
   });
 
   it('leaves a cylinder’s seal Prismatic, and refuses the other three', () => {
