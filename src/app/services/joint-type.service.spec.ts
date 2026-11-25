@@ -211,4 +211,62 @@ describe('JointTypeService', () => {
     expect(live('A').input, 'still the drive').toBe(true);
     expect(live('A').driveSpeed, 'at the speed it was turning').toBeCloseTo(-12, 9);
   });
+
+  it('makes a driven floating Pin-in-slot Prismatic, fusing its riders and keeping the drive (#384)', () => {
+    // P rides the bar AB and carries two riders. A slider's drive travels the
+    // slot, which the Slide's weld leaves free, so the change is allowed -- and
+    // has to fuse the two riders into one body, or the drive still sees three
+    // bodies at P (the carrier and two riders) and setup refuses it.
+    const harness = createMechanismHarness();
+    const a = new RevJoint('A', 0, 0, false, true);
+    const b = new RevJoint('B', 4, 0);
+    const p = new PrisJoint('P', 2, 0);
+    const c = new RevJoint('C', 2, 2);
+    const d = new RevJoint('D', 3, 2);
+    harness.service.joints = [a, b, p, c, d];
+    harness.service.links = [
+      new RealLink('AB', [a, b]),
+      new RealLink('CP', [c, p]),
+      new RealLink('DP', [d, p]),
+    ];
+    p.slideOn(harness.service.links[0], a, b);
+    wireGraph(harness.service);
+    p.input = true;
+    p.driveSpeed = 3;
+    harness.service.updateMechanism(false);
+    const types = Injector.create({
+      providers: [{ provide: JointTypeService, deps: [] }],
+      parent: harness.injector,
+    }).get(JointTypeService);
+    const live = (id: string): RealJoint =>
+      harness.service.joints.find((joint) => joint.id === id) as RealJoint;
+    expect(types.typeOf(live('P'))).toBe('pin-in-slot');
+    expect(types.refusal(live('P'), 'prismatic')).toBeUndefined();
+    const before = harness.saveCount();
+
+    expect(types.set(live('P'), 'prismatic')).toBe(true);
+
+    const slider = live('P') as PrisJoint;
+    expect(types.typeOf(slider)).toBe('prismatic');
+    expect(slider.input, 'still the drive').toBe(true);
+    expect(slider.driveSpeed).toBe(3);
+    const riders = harness.service.links.filter((link) => link.joints.includes(slider));
+    expect(riders.length, 'one fused rider').toBe(1);
+    expect(riders[0].joints.map((joint) => joint.id).sort()).toEqual(['C', 'D', 'P']);
+    expect(harness.saveCount() - before).toBe(1);
+  });
+
+  it('still refuses Welded on a driven slot, which would take the slot off first', () => {
+    const { harness, types, live } = bentBar();
+    types.set(live('B'), 'pin-in-slot');
+    live('B').input = true;
+    harness.service.updateMechanism(false);
+    const before = harness.saveCount();
+
+    expect(types.refusal(live('B'), 'welded')?.code).toBe('weld.is-driven');
+    expect(types.set(live('B'), 'welded')).toBe(false);
+
+    expect(types.typeOf(live('B'))).toBe('pin-in-slot');
+    expect(harness.saveCount()).toBe(before);
+  });
 });

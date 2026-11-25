@@ -205,7 +205,11 @@ function refuseWeld(
   // turning against the slot and leaves them free to travel along it, which is
   // the one motion a slider's (linear) input drives. A driven Pin-in-slot
   // therefore becomes a driven Prismatic joint without losing its input (#384).
-  if (joint.input && !joint.ground && !(joint instanceof PrisJoint)) {
+  // Only while the slot stays: a change of type to Welded takes the slot off
+  // first, and a drive measured along a slot has nothing to drive on the pin
+  // left behind, so that change is refused as it always was.
+  const refused = joint instanceof PrisJoint ? after === 'remove-slider' : !joint.ground;
+  if (joint.input && refused) {
     return {
       code: 'weld.is-driven',
       short: 'it is an input',
