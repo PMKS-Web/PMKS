@@ -206,9 +206,20 @@ export function findZeroCrossings(
 
   const samples: number[] = [];
   for (let i = 0; i < last; i++) samples.push(i);
-  if (continuous) samples.push(0);
+  if (continuous) {
+    // Scan past sample 0 through the first nonzero sample so a crossing landing
+    // directly on sample 0 (where series[0] is within zeroFloor) still compares
+    // the nonzero signs immediately before and after the seam.
+    let firstNonZero = 0;
+    while (firstNonZero < last && Math.abs(series[firstNonZero]) <= zeroFloor) {
+      firstNonZero++;
+    }
+    const seamEnd = firstNonZero < last ? firstNonZero : 0;
+    for (let i = 0; i <= seamEnd; i++) samples.push(i);
+  }
 
   const out: number[] = [];
+  const seen = new Set<number>();
   let prevSign = 0;
   let prevIdx = -1;
   let prevDir = 0;
@@ -228,10 +239,11 @@ export function findZeroCrossings(
 
     if (prevSign !== 0 && sign !== prevSign) {
       const crossing = pickZeroSample(series, prevIdx, idx, last);
-      if (!endpoints[crossing]) {
+      if (!endpoints[crossing] && !seen.has(crossing)) {
         const beforePeak = peakMagnitude(series, crossing, -1, last, continuous, dirs);
         const afterPeak = peakMagnitude(series, crossing, 1, last, continuous, dirs);
         if (Math.min(beforePeak, afterPeak) >= minExcursion) {
+          seen.add(crossing);
           out.push(crossing);
         }
       }
@@ -249,7 +261,7 @@ function pickZeroSample(series: number[], from: number, to: number, last: number
     for (let i = from; i <= to; i++) indices.push(i);
   } else {
     for (let i = from; i < last; i++) indices.push(i);
-    indices.push(0);
+    for (let i = 0; i <= to; i++) indices.push(i);
   }
   let best = indices[0];
   for (const idx of indices) {

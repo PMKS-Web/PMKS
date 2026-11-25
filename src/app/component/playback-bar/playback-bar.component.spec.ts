@@ -194,19 +194,23 @@ describe('PlaybackBarComponent scrubbing back to the start', () => {
 describe('PlaybackBarComponent points of interest', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it('shows toggle markers in Edit mode and hides max-effort until an analysis mode is active', async () => {
+  it('hides all POI markers in Edit mode and shows them in Kinematic and Force analysis', async () => {
     const { fixture, bar, setTab } = await createBar('Punch_Press', true, TabID.EDIT);
     const el = fixture.nativeElement as HTMLElement;
 
-    expect(el.querySelectorAll('.poiMarker.toggle').length).toBe(2);
-    expect(el.querySelectorAll('.poiMarker.maxEffort').length).toBe(0);
+    expect(el.querySelectorAll('.poiMarker').length).toBe(0);
 
     setTab(TabID.ANALYZE);
-    expect(el.querySelectorAll('.poiMarker.toggle').length).toBe(2);
-    expect(el.querySelectorAll('.poiMarker.maxEffort').length).toBeGreaterThanOrEqual(1);
+    expect(el.querySelectorAll('.poiMarker[data-poi-kind="toggle"]').length).toBe(2);
+    expect(
+      el.querySelectorAll('.poiMarker[data-poi-kind="max-effort"]').length
+    ).toBeGreaterThanOrEqual(1);
 
     setTab(TabID.FORCE);
-    expect(el.querySelectorAll('.poiMarker.maxEffort').length).toBeGreaterThanOrEqual(1);
+    expect(el.querySelectorAll('.poiMarker[data-poi-kind="toggle"]').length).toBe(2);
+    expect(
+      el.querySelectorAll('.poiMarker[data-poi-kind="max-effort"]').length
+    ).toBeGreaterThanOrEqual(1);
 
     // Every marker tooltip is a complete sentence ending with a period.
     const row = bar.rows[0];
@@ -214,6 +218,17 @@ describe('PlaybackBarComponent points of interest', () => {
       expect(marker.tooltip.endsWith('.')).toBe(true);
       expect(marker.ariaLabel.startsWith('Jump to ')).toBe(true);
     }
+  });
+
+  it('labels slot-driven reversals as limit positions rather than toggles', async () => {
+    const { bar } = await createBar('Scotch_Yoke', true, TabID.ANALYZE);
+    const markers = bar.markersFor(bar.rows[0]);
+    const limits = markers.filter((m) => m.point.kind === 'limit');
+    expect(limits).toHaveLength(2);
+    expect(markers.filter((m) => m.point.kind === 'toggle')).toHaveLength(0);
+    expect(limits[0].tooltip).toMatch(
+      /^Limit position at .+, where output motion stops and reverses\. Click to jump here\.$/
+    );
   });
 
   it('omits markers on the combined All row when synced and shows them per row when unsynced', async () => {
@@ -226,7 +241,9 @@ describe('PlaybackBarComponent points of interest', () => {
     service.setSyncMechanisms(false);
     fixture.detectChanges();
     expect(el.querySelectorAll('.mechRow').length).toBe(4);
-    expect(el.querySelectorAll('.poiMarker.toggle').length).toBeGreaterThanOrEqual(4);
+    expect(el.querySelectorAll('.poiMarker[data-poi-kind="toggle"]').length).toBeGreaterThanOrEqual(
+      4
+    );
   });
 
   it('jumps directly to a clicked marker pose and pauses playback', async () => {
@@ -240,7 +257,7 @@ describe('PlaybackBarComponent points of interest', () => {
     expect(service.isMechanismPlaying(row.index)).toBe(true);
 
     const button = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
-      '.poiMarker.maxEffort'
+      '.poiMarker[data-poi-kind="max-effort"]'
     )!;
     button.click();
     fixture.detectChanges();

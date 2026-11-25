@@ -483,23 +483,22 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
   private readonly pointCache = new WeakMap<Mechanism, Map<string, PlaybackPoint[]>>();
 
   private pointsFor(index: number): PlaybackPoint[] {
+    if (!this.tabs.isAnalysisMode()) return [];
     const mechanism = this.mechanism.mechanisms[index];
     if (!mechanism?.isMechanismValid()) return [];
-    const includeMaxEffort = this.tabs.isAnalysisMode();
     const forceMode = this.settings.forceAnalysisMode.value;
-    const key = includeMaxEffort ? forceMode : 'toggles';
     let byMode = this.pointCache.get(mechanism);
     if (!byMode) {
       byMode = new Map();
       this.pointCache.set(mechanism, byMode);
     }
-    let cached = byMode.get(key);
+    let cached = byMode.get(forceMode);
     if (!cached) {
       cached = playbackPointsOf(mechanism, this.mechanism.driveProfileOf(index), {
-        includeMaxEffort,
+        includeMaxEffort: true,
         forceMode,
       });
-      byMode.set(key, cached);
+      byMode.set(forceMode, cached);
     }
     return cached;
   }

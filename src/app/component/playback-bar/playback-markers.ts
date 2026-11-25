@@ -37,10 +37,10 @@ export function projectPlaybackMarkers(
   ctx: MarkerFormatContext
 ): PlaybackRailMarker[] {
   if (!points.length) return [];
-  const toggles = points.filter((p) => p.kind === 'toggle');
+  const kinematic = points.filter((p) => p.kind !== 'max-effort');
   const efforts = points.filter((p) => p.kind === 'max-effort');
   return points.map((point) => {
-    const peers = point.kind === 'toggle' ? efforts : toggles;
+    const peers = point.kind === 'max-effort' ? kinematic : efforts;
     const collides = peers.some((other) => Math.abs(other.at - point.at) <= COLLISION_WINDOW);
     const offsetY = collides ? (point.kind === 'max-effort' ? -4 : 4) : 0;
     return {
@@ -56,27 +56,27 @@ export function projectPlaybackMarkers(
 
 function markerTooltip(point: PlaybackPoint, ctx: MarkerFormatContext): string {
   const time = ctx.nup.formatValueAndUnit(point.timeSeconds, TimeUnit.SECOND);
+  if (point.kind === 'branch') {
+    return `Branch point at ${time}, where the mechanism can switch assembly branches. Click to jump here.`;
+  }
   if (point.kind === 'toggle') {
-    if (point.toggleReason === 'branch') {
-      return `Branch point at ${time}, where links align and can switch branches. Click to jump here.`;
-    }
-    if (point.toggleReason === 'fold') {
-      return `Toggle position at ${time}, where links align and velocities spike. Click to jump here.`;
-    }
-    return `Toggle position at ${time}, where output motion reaches a limit and reverses. Click to jump here.`;
+    return `Toggle position at ${time}, where links align and output motion reverses. Click to jump here.`;
+  }
+  if (point.kind === 'limit') {
+    return `Limit position at ${time}, where output motion stops and reverses. Click to jump here.`;
   }
   const modeLabel = ctx.forceMode === 'dynamic' ? 'dynamic' : 'static';
   const value = formatEffort(point.effortSI ?? 0, point.effortKind ?? 'torque', ctx);
   const noun = point.effortKind === 'force' ? 'input force' : 'input torque';
-  return `Maximum ${modeLabel} ${noun} is ${value} at ${time}. Click to jump here.`;
+  const scope = point.partialSolve ? 'solved ' : '';
+  return `Maximum ${scope}${modeLabel} ${noun} is ${value} at ${time}. Click to jump here.`;
 }
 
 function markerAriaLabel(point: PlaybackPoint, nup: NumberUnitParserService): string {
   const time = nup.formatValueAndUnit(point.timeSeconds, TimeUnit.SECOND);
-  if (point.kind === 'toggle') {
-    const name = point.toggleReason === 'branch' ? 'branch point' : 'toggle position';
-    return `Jump to ${name} at ${time}`;
-  }
+  if (point.kind === 'branch') return `Jump to branch point at ${time}`;
+  if (point.kind === 'toggle') return `Jump to toggle position at ${time}`;
+  if (point.kind === 'limit') return `Jump to limit position at ${time}`;
   const noun = point.effortKind === 'force' ? 'maximum input force' : 'maximum input torque';
   return `Jump to ${noun} at ${time}`;
 }

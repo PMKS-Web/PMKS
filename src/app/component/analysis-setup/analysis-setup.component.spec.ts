@@ -197,15 +197,16 @@ describe('AnalysisSetupComponent issues', () => {
   });
 
   it('says Show less, and the note, where a warning has nothing to change', async () => {
-    const toggle: SetupIssue = {
+    const rapidMotion: SetupIssue = {
       severity: 'warning',
-      title: 'Passes through a toggle',
-      summary: prose`Near dead-center, a small input move gives a large output move.`,
-      explain: 'Clamps use this on purpose.',
+      title: 'Rapid motion in cycle',
+      summary: prose`At some positions, a small input move causes a large output move.`,
+      explain:
+        'Near a poor transmission angle or singularity, output velocity spikes and the input has little leverage over the output.',
       fixes: [],
       note: 'Nothing to change.',
     };
-    const { fixture } = await createSetup('kinematic', TabID.EDIT, { issues: [toggle] });
+    const { fixture } = await createSetup('kinematic', TabID.EDIT, { issues: [rapidMotion] });
     const issue: HTMLElement = fixture.nativeElement.querySelector('issue-block');
     const button = issue.querySelector('.issueToggle') as HTMLButtonElement;
     // Alone in its section, so it opens with its note showing.

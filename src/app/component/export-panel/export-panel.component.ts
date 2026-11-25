@@ -120,7 +120,7 @@ export class ExportPanelComponent implements OnInit, OnDestroy {
     components:
       'X and Y are the components along the axes. Magnitude is √(X² + Y²) — the size of the vector, without its direction.',
     timeSteps:
-      'This mechanism uses extra steps near a toggle position. Evenly spaced omits them for uniform time steps; Every position includes them all.',
+      'This mechanism uses extra steps where motion changes rapidly. Evenly spaced omits them for uniform time steps; Every position includes them all.',
   };
 
   /**

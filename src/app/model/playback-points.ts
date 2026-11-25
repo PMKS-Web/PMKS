@@ -17,11 +17,10 @@ import {
  * Notable poses along one mechanism's playback rail.
  *
  * Kept in a pure model so both the playback bar and verification specs ask the
- * same question of a solved mechanism. Every toggle position here is detected
+ * same question of a solved mechanism. Every kinematic marker here is detected
  * from an exact sign change (an output reversing while the input moves steadily,
- * or two links crossing through collinearity / slot tangency) plus the solver's
- * own fold subdivisions (`addedSamples`), rather than a soft near-singularity
- * threshold that would flicker in and out while a joint is dragged.
+ * or two links crossing through collinearity / slot tangency), never from a soft
+ * threshold that could flicker in and out while a joint is dragged.
  *
  * Input travel limits of a reciprocating mechanism (rocker or cylinder stops at
  * 0% and 100% of the track) are intentionally excluded so the ends of the bar
@@ -30,16 +29,21 @@ import {
 
 export type PlaybackForceMode = ForceAnalysisMode;
 
-export type PlaybackPointKind = 'toggle' | 'max-effort';
+/**
+ * Category of a playback-rail point of interest:
+ * - `toggle`: output motion stops and reverses while two pin-connected links align collinearly.
+ * - `limit`: output motion stops and reverses without collinear pin links (e.g. Scotch Yoke, quick-return).
+ * - `branch`: links cross through collinearity or slot tangency and can switch assembly branches.
+ * - `max-effort`: global peak input torque or input force across the cycle.
+ */
+export type PlaybackPointKind = 'toggle' | 'limit' | 'branch' | 'max-effort';
 
-export type ToggleReason = 'limit' | 'branch' | 'fold';
+export type KinematicPointKind = 'toggle' | 'limit' | 'branch';
 
 export interface PlaybackPoint {
   /** Stable identifier for template tracking. */
   readonly id: string;
   readonly kind: PlaybackPointKind;
-  /** Why a toggle marker is here; omitted for max-effort markers. */
-  readonly toggleReason?: ToggleReason;
   /** Sample index in `mechanism.joints` (0 .. joints.length - 2). */
   readonly sample: number;
   /** Position along the scrub track in range-input units (0..1000). */
@@ -50,6 +54,8 @@ export interface PlaybackPoint {
   readonly effortSI?: number;
   /** Whether the driven effort is a torque or a linear force. */
   readonly effortKind?: 'torque' | 'force';
+  /** True when the force solve had gaps, so this is the peak among solved poses. */
+  readonly partialSolve?: boolean;
 }
 
 export interface PlaybackPointOptions {
@@ -60,7 +66,7 @@ export interface PlaybackPointOptions {
 }
 
 const TRACK_UNITS = 1000;
-/** Track distance (0..1000) within which two markers of the same kind merge. */
+/** Track distance (0..1000) within which two markers of the same family merge. */
 const MERGE_DISTANCE = 20;
 /** Margin at each end of a reciprocating track reserved for the travel stops. */
 const ENDPOINT_MARGIN = 0.005;
@@ -70,21 +76,25 @@ const MIN_BODY_SWEEP = 0.02;
 const MIN_REVERSAL_EXCURSION = 0.002;
 /** Minimum |sin(angle)| excursion on both sides of a collinear branch crossing. */
 const MIN_BRANCH_EXCURSION = 0.02;
+/** Max |sin(angle)| (~2.3 deg) between two pin-connected links at a limit pose to label it a toggle. */
+const COLLINEAR_SIN_TOL = 0.04;
+/** Max |sin(angle)| (~6.9 deg) at a sample straddled by an exact sign change through collinearity. */
+const COLLINEAR_CROSS_SIN_TOL = 0.12;
 /** Effort below this SI floor (N·m or N) is treated as identically zero. */
 const EFFORT_NOISE_FLOOR = 1e-9;
 /** Equal global peaks within this relative margin are all shown (e.g. symmetric cycles). */
 const PEAK_TIE_RATIO = 0.999;
 
-const TOGGLE_PRIORITY: Record<ToggleReason, number> = {
+const KINEMATIC_PRIORITY: Record<KinematicPointKind, number> = {
   branch: 3,
-  fold: 2,
+  toggle: 2,
   limit: 1,
 };
 
-interface ToggleCandidate {
+interface KinematicCandidate {
   readonly sample: number;
   readonly at: number;
-  readonly reason: ToggleReason;
+  readonly kind: KinematicPointKind;
   /** Higher wins when two candidates of the same priority merge. */
   readonly strength: number;
 }
@@ -103,12 +113,12 @@ export function playbackPointsOf(
   const count = mechanism.joints.length;
   if (count < 4 || profile.along.length !== count) return [];
 
-  const toggles = detectTogglePoints(mechanism, profile);
+  const kinematic = detectKinematicPoints(mechanism, profile);
   const efforts = options.includeMaxEffort
     ? detectMaxEffortPoints(mechanism, profile, options.forceMode)
     : [];
 
-  return [...toggles, ...efforts].sort((a, b) => a.at - b.at || a.kind.localeCompare(b.kind));
+  return [...kinematic, ...efforts].sort((a, b) => a.at - b.at || a.kind.localeCompare(b.kind));
 }
 
 /** Convert a raw sample index into the clock time shown by the transport. */
@@ -181,7 +191,7 @@ function inputEndpointMask(profile: DriveProfile, dirs: number[]): boolean[] {
   return masked;
 }
 
-function detectTogglePoints(mechanism: Mechanism, profile: DriveProfile): PlaybackPoint[] {
+function detectKinematicPoints(mechanism: Mechanism, profile: DriveProfile): PlaybackPoint[] {
   const joints0 = mechanism.joints[0];
   const links0 = mechanism.links[0];
   if (!joints0?.length || !links0?.length) return [];
@@ -190,116 +200,234 @@ function detectTogglePoints(mechanism: Mechanism, profile: DriveProfile): Playba
   const endpoints = inputEndpointMask(profile, dirs);
   const assignment = assignBodies(joints0, links0);
 
-  const candidates: ToggleCandidate[] = [
-    ...detectFoldPoints(mechanism, profile, endpoints),
+  const candidates: KinematicCandidate[] = [
     ...detectBranchCrossings(mechanism, profile, dirs, endpoints, assignment),
     ...detectOutputLimits(mechanism, profile, dirs, endpoints, assignment),
   ];
 
-  const merged = mergeToggleCandidates(candidates, profile.continuous);
+  const merged = mergeKinematicCandidates(candidates, profile.continuous);
   return merged.map((item, idx) => ({
-    id: `toggle-${idx}-${item.sample}`,
-    kind: 'toggle',
-    toggleReason: item.reason,
+    id: `${item.kind}-${idx}-${item.sample}`,
+    kind: item.kind,
     sample: item.sample,
     at: item.at,
     timeSeconds: playbackTimeOf(mechanism, item.sample),
   }));
 }
 
-/**
- * Interior folds where the solver already had to cut the step finer
- * (`mechanism.addedSamples`), e.g. a six-bar dyad passing through tangency.
- */
-function detectFoldPoints(
-  mechanism: Mechanism,
-  profile: DriveProfile,
-  endpoints: boolean[]
-): ToggleCandidate[] {
-  const added = mechanism.addedSamples;
-  const last = mechanism.joints.length - 1;
-  if (!added.length || !added.some(Boolean)) return [];
-
-  // Collect contiguous runs of subdivided samples in 0 .. last - 1.
-  const runs: number[][] = [];
-  let current: number[] = [];
-  for (let i = 0; i < last; i++) {
-    if (added[i]) {
-      current.push(i);
-    } else if (current.length > 0) {
-      runs.push(current);
-      current = [];
-    }
-  }
-  if (current.length > 0) runs.push(current);
-
-  // Merge a run that wraps across sample 0 on a continuous cycle.
-  if (profile.continuous && runs.length > 1 && runs[0][0] === 0) {
-    const tail = runs[runs.length - 1];
-    if (tail[tail.length - 1] === last - 1) {
-      runs[0] = [...tail, ...runs[0]];
-      runs.pop();
-    }
-  }
-
-  const out: ToggleCandidate[] = [];
-  for (const run of runs) {
-    let bestSample = run[0];
-    let bestSpeed = -1;
-    // Include one neighbor on each side of the subdivided span so the exact
-    // fold vertex is considered even if it landed on the original spacing.
-    const expanded = new Set<number>(run);
-    expanded.add((run[0] - 1 + last) % last);
-    expanded.add((run[run.length - 1] + 1) % last);
-    for (const sample of expanded) {
-      if (endpoints[sample]) continue;
-      const speed = maxJointSpeedAt(mechanism, sample);
-      if (speed > bestSpeed) {
-        bestSpeed = speed;
-        bestSample = sample;
-      }
-    }
-    if (!endpoints[bestSample] && bestSpeed >= 0) {
-      const along = profile.along[bestSample] ?? 0;
-      const nearStop = !profile.continuous && (along <= 0.02 || along >= 0.98);
-      if (!nearStop) {
-        out.push({
-          sample: bestSample,
-          at: trackPosition(profile, bestSample),
-          reason: 'fold',
-          strength: bestSpeed,
-        });
-      }
-    }
-  }
-  return out;
+interface PinLinkTriple {
+  readonly b1: string;
+  readonly b2: string;
+  readonly aIdx: number;
+  readonly pIdx: number;
+  readonly cIdx: number;
 }
 
-function maxJointSpeedAt(mechanism: Mechanism, sample: number): number {
-  const last = mechanism.joints.length - 1;
-  const prev = sample === 0 ? last - 1 : sample - 1;
-  const next = sample + 1 <= last ? sample + 1 : 1;
-  const dt = Math.max((mechanism.timeNum[next] ?? 0) - (mechanism.timeNum[prev] ?? 0), 1e-9);
-  const a = mechanism.joints[prev];
-  const b = mechanism.joints[next];
-  if (!a || !b) return 0;
-  let worst = 0;
-  for (let k = 0; k < a.length; k++) {
-    worst = Math.max(worst, Math.hypot(b[k].x - a[k].x, b[k].y - a[k].y) / dt);
+/**
+ * True when `joint` is rigidly fixed in `bodyId` (as opposed to a floating
+ * pin-in-slot `PrisJoint` sliding along a slot cut into `bodyId`).
+ */
+function isFixedOnBody(joint: Joint, bodyId: string, assignment: BodyAssignment): boolean {
+  if (!(joint instanceof RealJoint)) return false;
+  if (joint instanceof PrisJoint && !joint.ground && joint.carrier) {
+    return assignment.bodyOf(joint.carrier) !== bodyId;
   }
-  return worst;
+  return true;
+}
+
+/**
+ * Pairs of rigid arms meeting at an ungrounded revolute pin joint `P`.
+ *
+ * Used strictly to label an already-detected output limit as a collinear
+ * `toggle` vs. a non-collinear `limit` (such as a Scotch Yoke or crank-shaper).
+ * Floating pin-in-slot joints are excluded as the connecting hinge `P` and as
+ * arm endpoints on their carrier body (where they slide), while still allowed
+ * as fixed arm endpoints on their rider body.
+ */
+function pinLinkTriplesOf(
+  joints0: Joint[],
+  links0: Link[],
+  assignment: BodyAssignment,
+  cylinderJointIds: Set<string>
+): PinLinkTriple[] {
+  const cylinderPairs = new Set<string>();
+  for (const cyl of cylindersIn(joints0)) {
+    const b1 = assignment.bodyOf(cyl.barrelRoot);
+    const b2 = assignment.bodyOf(cyl.rodRoot);
+    cylinderPairs.add(`${b1}|${b2}`);
+    cylinderPairs.add(`${b2}|${b1}`);
+  }
+
+  const structuralByBody = new Map<string, number[]>();
+  for (const bodyId of assignment.movingBodies) {
+    const fixed = bodyJointIndices(bodyId, joints0, links0, assignment).filter((idx) => {
+      const j = joints0[idx];
+      if (!isFixedOnBody(j, bodyId, assignment) || cylinderJointIds.has(j.id)) return false;
+      if (j instanceof RealJoint && j.ground) return true;
+      return links0.some(
+        (link) =>
+          assignment.bodyOf(link) !== bodyId &&
+          link.joints.some((candidate) => candidate.id === j.id)
+      );
+    });
+    structuralByBody.set(bodyId, fixed);
+  }
+
+  const triples: PinLinkTriple[] = [];
+  for (let pIdx = 0; pIdx < joints0.length; pIdx++) {
+    const pin = joints0[pIdx];
+    if (!(pin instanceof RealJoint) || pin.ground || pin instanceof PrisJoint) continue;
+    if (cylinderJointIds.has(pin.id)) continue;
+
+    const bodiesAtPin: string[] = [];
+    for (const link of links0) {
+      if (link.joints.some((candidate) => candidate.id === pin.id)) {
+        const b = assignment.bodyOf(link);
+        if (b && b !== WORLD && !bodiesAtPin.includes(b)) bodiesAtPin.push(b);
+      }
+    }
+    if (bodiesAtPin.length < 2) continue;
+
+    for (let i = 0; i < bodiesAtPin.length; i++) {
+      const b1 = bodiesAtPin[i];
+      const arms1 = (structuralByBody.get(b1) ?? []).filter((idx) => idx !== pIdx);
+      if (!arms1.length) continue;
+      for (let j = i + 1; j < bodiesAtPin.length; j++) {
+        const b2 = bodiesAtPin[j];
+        if (cylinderPairs.has(`${b1}|${b2}`)) continue;
+        const arms2 = (structuralByBody.get(b2) ?? []).filter((idx) => idx !== pIdx);
+        if (!arms2.length) continue;
+        for (const aIdx of arms1) {
+          for (const cIdx of arms2) {
+            if (aIdx === cIdx) continue;
+            triples.push({ b1, b2, aIdx, pIdx, cIdx });
+          }
+        }
+      }
+    }
+  }
+  return triples;
+}
+
+/** Build moving-body adjacency across all shared joints (revolute and prismatic). */
+function movingBodyAdjacency(
+  joints0: Joint[],
+  links0: Link[],
+  assignment: BodyAssignment
+): Map<string, Set<string>> {
+  const adj = new Map<string, Set<string>>();
+  for (const bodyId of assignment.movingBodies) adj.set(bodyId, new Set());
+  for (const joint of joints0) {
+    const bodies = new Set<string>();
+    for (const link of links0) {
+      if (link.joints.some((candidate) => candidate.id === joint.id)) {
+        const b = assignment.bodyOf(link);
+        if (b && b !== WORLD) bodies.add(b);
+      }
+    }
+    if (joint instanceof PrisJoint && !joint.ground && joint.carrier) {
+      const cb = assignment.bodyOf(joint.carrier);
+      if (cb && cb !== WORLD) bodies.add(cb);
+    }
+    for (const b1 of bodies) {
+      for (const b2 of bodies) {
+        if (b1 !== b2) adj.get(b1)?.add(b2);
+      }
+    }
+  }
+  return adj;
+}
+
+/**
+ * Bodies belonging to the constraint chain of `targetBodies` without crossing
+ * through the driven input body into unrelated parallel branches.
+ */
+function relevantBodiesFor(
+  targetBodies: readonly string[],
+  drivenBodyId: string | undefined,
+  adj: Map<string, Set<string>>
+): Set<string> {
+  const visited = new Set<string>();
+  const queue: string[] = [];
+  for (const b of targetBodies) {
+    if (!visited.has(b)) {
+      visited.add(b);
+      queue.push(b);
+    }
+  }
+  while (queue.length > 0) {
+    const curr = queue.shift()!;
+    // Stop expanding once the driven input body is reached so a separate
+    // parallel branch off the same crank cannot influence this output's label.
+    if (curr === drivenBodyId) continue;
+    for (const next of adj.get(curr) ?? []) {
+      if (!visited.has(next)) {
+        visited.add(next);
+        queue.push(next);
+      }
+    }
+  }
+  return visited;
+}
+
+function signedSinAt(frame: Joint[], aIdx: number, pIdx: number, cIdx: number): number | null {
+  const a = frame[aIdx];
+  const p = frame[pIdx];
+  const c = frame[cIdx];
+  if (!a || !p || !c) return null;
+  const ax = a.x - p.x;
+  const ay = a.y - p.y;
+  const cx = c.x - p.x;
+  const cy = c.y - p.y;
+  const denom = Math.hypot(ax, ay) * Math.hypot(cx, cy);
+  return denom > 1e-6 ? (ax * cy - ay * cx) / denom : null;
+}
+
+function hasCollinearPinLinksAt(
+  frames: Joint[][],
+  sample: number,
+  triples: readonly PinLinkTriple[],
+  relevantBodies: ReadonlySet<string>,
+  continuous: boolean
+): boolean {
+  const last = frames.length - 1;
+  const prev = sample > 0 ? sample - 1 : continuous ? last - 1 : 0;
+  const next = sample < last - 1 ? sample + 1 : continuous ? 0 : last - 1;
+  for (const { b1, b2, aIdx, pIdx, cIdx } of triples) {
+    if (!relevantBodies.has(b1) || !relevantBodies.has(b2)) continue;
+    const s0 = signedSinAt(frames[sample], aIdx, pIdx, cIdx);
+    if (s0 === null) continue;
+    const abs0 = Math.abs(s0);
+    if (abs0 < COLLINEAR_SIN_TOL) return true;
+    if (abs0 < COLLINEAR_CROSS_SIN_TOL) {
+      const sPrev = signedSinAt(frames[prev], aIdx, pIdx, cIdx);
+      const sNext = signedSinAt(frames[next], aIdx, pIdx, cIdx);
+      if (
+        sPrev !== null &&
+        sNext !== null &&
+        sPrev * sNext <= 0 &&
+        abs0 <= Math.max(Math.abs(sPrev), Math.abs(sNext))
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function drivenBodyIdOf(joints0: Joint[], assignment: BodyAssignment): string | undefined {
+  const driven = joints0.find((j): j is RealJoint => j instanceof RealJoint && j.input);
+  if (!driven) return undefined;
+  const actuator = resolveActuator(driven);
+  if (!actuator || actuator.drivenBody === GROUND_BODY) return undefined;
+  return assignment.bodyOf(actuator.drivenBody);
 }
 
 /** Bodies that belong to the driven input or a hydraulic cylinder's own telescoping members. */
 function excludedBodies(joints0: Joint[], links0: Link[], assignment: BodyAssignment): Set<string> {
   const excluded = new Set<string>([WORLD]);
-  const driven = joints0.find((j): j is RealJoint => j instanceof RealJoint && j.input);
-  if (driven) {
-    const actuator = resolveActuator(driven);
-    if (actuator && actuator.drivenBody !== GROUND_BODY) {
-      excluded.add(assignment.bodyOf(actuator.drivenBody));
-    }
-  }
+  const drivenBody = drivenBodyIdOf(joints0, assignment);
+  if (drivenBody) excluded.add(drivenBody);
   // Cylinder barrels and rods swivel on their mount pins as a triangle side
   // lengthens; their swivel angle can peak at 90 degrees without any toggle.
   for (const cyl of cylindersIn(joints0)) {
@@ -352,14 +480,23 @@ function detectOutputLimits(
   dirs: number[],
   endpoints: boolean[],
   assignment: BodyAssignment
-): ToggleCandidate[] {
+): KinematicCandidate[] {
   const joints0 = mechanism.joints[0];
   const links0 = mechanism.links[0];
   const frames = mechanism.joints;
   const excluded = excludedBodies(joints0, links0, assignment);
   const cylinderJointIds = cylinderJointIdsOf(joints0);
+  const drivenBody = drivenBodyIdOf(joints0, assignment);
+  const adj = movingBodyAdjacency(joints0, links0, assignment);
+  const pinTriples = pinLinkTriplesOf(joints0, links0, assignment, cylinderJointIds);
 
-  const out: ToggleCandidate[] = [];
+  const out: KinematicCandidate[] = [];
+  const classify = (sample: number, targetBodies: readonly string[]): 'toggle' | 'limit' => {
+    const relevant = relevantBodiesFor(targetBodies, drivenBody, adj);
+    return hasCollinearPinLinksAt(frames, sample, pinTriples, relevant, profile.continuous)
+      ? 'toggle'
+      : 'limit';
+  };
 
   // 1. Grounded passive rockers (any moving body pinned to ground, other than
   //    the driven input body and cylinder barrels/rods).
@@ -372,7 +509,7 @@ function detectOutputLimits(
     let farIdx = -1;
     let farDist = 0;
     for (const idx of indices) {
-      if (idx === pivotIdx) continue;
+      if (idx === pivotIdx || !isFixedOnBody(joints0[idx], bodyId, assignment)) continue;
       const d = Math.hypot(joints0[idx].x - pivot0.x, joints0[idx].y - pivot0.y);
       if (d > farDist) {
         farDist = d;
@@ -401,13 +538,13 @@ function detectOutputLimits(
       out.push({
         sample: vertex.sample,
         at: trackPosition(profile, vertex.sample),
-        reason: 'limit',
+        kind: classify(vertex.sample, [bodyId]),
         strength: vertex.excursion,
       });
     }
   }
 
-  // 2. Grounded passive sliders (pistons, press rams, shaper rams).
+  // 2. Grounded passive sliders (pistons, press sliders, shaper slides).
   const span = mechanismSpan(joints0);
   for (let idx = 0; idx < joints0.length; idx++) {
     const joint = joints0[idx];
@@ -425,6 +562,14 @@ function detectOutputLimits(
     const stroke = Math.max(...coords) - Math.min(...coords);
     if (stroke < Math.max(span * 1e-3, 1e-6)) continue;
 
+    const sliderBodies: string[] = [];
+    for (const link of links0) {
+      if (link.joints.some((candidate) => candidate.id === joint.id)) {
+        const b = assignment.bodyOf(link);
+        if (b && b !== WORLD && !sliderBodies.includes(b)) sliderBodies.push(b);
+      }
+    }
+
     const vertices = findSmoothExtrema(
       coords,
       mechanism.timeNum,
@@ -437,7 +582,7 @@ function detectOutputLimits(
       out.push({
         sample: vertex.sample,
         at: trackPosition(profile, vertex.sample),
-        reason: 'limit',
+        kind: classify(vertex.sample, sliderBodies),
         strength: vertex.excursion / stroke,
       });
     }
@@ -459,7 +604,7 @@ function detectBranchCrossings(
   dirs: number[],
   endpoints: boolean[],
   assignment: BodyAssignment
-): ToggleCandidate[] {
+): KinematicCandidate[] {
   const joints0 = mechanism.joints[0];
   const links0 = mechanism.links[0];
   const frames = mechanism.joints;
@@ -476,7 +621,7 @@ function detectBranchCrossings(
     if (pivot !== undefined) groundedPivotOf.set(bodyId, pivot);
   }
 
-  const out: ToggleCandidate[] = [];
+  const out: KinematicCandidate[] = [];
 
   // 1. Passive moving pin where a floating body (coupler) meets a grounded
   //    passive body (output crank/rocker).
@@ -533,7 +678,7 @@ function detectBranchCrossings(
           out.push({
             sample,
             at: trackPosition(profile, sample),
-            reason: 'branch',
+            kind: 'branch',
             strength: 1,
           });
         }
@@ -588,7 +733,7 @@ function detectBranchCrossings(
         out.push({
           sample,
           at: trackPosition(profile, sample),
-          reason: 'branch',
+          kind: 'branch',
           strength: 1,
         });
       }
@@ -638,20 +783,20 @@ function trackDistance(a: number, b: number, continuous: boolean): number {
   return continuous ? Math.min(raw, TRACK_UNITS - raw) : raw;
 }
 
-function mergeToggleCandidates(
-  candidates: ToggleCandidate[],
+function mergeKinematicCandidates(
+  candidates: KinematicCandidate[],
   continuous: boolean
-): ToggleCandidate[] {
+): KinematicCandidate[] {
   if (candidates.length === 0) return [];
-  // Prefer higher priority (branch > fold > limit), then higher strength, then
+  // Prefer higher priority (branch > toggle > limit), then higher strength, then
   // earlier sample (forward leg on reciprocating cycles).
   const ordered = [...candidates].sort(
     (a, b) =>
-      TOGGLE_PRIORITY[b.reason] - TOGGLE_PRIORITY[a.reason] ||
+      KINEMATIC_PRIORITY[b.kind] - KINEMATIC_PRIORITY[a.kind] ||
       b.strength - a.strength ||
       a.sample - b.sample
   );
-  const kept: ToggleCandidate[] = [];
+  const kept: KinematicCandidate[] = [];
   for (const candidate of ordered) {
     const duplicate = kept.some(
       (existing) => trackDistance(existing.at, candidate.at, continuous) <= MERGE_DISTANCE
@@ -661,11 +806,89 @@ function mergeToggleCandidates(
   return kept.sort((a, b) => a.at - b.at);
 }
 
+interface EffortEntry {
+  readonly sample: number;
+  readonly valueSI: number;
+  readonly abs: number;
+  readonly kind: 'torque' | 'force';
+}
+
+/**
+ * Find local maxima of |inputEffort| across solved frames, collapsing flat
+ * plateaus to their centered maximum so broad peaks never emit shoulder markers.
+ */
+function localEffortMaxima(
+  entries: readonly (EffortEntry | undefined)[],
+  maxAbs: number,
+  continuous: boolean
+): EffortEntry[] {
+  const n = entries.length;
+  const plateauTol = maxAbs * 1e-9;
+  const equalAt = (i: number, j: number): boolean =>
+    entries[i] !== undefined &&
+    entries[j] !== undefined &&
+    Math.abs(entries[i]!.abs - entries[j]!.abs) <= plateauTol;
+
+  let origin = 0;
+  if (continuous) {
+    for (let i = 0; i < n; i++) {
+      if (!equalAt(i, (i - 1 + n) % n)) {
+        origin = i;
+        break;
+      }
+    }
+  }
+
+  const indexAt = (offset: number): number => (continuous ? (origin + offset) % n : offset);
+  const absAt = (index: number): number => entries[index]?.abs ?? -Infinity;
+
+  const maxima: EffortEntry[] = [];
+  let offset = 0;
+  while (offset < n) {
+    const startIdx = indexAt(offset);
+    if (!entries[startIdx]) {
+      offset++;
+      continue;
+    }
+    let endOffset = offset;
+    while (endOffset + 1 < n && equalAt(indexAt(endOffset + 1), startIdx)) {
+      endOffset++;
+    }
+
+    const prevAbs =
+      continuous || offset > 0
+        ? absAt(continuous ? (origin + offset - 1 + n) % n : offset - 1)
+        : -Infinity;
+    const nextAbs =
+      continuous || endOffset + 1 < n
+        ? absAt(continuous ? (origin + endOffset + 1) % n : endOffset + 1)
+        : -Infinity;
+
+    const midOffset = (offset + endOffset) / 2;
+    let best = entries[startIdx]!;
+    let bestMidDist = Math.abs(offset - midOffset);
+    for (let k = offset + 1; k <= endOffset; k++) {
+      const candidate = entries[indexAt(k)]!;
+      const midDist = Math.abs(k - midOffset);
+      if (candidate.abs > best.abs || (candidate.abs === best.abs && midDist < bestMidDist)) {
+        best = candidate;
+        bestMidDist = midDist;
+      }
+    }
+
+    if (best.abs > prevAbs && best.abs > nextAbs) {
+      maxima.push(best);
+    }
+    offset = endOffset + 1;
+  }
+  return maxima;
+}
+
 /**
  * Find the frame(s) of peak input torque or input force across the cycle.
  *
- * Returns nothing when the force solve fails, every frame has zero effort, or
- * the effort is flat across the entire cycle (so no single pose is a peak).
+ * Returns nothing when fewer than two frames solve, every frame has zero effort,
+ * or the effort is flat across the entire cycle (so no single pose is a peak).
  */
 function detectMaxEffortPoints(
   mechanism: Mechanism,
@@ -680,7 +903,7 @@ function detectMaxEffortPoints(
   let maxAbs = 0;
   let minAbs = Infinity;
   let okCount = 0;
-  const values: { sample: number; valueSI: number; abs: number; kind: 'torque' | 'force' }[] = [];
+  const entries: (EffortEntry | undefined)[] = new Array(limit);
 
   for (let i = 0; i < limit; i++) {
     const frame = series.frames[i];
@@ -691,19 +914,19 @@ function detectMaxEffortPoints(
     okCount++;
     if (abs > maxAbs) maxAbs = abs;
     if (abs < minAbs) minAbs = abs;
-    values.push({ sample: i, valueSI, abs, kind: frame.inputEffort.kind });
+    entries[i] = { sample: i, valueSI, abs, kind: frame.inputEffort.kind };
   }
 
-  if (okCount === 0 || maxAbs <= EFFORT_NOISE_FLOOR) return [];
+  if (okCount < 2 || maxAbs <= EFFORT_NOISE_FLOOR) return [];
   // A completely constant effort (e.g. steady pure load) has no peak pose.
-  if (okCount > 1 && maxAbs - minAbs <= maxAbs * 1e-5) return [];
+  if (maxAbs - minAbs <= maxAbs * 1e-5) return [];
 
   const peakThreshold = maxAbs * PEAK_TIE_RATIO;
-  const peaks = values
+  const peaks = localEffortMaxima(entries, maxAbs, profile.continuous)
     .filter((entry) => entry.abs >= peakThreshold)
     .sort((a, b) => b.abs - a.abs || a.sample - b.sample);
 
-  const kept: typeof peaks = [];
+  const kept: EffortEntry[] = [];
   for (const entry of peaks) {
     const at = trackPosition(profile, entry.sample);
     const duplicate = kept.some(
@@ -714,6 +937,7 @@ function detectMaxEffortPoints(
     if (!duplicate) kept.push(entry);
   }
 
+  const partialSolve = okCount < last;
   return kept
     .map((entry, idx) => ({
       id: `max-effort-${idx}-${entry.sample}`,
@@ -723,6 +947,7 @@ function detectMaxEffortPoints(
       timeSeconds: playbackTimeOf(mechanism, entry.sample),
       effortSI: entry.valueSI,
       effortKind: entry.kind,
+      ...(partialSolve ? { partialSolve: true } : {}),
     }))
     .sort((a, b) => a.at - b.at);
 }

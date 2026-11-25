@@ -374,9 +374,7 @@
         <button
           type="button"
           class="poiMarker"
-          [class.toggle]="marker.point.kind === 'toggle'"
-          [class.branch]="marker.point.toggleReason === 'branch'"
-          [class.maxEffort]="marker.point.kind === 'max-effort'"
+          [attr.data-poi-kind]="marker.point.kind"
           [class.covered]="marker.covered"
           [style.--at]="marker.percent"
           [style.--poi-y.px]="marker.offsetY"
