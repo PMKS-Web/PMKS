@@ -240,6 +240,45 @@ describe('a compound weld left describing nothing', () => {
     expect(live(s, 'D')!.isWelded, 'the real weld at D stays').toBe(true);
   });
 
+  it('strips an orphan flag when a half-way weld fails on a driven pin, and keeps a real compound weld regardless of link order', () => {
+    // A floating driven RevJoint cannot be welded, so `weldJointTopology`
+    // returns false during reconcile. When the compound beside a loose bar was
+    // welded elsewhere (1 leaf at C), the orphan flag comes off; when another
+    // compound at C actually fuses two leaves there, the flag stays even if
+    // the single-leaf compound appears first in `links`.
+    const s = createMechanismHarness();
+    const a = new RevJoint('A', 0, 0);
+    const b = new RevJoint('B', 2, 0);
+    const c = new RevJoint('C', 4, 0, true, false);
+    const d = new RevJoint('D', 6, 0);
+    const e = new RevJoint('E', 4, 2);
+    const f = new RevJoint('F', 4, -2);
+    const remote = new RealLink('ABC', [a, b, c]);
+    remote.subset = [new RealLink('AB', [a, b]), new RealLink('BC', [b, c])];
+    b.isWelded = true;
+    const loose = new RealLink('CD', [c, d]);
+    s.service.joints = [a, b, c, d];
+    s.service.links = [remote, loose];
+    wireGraph(s.service);
+    c.isWelded = true;
+
+    s.service.finishStructuralEdit(false);
+    expect(c.isWelded, 'no compound at C fuses two leaves, so the orphan flag is stripped').toBe(
+      false
+    );
+
+    // Put a compound welded at C *after* the remote compound in `links`.
+    const fusedAtC = new RealLink('CEF', [c, e, f]);
+    fusedAtC.subset = [new RealLink('CE', [c, e]), new RealLink('CF', [c, f])];
+    s.service.joints.push(e, f);
+    s.service.links = [remote, fusedAtC];
+    wireGraph(s.service);
+    c.isWelded = true;
+
+    s.service.finishStructuralEdit(false);
+    expect(c.isWelded, 'fusedAtC genuinely welds two leaves at C, regardless of order').toBe(true);
+  });
+
   it('survives the ground toggle, which no longer takes the slot', () => {
     // `toggleGround` used to have its own slider-removal branch, so un-grounding
     // a Slide destroyed the block and stranded the weld flag. Ground and the

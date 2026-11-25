@@ -255,7 +255,9 @@ export function memberBarsTouching(link: RealLink, joint: RealJoint): number {
  * `subset.length > 0`: a compound fused *at* this joint counts once per leaf
  * meeting here (two or more, so the weld survives), while a compound welded at
  * some other joint has only one leaf reaching here and is refused just like a
- * plain bar — matching Pin-in-slot to Welded.
+ * plain bar — matching Pin-in-slot to Welded. (A closed loop already welded at
+ * its other corners also has two leaves meeting here, which is harmless since
+ * the loop is already rigid.)
  */
 export function weldOutlivesTheSlot(joint: RealJoint): OperationRefusal | undefined {
   const bars = joint.links.filter((link): link is RealLink => link instanceof RealLink);

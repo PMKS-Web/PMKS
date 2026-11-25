@@ -3083,7 +3083,11 @@ export class MechanismService {
         if (this.weldJointTopology(joint)) {
           this.rebuildJointGraph();
           changed = true;
-        } else if (memberBarsTouching(compound, joint) >= 2) {
+        } else if (
+          bodiesAtJoint.some(
+            (body) => body.subset.length > 0 && memberBarsTouching(body, joint) >= 2
+          )
+        ) {
           joint.isWelded = true;
         }
         return;
