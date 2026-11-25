@@ -4,7 +4,6 @@ import { Joint, PrisJoint, RealJoint } from './joint';
 import { Link } from './link';
 import { assignBodies, BodyAssignment, WORLD } from './mechanism/bodies';
 import { DriveProfile } from './mechanism/drive-profile';
-import { ForceAnalysisMode } from './mechanism/force-solver';
 import { Mechanism } from './mechanism/mechanism';
 import {
   findSmoothExtrema,
@@ -14,12 +13,12 @@ import {
 } from './playback-point-signals';
 
 /**
- * Notable poses along one mechanism's playback rail.
+ * Notable kinematic poses along one mechanism's playback rail.
  *
  * Kept in a pure model so both the playback bar and verification specs ask the
- * same question of a solved mechanism. Every kinematic marker here is detected
- * from an exact sign change (an output reversing while the input moves steadily,
- * or two links crossing through collinearity / slot tangency), never from a soft
+ * same question of a solved mechanism. Every marker here is detected from an
+ * exact sign change (an output reversing while the input moves steadily, or two
+ * links crossing through collinearity / slot tangency), never from a soft
  * threshold that could flicker in and out while a joint is dragged.
  *
  * Input travel limits of a reciprocating mechanism (rocker or cylinder stops at
@@ -27,18 +26,13 @@ import {
  * stay uncluttered.
  */
 
-export type PlaybackForceMode = ForceAnalysisMode;
-
 /**
- * Category of a playback-rail point of interest:
+ * Category of a playback-rail kinematic point of interest:
  * - `toggle`: output motion stops and reverses while two pin-connected links align collinearly.
  * - `limit`: output motion stops and reverses without collinear pin links (e.g. Scotch Yoke, quick-return).
  * - `branch`: links cross through collinearity or slot tangency and can switch assembly branches.
- * - `max-effort`: global peak input torque or input force across the cycle.
  */
-export type PlaybackPointKind = 'toggle' | 'limit' | 'branch' | 'max-effort';
-
-export type KinematicPointKind = 'toggle' | 'limit' | 'branch';
+export type PlaybackPointKind = 'toggle' | 'limit' | 'branch';
 
 export interface PlaybackPoint {
   /** Stable identifier for template tracking. */
@@ -50,23 +44,10 @@ export interface PlaybackPoint {
   readonly at: number;
   /** Playback clock time in seconds, reflecting `framesRunBackwards`. */
   readonly timeSeconds: number;
-  /** Peak input effort in SI units (N·m for torque, N for force). */
-  readonly effortSI?: number;
-  /** Whether the driven effort is a torque or a linear force. */
-  readonly effortKind?: 'torque' | 'force';
-  /** True when the force solve had gaps, so this is the peak among solved poses. */
-  readonly partialSolve?: boolean;
-}
-
-export interface PlaybackPointOptions {
-  /** Whether to include the peak input torque/force marker. */
-  readonly includeMaxEffort: boolean;
-  /** Static or dynamic force solve when `includeMaxEffort` is true. */
-  readonly forceMode: ForceAnalysisMode;
 }
 
 const TRACK_UNITS = 1000;
-/** Track distance (0..1000) within which two markers of the same family merge. */
+/** Track distance (0..1000) within which two markers merge. */
 const MERGE_DISTANCE = 20;
 /** Margin at each end of a reciprocating track reserved for the travel stops. */
 const ENDPOINT_MARGIN = 0.005;
@@ -80,12 +61,8 @@ const MIN_BRANCH_EXCURSION = 0.02;
 const COLLINEAR_SIN_TOL = 0.04;
 /** Max |sin(angle)| (~6.9 deg) at a sample straddled by an exact sign change through collinearity. */
 const COLLINEAR_CROSS_SIN_TOL = 0.12;
-/** Effort below this SI floor (N·m or N) is treated as identically zero. */
-const EFFORT_NOISE_FLOOR = 1e-9;
-/** Equal global peaks within this relative margin are all shown (e.g. symmetric cycles). */
-const PEAK_TIE_RATIO = 0.999;
 
-const KINEMATIC_PRIORITY: Record<KinematicPointKind, number> = {
+const KINEMATIC_PRIORITY: Record<PlaybackPointKind, number> = {
   branch: 3,
   toggle: 2,
   limit: 1,
@@ -94,31 +71,27 @@ const KINEMATIC_PRIORITY: Record<KinematicPointKind, number> = {
 interface KinematicCandidate {
   readonly sample: number;
   readonly at: number;
-  readonly kind: KinematicPointKind;
+  readonly kind: PlaybackPointKind;
   /** Higher wins when two candidates of the same priority merge. */
   readonly strength: number;
 }
 
 /**
- * Compute all points of interest along a single valid mechanism's track.
+ * Compute all kinematic points of interest along a single valid mechanism's track.
  *
  * Returns markers ordered left-to-right along the rail (`at` ascending).
  */
 export function playbackPointsOf(
   mechanism: Mechanism,
-  profile: DriveProfile | undefined,
-  options: PlaybackPointOptions
+  profile: DriveProfile | undefined
 ): PlaybackPoint[] {
   if (!mechanism.isMechanismValid() || !profile) return [];
   const count = mechanism.joints.length;
   if (count < 4 || profile.along.length !== count) return [];
 
-  const kinematic = detectKinematicPoints(mechanism, profile);
-  const efforts = options.includeMaxEffort
-    ? detectMaxEffortPoints(mechanism, profile, options.forceMode)
-    : [];
-
-  return [...kinematic, ...efforts].sort((a, b) => a.at - b.at || a.kind.localeCompare(b.kind));
+  return detectKinematicPoints(mechanism, profile).sort(
+    (a, b) => a.at - b.at || a.kind.localeCompare(b.kind)
+  );
 }
 
 /** Convert a raw sample index into the clock time shown by the transport. */
@@ -804,150 +777,4 @@ function mergeKinematicCandidates(
     if (!duplicate) kept.push(candidate);
   }
   return kept.sort((a, b) => a.at - b.at);
-}
-
-interface EffortEntry {
-  readonly sample: number;
-  readonly valueSI: number;
-  readonly abs: number;
-  readonly kind: 'torque' | 'force';
-}
-
-/**
- * Find local maxima of |inputEffort| across solved frames, collapsing flat
- * plateaus to their centered maximum so broad peaks never emit shoulder markers.
- */
-function localEffortMaxima(
-  entries: readonly (EffortEntry | undefined)[],
-  maxAbs: number,
-  continuous: boolean
-): EffortEntry[] {
-  const n = entries.length;
-  const plateauTol = maxAbs * 1e-9;
-  const equalAt = (i: number, j: number): boolean =>
-    entries[i] !== undefined &&
-    entries[j] !== undefined &&
-    Math.abs(entries[i]!.abs - entries[j]!.abs) <= plateauTol;
-
-  let origin = 0;
-  if (continuous) {
-    for (let i = 0; i < n; i++) {
-      if (!equalAt(i, (i - 1 + n) % n)) {
-        origin = i;
-        break;
-      }
-    }
-  }
-
-  const indexAt = (offset: number): number => (continuous ? (origin + offset) % n : offset);
-  const absAt = (index: number): number => entries[index]?.abs ?? -Infinity;
-
-  const maxima: EffortEntry[] = [];
-  let offset = 0;
-  while (offset < n) {
-    const startIdx = indexAt(offset);
-    if (!entries[startIdx]) {
-      offset++;
-      continue;
-    }
-    let endOffset = offset;
-    while (endOffset + 1 < n && equalAt(indexAt(endOffset + 1), startIdx)) {
-      endOffset++;
-    }
-
-    const prevAbs =
-      continuous || offset > 0
-        ? absAt(continuous ? (origin + offset - 1 + n) % n : offset - 1)
-        : -Infinity;
-    const nextAbs =
-      continuous || endOffset + 1 < n
-        ? absAt(continuous ? (origin + endOffset + 1) % n : endOffset + 1)
-        : -Infinity;
-
-    const midOffset = (offset + endOffset) / 2;
-    let best = entries[startIdx]!;
-    let bestMidDist = Math.abs(offset - midOffset);
-    for (let k = offset + 1; k <= endOffset; k++) {
-      const candidate = entries[indexAt(k)]!;
-      const midDist = Math.abs(k - midOffset);
-      if (candidate.abs > best.abs || (candidate.abs === best.abs && midDist < bestMidDist)) {
-        best = candidate;
-        bestMidDist = midDist;
-      }
-    }
-
-    if (best.abs > prevAbs && best.abs > nextAbs) {
-      maxima.push(best);
-    }
-    offset = endOffset + 1;
-  }
-  return maxima;
-}
-
-/**
- * Find the frame(s) of peak input torque or input force across the cycle.
- *
- * Returns nothing when fewer than two frames solve, every frame has zero effort,
- * or the effort is flat across the entire cycle (so no single pose is a peak).
- */
-function detectMaxEffortPoints(
-  mechanism: Mechanism,
-  profile: DriveProfile,
-  mode: ForceAnalysisMode
-): PlaybackPoint[] {
-  const series = mechanism.getForceAnalysis(mode);
-  const last = mechanism.joints.length - 1;
-  const limit = Math.min(series.frames.length, last);
-  if (limit <= 0) return [];
-
-  let maxAbs = 0;
-  let minAbs = Infinity;
-  let okCount = 0;
-  const entries: (EffortEntry | undefined)[] = new Array(limit);
-
-  for (let i = 0; i < limit; i++) {
-    const frame = series.frames[i];
-    if (!frame || frame.status !== 'ok' || !frame.inputEffort) continue;
-    const valueSI = frame.inputEffort.valueSI;
-    if (!Number.isFinite(valueSI)) continue;
-    const abs = Math.abs(valueSI);
-    okCount++;
-    if (abs > maxAbs) maxAbs = abs;
-    if (abs < minAbs) minAbs = abs;
-    entries[i] = { sample: i, valueSI, abs, kind: frame.inputEffort.kind };
-  }
-
-  if (okCount < 2 || maxAbs <= EFFORT_NOISE_FLOOR) return [];
-  // A completely constant effort (e.g. steady pure load) has no peak pose.
-  if (maxAbs - minAbs <= maxAbs * 1e-5) return [];
-
-  const peakThreshold = maxAbs * PEAK_TIE_RATIO;
-  const peaks = localEffortMaxima(entries, maxAbs, profile.continuous)
-    .filter((entry) => entry.abs >= peakThreshold)
-    .sort((a, b) => b.abs - a.abs || a.sample - b.sample);
-
-  const kept: EffortEntry[] = [];
-  for (const entry of peaks) {
-    const at = trackPosition(profile, entry.sample);
-    const duplicate = kept.some(
-      (existing) =>
-        trackDistance(trackPosition(profile, existing.sample), at, profile.continuous) <=
-        MERGE_DISTANCE
-    );
-    if (!duplicate) kept.push(entry);
-  }
-
-  const partialSolve = okCount < last;
-  return kept
-    .map((entry, idx) => ({
-      id: `max-effort-${idx}-${entry.sample}`,
-      kind: 'max-effort' as const,
-      sample: entry.sample,
-      at: trackPosition(profile, entry.sample),
-      timeSeconds: playbackTimeOf(mechanism, entry.sample),
-      effortSI: entry.valueSI,
-      effortKind: entry.kind,
-      ...(partialSolve ? { partialSolve: true } : {}),
-    }))
-    .sort((a, b) => a.at - b.at);
 }

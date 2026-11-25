@@ -170,7 +170,7 @@ export interface PlaybackRow {
    * meant "where this starts".
    */
   startMoved: boolean;
-  /** Notable poses (toggle/branch points and peak input effort) along this row's rail. */
+  /** Notable kinematic poses (toggle, limit, and branch positions) along this row's rail. */
   points: PlaybackPoint[];
 }
 
@@ -476,41 +476,25 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
   /**
    * Cached points of interest per solved `Mechanism` instance.
    *
-   * `Mechanism` is immutable once solved (and its force series is cached on it),
-   * so keying by mechanism + analysis-mode string keeps `rows` free during 60fps
-   * playback while automatically refreshing after any edit or static/dynamic switch.
+   * `Mechanism` is immutable once solved, so keying by mechanism keeps `rows`
+   * free during 60fps playback while automatically refreshing after any edit.
    */
-  private readonly pointCache = new WeakMap<Mechanism, Map<string, PlaybackPoint[]>>();
+  private readonly pointCache = new WeakMap<Mechanism, PlaybackPoint[]>();
 
   private pointsFor(index: number): PlaybackPoint[] {
-    if (!this.tabs.isAnalysisMode()) return [];
     const mechanism = this.mechanism.mechanisms[index];
     if (!mechanism?.isMechanismValid()) return [];
-    const forceMode = this.settings.forceAnalysisMode.value;
-    let byMode = this.pointCache.get(mechanism);
-    if (!byMode) {
-      byMode = new Map();
-      this.pointCache.set(mechanism, byMode);
-    }
-    let cached = byMode.get(forceMode);
+    let cached = this.pointCache.get(mechanism);
     if (!cached) {
-      cached = playbackPointsOf(mechanism, this.mechanism.driveProfileOf(index), {
-        includeMaxEffort: true,
-        forceMode,
-      });
-      byMode.set(forceMode, cached);
+      cached = playbackPointsOf(mechanism, this.mechanism.driveProfileOf(index));
+      this.pointCache.set(mechanism, cached);
     }
     return cached;
   }
 
   /** Project a row's points of interest into positioned, tooltip-ready rail markers. */
   markersFor(row: PlaybackRow): PlaybackRailMarker[] {
-    return projectPlaybackMarkers(row.points, row.scrub, {
-      forceMode: this.settings.forceAnalysisMode.value,
-      forceUnit: this.settings.forceUnit.value,
-      lengthUnit: this.settings.lengthUnit.value,
-      nup: this.nup,
-    });
+    return projectPlaybackMarkers(row.points, row.scrub, this.nup);
   }
 
   /** Jump straight to a point of interest on this machine's rail and pause there. */

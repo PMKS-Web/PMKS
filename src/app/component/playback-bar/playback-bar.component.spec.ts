@@ -194,23 +194,20 @@ describe('PlaybackBarComponent scrubbing back to the start', () => {
 describe('PlaybackBarComponent points of interest', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it('hides all POI markers in Edit mode and shows them in Kinematic and Force analysis', async () => {
+  it('shows toggle markers across Edit, Kinematic Analysis, and Force Analysis with no max-effort markers', async () => {
     const { fixture, bar, setTab } = await createBar('Punch_Press', true, TabID.EDIT);
     const el = fixture.nativeElement as HTMLElement;
 
-    expect(el.querySelectorAll('.poiMarker').length).toBe(0);
+    expect(el.querySelectorAll('.poiMarker[data-poi-kind="toggle"]').length).toBe(2);
+    expect(el.querySelectorAll('.poiMarker').length).toBe(2);
 
     setTab(TabID.ANALYZE);
     expect(el.querySelectorAll('.poiMarker[data-poi-kind="toggle"]').length).toBe(2);
-    expect(
-      el.querySelectorAll('.poiMarker[data-poi-kind="max-effort"]').length
-    ).toBeGreaterThanOrEqual(1);
+    expect(el.querySelectorAll('.poiMarker').length).toBe(2);
 
     setTab(TabID.FORCE);
     expect(el.querySelectorAll('.poiMarker[data-poi-kind="toggle"]').length).toBe(2);
-    expect(
-      el.querySelectorAll('.poiMarker[data-poi-kind="max-effort"]').length
-    ).toBeGreaterThanOrEqual(1);
+    expect(el.querySelectorAll('.poiMarker').length).toBe(2);
 
     // Every marker tooltip is a complete sentence ending with a period.
     const row = bar.rows[0];
@@ -221,7 +218,7 @@ describe('PlaybackBarComponent points of interest', () => {
   });
 
   it('labels slot-driven reversals as limit positions rather than toggles', async () => {
-    const { bar } = await createBar('Scotch_Yoke', true, TabID.ANALYZE);
+    const { bar } = await createBar('Scotch_Yoke', true, TabID.EDIT);
     const markers = bar.markersFor(bar.rows[0]);
     const limits = markers.filter((m) => m.point.kind === 'limit');
     expect(limits).toHaveLength(2);
@@ -232,7 +229,7 @@ describe('PlaybackBarComponent points of interest', () => {
   });
 
   it('omits markers on the combined All row when synced and shows them per row when unsynced', async () => {
-    const { fixture, service } = await createBar('Four_Bar_Inversions', true, TabID.ANALYZE);
+    const { fixture, service } = await createBar('Four_Bar_Inversions', true, TabID.EDIT);
     const el = fixture.nativeElement as HTMLElement;
 
     expect(el.querySelectorAll('.mechRow').length).toBe(1);
@@ -247,9 +244,9 @@ describe('PlaybackBarComponent points of interest', () => {
   });
 
   it('jumps directly to a clicked marker pose and pauses playback', async () => {
-    const { fixture, bar, service } = await createBar('Punch_Press', true, TabID.FORCE);
+    const { fixture, bar, service } = await createBar('Punch_Press', true, TabID.EDIT);
     const row = bar.rows[0];
-    const target = bar.markersFor(row).find((m) => m.point.kind === 'max-effort')!;
+    const target = bar.markersFor(row).find((m) => m.point.kind === 'toggle')!;
     expect(target).toBeDefined();
 
     service.setAllPlaying(true);
@@ -257,29 +254,12 @@ describe('PlaybackBarComponent points of interest', () => {
     expect(service.isMechanismPlaying(row.index)).toBe(true);
 
     const button = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
-      '.poiMarker[data-poi-kind="max-effort"]'
+      '.poiMarker[data-poi-kind="toggle"]'
     )!;
     button.click();
     fixture.detectChanges();
 
     expect(service.isMechanismPlaying(row.index)).toBe(false);
     expect(service.secondsOf(row.index)).toBeCloseTo(target.point.timeSeconds, 3);
-  });
-
-  it('updates max-effort markers when switching between static and dynamic force analysis', async () => {
-    const { fixture, bar, settings } = await createBar('Punch_Press', true, TabID.FORCE);
-    settings.forceAnalysisMode.next('static');
-    fixture.detectChanges();
-    const staticTip = bar
-      .markersFor(bar.rows[0])
-      .find((m) => m.point.kind === 'max-effort')!.tooltip;
-    expect(staticTip).toContain('Maximum static input torque');
-
-    settings.forceAnalysisMode.next('dynamic');
-    fixture.detectChanges();
-    const dynamicTip = bar
-      .markersFor(bar.rows[0])
-      .find((m) => m.point.kind === 'max-effort')!.tooltip;
-    expect(dynamicTip).toContain('Maximum dynamic input torque');
   });
 });

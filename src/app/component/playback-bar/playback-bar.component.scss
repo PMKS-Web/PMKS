@@ -660,11 +660,11 @@
     }
   }
 
-  // Notable poses along one mechanism's rail (toggle positions, limit
-  // positions, branch points, and peak input torque/force) share one circular
-  // accent-yellow marker; the hover tooltip names the exact type. Positioned
-  // with the exact thumb-center geometry `.anchorSeat` uses so clicking a
-  // marker parks the handle straight onto it.
+  // Notable kinematic poses along one mechanism's rail (toggle positions, limit
+  // positions, and branch points) share one circular accent-yellow marker; the
+  // hover tooltip names the exact type. Positioned with the exact thumb-center
+  // geometry `.anchorSeat` uses so clicking a marker parks the handle straight
+  // onto it.
   .poiMarker {
     position: absolute;
     left: calc(12px + (100% - 24px) * var(--at, 0) / 100);
@@ -677,7 +677,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transform: translate(-50%, calc(-50% + var(--poi-y, 0px)));
+    transform: translate(-50%, -50%);
     cursor: pointer;
     z-index: 2;
 

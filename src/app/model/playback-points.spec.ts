@@ -1,12 +1,6 @@
 import './joint';
 import { createMechanismHarness } from '../../test-utils/mechanism-harness';
 import { buildMechanism, MechanismFixture } from '../../test-utils/verification/fixture';
-import {
-  punchPressFixture,
-  toggleClampFixture,
-} from '../../test-utils/verification/force-fixtures';
-import { fourBarInversionsFixture } from '../../test-utils/verification/inversion-fixtures';
-import { togglePressFixture } from '../../test-utils/verification/library-fixtures';
 import { TEMPLATE_LINKAGES, TemplateID } from '../component/MODALS/templates/template-linkages';
 import { MechanismBuilder } from '../services/transcoding/mechanism-builder';
 import { StringTranscoder } from '../services/transcoding/string-transcoder';
@@ -75,30 +69,27 @@ function solveTemplate(id: TemplateID) {
   return solveUrl(TEMPLATE_LINKAGES[id]);
 }
 
-function pointsForFixture(
-  fixture: MechanismFixture,
-  includeMaxEffort = false,
-  forceMode: 'static' | 'dynamic' = 'static'
-): { mechanism: Mechanism; points: PlaybackPoint[] } {
+function pointsForFixture(fixture: MechanismFixture): {
+  mechanism: Mechanism;
+  points: PlaybackPoint[];
+} {
   const built = buildMechanism(fixture);
   const mechanism = built.mechanism;
   const profile = driveProfileOf(mechanism);
-  const points = playbackPointsOf(mechanism, profile, { includeMaxEffort, forceMode });
+  const points = playbackPointsOf(mechanism, profile);
   return { mechanism, points };
 }
 
 function pointsForService(
   harness: ReturnType<typeof createMechanismHarness>,
-  index = 0,
-  includeMaxEffort = false,
-  forceMode: 'static' | 'dynamic' = 'static'
+  index = 0
 ): PlaybackPoint[] {
   const mechanism = harness.service.mechanisms[index];
   const profile = harness.service.driveProfileOf(index);
-  return playbackPointsOf(mechanism, profile, { includeMaxEffort, forceMode });
+  return playbackPointsOf(mechanism, profile);
 }
 
-describe('playbackPointsOf — toggle & branch positions across Grashof and non-Grashof mechanisms', () => {
+describe('playbackPointsOf — toggle, limit, and branch positions across Grashof and non-Grashof mechanisms', () => {
   it('marks the two exact crank+coupler collinear toggle positions on a Grashof crank-rocker', () => {
     // Classic Grashof crank-rocker: L1=4, L2=1.5 (shortest=crank), L3=3.5, L4=3
     const { mechanism, points } = pointsForFixture(fourBarByLengths(4, 1.5, 3.5, 3, Math.PI / 3));
@@ -123,7 +114,7 @@ describe('playbackPointsOf — toggle & branch positions across Grashof and non-
   it('marks zero toggles on a Grashof double-crank (drag-link)', () => {
     // Shortest = ground (L1=1, L2=2, L3=3, L4=2.5)
     const { points } = pointsForFixture(fourBarByLengths(1, 2, 3, 2.5, Math.PI / 3));
-    expect(points.filter((p) => p.kind === 'toggle')).toHaveLength(0);
+    expect(points).toHaveLength(0);
   });
 
   it('marks the two collinear change-points as branch points on a Parallelogram', () => {
@@ -142,7 +133,7 @@ describe('playbackPointsOf — toggle & branch positions across Grashof and non-
   it('marks zero kinematic POIs on a Grashof rocker-crank and puts no POIs at the rocker ends', () => {
     // Shortest = output (L4=1, L1=2.5, L2=2, L3=3); input L2 rocks between its travel limits.
     const { points } = pointsForFixture(fourBarByLengths(2.5, 2, 3, 1, Math.PI / 3));
-    expect(points.filter((p) => p.kind !== 'max-effort')).toHaveLength(0);
+    expect(points).toHaveLength(0);
   });
 
   it('marks the two interior output toggles on a Grashof double-rocker, with none at the ends', () => {
@@ -161,7 +152,7 @@ describe('playbackPointsOf — toggle & branch positions across Grashof and non-
     // Case 1: Non-Grashof with NO interior output toggles (L1=2, L2=3, L3=2.5, L4=3.2):
     // L2+L3 = 5.5 > L1+L4 = 5.2 (can't align extended), |L2-L3| = 0.5 < |L1-L4| = 1.2 (can't align folded).
     const none = pointsForFixture(fourBarByLengths(2, 3, 2.5, 3.2, Math.PI / 3));
-    expect(none.points.filter((p) => p.kind !== 'max-effort')).toHaveLength(0);
+    expect(none.points).toHaveLength(0);
 
     // Case 2: Non-Grashof with ONE interior output toggle (L1=4, L2=2.5, L3=2.2, L4=3.5):
     // s+l = 2.2+4 = 6.2 > 2.5+3.5 = 6.0 (non-Grashof).
@@ -210,7 +201,7 @@ describe('playbackPointsOf — toggle & branch positions across Grashof and non-
     expect(shaperPoints.filter((p) => p.kind === 'toggle')).toHaveLength(0);
 
     const boom = solveTemplate('Cylinder_Boom');
-    expect(pointsForService(boom, 0).filter((p) => p.kind !== 'max-effort')).toHaveLength(0);
+    expect(pointsForService(boom, 0)).toHaveLength(0);
   });
 
   it('does not emit solver-subdivision markers on TOGGLE_SIX_BAR beyond true kinematic events', () => {
@@ -237,8 +228,7 @@ describe('playbackPointsOf — toggle & branch positions across Grashof and non-
     // Locking Pliers reaches its over-center toggle at the cylinder stops (0%/100%),
     // so no interior toggle markers clutter the ends of the bar.
     const pliers = solveTemplate('Locking_Pliers');
-    const pliersPoints = pointsForService(pliers, 0).filter((p) => p.kind !== 'max-effort');
-    expect(pliersPoints).toHaveLength(0);
+    expect(pointsForService(pliers, 0)).toHaveLength(0);
   });
 
   it('never flickers in and out as a joint is dragged continuously within a Grashof class', () => {
@@ -276,144 +266,21 @@ describe('playbackPointsOf — toggle & branch positions across Grashof and non-
       prevNgAt = toggles[0].at;
     }
   });
-});
-
-describe('playbackPointsOf — maximum input torque and force', () => {
-  it('marks the peak input torque on Punch Press in static and dynamic modes', () => {
-    const staticResult = pointsForFixture(punchPressFixture(), true, 'static');
-    const staticPeaks = staticResult.points.filter((p) => p.kind === 'max-effort');
-    expect(staticPeaks.length).toBeGreaterThanOrEqual(1);
-    expect(staticPeaks[0].effortKind).toBe('torque');
-    expect(Math.abs(staticPeaks[0].effortSI ?? 0)).toBeGreaterThan(0);
-
-    // Verify every marked sample is within 1.5% of the true maximum |inputEffort|,
-    // and at least one matches the exact maximum.
-    const series = staticResult.mechanism.getForceAnalysis('static');
-    const trueMax = Math.max(
-      ...series.frames
-        .filter((f) => f.status === 'ok' && f.inputEffort)
-        .map((f) => Math.abs(f.inputEffort!.valueSI))
-    );
-    expect(staticPeaks.some((p) => Math.abs(Math.abs(p.effortSI!) - trueMax) < 1e-6)).toBe(true);
-    for (const peak of staticPeaks) {
-      expect(Math.abs(peak.effortSI!)).toBeGreaterThanOrEqual(trueMax * 0.985);
-    }
-
-    const dynamicResult = pointsForFixture(punchPressFixture(), true, 'dynamic');
-    const dynamicPeaks = dynamicResult.points.filter((p) => p.kind === 'max-effort');
-    expect(dynamicPeaks.length).toBeGreaterThanOrEqual(1);
-    expect(dynamicPeaks[0].effortKind).toBe('torque');
-  });
-
-  it('emits a single max-effort marker on a broad peak, suppresses <2 solved frames, and flags partial solves', () => {
-    const built = buildMechanism(fourBarByLengths(4, 1.5, 3.5, 3, Math.PI / 3));
-    const mechanism = built.mechanism;
-    const profile = driveProfileOf(mechanism);
-    const total = mechanism.joints.length - 1;
-    const origGetForce = mechanism.getForceAnalysis.bind(mechanism);
-
-    // 1. Broad single peak spanning >10% of the cycle stays a single marker (no shoulder markers).
-    mechanism.getForceAnalysis = () =>
-      ({
-        frames: Array.from({ length: total + 1 }, (_, i) => {
-          const dist = Math.min(
-            Math.abs(i - Math.floor(total / 2)),
-            total - Math.abs(i - Math.floor(total / 2))
-          );
-          const mag = Math.max(1, 100 - 0.004 * dist * dist);
-          return { status: 'ok', inputEffort: { kind: 'torque', valueSI: mag } };
-        }),
-      }) as ReturnType<Mechanism['getForceAnalysis']>;
-    const broadPeaks = playbackPointsOf(mechanism, profile, {
-      includeMaxEffort: true,
-      forceMode: 'static',
-    }).filter((p) => p.kind === 'max-effort');
-    expect(broadPeaks).toHaveLength(1);
-    expect(broadPeaks[0].partialSolve).toBeUndefined();
-
-    // 2. Partial solve (with unsolved gap frames) flags partialSolve = true.
-    mechanism.getForceAnalysis = () =>
-      ({
-        frames: Array.from({ length: total + 1 }, (_, i) =>
-          i < 5
-            ? { status: 'singular' }
-            : { status: 'ok', inputEffort: { kind: 'torque', valueSI: i === 20 ? 50 : 10 } }
-        ),
-      }) as ReturnType<Mechanism['getForceAnalysis']>;
-    const partialPeaks = playbackPointsOf(mechanism, profile, {
-      includeMaxEffort: true,
-      forceMode: 'static',
-    }).filter((p) => p.kind === 'max-effort');
-    expect(partialPeaks).toHaveLength(1);
-    expect(partialPeaks[0].partialSolve).toBe(true);
-
-    // 3. Only one solved frame in the entire cycle suppresses max-effort completely.
-    mechanism.getForceAnalysis = () =>
-      ({
-        frames: Array.from({ length: total + 1 }, (_, i) =>
-          i === 10
-            ? { status: 'ok', inputEffort: { kind: 'torque', valueSI: 50 } }
-            : { status: 'singular' }
-        ),
-      }) as ReturnType<Mechanism['getForceAnalysis']>;
-    const singleFramePeaks = playbackPointsOf(mechanism, profile, {
-      includeMaxEffort: true,
-      forceMode: 'static',
-    }).filter((p) => p.kind === 'max-effort');
-    expect(singleFramePeaks).toHaveLength(0);
-
-    mechanism.getForceAnalysis = origGetForce;
-  });
-
-  it('omits max-effort when includeMaxEffort is false (Edit mode)', () => {
-    const result = pointsForFixture(punchPressFixture(), false, 'static');
-    expect(result.points.filter((p) => p.kind === 'max-effort')).toHaveLength(0);
-  });
-
-  it('omits max-effort when static effort is identically zero (no applied forces and gravity off)', () => {
-    const result = pointsForFixture(fourBarByLengths(4, 1.5, 3.5, 3, Math.PI / 3), true, 'static');
-    expect(result.points.filter((p) => p.kind === 'max-effort')).toHaveLength(0);
-  });
-
-  it('reports dynamic peak torque even when gravity is off and no external force is applied', () => {
-    const result = pointsForFixture(fourBarByLengths(4, 1.5, 3.5, 3, Math.PI / 3), true, 'dynamic');
-    const peaks = result.points.filter((p) => p.kind === 'max-effort');
-    expect(peaks.length).toBeGreaterThanOrEqual(1);
-    expect(peaks[0].effortKind).toBe('torque');
-  });
-
-  it('reports effortKind = force for a cylinder-driven mechanism (Cylinder Boom with gravity)', () => {
-    const harness = solveTemplate('Cylinder_Boom');
-    for (const link of harness.service.links) {
-      if (link.mass === 0) link.mass = 2;
-    }
-    harness.settings.isGravity.next(true);
-    harness.service.updateMechanism();
-    const peaks = pointsForService(harness, 0, true, 'static').filter(
-      (p) => p.kind === 'max-effort'
-    );
-    expect(peaks.length).toBeGreaterThanOrEqual(1);
-    expect(peaks[0].effortKind).toBe('force');
-  });
 
   it('reflects playback time when a continuously driven mechanism is reversed', () => {
-    const { mechanism } = pointsForFixture(punchPressFixture(), true, 'static');
+    const { mechanism } = pointsForFixture(fourBarByLengths(4, 1.5, 3.5, 3, Math.PI / 3));
     const reversed = mechanism.withReversedDrive();
     expect(reversed).toBeDefined();
-    const profile = driveProfileOf(reversed!);
-    const fwdPoints = playbackPointsOf(mechanism, driveProfileOf(mechanism), {
-      includeMaxEffort: true,
-      forceMode: 'static',
-    });
-    const revPoints = playbackPointsOf(reversed!, profile, {
-      includeMaxEffort: true,
-      forceMode: 'static',
-    });
-    const fwdPeak = fwdPoints.find((p) => p.kind === 'max-effort')!;
-    const revPeak = revPoints.find((p) => p.kind === 'max-effort')!;
-    expect(revPeak.sample).toBe(fwdPeak.sample);
-    if (fwdPeak.timeSeconds > 0) {
-      expect(revPeak.timeSeconds).toBeCloseTo(mechanism.cyclePeriod - fwdPeak.timeSeconds, 4);
+    const fwdPoints = playbackPointsOf(mechanism, driveProfileOf(mechanism));
+    const revPoints = playbackPointsOf(reversed!, driveProfileOf(reversed!));
+    expect(fwdPoints).toHaveLength(2);
+    expect(revPoints).toHaveLength(2);
+    for (const fwd of fwdPoints) {
+      const matching = revPoints.find((p) => p.sample === fwd.sample);
+      expect(matching).toBeDefined();
+      if (fwd.timeSeconds > 0) {
+        expect(matching!.timeSeconds).toBeCloseTo(mechanism.cyclePeriod - fwd.timeSeconds, 4);
+      }
     }
   });
 });

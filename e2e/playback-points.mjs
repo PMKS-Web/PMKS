@@ -1,11 +1,11 @@
 /**
- * Points of interest on the playback scrub rail (issue #386).
+ * Kinematic points of interest on the playback scrub rail (issue #386).
  *
- * Checks toggle/branch diamonds and maximum input torque/force circles across
- * Edit, Kinematic Analysis, and Force Analysis, across Grashof and non-Grashof
- * templates, synced vs. unsynced multi-mechanism bars, click/keyboard jumps,
- * tooltips, and phone layout. Captures screenshots and a contact-sheet
- * filmstrip under gitignored `artifacts/playback-poi/`.
+ * Checks toggle, limit, and branch markers across Edit, Kinematic Analysis, and
+ * Force Analysis, across Grashof and non-Grashof templates, synced vs. unsynced
+ * multi-mechanism bars, click/keyboard jumps, tooltips, and phone layout.
+ * Captures screenshots and a contact-sheet filmstrip under gitignored
+ * `artifacts/playback-poi/`.
  *
  *   PMKS_BASE_URL=http://localhost:4205 PMKS_PLAYWRIGHT_DIR=.. node e2e/playback-points.mjs
  */
@@ -62,18 +62,10 @@ async function shotBar(filename) {
   await page.screenshot({ path: `${OUT}/${filename}`, ...(clip ? { clip } : {}) });
 }
 
-// --- 1. 4-Bar: zero POIs in Edit mode, 2 collinear toggles in Kinematic ------
+// --- 1. 4-Bar: 2 toggles visible across Edit, Kinematic, and Force -----------
 await openTemplate('4-Bar');
-const fourBarEditPois = await page.locator('.poiMarker').count();
-record('4-Bar in Edit shows no POI markers', fourBarEditPois === 0, { fourBarEditPois });
-await shotBar('01-four-bar-edit.png');
-
-await tab('Kinematic').click();
-await page.waitForTimeout(500);
-const fourBarKinToggles = await page.locator('.poiMarker[data-poi-kind="toggle"]').count();
-record('4-Bar in Kinematic Analysis shows 2 toggle markers', fourBarKinToggles === 2, {
-  fourBarKinToggles,
-});
+const fourBarEditToggles = await page.locator('.poiMarker[data-poi-kind="toggle"]').count();
+record('4-Bar in Edit shows 2 toggle markers', fourBarEditToggles === 2, { fourBarEditToggles });
 await page.locator('.poiMarker[data-poi-kind="toggle"]').first().hover();
 await page.waitForTimeout(450);
 const fourBarTip = (await page.locator('.mat-mdc-tooltip').first().textContent())?.trim() ?? '';
@@ -84,13 +76,19 @@ record(
   ),
   { fourBarTip }
 );
+await shotBar('01-four-bar-edit-tooltip.png');
 await page.mouse.move(10, 10);
 await page.waitForTimeout(200);
 
-// --- 2. Scotch Yoke: slot-driven limit markers (not toggles) -----------------
-await openTemplate('Scotch_Yoke');
 await tab('Kinematic').click();
 await page.waitForTimeout(500);
+const fourBarKinToggles = await page.locator('.poiMarker[data-poi-kind="toggle"]').count();
+record('4-Bar in Kinematic Analysis shows 2 toggle markers', fourBarKinToggles === 2, {
+  fourBarKinToggles,
+});
+
+// --- 2. Scotch Yoke: slot-driven limit markers (not toggles) -----------------
+await openTemplate('Scotch_Yoke');
 const yokeLimits = await page.locator('.poiMarker[data-poi-kind="limit"]').count();
 const yokeToggles = await page.locator('.poiMarker[data-poi-kind="toggle"]').count();
 record('Scotch Yoke marks 2 limit positions and 0 toggles', yokeLimits === 2 && yokeToggles === 0, {
@@ -113,10 +111,8 @@ await page.waitForTimeout(200);
 
 // --- 3. Parallelogram: branch markers and tooltip ----------------------------
 await openTemplate('Parallelogram');
-await tab('Kinematic').click();
-await page.waitForTimeout(500);
 const paraBranches = await page.locator('.poiMarker[data-poi-kind="branch"]').count();
-record('Parallelogram in Kinematic Analysis shows 2 branch markers', paraBranches === 2, {
+record('Parallelogram shows 2 branch markers in Edit mode', paraBranches === 2, {
   paraBranches,
 });
 await page.locator('.poiMarker[data-poi-kind="branch"]').first().hover();
@@ -133,66 +129,55 @@ await shotBar('02b-parallelogram-branch-tooltip.png');
 await page.mouse.move(10, 10);
 await page.waitForTimeout(200);
 
-// --- 4. Punch Press: zero POIs in Edit, toggles + max-effort in Analysis -----
+// --- 4. Punch Press: 2 toggles only (no max-effort) across all modes ---------
 await openTemplate('Punch_Press');
-const ppEditPois = await page.locator('.poiMarker').count();
-record('Punch Press hides all POI markers in Edit', ppEditPois === 0, { ppEditPois });
+const ppEditToggles = await page.locator('.poiMarker[data-poi-kind="toggle"]').count();
+const ppEditTotal = await page.locator('.poiMarker').count();
+record(
+  'Punch Press in Edit shows 2 toggle markers and no effort markers',
+  ppEditToggles === 2 && ppEditTotal === 2,
+  { ppEditToggles, ppEditTotal }
+);
 
 await tab('Kinematic').click();
 await page.waitForTimeout(600);
 const ppKinToggles = await page.locator('.poiMarker[data-poi-kind="toggle"]').count();
-const ppKinEffort = await page.locator('.poiMarker[data-poi-kind="max-effort"]').count();
+const ppKinTotal = await page.locator('.poiMarker').count();
 record(
-  'Punch Press in Kinematic Analysis shows both toggle and max-effort markers',
-  ppKinToggles === 2 && ppKinEffort >= 1,
-  { ppKinToggles, ppKinEffort }
+  'Punch Press in Kinematic Analysis shows 2 toggle markers and no effort markers',
+  ppKinToggles === 2 && ppKinTotal === 2,
+  { ppKinToggles, ppKinTotal }
 );
 
 await tab('Force').click();
 await page.waitForTimeout(700);
 const ppForceToggles = await page.locator('.poiMarker[data-poi-kind="toggle"]').count();
-const ppForceEffort = await page.locator('.poiMarker[data-poi-kind="max-effort"]').count();
+const ppForceTotal = await page.locator('.poiMarker').count();
 record(
-  'Punch Press in Force Analysis shows toggle and max-effort markers',
-  ppForceToggles === 2 && ppForceEffort >= 1,
-  { ppForceToggles, ppForceEffort }
+  'Punch Press in Force Analysis shows 2 toggle markers and no effort markers',
+  ppForceToggles === 2 && ppForceTotal === 2,
+  { ppForceToggles, ppForceTotal }
 );
 
 const markerStyle = await page.evaluate(() => {
   const toggleGlyph = document.querySelector('.poiMarker[data-poi-kind="toggle"] .poiGlyph');
-  const effortGlyph = document.querySelector('.poiMarker[data-poi-kind="max-effort"] .poiGlyph');
   const tStyle = toggleGlyph ? getComputedStyle(toggleGlyph) : null;
-  const eStyle = effortGlyph ? getComputedStyle(effortGlyph) : null;
   return {
     toggleBg: tStyle?.backgroundColor,
-    effortBg: eStyle?.backgroundColor,
     toggleRadius: tStyle?.borderRadius,
-    effortRadius: eStyle?.borderRadius,
     toggleTransform: tStyle?.transform,
     oldToggleBadge: document.querySelectorAll('.rowToggle').length,
   };
 });
 record(
-  'All POI markers share one circular PMKS yellow glyph and the old row Toggle badge is gone',
+  'POI markers use the circular PMKS yellow glyph and the old row Toggle badge is gone',
   markerStyle.toggleBg === 'rgb(255, 193, 7)' &&
-    markerStyle.effortBg === 'rgb(255, 193, 7)' &&
     markerStyle.toggleRadius === '50%' &&
-    markerStyle.effortRadius === '50%' &&
     markerStyle.toggleTransform === 'none' &&
     markerStyle.oldToggleBadge === 0,
   markerStyle
 );
-
-const firstEffort = page.locator('.poiMarker[data-poi-kind="max-effort"]').first();
-await firstEffort.hover();
-await page.waitForTimeout(450);
-const effortTooltip = (await page.locator('.mat-mdc-tooltip').first().textContent())?.trim() ?? '';
-record(
-  'Max-effort tooltip reports input torque with unit and complete sentences',
-  /^Maximum (static|dynamic) input torque is .+\. Click to jump here\.$/.test(effortTooltip),
-  { effortTooltip }
-);
-await shotBar('03-punch-press-force-tooltip.png');
+await shotBar('03-punch-press-force.png');
 
 // --- 5. Clicking a marker while playing jumps straight there and pauses ------
 await page.locator('.playButton').click();
@@ -200,7 +185,7 @@ await page.waitForTimeout(450);
 const playingBeforeClick = await page.evaluate(
   () => ng.getComponent(document.querySelector('app-playback-bar')).rows[0]?.playing ?? false
 );
-const targetMarker = page.locator('.poiMarker[data-poi-kind="max-effort"]').last();
+const targetMarker = page.locator('.poiMarker[data-poi-kind="toggle"]').last();
 const targetLeftPct = await targetMarker.evaluate((el) =>
   parseFloat(el.style.getPropertyValue('--at'))
 );
@@ -249,43 +234,26 @@ record(
   { toggleLeftPct, afterKey }
 );
 
-// --- 7. Toggle Clamp in Force Analysis ---------------------------------------
+// --- 7. Toggle Clamp ---------------------------------------------------------
 await openTemplate('Toggle_Clamp');
-await tab('Force').click();
-await page.waitForTimeout(600);
 const tcToggles = await page.locator('.poiMarker[data-poi-kind="toggle"]').count();
-const tcEffort = await page.locator('.poiMarker[data-poi-kind="max-effort"]').count();
-record('Toggle Clamp shows 2 toggles and max-effort marker', tcToggles === 2 && tcEffort >= 1, {
-  tcToggles,
-  tcEffort,
-});
-await shotBar('05-toggle-clamp-force.png');
+record('Toggle Clamp shows 2 toggles in Edit mode', tcToggles === 2, { tcToggles });
+await shotBar('05-toggle-clamp-edit.png');
 
 // --- 8. Offset Load Rocker (non-Grashof): 1 interior toggle, 0 at ends -------
 await openTemplate('Offset_Load_Rocker');
-await tab('Force').click();
-await page.waitForTimeout(600);
 const rockerToggles = await page
   .locator('.poiMarker[data-poi-kind="toggle"]')
   .evaluateAll((els) => els.map((el) => parseFloat(el.style.getPropertyValue('--at'))));
-const rockerEffort = await page.locator('.poiMarker[data-poi-kind="max-effort"]').count();
 record(
   'Non-Grashof Offset Load Rocker marks only its interior toggle (none at 0% or 100%)',
   rockerToggles.length === 1 && rockerToggles[0] > 5 && rockerToggles[0] < 95,
   { rockerToggles }
 );
-record('Offset Load Rocker shows max-effort marker in Force Analysis', rockerEffort >= 1, {
-  rockerEffort,
-});
-// Jump to max-effort so the thumb moves away from the interior toggle for visual inspection.
-await page.locator('.poiMarker[data-poi-kind="max-effort"]').first().click();
-await page.waitForTimeout(250);
-await shotBar('06-offset-load-rocker-force.png');
+await shotBar('06-offset-load-rocker-edit.png');
 
 // --- 9. Multi-mechanism Four_Bar_Inversions: synced vs. unsynced -------------
 await openTemplate('Four_Bar_Inversions');
-await tab('Kinematic').click();
-await page.waitForTimeout(500);
 const syncButton = page.locator('.syncToggle');
 const isSynced = await syncButton.evaluate((el) => el.classList.contains('on'));
 if (!isSynced) {
@@ -313,8 +281,6 @@ await shotBar('08-inversions-unsynced.png');
 // --- 10. Phone viewport (< 600px) --------------------------------------------
 await page.setViewportSize({ width: 390, height: 844 });
 await openTemplate('Punch_Press');
-await tab('Force').click();
-await page.waitForTimeout(600);
 const phoneCheck = await page.evaluate(() => {
   const rail = document.querySelector('.trackWell')?.getBoundingClientRect();
   const markers = [...document.querySelectorAll('.poiMarker')].map((el) => {
@@ -330,7 +296,7 @@ const phoneCheck = await page.evaluate(() => {
 });
 record(
   'Phone viewport renders markers inside the scrub rail',
-  phoneCheck.count >= 3 && phoneCheck.insideRail,
+  phoneCheck.count === 2 && phoneCheck.insideRail,
   phoneCheck
 );
 await page.screenshot({ path: `${OUT}/09-phone-punch-press.png` });
