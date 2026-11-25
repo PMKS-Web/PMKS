@@ -211,18 +211,6 @@
                 >
               }
 
-              <!-- Amber rather than red: the mechanism runs, and runs correctly.
-                   What it is warning about is the linkage, not the answer. -->
-              @if (row.togglePoint) {
-                <span
-                  class="rowToggle"
-                  title="This mechanism passes through a toggle position, where a small input motion causes a large output motion. PMKS uses finer steps here because velocities and accelerations spike and change rapidly."
-                >
-                  <span class="toggleDot"></span>
-                  Toggle
-                </span>
-              }
-
               <!-- Where the input is, and how long it has been going. Read
                    only: the handle is how you move it, and a typed time is a
                    question about a coordinate the transport no longer uses. A

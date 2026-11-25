@@ -119,14 +119,6 @@ export interface PlaybackRow {
    */
   anchorAt?: number;
   /**
-   * Whether this machine passes through a toggle.
-   *
-   * True exactly when the walk had to cut its step finer somewhere, which is
-   * the same question: it does that where a sample moved further than a linkage
-   * should move in one frame.
-   */
-  togglePoint: boolean;
-  /**
    * Which way the input is going, while it is going: "Clockwise", "Closing".
    * Paused, the row says how far it is from its start instead (`displaced`),
    * and whether the cycle loops or turns back is the machine panel's.
@@ -700,7 +692,6 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
       // changed on a machine whose input reverses on its own: turning one of
       // those round writes `playbackDirection` and leaves the drive as it was.
       directionIcon: combined ? '' : this.iconFor(index),
-      togglePoint: mechanism?.hasAddedSamples ?? false,
       note: combined || !this.mechanism.isMechanismPlaying(index) ? '' : this.noteFor(index),
       heading: combined ? '' : this.noteFor(index),
       playing: this.mechanism.isMechanismPlaying(index),
@@ -873,7 +864,6 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
           driveKindOf(driven instanceof PrisJoint, !!this.mechanism.cylinderAt(driven)),
           turnsClockwise(this.mechanism.driveSpeedOf(driven))
         ),
-        togglePoint: false,
         note: '',
         heading: '',
         playing: false,
@@ -903,7 +893,6 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
       // direction button.
       directionIcon: '',
       anchorAt: undefined,
-      togglePoint: false,
       note: '',
       heading: '',
       playing: false,

@@ -336,27 +336,6 @@
     }
   }
 
-  // Which way the input is going right now, and what it does when it gets to
-  // the end of the track. The second is gray in both readings: coming round
-  // again and turning back are two facts, not a good one and a bad one.
-  .rowToggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    flex: 0 0 auto;
-    font-size: 11px;
-    color: var(--warning-text);
-    white-space: nowrap;
-    cursor: help;
-  }
-
-  .toggleDot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--accent);
-  }
-
   // Scoped, unlike every earlier version of this rule: written bare it was a
   // global `.rowNote`, and the export drawer's notes were inheriting it.
   .playbackRow .rowNote {
@@ -726,6 +705,7 @@
   .poiGlyph {
     display: block;
     box-sizing: border-box;
+    background: var(--accent);
     border: 1.5px solid var(--surface);
     box-shadow: var(--thumb-shadow);
     transition: transform 0.12s ease;
@@ -735,7 +715,6 @@
     width: 8px;
     height: 8px;
     border-radius: 1.5px;
-    background: var(--warning);
     transform: rotate(45deg);
   }
 
@@ -743,7 +722,6 @@
     width: 9px;
     height: 9px;
     border-radius: 50%;
-    background: var(--danger);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -945,10 +923,9 @@
     }
 
     // Nothing on the reading line but what a seek needs. The end-of-cycle
-    // reading and the toggle warning are explanations, and the line is holding
-    // a name, a chip and two numbers already.
+    // reading is an explanation, and the line is holding a name, a chip and
+    // two numbers already.
     .rowEnd,
-    .rowToggle,
     .playbackRow .rowNote {
       display: none;
     }

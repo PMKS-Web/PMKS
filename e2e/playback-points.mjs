@@ -111,6 +111,20 @@ record(
   { ppForceToggles, ppForceEffort }
 );
 
+const markerColors = await page.evaluate(() => ({
+  toggle: getComputedStyle(document.querySelector('.poiMarker.toggle .poiGlyph')).backgroundColor,
+  maxEffort: getComputedStyle(document.querySelector('.poiMarker.maxEffort .poiGlyph'))
+    .backgroundColor,
+  oldToggleBadge: document.querySelectorAll('.rowToggle').length,
+}));
+record(
+  'Both marker types use PMKS accent yellow and the old row Toggle badge is gone',
+  markerColors.toggle === 'rgb(255, 193, 7)' &&
+    markerColors.maxEffort === 'rgb(255, 193, 7)' &&
+    markerColors.oldToggleBadge === 0,
+  markerColors
+);
+
 const firstEffort = page.locator('.poiMarker.maxEffort').first();
 await firstEffort.hover();
 await page.waitForTimeout(450);
