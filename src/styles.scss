@@ -1,11 +1,57 @@
 /* You can add global styles to this file, and also import other style files */
 
+// Colors, shadows, radii and the card gap, as custom properties on :root. The
+// one place a hex color may be written; see the file for why.
+@use 'styles/tokens';
+
+// A reader who has asked for reduced motion gets none, from every stylesheet at
+// once. Durations go to almost zero rather than to none so that a transition
+// still ends and still fires `transitionend`; a spinner keeps one iteration
+// so that a script waiting on it is not left waiting. Where a panel ends up is
+// not motion, so nothing here changes what a rule sets, only how fast. A
+// component with a script-driven animation still asks `matchMedia` itself
+// (`LeftTabsComponent.slide` does), because this cannot reach the Web
+// Animations API.
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+// The app fills the window and everything inside it scrolls on its own, so the
+// document itself never should. Without this a drawer parked past the right
+// edge can be scrolled back into view after being closed.
 html,
 body {
   height: 100%;
+  // `clip` rather than `hidden`: hidden removes the scrollbar but still allows
+  // the document to be scrolled programmatically, which is how a closed drawer
+  // could be brought back into view.
+  overflow: hidden;
+  overflow: clip;
+  // No rubber band either: on a phone the window has nothing to scroll, so a
+  // finger dragged across a card should move nothing at all.
+  overscroll-behavior: none;
 }
 
+// Pinned to the window, so the document has nothing to pan. Safari on iOS does
+// not take `overflow: clip` on the root as a reason to stop a finger: anything
+// hanging past the right edge -- the closed drawer, parked a width off screen --
+// let the whole interface be dragged sideways (issue #298). A fixed body is the
+// containing block for every card positioned in it, so it clips them, and
+// fixed boxes add nothing to the page's scrollable area. The size is the inline
+// one on `<body>` in index.html, the same box the window gave it before.
 body {
+  position: fixed;
+  top: 0;
+  left: 0;
   margin: 0;
   font-family: Roboto, 'Helvetica Neue', sans-serif;
 
@@ -16,12 +62,6 @@ body {
   -moz-user-select: none; /* Firefox */
   -ms-user-select: none; /* IE10+/Edge */
   user-select: none; /* Standard */
-}
-
-
-:root {
-  --border-radius: 5px;
-  --mat-warning-color: #F44336;
 }
 
 /* Remove all default margins and padding */
@@ -38,4 +78,252 @@ p {
 
 input {
   margin: 0;
+}
+
+/* A tooltip that carries a paragraph rather than a phrase. Material renders
+   these into an overlay at the end of the document, so the only place that can
+   reach one is here. */
+.exportTip {
+  max-width: 320px !important;
+}
+
+.exportTip .mdc-tooltip__surface {
+  max-width: 320px !important;
+  text-align: left;
+  line-height: 16px;
+}
+
+// A shortcut tooltip is a label, never a target. Without this the panel takes
+// the pointer the moment it appears under the cursor, the control loses its
+// hover, and the tip flickers itself out of existence.
+.shortcutTipPanel {
+  pointer-events: none;
+}
+
+// The transport's start-pose menu. In the global sheet because it is drawn in
+// a CDK overlay, outside the component whose row it belongs to -- the row clips
+// its own overflow so a long note cannot make the card taller, and a menu drawn
+// inside it was cut off at the card's edge.
+//
+// Upward, always, with its left edge on the chip's: the transport sits 38px off
+// the bottom of the window, so there is never downward room -- which is what
+// lets this be a fixed two rows that can never want to flip or scroll.
+//
+// A menu's elevation rather than a card's. It is drawn over the drawing, not
+// laid beside the other cards, and the cluster's own shadow would leave it
+// looking like a fourth card that had floated loose.
+.startMenu {
+  display: flex;
+  flex-direction: column;
+  width: 252px;
+  padding: 4px 0;
+  box-sizing: border-box;
+  border-radius: 5px;
+  background: var(--surface);
+  box-shadow: var(--menu-shadow);
+
+  button {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    height: 32px;
+    padding: 0 14px;
+    flex: 0 0 32px;
+    border: none;
+    background: transparent;
+    color: var(--text-strong);
+    font-family: inherit;
+    font-size: 13.5px;
+    white-space: nowrap;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--press-wash);
+    }
+
+    mat-icon {
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+      font-size: 18px;
+      line-height: 18px;
+      color: var(--text-secondary);
+    }
+
+    // Grayed, with the reason under the label: beside it would not fit the
+    // menu's width once it names a bar. The context menu's off row, in this
+    // menu's metrics.
+    &.off {
+      height: auto;
+      flex-basis: auto;
+      min-height: 32px;
+      padding-top: 6px;
+      padding-bottom: 6px;
+      color: var(--text-disabled);
+      cursor: default;
+
+      &:hover {
+        background: transparent;
+      }
+
+      mat-icon {
+        opacity: 0.24;
+      }
+    }
+  }
+
+  .startMenuLabel {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .startMenuReason {
+    font-size: 11.5px;
+    line-height: 15px;
+    color: var(--text-muted);
+  }
+}
+
+// The phone's drawer of view switches. Global, because it is drawn in a CDK
+// overlay outside the component that raises it.
+//
+// Named rows rather than glyphs: on the desk the six are a row you learn once,
+// crammed at gap:0 on a phone they are six glyphs you never learn. In a drawer
+// they get the same nouns `app-view-button` already carries -- and a row can
+// say why a switch is refused, which a dimmed icon cannot.
+.viewSheet {
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  padding: 6px 0 8px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--menu-shadow);
+
+  .viewSheetGrip {
+    display: block;
+    width: 32px;
+    height: 4px;
+    margin: 2px auto 8px;
+    border-radius: 2px;
+    background: rgba(0, 0, 0, 0.16);
+  }
+
+  .viewSheetTitle {
+    padding: 0 16px 6px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+
+  .viewSheetRule {
+    height: 1px;
+    margin: 6px 0;
+    background: var(--border-rule);
+  }
+
+  // 44px, which is the smallest a finger should have to aim at.
+  .viewRow {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    min-height: 44px;
+    padding: 0 16px;
+    border: none;
+    background: transparent;
+    color: var(--text-strong);
+    font-family: inherit;
+    font-size: 15px;
+    text-align: left;
+    cursor: pointer;
+
+    &:disabled {
+      color: var(--text-muted);
+      cursor: default;
+    }
+
+    &:not(:disabled):active {
+      background: var(--press-wash);
+    }
+
+    > mat-icon {
+      width: 22px;
+      height: 22px;
+      flex: 0 0 auto;
+      font-size: 22px;
+      line-height: 22px;
+      color: var(--text-secondary);
+    }
+
+    &:disabled > mat-icon {
+      color: var(--text-disabled);
+    }
+
+    // A setting that is on with nothing to draw is still on, and the row says
+    // so -- dimmed, so it does not read as something currently on the grid.
+    &:disabled .viewRowSwitch {
+      opacity: 0.4;
+    }
+  }
+
+  .viewRowName {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  // Why this one is refused, said rather than implied. It is the whole reason
+  // these stopped being glyphs.
+  .viewRowWhy {
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--text-muted);
+  }
+
+  // The app's switch, at the size the rows want.
+  .viewRowSwitch {
+    position: relative;
+    width: 36px;
+    height: 14px;
+    flex: 0 0 auto;
+    border-radius: 7px;
+    background: rgba(0, 0, 0, 0.38);
+    transition: background 120ms ease-out;
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: -3px;
+      left: 0;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--surface-subtle);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      transition: transform 120ms ease-out;
+    }
+
+    &.on {
+      background: rgba(63, 81, 181, 0.54);
+
+      &::after {
+        background: var(--brand);
+        transform: translateX(16px);
+      }
+    }
+  }
+
+  .viewRowGo {
+    width: 20px;
+    height: 20px;
+    flex: 0 0 auto;
+    font-size: 20px;
+    line-height: 20px;
+    color: var(--text-muted);
+  }
 }

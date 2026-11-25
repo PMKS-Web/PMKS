@@ -30,7 +30,7 @@ describe('AnalysisApexChartComponent', () => {
     FakeApexCharts.instances = [];
     chartWindow.ApexCharts = FakeApexCharts as unknown as typeof ApexCharts;
     await TestBed.configureTestingModule({
-      declarations: [AnalysisApexChartComponent],
+      imports: [AnalysisApexChartComponent],
     }).compileComponents();
     fixture = TestBed.createComponent(AnalysisApexChartComponent);
   });
@@ -51,9 +51,7 @@ describe('AnalysisApexChartComponent', () => {
     expect(FakeApexCharts.instances[0].host).toBe(
       fixture.nativeElement.querySelector('div:not(.chart-render-error)')
     );
-    expect(FakeApexCharts.instances[0].options.series).toEqual([
-      { name: 'X', data: [1, 2] },
-    ]);
+    expect(FakeApexCharts.instances[0].options.series).toEqual([{ name: 'X', data: [1, 2] }]);
     expect(FakeApexCharts.instances[0].options).not.toHaveProperty('markers');
     expect(FakeApexCharts.instances[0].render).toHaveBeenCalledOnce();
   });

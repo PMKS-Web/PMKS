@@ -1,0 +1,86 @@
+import { FormControl, FormGroup } from '@angular/forms';
+import { applicationConfig, type Meta, type StoryObj } from '@storybook/angular-vite';
+import { HoldFieldComponent } from '../../app/component/BLOCKS/hold-field/hold-field.component';
+import { RealJoint } from '../../app/model/joint';
+import { RealLink } from '../../app/model/link';
+import { inPanel } from '../support/frame';
+import { cylinderMemberStub, gridUtilsStub, mechanismStub } from '../support/stubs';
+
+/**
+ * `hold-field-block`: a bar's Length and Angle, each with a padlock that fixes
+ * that value against edits. The link is a real two-joint `RealLink`, so the
+ * block's own `holdableBar` check runs; the mechanism and the Lock marks are
+ * stubs, so a padlock press changes the stub's hold and nothing else.
+ */
+function bar(): RealLink {
+  return new RealLink('AB', [new RealJoint('A', 0, 0), new RealJoint('B', 4, 3)]);
+}
+
+const meta: Meta = {
+  title: 'Fields/Hold Field',
+  component: HoldFieldComponent,
+  tags: ['autodocs'],
+  decorators: [inPanel()],
+  args: { disabled: false, lengthHelp: undefined, angleHelp: undefined },
+  render: (args) => ({
+    props: {
+      ...args,
+      link: bar(),
+      form: new FormGroup({ length: new FormControl('5.00'), angle: new FormControl('36.87') }),
+    },
+    template: `
+      <hold-field-block
+        [formGroup]="form"
+        [link]="link"
+        [disabled]="disabled"
+        [lengthHelp]="lengthHelp"
+        [angleHelp]="angleHelp"
+      ></hold-field-block>
+    `,
+  }),
+};
+
+export default meta;
+type Story = StoryObj;
+
+const withHold = (hold: 'length' | 'angle' | undefined, frozen: string[] = []) => [
+  applicationConfig({ providers: [mechanismStub(hold), gridUtilsStub(frozen)] }),
+];
+
+export const Free: Story = { decorators: withHold(undefined) };
+
+export const LengthFixed: Story = { decorators: withHold('length') };
+
+export const AngleFixed: Story = { decorators: withHold('angle') };
+
+const asMember = (holds: { length?: boolean; angle?: boolean } = {}) => [
+  applicationConfig({ providers: [cylinderMemberStub(holds), gridUtilsStub([])] }),
+];
+
+/**
+ * A cylinder's barrel: both rows, with its own help. The length is the
+ * member's, and the angle is the whole part's, so the rod's panel shows the
+ * same bearing (decision S5).
+ */
+export const CylinderMember: Story = {
+  decorators: asMember(),
+  args: {
+    lengthHelp: 'How long the barrel is. The stroke follows it.',
+    angleHelp: 'The direction the cylinder points, joint to joint.',
+  },
+};
+
+/** The state the two places make possible: this member's length, and the part's angle. */
+export const CylinderMemberBothFixed: Story = {
+  decorators: asMember({ length: true, angle: true }),
+  args: {
+    lengthHelp: 'How long the barrel is. The stroke follows it.',
+    angleHelp: 'The direction the cylinder points, joint to joint.',
+  },
+};
+
+/** Both ends locked in place: the padlocks step aside, since both values are already held. */
+export const LockedInPlace: Story = { decorators: withHold(undefined, ['A', 'B']) };
+
+/** A body of three or more joints has no single length or angle. */
+export const Disabled: Story = { decorators: withHold(undefined), args: { disabled: true } };

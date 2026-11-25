@@ -1,0 +1,134 @@
+{
+ "schema": "pmks-oracle-problem/1",
+ "id": "template.whitworth-quick-return.m1",
+ "title": "Template Whitworth_Quick_Return, M1",
+ "source": {
+  "kind": "published",
+  "case": "template.whitworth-quick-return",
+  "machine": "M1"
+ },
+ "gravity": 9.80665,
+ "bodies": [
+  {
+   "id": "AB",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    9.184850993605149e-18,
+    0.15
+   ]
+  },
+  {
+   "id": "CD",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.020943058495790538,
+    0.23717082451262844
+   ]
+  }
+ ],
+ "joints": [
+  {
+   "id": "A",
+   "kind": "pin",
+   "at": [
+    0,
+    0
+   ],
+   "bodies": [
+    "AB"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "B",
+   "kind": "slider",
+   "at": [
+    1.8369701987210297e-17,
+    0.3
+   ],
+   "guide": "CD",
+   "linePoint": [
+    0.1,
+    0
+   ],
+   "axis": [
+    -0.31622776601683805,
+    0.9486832980505138
+   ],
+   "riders": [
+    "AB"
+   ],
+   "rotates": true,
+   "blockMass": 0,
+   "limits": [
+    0.0284,
+    0.4716
+   ]
+  },
+  {
+   "id": "C",
+   "kind": "pin",
+   "at": [
+    0.1,
+    0
+   ],
+   "bodies": [
+    "CD"
+   ],
+   "grounded": true,
+   "welded": false
+  }
+ ],
+ "driver": {
+  "joint": "A",
+  "kind": "rotation",
+  "speed": -1.0471975511965976,
+  "bodies": [
+   "ground",
+   "AB"
+  ]
+ },
+ "loads": [],
+ "points": [
+  {
+   "id": "A",
+   "body": "ground",
+   "at": [
+    0,
+    0
+   ]
+  },
+  {
+   "id": "B",
+   "body": "AB",
+   "at": [
+    1.8369701987210297e-17,
+    0.3
+   ]
+  },
+  {
+   "id": "C",
+   "body": "ground",
+   "at": [
+    0.1,
+    0
+   ]
+  },
+  {
+   "id": "D",
+   "body": "CD",
+   "at": [
+    -0.05811388300841893,
+    0.4743416490252569
+   ]
+  }
+ ],
+ "sweep": {
+  "step": 0.017453292519943295,
+  "maxSamples": 2000
+ },
+ "unsupported": []
+}

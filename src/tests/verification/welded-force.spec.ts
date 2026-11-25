@@ -1,7 +1,11 @@
 import '../../app/model/joint';
 import { Mechanism } from '../../app/model/mechanism/mechanism';
 import { RealLink } from '../../app/model/link';
-import { buildMechanism, MechanismFixture } from '../../test-utils/verification/fixture';
+import {
+  buildMechanism,
+  inModelUnits,
+  MechanismFixture,
+} from '../../test-utils/verification/fixture';
 
 function weldedFiveBarFixture(): MechanismFixture {
   return {
@@ -28,7 +32,11 @@ function normalizeAngle(value: number): number {
 
 describe('welded five-bar force regression', () => {
   it('simulates and reproduces the compound-link dynamic torque', () => {
-    const { mechanism } = buildMechanism(weldedFiveBarFixture());
+    // In model units, as the app draws it: the pinned torques are real N·m
+    // for a linkage whose coordinates are the fixture's meters. Positions are
+    // rounded to four decimals of a model unit, finer than four of a meter,
+    // which is why the later rows differ from a raw build's in the fourth.
+    const { mechanism } = buildMechanism(inModelUnits(weldedFiveBarFixture()));
     expect(mechanism.dof).toBe(1);
     expect(mechanism.isMechanismValid()).toBe(true);
     expect(mechanism.forces.every((forces) => forces.length === 1)).toBe(true);
@@ -45,9 +53,12 @@ describe('welded five-bar force regression', () => {
     const rows = mechanism.forceAnalysis('dynamics');
     expect(rows).toHaveLength(mechanism.timeNum.length);
     expect(rows.every((row) => Number.isFinite(Number(row[torqueColumn])))).toBe(true);
+    // Independent circle geometry differentiated at theta = 45, 46 and 47
+    // degrees: (rate of body kinetic energy - load power) / input speed.
+    // Full-precision poses remove the old four-decimal pose bias.
     expect(Number(rows[0][torqueColumn])).toBeCloseTo(2.9396, 4);
-    expect(Number(rows[1][torqueColumn])).toBeCloseTo(3.0096, 4);
-    expect(Number(rows[2][torqueColumn])).toBeCloseTo(3.2182, 4);
+    expect(Number(rows[1][torqueColumn])).toBeCloseTo(3.0098, 4);
+    expect(Number(rows[2][torqueColumn])).toBeCloseTo(3.2185, 4);
 
     for (const mode of ['static', 'dynamic'] as const) {
       const result = mechanism.getForceAnalysis(mode);

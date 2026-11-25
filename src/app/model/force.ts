@@ -23,6 +23,31 @@ export class Force {
   private _angleRad: number;
 
   private _showHighlight: boolean = false;
+  /**
+   * The body this force was put on, by name, kept across every rebuild.
+   *
+   * `link` is the *current* owner, and a weld replaces it: the bar somebody
+   * anchored to becomes a leaf of a compound, and the compound is what the
+   * force then belongs to. Unwelding has to give it back, and the only way to
+   * do that is to have remembered. Guessing from geometry does not work --
+   * where two leaves meet, every candidate is the same distance away, and the
+   * tie-break sent a bracket's load to a cylinder's rod without moving it.
+   *
+   * Undefined for a force from a payload written before this was recorded; the
+   * old distance rule is what those still fall back to.
+   */
+  public anchoredTo?: string;
+  /** Locked in place while editing: neither handle nor the body may be dragged. */
+  public locked: boolean = false;
+  /**
+   * What this one force is drawn in, or '' for the color they all share.
+   *
+   * From the same six the links use, because a force belongs to a link and
+   * reading a drawing means pairing them up. Per force rather than per drawing
+   * so that two loads on one linkage can be told apart -- which is the whole
+   * question a force diagram with more than one arrow in it asks.
+   */
+  public color: string = '';
   isEndSelected: boolean = false;
   isStartSelected: boolean = false;
   visualWidth: number = Force.DEFAULT_VISUAL_WIDTH;
@@ -43,18 +68,12 @@ export class Force {
     this._local = local;
     this._stroke = local ? 'blue' : 'black';
     this._fill = local ? 'blue' : 'black';
-    this._arrowOutward = true;
+    this._arrowOutward = arrowOutward;
     this._mag = this.sanitizeMagnitude(mag);
 
-    // Older URLs could store the arrow at the application point. Normalize those forces so
-    // startCoord is always the application point and endCoord always indicates physical direction.
-    if (!arrowOutward) {
-      this._endCoord = new Coord(
-        this._startCoord.x - (this._endCoord.x - this._startCoord.x),
-        this._startCoord.y - (this._endCoord.y - this._startCoord.y)
-      );
-    }
-    this._angleRad = this.updateAngle(this.startCoord, this.endCoord);
+    // The anchor stays on the body. An inward arrow points from the free
+    // handle toward it; old URLs already store this same outward flag.
+    this._angleRad = this.physicalAngle();
     this._forceLine = '';
     this._forceArrow = '';
     this.refreshVisuals();
@@ -75,12 +94,30 @@ export class Force {
     this.refreshVisuals();
   }
 
+  /**
+   * Move only where the force is applied, leaving its tip where it was.
+   *
+   * The tail is the point the load acts at, and the head is the direction it
+   * acts in; dragging the tail used to carry the head with it, which meant the
+   * one handle that names the application point could not change it without
+   * also changing nothing else. Whole-force moves are what grabbing the arrow
+   * is for.
+   */
+  moveApplicationPoint(coord: Coord) {
+    this.startCoord.x = coord.x;
+    this.startCoord.y = coord.y;
+    if (this.handleLength() > 0) {
+      this._angleRad = this.physicalAngle();
+    }
+    this.refreshVisuals();
+  }
+
   /** Move the visual direction handle while preserving physical magnitude. */
   moveDirectionHandle(coord: Coord) {
     this.endCoord.x = coord.x;
     this.endCoord.y = coord.y;
     if (this.handleLength() > 0) {
-      this._angleRad = this.updateAngle(this.startCoord, this.endCoord);
+      this._angleRad = this.physicalAngle();
     }
     this.refreshVisuals();
   }
@@ -97,6 +134,20 @@ export class Force {
     this.refreshVisuals();
   }
 
+  /**
+   * Set the direction a force stands for while its arrow has no length.
+   *
+   * `setDirectionRadians` lays the handle along the new direction, and a
+   * handle collapsed onto its anchor comes back one unit long: an edit that
+   * only carried or copied such a force grew it an arrow it never had. A force
+   * with an arrow is left alone, because its arrow is what says its direction.
+   */
+  setCollapsedDirection(value: number) {
+    if (!Number.isFinite(value) || this.handleLength() > 0) return;
+    this._angleRad = this.normalizeAngle(value);
+    this.refreshVisuals();
+  }
+
   setComponents(x: number, y: number) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     this._mag = Math.hypot(x, y);
@@ -109,6 +160,31 @@ export class Force {
 
   reverseDirection() {
     this.setDirectionRadians(this._angleRad + Math.PI);
+  }
+
+  /** Reverse the load without moving either handle or its application point. */
+  flipForce() {
+    this._arrowOutward = !this._arrowOutward;
+    this._angleRad = this.normalizeAngle(this._angleRad + Math.PI);
+    this.refreshVisuals();
+  }
+
+  private physicalAngle(): number {
+    return this.normalizeAngle(
+      this.updateAngle(this.startCoord, this.endCoord) + (this.arrowOutward ? 0 : Math.PI)
+    );
+  }
+
+  /** Arrow tail, opposite the arrowhead; the application mark stays at startCoord. */
+  get tailCoord(): Coord {
+    return this.arrowOutward ? this.startCoord : this.endCoord;
+  }
+
+  /** Point along the physical vector, for numeric exports that have no arrowhead flag. */
+  get directionCoord(): Coord {
+    return this.arrowOutward
+      ? this.endCoord
+      : new Coord(2 * this.startCoord.x - this.endCoord.x, 2 * this.startCoord.y - this.endCoord.y);
   }
 
   setLocal(value: boolean) {
@@ -161,7 +237,7 @@ export class Force {
 
   updateInternalValues() {
     if (this.handleLength() > 0) {
-      this._angleRad = this.updateAngle(this.startCoord, this.endCoord);
+      this._angleRad = this.physicalAngle();
     }
     this.refreshVisuals();
   }
@@ -175,14 +251,11 @@ export class Force {
   }
 
   private handleLength(): number {
-    return Math.hypot(
-      this.endCoord.x - this.startCoord.x,
-      this.endCoord.y - this.startCoord.y
-    );
+    return Math.hypot(this.endCoord.x - this.startCoord.x, this.endCoord.y - this.startCoord.y);
   }
 
   private alignHandleWithDirection() {
-    const length = this.handleLength() || 1;
+    const length = (this.handleLength() || 1) * (this.arrowOutward ? 1 : -1);
     this.endCoord.x = this.startCoord.x + Math.cos(this._angleRad) * length;
     this.endCoord.y = this.startCoord.y + Math.sin(this._angleRad) * length;
   }
@@ -197,28 +270,22 @@ export class Force {
     this.refreshVisuals();
   }
 
-  createForceLine(startCoord: Coord, endCoord: Coord) {
-    //Shorten the end of the line the height of the arrow
-    const angle = Math.atan2(endCoord.y - startCoord.y, endCoord.x - startCoord.x);
-    const dx = Math.cos(angle) * this.visualWidth * SettingsService.objectScale;
-    const dy = Math.sin(angle) * this.visualWidth * SettingsService.objectScale;
-    let startX = startCoord.x + dx;
-    let startY = startCoord.y + dy;
-    let endX = endCoord.x - dx;
-    let endY = endCoord.y - dy;
-
-    if (this._arrowOutward) {
-      startX = startCoord.x;
-      startY = startCoord.y;
-    } else {
-      endX = endCoord.x;
-      endY = endCoord.y;
-    }
-
-    return `M ${startX} ${startY} L ${endX} ${endY}`;
+  createForceLine(startCoord: Coord, endCoord: Coord, scale = SettingsService.objectScale) {
+    // Stop at the triangle's base, not its tip: a wide shaft reaching the tip
+    // sticks out through the taper, especially when the inward head is inset.
+    const tail = this.arrowOutward ? startCoord : endCoord;
+    const head = this.arrowOutward ? endCoord : startCoord;
+    const direction = head.clone().subtract(tail);
+    const distance = Math.hypot(direction.x, direction.y);
+    const setback =
+      (this.arrowOutward ? 2 * this.visualWidth - 0.06 : 3 * this.visualWidth) * scale;
+    if (distance <= setback) return '';
+    const end = head.clone().subtract(direction.normalize().scale(setback));
+    return `M ${tail.x} ${tail.y} L ${end.x} ${end.y}`;
   }
 
-  createForceArrow(startCoord: Coord, endCoord: Coord) {
+  createForceArrow(startCoord: Coord, endCoord: Coord, scale = SettingsService.objectScale) {
+    if (!this.arrowOutward) [startCoord, endCoord] = [endCoord, startCoord];
     if (startCoord.x === endCoord.x && startCoord.y === endCoord.y) return '';
 
     //Get the tip of the triangle
@@ -226,11 +293,11 @@ export class Force {
       .clone()
       .subtract(startCoord)
       .normalize()
-      .scale(0.06 * SettingsService.objectScale);
+      .scale((this.arrowOutward ? 0.06 : -this.visualWidth) * scale);
     let tipOfTriangle = endCoord.clone().add(arrowVector);
 
-    const length = this.visualWidth * 2 * SettingsService.objectScale;
-    const width = this.visualWidth * 2 * SettingsService.objectScale;
+    const length = this.visualWidth * 2 * scale;
+    const width = this.visualWidth * 2 * scale;
     const angle = getAngle(startCoord, endCoord);
 
     const point1 = tipOfTriangle
@@ -347,8 +414,7 @@ export class Force {
   }
 
   set arrowOutward(value: boolean) {
-    if (!value) this.reverseDirection();
-    this._arrowOutward = true;
+    if (value !== this._arrowOutward) this.flipForce();
   }
 
   get local(): boolean {

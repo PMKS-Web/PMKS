@@ -1,0 +1,145 @@
+{
+ "schema": "pmks-oracle-problem/1",
+ "id": "gallery.slider-crank-inversions.m2",
+ "title": "Slider-crank inversions, M2",
+ "source": {
+  "kind": "published",
+  "case": "gallery.slider-crank-inversions",
+  "machine": "M2"
+ },
+ "gravity": 9.80665,
+ "bodies": [
+  {
+   "id": "FG",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.1185,
+    0.10125833024919771
+   ]
+  },
+  {
+   "id": "EH",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.11560400532979132,
+    0.10405400361704253
+   ]
+  },
+  {
+   "id": "EF",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.106,
+    0.09
+   ]
+  }
+ ],
+ "joints": [
+  {
+   "id": "F",
+   "kind": "pin",
+   "at": [
+    0.11199999999999999,
+    0.09
+   ],
+   "bodies": [
+    "FG",
+    "EF"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "G",
+   "kind": "slider",
+   "at": [
+    0.125,
+    0.11251666049839541
+   ],
+   "guide": "EH",
+   "linePoint": [
+    0.1,
+    0.09
+   ],
+   "axis": [
+    0.7430478728472052,
+    0.6692382674782156
+   ],
+   "riders": [
+    "FG"
+   ],
+   "rotates": true,
+   "blockMass": 0,
+   "limits": [
+    0.0028560000000000005,
+    0.03914400000000001
+   ]
+  },
+  {
+   "id": "E",
+   "kind": "pin",
+   "at": [
+    0.1,
+    0.09
+   ],
+   "bodies": [
+    "EH",
+    "EF"
+   ],
+   "grounded": true,
+   "welded": false
+  }
+ ],
+ "driver": {
+  "joint": "F",
+  "kind": "rotation",
+  "speed": 1.0471975511965976,
+  "bodies": [
+   "ground",
+   "FG"
+  ]
+ },
+ "loads": [],
+ "points": [
+  {
+   "id": "F",
+   "body": "ground",
+   "at": [
+    0.11199999999999999,
+    0.09
+   ]
+  },
+  {
+   "id": "G",
+   "body": "FG",
+   "at": [
+    0.125,
+    0.11251666049839541
+   ]
+  },
+  {
+   "id": "E",
+   "body": "ground",
+   "at": [
+    0.1,
+    0.09
+   ]
+  },
+  {
+   "id": "H",
+   "body": "EH",
+   "at": [
+    0.13120801065958262,
+    0.11810800723408507
+   ]
+  }
+ ],
+ "sweep": {
+  "step": 0.017453292519943295,
+  "maxSamples": 2000
+ },
+ "unsupported": []
+}

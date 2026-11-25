@@ -1,0 +1,289 @@
+import { Coord } from './coord';
+import { Force } from './force';
+import { carryForce, frameTurn } from './force-carry';
+import { Joint, PrisJoint } from './joint';
+import { HeldValue, Link, RealLink, holdsAngle, holdsLength } from './link';
+import { derivedCenterOfMass } from './link-body';
+import { SelectedPart, selectableLinks } from './selection';
+import { CanonicalSelectionClosure, canonicalSelectionClosure } from './selection-closure';
+
+export { canonicalSelectionClosure } from './selection-closure';
+
+export interface SelectionBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+export interface SelectionAffineTransform {
+  translation?: { x: number; y: number };
+  rotation?: number;
+  /**
+   * One number scales both axes together; a pair scales each on its own.
+   *
+   * A pair is what the edge grips ask for -- pulling the right edge should
+   * widen the selection without making it taller. It stays an affine map either
+   * way, so collinear things stay collinear: a cylinder's four joints are
+   * still on one line after the box has been squashed, which is the property
+   * that makes this safe to offer at all.
+   */
+  scale?: number | { x: number; y: number };
+  pivot?: { x: number; y: number };
+}
+
+/** A bar whose held length or angle a transform would change, and which of the two. */
+export interface BrokenHold {
+  link: RealLink;
+  values: HeldValue[];
+}
+
+export type SelectionTransformResult =
+  | { applied: true; lockedJointIds: [] }
+  | {
+      applied: false;
+      lockedJointIds: string[];
+      reason?: 'invalid-transform' | 'held';
+      brokenHolds?: BrokenHold[];
+    };
+
+interface BodySnapshot {
+  link: RealLink;
+  from: { x: number; y: number }[];
+  com: { x: number; y: number };
+  forces: ForceSnapshot[];
+  allJointsMove: boolean;
+}
+
+interface ForceSnapshot {
+  force: Force;
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+  /** Its direction at the grab, which a collapsed arrow cannot be read for. */
+  angle: number;
+}
+
+function pointThroughFrame(
+  point: { x: number; y: number },
+  from: { x: number; y: number }[],
+  to: readonly Joint[]
+): { x: number; y: number } {
+  if (from.length < 2 || to.length < 2) return point;
+  const fromX = from[1].x - from[0].x;
+  const fromY = from[1].y - from[0].y;
+  const denominator = fromX * fromX + fromY * fromY;
+  if (denominator === 0) {
+    return { x: point.x + to[0].x - from[0].x, y: point.y + to[0].y - from[0].y };
+  }
+  const relativeX = point.x - from[0].x;
+  const relativeY = point.y - from[0].y;
+  const along = (relativeX * fromX + relativeY * fromY) / denominator;
+  const across = (relativeY * fromX - relativeX * fromY) / denominator;
+  const toX = to[1].x - to[0].x;
+  const toY = to[1].y - to[0].y;
+  return {
+    x: to[0].x + along * toX - across * toY,
+    y: to[0].y + along * toY + across * toX,
+  };
+}
+
+function postOrderRealLinks(links: readonly Link[]): RealLink[] {
+  const ordered: RealLink[] = [];
+  const seen = new Set<RealLink>();
+  const visit = (link: Link) => {
+    if (!(link instanceof RealLink) || seen.has(link)) return;
+    seen.add(link);
+    link.subset.forEach(visit);
+    ordered.push(link);
+  };
+  links.forEach(visit);
+  return ordered;
+}
+
+/** A gesture-start snapshot. Every apply is cumulative input mapped from this immutable state. */
+export class SelectionTransformSnapshot {
+  readonly bounds: SelectionBounds;
+  readonly pivot: Coord;
+  readonly jointIds: Set<string>;
+  readonly lockedJointIds: string[];
+  readonly canTransform: boolean;
+
+  private readonly jointStarts = new Map<string, { x: number; y: number }>();
+  private readonly groundedSlotAngles = new Map<PrisJoint, number>();
+  private readonly bodies: BodySnapshot[];
+  private readonly visualOrder: RealLink[];
+
+  constructor(
+    readonly closure: CanonicalSelectionClosure,
+    allLinks: readonly Link[]
+  ) {
+    this.jointIds = new Set(closure.jointIds);
+    this.lockedJointIds = [...closure.lockedJointIds];
+    this.canTransform = closure.canTransform;
+    closure.joints.forEach((joint) => this.jointStarts.set(joint.id, { x: joint.x, y: joint.y }));
+    closure.joints
+      .filter((joint): joint is PrisJoint => joint instanceof PrisJoint && !joint.isFloating)
+      .forEach((slot) => this.groundedSlotAngles.set(slot, slot.angle_rad));
+    const xs = closure.joints.map((joint) => joint.x);
+    const ys = closure.joints.map((joint) => joint.y);
+    this.bounds = {
+      minX: xs.length ? Math.min(...xs) : 0,
+      minY: ys.length ? Math.min(...ys) : 0,
+      maxX: xs.length ? Math.max(...xs) : 0,
+      maxY: ys.length ? Math.max(...ys) : 0,
+    };
+    this.pivot = new Coord(
+      (this.bounds.minX + this.bounds.maxX) / 2,
+      (this.bounds.minY + this.bounds.maxY) / 2
+    );
+    const capturedForces = new Set<Force>();
+    this.bodies = selectableLinks([...allLinks]).map((link) => ({
+      link,
+      from: link.joints.slice(0, 2).map((joint) => ({ x: joint.x, y: joint.y })),
+      com: { x: link.CoM.x, y: link.CoM.y },
+      forces: link.forces
+        .filter((force) => {
+          if (capturedForces.has(force)) return false;
+          capturedForces.add(force);
+          return true;
+        })
+        .map((force) => ({
+          force,
+          start: { x: force.startCoord.x, y: force.startCoord.y },
+          end: { x: force.endCoord.x, y: force.endCoord.y },
+          angle: force.angleRad,
+        })),
+      allJointsMove:
+        link.joints.length > 0 && link.joints.every((joint) => this.jointIds.has(joint.id)),
+    }));
+    this.visualOrder = postOrderRealLinks(allLinks);
+  }
+
+  apply(transform: SelectionAffineTransform): SelectionTransformResult {
+    if (this.lockedJointIds.length > 0) {
+      return { applied: false, lockedJointIds: [...this.lockedJointIds] };
+    }
+    const translation = transform.translation ?? { x: 0, y: 0 };
+    const rotation = transform.rotation ?? 0;
+    const scale = transform.scale ?? 1;
+    const scaleX = typeof scale === 'number' ? scale : scale.x;
+    const scaleY = typeof scale === 'number' ? scale : scale.y;
+    const pivot = transform.pivot ?? this.pivot;
+    // Negative is allowed: dragging a grip past the point it scales away from
+    // turns the selection through that point, which is what pulling a grip
+    // across the far side asks for. Zero is the one value refused -- it
+    // collapses the selection onto a point or a line, and nothing about where
+    // the parts were survives to bring them back.
+    if (
+      ![translation.x, translation.y, rotation, scaleX, scaleY, pivot.x, pivot.y].every(
+        Number.isFinite
+      ) ||
+      scaleX === 0 ||
+      scaleY === 0
+    ) {
+      return { applied: false, lockedJointIds: [], reason: 'invalid-transform' };
+    }
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    const mapPoint = (point: { x: number; y: number }) => {
+      const x = (point.x - pivot.x) * scaleX;
+      const y = (point.y - pivot.y) * scaleY;
+      return {
+        x: pivot.x + x * cos - y * sin + translation.x,
+        y: pivot.y + x * sin + y * cos + translation.y,
+      };
+    };
+    // A held length or angle is the reader's to release, not the box's to
+    // change: a turn or a resize that would change one is refused whole, and
+    // the refusal names the hold (#295 review). A move changes neither.
+    const brokenHolds = this.holdsBrokenBy(mapPoint);
+    if (brokenHolds.length > 0) {
+      return { applied: false, lockedJointIds: [], reason: 'held', brokenHolds };
+    }
+
+    this.closure.joints.forEach((joint) => {
+      const start = this.jointStarts.get(joint.id)!;
+      const at = mapPoint(start);
+      joint.x = at.x;
+      joint.y = at.y;
+    });
+    this.groundedSlotAngles.forEach((angle, slot) => {
+      // Through the same map its joints went through, not just the turn. A
+      // squashed box changes the bearing of a slot lying across it, and a
+      // flipped one reverses it -- a slot left at its old angle would send its
+      // block off the line its own joints now sit on.
+      const alongX = scaleX * Math.cos(angle);
+      const alongY = scaleY * Math.sin(angle);
+      slot.angle_rad = Math.atan2(alongX * sin + alongY * cos, alongX * cos - alongY * sin);
+    });
+    this.bodies.forEach((body) => this.applyBody(body, mapPoint));
+    this.visualOrder
+      .filter((link) => link.joints.some((joint) => this.jointIds.has(joint.id)))
+      .forEach((link) => link.reComputeDPath());
+    return { applied: true, lockedJointIds: [] };
+  }
+
+  /** The holding bars this map would stretch or turn, measured from the grab. */
+  private holdsBrokenBy(
+    mapPoint: (point: { x: number; y: number }) => { x: number; y: number }
+  ): BrokenHold[] {
+    const broken: BrokenHold[] = [];
+    for (const body of this.bodies) {
+      const hold = body.link.hold;
+      const [first, second] = body.link.joints;
+      if (!hold || !first || !second || body.from.length < 2) continue;
+      const moves = [first, second].map((joint) => this.jointIds.has(joint.id));
+      if (!moves[0] && !moves[1]) continue;
+      const before = body.from;
+      const after = before.map((point, index) => (moves[index] ? mapPoint(point) : point));
+      const length = (ends: { x: number; y: number }[]) =>
+        Math.hypot(ends[1].x - ends[0].x, ends[1].y - ends[0].y);
+      const lengthBefore = length(before);
+      const tolerance = 1e-9 * Math.max(1, lengthBefore);
+      const values: HeldValue[] = [];
+      if (holdsLength(hold) && Math.abs(length(after) - lengthBefore) > tolerance) {
+        values.push('length');
+      }
+      if (
+        holdsAngle(hold) &&
+        Math.abs(frameTurn([before[0], before[1]], [after[0], after[1]])) > 1e-9
+      ) {
+        values.push('angle');
+      }
+      if (values.length > 0) broken.push({ link: body.link, values });
+    }
+    return broken;
+  }
+
+  private applyBody(
+    body: BodySnapshot,
+    mapPoint: (point: { x: number; y: number }) => { x: number; y: number }
+  ): void {
+    if (!body.link.joints.some((joint) => this.jointIds.has(joint.id))) return;
+    const place = (point: { x: number; y: number }) =>
+      body.allJointsMove ? mapPoint(point) : pointThroughFrame(point, body.from, body.link.joints);
+    // The application point stays where it was on the body; the load itself is
+    // not the box's to scale, squash or turn -- see `carryForce`.
+    const [first, second] = body.link.joints;
+    const linkTurn =
+      body.from.length === 2 && first && second
+        ? frameTurn([body.from[0], body.from[1]], [first, second])
+        : 0;
+    body.forces.forEach(({ force, start, end, angle }) =>
+      carryForce(force, place(start), { x: end.x - start.x, y: end.y - start.y }, linkTurn, angle)
+    );
+    const com = body.link.comIsCustom ? place(body.com) : derivedCenterOfMass(body.link);
+    body.link.CoM = new Coord(com.x, com.y);
+    if (body.link.comIsCustom) body.link.captureComOffset();
+    body.link.updateCoMDs();
+    body.link.updateLengthAndAngle();
+  }
+}
+
+export function captureSelectionTransform(
+  selected: readonly SelectedPart[],
+  joints: readonly Joint[],
+  links: readonly Link[]
+): SelectionTransformSnapshot {
+  return new SelectionTransformSnapshot(canonicalSelectionClosure(selected, joints, links), links);
+}

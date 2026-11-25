@@ -1,0 +1,206 @@
+{
+ "schema": "pmks-oracle-problem/1",
+ "id": "template.pumpjack.m1",
+ "title": "Template Pumpjack, M1",
+ "source": {
+  "kind": "published",
+  "case": "template.pumpjack",
+  "machine": "M1"
+ },
+ "gravity": 9.80665,
+ "bodies": [
+  {
+   "id": "AM",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    -2.1991329150270342,
+    -3.2096445602528108
+   ]
+  },
+  {
+   "id": "MP",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    -2.099600756223153,
+    -1.60068124421539
+   ]
+  },
+  {
+   "id": "PSH",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.2333333333333334,
+    0
+   ]
+  },
+  {
+   "id": "HR",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    3.3,
+    -1.2961481396815722
+   ]
+  }
+ ],
+ "joints": [
+  {
+   "id": "A",
+   "kind": "pin",
+   "at": [
+    -2.6990643176077627,
+    -3.217926632074842
+   ],
+   "bodies": [
+    "AM"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "M",
+   "kind": "pin",
+   "at": [
+    -1.6992015124463058,
+    -3.20136248843078
+   ],
+   "bodies": [
+    "AM",
+    "MP"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "P",
+   "kind": "pin",
+   "at": [
+    -2.5,
+    0
+   ],
+   "bodies": [
+    "MP",
+    "PSH"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "S",
+   "kind": "pin",
+   "at": [
+    0,
+    0
+   ],
+   "bodies": [
+    "PSH"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "H",
+   "kind": "pin",
+   "at": [
+    3.2,
+    0
+   ],
+   "bodies": [
+    "PSH",
+    "HR"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "R",
+   "kind": "slider",
+   "at": [
+    3.4,
+    -2.5922962793631443
+   ],
+   "guide": "ground",
+   "linePoint": [
+    3.4,
+    -2.5922962793631443
+   ],
+   "axis": [
+    6.123233995736766e-17,
+    1
+   ],
+   "riders": [
+    "HR"
+   ],
+   "rotates": true,
+   "blockMass": 0
+  }
+ ],
+ "driver": {
+  "joint": "A",
+  "kind": "rotation",
+  "speed": -1.0471975511965976,
+  "bodies": [
+   "ground",
+   "AM"
+  ]
+ },
+ "loads": [],
+ "points": [
+  {
+   "id": "A",
+   "body": "ground",
+   "at": [
+    -2.6990643176077627,
+    -3.217926632074842
+   ]
+  },
+  {
+   "id": "M",
+   "body": "AM",
+   "at": [
+    -1.6992015124463058,
+    -3.20136248843078
+   ]
+  },
+  {
+   "id": "P",
+   "body": "MP",
+   "at": [
+    -2.5,
+    0
+   ]
+  },
+  {
+   "id": "S",
+   "body": "ground",
+   "at": [
+    0,
+    0
+   ]
+  },
+  {
+   "id": "H",
+   "body": "PSH",
+   "at": [
+    3.2,
+    0
+   ]
+  },
+  {
+   "id": "R",
+   "body": "HR",
+   "at": [
+    3.4,
+    -2.5922962793631443
+   ]
+  }
+ ],
+ "sweep": {
+  "step": 0.017453292519943295,
+  "maxSamples": 2000
+ },
+ "unsupported": []
+}

@@ -1,4 +1,5 @@
 import { Injector } from '@angular/core';
+import { createMechanismHarness } from '../test-utils/mechanism-harness';
 import { Joint } from './model/joint';
 import { Link } from './model/link';
 import { Force } from './model/force';
@@ -10,10 +11,12 @@ import { ActiveObjService } from './services/active-obj.service';
 import { SettingsService } from './services/settings.service';
 import { NumberUnitParserService } from './services/number-unit-parser.service';
 import { SvgGridService } from './services/svg-grid.service';
+import { DragStateService } from './services/drag-state.service';
 import { SynthesisBuilderService } from './services/synthesis/synthesis-builder.service';
 import { ColorService } from './services/color.service';
 import { KinematicsSolver } from './model/mechanism/kinematic-solver';
 import { euclideanDistance } from './model/utils';
+import { silentNotifications } from '../test-utils/notification-stub';
 
 describe('SixbarService', () => {
   // it('should show the calculated position of the Joints DO match the expected', () => {
@@ -23,25 +26,9 @@ describe('SixbarService', () => {
   const forces: Force[] = [];
   const ics: InstantCenter[] = [];
   const mechanisms: Mechanism[] = [];
-  // ColorService registers itself as a static singleton that createRealLink depends on.
-  new ColorService();
-  const settingsService: SettingsService = new SettingsService();
-  const nup: NumberUnitParserService = new NumberUnitParserService();
-  const svgGridService: SvgGridService = new SvgGridService(settingsService);
-  const synthesisBuilder: SynthesisBuilderService = new SynthesisBuilderService(
-    nup,
-    settingsService
-  );
-  const gridUtilService: GridUtilsService = new GridUtilsService(synthesisBuilder, svgGridService);
-  const activeObjService: ActiveObjService = new ActiveObjService();
-  // The injector is only consulted when saving undo history, which these solver tests never do.
-  const mechanismSrv: MechanismService = new MechanismService(
-    gridUtilService,
-    activeObjService,
-    Injector.create({ providers: [] }),
-    settingsService,
-    nup
-  );
+  const harness = createMechanismHarness();
+  const mechanismSrv = harness.service;
+  const gridUtilService = harness.injector.get(GridUtilsService);
 
   // Link AB
   const JointA = mechanismSrv.createRevJoint('-3.74', '-2.41');
@@ -107,7 +94,11 @@ describe('SixbarService', () => {
   const unit = 'cm';
   const tolerance = 0.01;
 
-  mechanisms.push(new Mechanism(joints, links, forces, ics, gravity, unit, 10));
+  // 'degree': the MATLAB tables are stated one row per degree of crank and
+  // compared one to one. Under 'adaptive' this rocker's eleven-degree swing is
+  // cut into a full cycle's worth of samples, which is the same motion at a
+  // spacing the tables were never stated on.
+  mechanisms.push(new Mechanism(joints, links, forces, ics, gravity, unit, 10, 'degree'));
 
   // ForceSolver.determineDesiredLoopLettersForce(mechanisms[0].requiredLoops)
   // ForceSolver.determineForceAnalysis(

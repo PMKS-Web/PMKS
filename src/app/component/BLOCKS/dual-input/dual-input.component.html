@@ -1,97 +1,132 @@
-<div id="dual-input-block" style="{{ disabled ? 'cursor: default' : '' }}">
-  <div class="row">
-    <span class="label {{ disabled ? 'disabled' : '' }}"><ng-content></ng-content></span>
+<div id="dual-input-block" style="{{ disabled() ? 'cursor: default' : '' }}">
+  <div class="row" [style.display]="noHeader() ? 'none' : null">
+    <span class="label {{ disabled() ? 'disabled' : '' }}" [id]="labelId"
+      ><ng-content></ng-content
+    ></span>
+    <!-- Still there while the field is disabled, but plainly not offering
+         anything: suppressing only the tooltip left a mark that took the
+         accent under the cursor and then answered nothing, which is an
+         affordance promising an explanation it does not have. -->
     <mat-icon
-      matTooltip="{{ this.tooltip }}"
-      [matTooltipShowDelay]="1000"
+      matTooltip="{{ this.tooltip() }}"
+      matTooltipShowDelay="400"
       class="label-help"
-      [matTooltipDisabled]="disabled"
+      [class.inert]="disabled()"
+      [matTooltipDisabled]="disabled()"
       >help_outline
     </mat-icon>
     <div class="spacer"></div>
   </div>
-  <div class="row" [formGroup]="formGroup" style="gap: 5px">
+  <span hidden [id]="labelId + '-field1'">{{ fieldName(label1()) }}</span>
+  <span hidden [id]="labelId + '-field2'">{{ fieldName(label2()) }}</span>
+  <div class="row" [formGroup]="formGroup()" style="gap: 5px">
     @if (formSubGroup) {
-      <span class="label {{ disabled ? 'disabled' : '' }}">{{ label1 }}</span>
-      <mat-form-field
-        class="customInputForm"
-        formGroupName="{{ formSubGroup }}"
-        (click)="field1.select()"
-        (mouseenter)="isField1MouseOver = true; updateOverlay()"
-        (mouseleave)="isField1MouseOver = false; updateOverlay()"
-        (focusin)="isField1Focused = true; updateOverlay()"
-        (focusout)="isField1Focused = false; updateOverlay()"
-      >
-        <input
-          class="customInput"
-          matInput
-          type="text"
-          #field1
-          (keyup.enter)="field1.blur()"
-          [formControlName]="this.formControl1"
-        />
-      </mat-form-field>
-      <div class="spacer"></div>
-      <span class="label {{ disabled ? 'disabled' : '' }}" [class.angle-label]="label2 === '⊾'">{{
-        label2
+      <span class="label {{ disabled() ? 'disabled' : '' }}" [numberDrag]="field1">{{
+        label1()
       }}</span>
       <mat-form-field
         class="customInputForm"
         formGroupName="{{ formSubGroup }}"
-        (click)="field2.select()"
-        (mouseenter)="isField2MouseOver = true; updateOverlay()"
-        (mouseleave)="isField2MouseOver = false; updateOverlay()"
-        (focusin)="isField2Focused = true; updateOverlay()"
-        (focusout)="isField2Focused = false; updateOverlay()"
+        (click)="selectAll(field1)"
+        (mouseenter)="hover(1, true)"
+        (mouseleave)="hover(1, false)"
+        (focusin)="focus(1, true)"
+        (focusout)="focus(1, false)"
       >
         <input
           class="customInput"
+          spellcheck="false"
+          matInput
+          type="text"
+          #field1
+          (keyup.enter)="field1.blur()"
+          [formControlName]="this.formControl1()"
+          [placeholder]="placeholder1()"
+          [attr.data-field]="dataField1()"
+          [attr.aria-labelledby]="labelId + ' ' + labelId + '-field1'"
+        />
+      </mat-form-field>
+      <div class="spacer"></div>
+      <span
+        class="label {{ disabled() ? 'disabled' : '' }}"
+        [class.angle-label]="label2() === '⊾'"
+        [numberDrag]="field2"
+        >{{ label2() }}</span
+      >
+      <mat-form-field
+        class="customInputForm"
+        formGroupName="{{ formSubGroup }}"
+        (click)="selectAll(field2)"
+        (mouseenter)="hover(2, true)"
+        (mouseleave)="hover(2, false)"
+        (focusin)="focus(2, true)"
+        (focusout)="focus(2, false)"
+      >
+        <input
+          class="customInput"
+          spellcheck="false"
           matInput
           type="text"
           #field2
           (keyup.enter)="field2.blur()"
-          [formControlName]="this.formControl2"
+          [formControlName]="this.formControl2()"
+          [placeholder]="placeholder2()"
+          [attr.data-field]="dataField2()"
+          [attr.aria-labelledby]="labelId + ' ' + labelId + '-field2'"
         />
       </mat-form-field>
     }
     @if (!formSubGroup) {
-      <span class="label {{ disabled ? 'disabled' : '' }}">{{ label1 }}</span>
+      <span class="label {{ disabled() ? 'disabled' : '' }}" [numberDrag]="field1">{{
+        label1()
+      }}</span>
       <mat-form-field
         class="customInputForm"
-        (click)="field1.select()"
-        (mouseenter)="isField1MouseOver = true; updateOverlay()"
-        (mouseleave)="isField1MouseOver = false; updateOverlay()"
-        (focusin)="isField1Focused = true; updateOverlay()"
-        (focusout)="isField1Focused = false; updateOverlay()"
+        (click)="selectAll(field1)"
+        (mouseenter)="hover(1, true)"
+        (mouseleave)="hover(1, false)"
+        (focusin)="focus(1, true)"
+        (focusout)="focus(1, false)"
       >
         <input
           class="customInput"
+          spellcheck="false"
           matInput
           type="text"
           #field1
           (keyup.enter)="field1.blur()"
-          [formControlName]="this.formControl1"
+          [formControlName]="this.formControl1()"
+          [placeholder]="placeholder1()"
+          [attr.data-field]="dataField1()"
+          [attr.aria-labelledby]="labelId + ' ' + labelId + '-field1'"
         />
       </mat-form-field>
       <div class="spacer"></div>
-      <span class="label {{ disabled ? 'disabled' : '' }}" [class.angle-label]="label2 === '⊾'">{{
-        label2
-      }}</span>
+      <span
+        class="label {{ disabled() ? 'disabled' : '' }}"
+        [class.angle-label]="label2() === '⊾'"
+        [numberDrag]="field2"
+        >{{ label2() }}</span
+      >
       <mat-form-field
         class="customInputForm"
-        (click)="field2.select()"
-        (mouseenter)="isField2MouseOver = true; updateOverlay()"
-        (mouseleave)="isField2MouseOver = false; updateOverlay()"
-        (focusin)="isField2Focused = true; updateOverlay()"
-        (focusout)="isField2Focused = false; updateOverlay()"
+        (click)="selectAll(field2)"
+        (mouseenter)="hover(2, true)"
+        (mouseleave)="hover(2, false)"
+        (focusin)="focus(2, true)"
+        (focusout)="focus(2, false)"
       >
         <input
           class="customInput"
+          spellcheck="false"
           matInput
           type="text"
           #field2
           (keyup.enter)="field2.blur()"
-          [formControlName]="this.formControl2"
+          [formControlName]="this.formControl2()"
+          [placeholder]="placeholder2()"
+          [attr.data-field]="dataField2()"
+          [attr.aria-labelledby]="labelId + ' ' + labelId + '-field2'"
         />
       </mat-form-field>
     }

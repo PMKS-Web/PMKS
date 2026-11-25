@@ -1,14 +1,15 @@
-import { Injectable } from '@angular/core';
-import { FormBuilder } from '@angular/forms';
-import { BehaviorSubject, Subject } from 'rxjs';
+import { Injectable, inject } from '@angular/core';
+import { Subject } from 'rxjs';
 import { COR, SynthesisPose } from './synthesis-util';
 import { Coord } from 'src/app/model/coord';
-import { SynthesisClickMode, SynthesisConstants } from './synthesis-constants';
 import { NumberUnitParserService } from '../number-unit-parser.service';
 import { SettingsService } from '../settings.service';
+import { MODEL_SCALE } from 'src/app/model/render-scale';
+import { CandidateSearch, PosePoint } from './synthesis-candidates';
+import { AngleUnit } from '../../model/unit-enums';
 
 /*
-Service responsible for storing end effector poses to be synthesized
+Service responsible for storing end-effector poses to be synthesized
 into fourbars. Relevant to the Synthesis tab of the app.
 */
 
@@ -16,28 +17,126 @@ into fourbars. Relevant to the Synthesis tab of the app.
   providedIn: 'root',
 })
 export class SynthesisBuilderService {
-  public valueChanges: Subject<any>;
+  private nup = inject(NumberUnitParserService);
+  private settings = inject(SettingsService);
 
-  public constants: SynthesisConstants;
+  public valueChanges: Subject<boolean>;
 
   // whether the mechanism has been modified since last synthesis
   // if so, when switching back to edit mode, save state
-  public modifiedMechanism: boolean = false;
+
+  /**
+   * Which screen of Synthesis the reader is on.
+   *
+   * 'chooser' asks what kind of synthesis this is; 'working' is the one kind
+   * that exists. It is a screen rather than a setting because the answer
+   * decides what every control below it means, and because the second kind --
+   * fitting a linkage to a path -- is coming and has to have somewhere to go.
+   */
+  public stage: 'chooser' | 'working' = 'chooser';
+
+  /**
+   * Whether the next click on the grid drops a position.
+   *
+   * Placing is opt-in. Synthesis shares the canvas with the drawing, and a
+   * mode where every click makes something is a mode where every click a
+   * reader meant as "look at this" makes something instead.
+   */
+  public armed = false;
+
+  /** Which way the position about to be dropped is turned, in degrees. */
+  public placeAngleDeg = 8;
+
+  /** Whether the grid is waiting for the ground-pivot region to be drawn. */
+  public regionDraw = false;
+
+  // --- what a solution has to satisfy to be listed ------------------------
+
+  /**
+   * Whether the coupler must be pinned to the end-effector link's own ends.
+   *
+   * On, the coupler is exactly the length that was typed. Off, the pins may
+   * slide along the link or past it, which moves both ground pivots and gives
+   * genuinely different machines through the same three positions -- far more
+   * of them, and often better ones.
+   */
+  public endsOnly = true;
+
+  /** Whether linkages that need reassembling between positions are listed. */
+  public allowDefect = false;
+
+  /** Whether both ground pivots must land inside the region below. */
+  public constrain = false;
+
+  /**
+   * Which joints on the grid this design put there.
+   *
+   * Synthesis keeps hold of what it inserted so that the loop the mode is for
+   * -- tweak a position, search again, insert -- revises one machine rather
+   * than leaving a trail of them. By id, so it can never reach anything else
+   * in a drawing that holds several.
+   *
+   * It rides in the URL with the rest of the design, for two reasons. Undo
+   * steps the drawing back past an insert, and ownership has to step back with
+   * it or the panel claims a machine that is no longer there. And a reload has
+   * to come back holding what it held, or the next Insert quietly makes a
+   * duplicate of the linkage already on the grid.
+   */
+  public ownedJointIds: string[] = [];
+
+  /**
+   * Whether some of what this design put on the grid has since gone.
+   *
+   * A missing owned joint is what tells `ownership` the linkage has been cut
+   * into, and the ids alone stop being able to say so the moment they are
+   * written down: a reload drops the ids of joints that are not there, and a
+   * shortened list is indistinguishable from a smaller linkage. Worse, keeping
+   * the missing ids instead would claim whatever new joint next takes that
+   * letter. So the fact is carried on its own, and rides in the URL with the
+   * rest of the design.
+   */
+  public ownershipPartial = false;
+
+  /**
+   * Where each of those joints was put, in the order the ids are held.
+   *
+   * The baseline for "has this been moved by hand", and it has to be written
+   * down for the same reason the ids are. Kept in memory only, it vanished on
+   * reload and every owned linkage read as untouched -- so a joint the reader
+   * had dragged somewhere was quietly dragged back by the next Replace, and
+   * the warning that exists to stop exactly that never appeared.
+   */
+  public ownedAt: { x: number; y: number }[] = [];
+
+  /** The region, in model units, as a box with its origin at bottom-left. */
+  public region = {
+    x: -6 * MODEL_SCALE,
+    y: -14 * MODEL_SCALE,
+    w: 26 * MODEL_SCALE,
+    h: 12 * MODEL_SCALE,
+  };
 
   _COR: COR;
   _length: number; // length of the end-effector link
-  _selectedPose: number; // currently selected pose (1-3)
+  /**
+   * Which position row is selected, or 0 for none.
+   *
+   * Starts at none. A row highlighted before anything has been placed reads as
+   * "this is where your first position went", which is exactly what it is not:
+   * the first position does not exist until Add position has armed the canvas
+   * and a click has dropped it.
+   */
+  _selectedPose: number;
 
   poses: { [key: number]: SynthesisPose }; // a dictionary of poses, but including each pose is optional
 
-  constructor(private nup: NumberUnitParserService, private settings: SettingsService) {
-    this.valueChanges = new Subject<any>();
-    this.constants = new SynthesisConstants();
+  constructor() {
+    this.valueChanges = new Subject<boolean>();
 
-    // start with a length of 1
+    // start with a length of 5 user units, held in model units
     this._COR = COR.CENTER;
-    this._length = 5;
-    this._selectedPose = 1;
+    this._length = 5 * MODEL_SCALE;
+    this._selectedPose = 0;
 
     // start with no defined poses
     this.poses = {};
@@ -51,7 +150,34 @@ export class SynthesisBuilderService {
     return this._length;
   }
 
+  /**
+   * Whether the end-effector length is a number somebody asked for.
+   *
+   * False on a design nobody has started, which is what lets the panel offer a
+   * length that suits the view instead of the same 5 units whatever the reader
+   * is looking at. True the moment one is typed, and it never goes back.
+   */
+  private lengthChosen = false;
+
+  /**
+   * Offer a length, for a design that has not been given one.
+   *
+   * A suggestion, not a setting: it loses to anything the reader has typed, and
+   * it is silent about it. Called with a length already rounded to something a
+   * person would choose -- what is nice depends on the unit on screen, which is
+   * the panel's business rather than this one's.
+   */
+  suggestLength(modelUnits: number): void {
+    if (this.lengthChosen || !(modelUnits > 0)) return;
+    this._length = modelUnits;
+    this.valueChanges.next(true);
+  }
+
   set length(length: number) {
+    // Written by the reader, so the suggestion below stands aside from here on.
+    // A unit change rescales `_length` directly for exactly this reason: it is
+    // the same length said in different words, not a different length asked for.
+    this.lengthChosen = true;
     this._length = length;
     for (let pose of this.getAllPoses()) {
       pose.recompute();
@@ -99,26 +225,6 @@ export class SynthesisBuilderService {
     return this.getAllPoses().length === 3;
   }
 
-  setPoseTheta(pose: SynthesisPose, thetaRadians: number) {
-    pose.thetaRadians = thetaRadians;
-    this.valueChanges.next(true);
-  }
-
-  movePoseByOffset(pose: SynthesisPose, mode: SynthesisClickMode, dx: number, dy: number) {
-    // if dragging by coordinate axis, project onto axis
-    if (mode !== SynthesisClickMode.NORMAL) {
-      let theta = pose.thetaRadians;
-      if (mode === SynthesisClickMode.Y) theta += Math.PI / 2;
-
-      let d = dx * Math.cos(theta) + dy * Math.sin(theta);
-      dx = d * Math.cos(theta);
-      dy = d * Math.sin(theta);
-    }
-
-    pose.position = new Coord(pose.position.x + dx, pose.position.y + dy);
-    this.valueChanges.next(true);
-  }
-
   // return all existing poses
   getAllPoses(): SynthesisPose[] {
     let poses: SynthesisPose[] = [];
@@ -145,55 +251,332 @@ export class SynthesisBuilderService {
     this.valueChanges.next(true);
   }
 
-  // given form, update poses
-  // if form is invalid, return false to revert form
-  updatePosesFromForm(form: { [key: string]: any }): boolean {
+  /**
+   * Read the whole form, and either apply all of it or none of it.
+   *
+   * Every row is read before any of it is written, so a `false` here means the
+   * design is exactly as it was. The panel writes the old values back on a
+   * refusal, and the caller records an undo step only on a `true` — both of
+   * which are only honest if a refusal really did leave nothing half-applied.
+   */
+  updatePosesFromForm(form: { [key: string]: string | null | undefined }): boolean {
+    // if length is a number and positive, update length
+    const [success, maybeLength] = this.nup.parseModelLengthString(
+      form['length']!,
+      this.settings.lengthUnit.getValue()
+    );
+    if (!success || !Number.isFinite(maybeLength) || maybeLength <= 0) {
+      return false;
+    }
+
+    /** What each row wants doing, in the order the rows are numbered. */
+    const edits: { index: number; position: Coord; thetaDegrees: number; fresh: boolean }[] = [];
+    for (let i = 1; i <= 3; i++) {
+      const typed = (key: string) => (form[key] ?? '').toString().trim();
+      const xText = typed(`p${i}x`);
+      const yText = typed(`p${i}y`);
+      const thetaText = typed(`p${i}theta`);
+      const [successX, maybeX] = this.nup.parseModelLengthString(
+        xText,
+        this.settings.lengthUnit.getValue()
+      );
+      const [successY, maybeY] = this.nup.parseModelLengthString(
+        yText,
+        this.settings.lengthUnit.getValue()
+      );
+      const [successTheta, maybeTheta] = this.nup.parseAngleString(
+        thetaText,
+        this.settings.angleUnit.getValue()
+      );
+      // An empty box parses as zero, so emptiness is asked about separately:
+      // three blanks are a row nobody has started, not a position at the origin.
+      const complete = !!xText && !!yText && !!thetaText;
+      const readable = successX && successY && successTheta;
+      const defined = this.isPoseDefined(i);
+
+      if (!complete || !readable) {
+        // An existing position is only ever edited, so a box emptied or filled
+        // with something unreadable is refused. A row being typed into is not
+        // an error until it is finished.
+        if (defined) return false;
+        continue;
+      }
+      edits.push({
+        index: i,
+        position: new Coord(maybeX, maybeY),
+        thetaDegrees: this.nup.convertAngle(
+          maybeTheta,
+          this.settings.angleUnit.value,
+          AngleUnit.DEGREE
+        ),
+        fresh: !defined,
+      });
+    }
+
     if (form['cor'] === '0') this._COR = COR.BACK;
     else if (form['cor'] === '1') this._COR = COR.CENTER;
     else this._COR = COR.FRONT;
-
-    // if length is a number and positive, update length
-    const [success, maybeLength] = this.nup.parseLengthString(
-      form['length'],
-      this.settings.lengthUnit.getValue()
-    );
-    if (!success) {
-      console.log('invalid length');
-      return false;
-    }
     this.length = maybeLength;
 
-    for (let i = 1; i <= 3; i++) {
-      if (!this.isPoseDefined(i)) continue;
-
-      // if x and y are numbers, update position
-      const [successX, maybeX] = this.nup.parseLengthString(
-        form[`p${i}x`],
-        this.settings.lengthUnit.getValue()
-      );
-      const [successY, maybeY] = this.nup.parseLengthString(
-        form[`p${i}y`],
-        this.settings.lengthUnit.getValue()
-      );
-      if (!successX || !successY) {
-        console.log('invalid coord');
-        return false;
+    for (const edit of edits) {
+      if (!edit.fresh) {
+        this.poses[edit.index].position = edit.position;
+        this.poses[edit.index].thetaDegrees = edit.thetaDegrees;
+        continue;
       }
-      this.poses[i].position = new Coord(maybeX, maybeY);
-
-      // if theta is a number, update theta
-      const [successTheta, maybeTheta] = this.nup.parseAngleString(
-        form[`p${i}theta`],
-        this.settings.angleUnit.getValue()
+      // A row becomes a position on the drawing at the moment it says where and
+      // which way -- the same moment a dropped one does, by the other road.
+      this.poses[edit.index] = new SynthesisPose(
+        edit.index,
+        edit.position,
+        (edit.thetaDegrees * Math.PI) / 180,
+        () => this.COR,
+        () => this.length
       );
-      if (!successTheta) {
-        console.log('invalid theta');
-        return false;
-      }
-      this.poses[i].thetaDegrees = maybeTheta;
+      this.selectedPose = edit.index;
+      this.armed = false;
     }
 
-    // if we get here, form is valid
     return true;
+  }
+
+  /** The three positions as pin-carrying bars, for the candidate search. */
+  posePoints(): PosePoint[] {
+    return this.getAllPoses().map((pose) => ({ back: pose.posBack, front: pose.posFront }));
+  }
+
+  /** Everything the enumeration needs, and nothing it does not. */
+  search(): CandidateSearch {
+    return {
+      poses: this.posePoints(),
+      length: this.length,
+      endsOnly: this.endsOnly,
+      region: this.constrain ? { ...this.region } : undefined,
+    };
+  }
+
+  /**
+   * What the candidate list was computed for.
+   *
+   * `allowDefect` is deliberately absent: it filters a list rather than
+   * changing what is in it, so switching it does not have to pay for a
+   * re-enumeration.
+   */
+  searchKey(): string {
+    const poses = this.getAllPoses().map((p) => [
+      Math.round(p.position.x),
+      Math.round(p.position.y),
+      Math.round(p.thetaDegrees * 100),
+    ]);
+    return JSON.stringify([
+      poses,
+      Math.round(this.length),
+      this._COR,
+      this.endsOnly,
+      this.constrain ? this.region : null,
+    ]);
+  }
+
+  /**
+   * Drop a position where the reader clicked, turned the way the ghost was.
+   *
+   * Positions fill 1, 2, 3 in the order they are placed, and placing stays
+   * armed until the third: three clicks is the whole gesture, and disarming
+   * between them would put a button press between every one.
+   */
+  placePose(at: Coord): void {
+    const next = this.getFirstUndefinedPose();
+    if (next === undefined) return;
+    this.poses[next] = new SynthesisPose(
+      next,
+      at,
+      (this.placeAngleDeg * Math.PI) / 180,
+      () => this.COR,
+      () => this.length
+    );
+    const more = this.getFirstUndefinedPose() !== undefined;
+    this.armed = more;
+    this.selectedPose = more ? next + 1 : next;
+    this.placeAngleDeg -= 22;
+    this.valueChanges.next(true);
+  }
+
+  /** Arm or disarm placing, and select the row that is about to be filled. */
+  setArmed(armed: boolean): void {
+    const next = this.getFirstUndefinedPose();
+    if (armed && next === undefined) return;
+    this.armed = armed;
+    // Only arming cancels a region being drawn: the two gestures both own the
+    // canvas, so one has to give way -- but disarming is also how *starting* to
+    // draw a region reports itself, and clearing it here unconditionally meant
+    // the Redraw button switched the mode off in the same breath it asked for
+    // it.
+    if (armed) this.regionDraw = false;
+    if (armed) {
+      this.selectedPose = next!;
+      const placed = this.getAllPoses();
+      if (placed.length) this.placeAngleDeg = placed[placed.length - 1].thetaDegrees - 22;
+    }
+    this.valueChanges.next(false);
+  }
+
+  /**
+   * Copy the last position and offset it slightly.
+   *
+   * A quick start for three similar positions, which is what most designs
+   * actually are -- and it saves a reader from discovering that three
+   * positions in a straight line have no solutions at all.
+   */
+  duplicateLastPose(): void {
+    const placed = this.getAllPoses();
+    const next = this.getFirstUndefinedPose();
+    if (!placed.length || next === undefined) return;
+    const last = placed[placed.length - 1];
+    this.poses[next] = new SynthesisPose(
+      next,
+      new Coord(last.position.x + 0.6 * this.length, last.position.y + 0.5 * this.length),
+      ((last.thetaDegrees - 22) * Math.PI) / 180,
+      () => this.COR,
+      () => this.length
+    );
+    this.armed = false;
+    this.selectedPose = next;
+    this.valueChanges.next(true);
+  }
+
+  /**
+   * Remove one position, and close the gap it leaves.
+   *
+   * The panel shows three numbered rows and fills them in order, so a hole in
+   * the middle would leave "Position 2" blank under a filled "Position 3" --
+   * a state the placing gesture cannot produce and has no way to repair.
+   */
+  removePose(id: number): void {
+    const kept = this.getAllPoses().filter((pose) => pose.id !== id);
+    this.poses = {};
+    kept.forEach((pose, index) => {
+      this.poses[index + 1] = new SynthesisPose(
+        index + 1,
+        pose.position,
+        pose.thetaRadians,
+        () => this.COR,
+        () => this.length
+      );
+    });
+    this.armed = false;
+    this.selectedPose = kept.length ? Math.min(this.selectedPose, kept.length) : 0;
+    this.valueChanges.next(true);
+  }
+
+  /**
+   * Whether this design holds work a reader would mind losing.
+   *
+   * Positions and the region they have to satisfy outlive the Synthesis tab, so
+   * anything that asks whether the document is empty before writing over it --
+   * a template, say -- has to ask this too, not only the drawing.
+   */
+  hasDesign(): boolean {
+    return this.getAllPoses().length > 0 || this.constrain;
+  }
+
+  /**
+   * Rescale everything held as a model length, when the document changes units.
+   *
+   * The drawing's own geometry is multiplied by the same factor, and the design
+   * has to travel with it: positions typed in centimeters are the very same
+   * numbers after a switch to inches, and left alone they are then read as
+   * inches and no longer line up with the machine they were used to build.
+   */
+  convertLengths(scale: number): void {
+    if (scale === 1) return;
+    for (const pose of this.getAllPoses()) {
+      pose.position = new Coord(pose.position.x * scale, pose.position.y * scale);
+    }
+    this.region = {
+      x: this.region.x * scale,
+      y: this.region.y * scale,
+      w: this.region.w * scale,
+      h: this.region.h * scale,
+    };
+    // The baseline for "has this joint been dragged since we put it there" is a
+    // model position like any other, and a baseline left behind reads the whole
+    // inserted machine as moved by hand.
+    this.ownedAt = this.ownedAt.map((at) => ({ x: at.x * scale, y: at.y * scale }));
+    this._length = this._length * scale;
+    this.getAllPoses().forEach((pose) => pose.recompute());
+    this.valueChanges.next(true);
+  }
+
+  /** Nothing designed, nothing asked for -- what a fresh visit looks like. */
+  clearDesign(): void {
+    this.poses = {};
+    this._COR = COR.CENTER;
+    this._length = 5 * MODEL_SCALE;
+    this.lengthChosen = false;
+    this._selectedPose = 0;
+    this.stage = 'chooser';
+    this.armed = false;
+    this.regionDraw = false;
+    this.endsOnly = true;
+    this.allowDefect = false;
+    this.constrain = false;
+    this.ownedJointIds = [];
+    this.ownedAt = [];
+    this.ownershipPartial = false;
+    this.valueChanges.next(true);
+  }
+
+  /**
+   * Replace the whole design with one that came out of a URL.
+   *
+   * One notification at the end rather than one per field: a decode is a
+   * single event -- a link opened, or a step through history -- and reporting
+   * it as eleven would have the panel re-read a half-applied design ten times.
+   */
+  applyDecoded(decoded: {
+    length: number;
+    reference: COR;
+    endsOnly: boolean;
+    allowDefect: boolean;
+    constrain: boolean;
+    stage: 'chooser' | 'working';
+    poses: { at: Coord; thetaDegrees: number }[];
+    region?: { x: number; y: number; w: number; h: number };
+    ownedJointIds: string[];
+    ownedAt?: { x: number; y: number }[];
+    ownershipPartial?: boolean;
+  }): void {
+    this._COR = decoded.reference;
+    // A restored design carries a length somebody settled on, whether or not
+    // they typed it in this session -- so the suggestion stands aside from it
+    // exactly as it would from a typed one. Absent, there is nothing to honor
+    // and the default is as good a starting point as it ever was.
+    this.lengthChosen = decoded.length > 0;
+    this._length = decoded.length > 0 ? decoded.length : 5 * MODEL_SCALE;
+    this.endsOnly = decoded.endsOnly;
+    this.allowDefect = decoded.allowDefect;
+    this.constrain = decoded.constrain;
+    this.stage = decoded.stage;
+    this.armed = false;
+    this.regionDraw = false;
+    this.ownedJointIds = decoded.ownedJointIds;
+    this.ownedAt = decoded.ownedAt ?? [];
+    this.ownershipPartial = !!decoded.ownershipPartial;
+    if (decoded.region) this.region = decoded.region;
+
+    this.poses = {};
+    decoded.poses.slice(0, 3).forEach((pose, index) => {
+      this.poses[index + 1] = new SynthesisPose(
+        index + 1,
+        pose.at,
+        (pose.thetaDegrees * Math.PI) / 180,
+        () => this.COR,
+        () => this.length
+      );
+    });
+    // A decode is not a click, so it selects nothing: the design comes back as
+    // it was written, not as though a row had just been picked.
+    this._selectedPose = 0;
+    this.valueChanges.next(true);
   }
 }

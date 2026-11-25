@@ -1,71 +1,142 @@
-import { Component, ChangeDetectionStrategy, OnDestroy } from '@angular/core';
-import { SettingsService } from 'src/app/services/settings.service';
-import { LengthUnit, AngleUnit, ForceUnit, GlobalUnit } from 'src/app/model/utils';
-import { FormBuilder, Validators } from '@angular/forms';
+import { ObjectDisplayService } from '../../services/object-display.service';
+import { EditBannerComponent } from '../BLOCKS/banner/edit-banner.component';
+import { EditPermissionService } from '../../services/edit-permission.service';
+import { EditRefusal, SETTINGS_AT_START_ONLY } from '../../model/edit-permission';
+import { SelectedTabService, TabID } from '../../selected-tab.service';
+import { environment } from '../../../environments/environment';
+import {
+  Component,
+  ChangeDetectionStrategy,
+  ElementRef,
+  Injector,
+  OnDestroy,
+  afterNextRender,
+  effect,
+  inject,
+  untracked,
+  viewChild,
+} from '@angular/core';
+import { SettingsFocusService } from '../../services/settings-focus.service';
+import { KeyboardShortcutsService } from '../../services/keyboard-shortcuts.service';
+import { SettingsService, writeStoredFlag } from 'src/app/services/settings.service';
+import { LengthUnit, AngleUnit, ForceUnit, GlobalUnit, MassUnit } from 'src/app/model/utils';
+import { displayMassUnit, inertiaUnitFor, storedMassUnit } from 'src/app/model/mass-units';
+import { FormBuilder, FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { MechanismService } from '../../services/mechanism.service';
-import { Link, RealLink } from '../../model/link';
 import { SvgGridService } from '../../services/svg-grid.service';
 import { NumberUnitParserService } from '../../services/number-unit-parser.service';
 import { Coord } from '../../model/coord';
 import { combineLatest, Subscription } from 'rxjs';
+import { PanelSectionComponent } from '../BLOCKS/panel-section/panel-section.component';
+import { TitleBlock } from '../BLOCKS/title/title.component';
+import { CollapsibleSubsectionComponent } from '../BLOCKS/collapsible-subsection/collapsible-subsection.component';
+import { RadioComponent } from '../BLOCKS/radio/radio.component';
+import { ToggleComponent } from '../BLOCKS/toggle/toggle.component';
 
 @Component({
   selector: 'app-settings-panel',
   templateUrl: './settings-panel.component.html',
   styleUrls: ['./settings-panel.component.scss'],
   changeDetection: ChangeDetectionStrategy.Eager,
-  standalone: false,
+  imports: [
+    PanelSectionComponent,
+    TitleBlock,
+    CollapsibleSubsectionComponent,
+    RadioComponent,
+    FormsModule,
+    ReactiveFormsModule,
+    ToggleComponent,
+    EditBannerComponent,
+  ],
 })
 export class SettingsPanelComponent implements OnDestroy {
-  constructor(
-    public settingsService: SettingsService,
-    private fb: FormBuilder,
-    public mechanismSrv: MechanismService,
-    private svgGrid: SvgGridService,
-    private nup: NumberUnitParserService
-  ) {}
+  settingsService = inject(SettingsService);
+  readonly objectDisplay = inject(ObjectDisplayService);
+  private fb = inject(FormBuilder);
+  mechanismSrv = inject(MechanismService);
+  private svgGrid = inject(SvgGridService);
+  private nup = inject(NumberUnitParserService);
+  private tabs = inject(SelectedTabService);
+  private permission = inject(EditPermissionService);
+  private settingsFocus = inject(SettingsFocusService);
+  private shortcuts = inject(KeyboardShortcutsService);
+  readonly altKey = this.shortcuts.alt;
+  private injector = inject(Injector);
+  private basicSettings = viewChild.required('basicSettings', {
+    read: CollapsibleSubsectionComponent,
+  });
+  private globalUnits = viewChild.required('globalUnits', { read: ElementRef });
+
+  constructor() {
+    // The bottom bar's units label asks for this. Read untracked, so showing
+    // the units is the only thing this effect ever reacts to.
+    effect(() => {
+      if (this.settingsFocus.unitsWanted()) untracked(() => this.showUnits());
+    });
+  }
+
+  /**
+   * Open Basic Settings if it was folded, bring the unit choices into view and
+   * put the focus on the chosen length unit, so the next key changes it.
+   */
+  private showUnits(): void {
+    this.settingsFocus.unitsWanted.set(false);
+    const section = this.basicSettings();
+    const wasFolded = !section.expanded;
+    section.expanded = true;
+    afterNextRender(
+      () => {
+        // A folded section grows open over 0.15 s; measured before that, the
+        // block is still at height zero and the scroll lands short.
+        setTimeout(
+          () => {
+            const block = this.globalUnits().nativeElement as HTMLElement;
+            const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+            block.scrollIntoView({ block: 'nearest', behavior: still ? 'auto' : 'smooth' });
+            // Two lookups, not one selector list: a list matches in page order,
+            // so it handed back the first option rather than the chosen one.
+            const chosen =
+              block.querySelector<HTMLButtonElement>('button[aria-pressed="true"]') ??
+              block.querySelector<HTMLButtonElement>('button');
+            chosen?.focus({ preventScroll: true });
+          },
+          wasFolded ? 200 : 0
+        );
+      },
+      { injector: this.injector }
+    );
+  }
+
+  readonly appVersion = environment.appVersion;
 
   currentLengthUnit!: LengthUnit;
   currentForceUnit!: ForceUnit;
+  currentMassUnit!: MassUnit;
   currentAngleUnit!: AngleUnit;
   // currentTorqueUnit!: TorqueUnit;
   currentGlobalUnit!: GlobalUnit;
-  currentObjectScaleSetting!: number;
   private readonly settingsSubscriptions = new Subscription();
 
   ngOnInit(): void {
     this.currentLengthUnit = this.settingsService.lengthUnit.value;
     this.currentForceUnit = this.settingsService.forceUnit.value;
+    this.currentMassUnit = this.settingsService.massUnit.value;
     this.currentAngleUnit = this.settingsService.angleUnit.value;
     this.currentGlobalUnit = this.settingsService.globalUnit.value;
-    this.currentObjectScaleSetting = SettingsService.objectScale;
-
     this.settingsForm.patchValue({
-      objectScale: this.currentObjectScaleSetting.toString(),
+      drawingStyle: this.objectDisplay.selectedStyle(),
       lengthunit: this.currentLengthUnit.toString(),
       angleunit: (this.currentAngleUnit - 10).toString(),
+      forceunit: forceUnitIndex(this.currentForceUnit),
+      massunit: massUnitIndex(displayMassUnit(this.currentLengthUnit, this.currentMassUnit)),
       // torqueunit: (this.currentTorqueUnit - 20).toString(),
       globalunit: (this.currentGlobalUnit - 30).toString(),
       showMajorGrid: this.settingsService.isShowMajorGrid.value,
       showMinorGrid: this.settingsService.isShowMinorGrid.value,
+      snapToGrid: this.settingsService.isSnapToGrid.value,
+      snapToAlignment: this.settingsService.isSnapToAlignment.value,
+      gravity: this.settingsService.isGravity.value,
     });
-
-    this.settingsSubscriptions.add(
-      SettingsService._objectScale.subscribe((val) => {
-        this.currentObjectScaleSetting = val;
-        this.settingsForm.patchValue(
-          { objectScale: this.currentObjectScaleSetting.toString() },
-          { emitEvent: false }
-        );
-
-        //Werid place to put this but
-        this.mechanismSrv.links.forEach((link: Link) => {
-          (link as RealLink).reComputeDPath();
-        });
-
-        this.mechanismSrv.updateMechanism();
-      })
-    );
 
     this.onChanges();
     this.bindSerializedSettings();
@@ -78,25 +149,33 @@ export class SettingsPanelComponent implements OnDestroy {
         this.settingsService.lengthUnit,
         this.settingsService.angleUnit,
         this.settingsService.forceUnit,
+        this.settingsService.massUnit,
         this.settingsService.globalUnit,
         this.settingsService.isShowMajorGrid,
         this.settingsService.isShowMinorGrid,
-      ]).subscribe(([length, angle, force, global, showMajorGrid, showMinorGrid]) => {
-        this.currentLengthUnit = length;
-        this.currentAngleUnit = angle;
-        this.currentForceUnit = force;
-        this.currentGlobalUnit = global;
-        this.settingsForm.patchValue(
-          {
-            lengthunit: length.toString(),
-            angleunit: (angle - 10).toString(),
-            globalunit: (global - 30).toString(),
-            showMajorGrid,
-            showMinorGrid,
-          },
-          { emitEvent: false }
-        );
-      })
+        this.settingsService.isGravity,
+      ]).subscribe(
+        ([length, angle, force, mass, global, showMajorGrid, showMinorGrid, gravity]) => {
+          this.currentLengthUnit = length;
+          this.currentAngleUnit = angle;
+          this.currentForceUnit = force;
+          this.currentMassUnit = mass;
+          this.currentGlobalUnit = global;
+          this.settingsForm.patchValue(
+            {
+              lengthunit: length.toString(),
+              angleunit: (angle - 10).toString(),
+              forceunit: forceUnitIndex(force),
+              massunit: massUnitIndex(displayMassUnit(length, mass)),
+              globalunit: (global - 30).toString(),
+              showMajorGrid,
+              showMinorGrid,
+              gravity,
+            },
+            { emitEvent: false }
+          );
+        }
+      )
     );
   }
 
@@ -105,27 +184,50 @@ export class SettingsPanelComponent implements OnDestroy {
   }
 
   onChanges(): void {
-    this.settingsForm.controls['objectScale'].valueChanges.subscribe((val) => {
-      if (this.settingsForm.controls['objectScale'].invalid) {
-        // Restore the last good scale into its own field, not the speed field.
-        this.settingsForm.patchValue({ objectScale: this.currentObjectScaleSetting.toString() });
-      } else {
-        this.currentObjectScaleSetting = Number(val);
-        SettingsService._objectScale.next(this.currentObjectScaleSetting);
-      }
-      this.mechanismSrv.updateMechanism();
-    });
+    this.settingsSubscriptions.add(
+      this.settingsForm.controls.drawingStyle.valueChanges.subscribe((value) =>
+        this.objectDisplay.chooseStyle(value)
+      )
+    );
     this.settingsForm.controls['angleunit'].valueChanges.subscribe((val) => {
       this.currentAngleUnit = ParseAngleUnit(String(val));
       this.settingsService.angleUnit.next(this.currentAngleUnit);
       this.mechanismSrv.updateMechanism();
     });
+    this.settingsForm.controls['forceunit'].valueChanges.subscribe((val) => {
+      // A display unit, not a stored one: force magnitudes stay in newtons and
+      // the fields and axes convert on the way out. So this rebuilds nothing
+      // and redraws everything, exactly as the angle switch above does.
+      if (!this.showsForceUnit()) return;
+      const chosen = val === '1' ? ForceUnit.KGF : ForceUnit.NEWTON;
+      // Opening the panel patches every control, which fires this with the
+      // value it already had. Republishing that redraws every open graph for
+      // a change nobody made -- the cost this file's `skip(1)` above exists to
+      // refuse.
+      if (chosen === this.settingsService.forceUnit.value) return;
+      this.currentForceUnit = chosen;
+      this.settingsService.forceUnit.next(chosen);
+      this.mechanismSrv.updateMechanism();
+      this.mechanismSrv.onMechUpdateState.next(2);
+    });
+    this.settingsForm.controls['massunit'].valueChanges.subscribe((val) => {
+      // A display unit, like force: masses stay stored in the length's own
+      // unit and the fields convert on the way in and out. Nothing about the
+      // solve changes; the redraw puts every open field and table in the new
+      // unit, exactly as the force switch above does.
+      if (!this.showsMassUnit()) return;
+      const chosen = val === '1' ? MassUnit.KG : MassUnit.GRAM;
+      const shown = displayMassUnit(this.currentLengthUnit, this.settingsService.massUnit.value);
+      if (chosen === shown) return;
+      this.currentMassUnit = chosen;
+      this.settingsService.massUnit.next(chosen);
+      this.mechanismSrv.updateMechanism();
+      this.mechanismSrv.onMechUpdateState.next(2);
+    });
     this.settingsForm.controls['globalunit'].valueChanges.subscribe((val) => {
       this.currentGlobalUnit = ParseGlobalUnit(val);
       this.settingsService.globalUnit.next(this.currentGlobalUnit);
-      this.currentForceUnit =
-        this.currentGlobalUnit === GlobalUnit.ENGLISH ? ForceUnit.LBF : ForceUnit.NEWTON;
-      this.settingsService.forceUnit.next(this.currentForceUnit);
+      this.settleForceUnit();
       // A global-unit change is, for the geometry, a length-unit change. Route
       // it through the one method that rescales the mechanism so this path and
       // the length control can never diverge.
@@ -142,74 +244,271 @@ export class SettingsPanelComponent implements OnDestroy {
       this.settingsService.isShowMajorGrid.next(Boolean(val));
       this.mechanismSrv.updateMechanism();
     });
+    // Remembered on this machine rather than written to the URL: see
+    // SettingsService.isSnapToGrid.
+    this.settingsForm.controls['snapToGrid'].valueChanges.subscribe((val) => {
+      const on = val === true;
+      this.settingsService.isSnapToGrid.next(on);
+      writeStoredFlag('snapToGrid', on);
+    });
+
+    this.settingsForm.controls['snapToAlignment'].valueChanges.subscribe((val) => {
+      const on = val === true;
+      this.settingsService.isSnapToAlignment.next(on);
+      writeStoredFlag('snapToAlignment', on);
+    });
+
     this.settingsForm.controls['showMinorGrid'].valueChanges.subscribe((val) => {
       this.settingsService.isShowMinorGrid.next(Boolean(val));
       this.mechanismSrv.updateMechanism();
     });
-    // this.settingsForm.controls['torqueunit'].valueChanges.subscribe(() => {
-    //   this.settingsService.inputTorque.next(this.currentTorqueUnit);
-    // });
+    // Gravity changes what the force analysis means, so it is an edit: the
+    // mechanisms are rebuilt with the new flag and the change is undoable.
+    this.settingsForm.controls['gravity'].valueChanges.subscribe((val) => {
+      const on = val === true;
+      if (on === this.settingsService.isGravity.value) return;
+      this.settingsService.isGravity.next(on);
+      this.mechanismSrv.updateMechanism(true);
+      // An open force graph is plotting the old gravity; ask for a redraw the
+      // same way a unit change does.
+      this.mechanismSrv.onMechUpdateState.next(2);
+    });
   }
 
   /**
-   * The single length-unit switch. Both the Global Units radio and the internal
+   * A unit change rescales the drawing's stored geometry, so it is an edit.
+   *
+   * The analysis modes lock the geometry, and Synthesis is writing its own --
+   * changing what a number means underneath either of them is the same class
+   * of surprise the lock exists to prevent.
+   */
+  /**
+   * Whether the document itself may be changed right now.
+   *
+   * Units and gravity are both inputs to the solve rather than views of it, so
+   * both are settled in Edit and read-only once an analysis is on screen --
+   * changing either would leave the graphs and the vectors describing a
+   * mechanism that no longer exists, without redrawing them.
+   *
+   * Named for the document rather than for the units it was written for: it now
+   * gates the gravity switch too, and a predicate called `unitsEditable`
+   * guarding gravity is the kind of thing that gets un-guarded by someone
+   * tidying up.
+   */
+  documentEditable(): boolean {
+    // The permission model, not `settings.animating`. That flag is pushed by
+    // the transport's master controls and says nothing about a *row* being
+    // played: with one machine of several visibly running, it read false, and
+    // Length Units, Angle Units and Gravity stayed live while every other
+    // surface in the app said the drawing was read-only.
+    //
+    // `settings`, its own row of docs/editing-rules.md: a unit change rescales
+    // every length in the drawing, so it waits for the start, but it belongs to
+    // the whole document rather than to Edit, so an analysis mode keeps it.
+    return this.permission.may('settings');
+  }
+
+  /**
+   * The way back to a switch that is grayed out — and nothing at all when it is
+   * not. Told every time, "switch to Edit mode" is read most often by the reader
+   * already standing in Edit mode, where it is the one sentence in the tooltip
+   * that cannot help them.
+   *
+   * A clause, not a sentence. The tooltip's own line already says what the
+   * control does; what the refusal owes it is the *way out*, and the model's
+   * full wording spent two lines restating the refusal before naming one --
+   * on a tooltip whose first line the reader has already read.
+   */
+  /**
+   * Why the settings cannot be changed, as the strip the Edit panel uses.
+   *
+   * Two answers, not three. Being in an analysis mode is its own condition and
+   * keeps its own sentence; playing and standing away from the start are one
+   * condition as far as a reader is concerned -- the same press fixes either,
+   * and the strip used to rewrite itself under their eyes as the animation ran
+   * on and stopped.
+   */
+  lockedRefusal(): EditRefusal | null {
+    const why = this.permission.refusal('settings');
+    if (!why) return null;
+    return why.actionKind === 'toEdit' ? why : SETTINGS_AT_START_ONLY;
+  }
+
+  /**
+   * The way out, as a clause on the tooltip of each row it grays.
+   *
+   * Deliberately not the refusal's own `long`. The strip above says the whole
+   * thing; a tooltip has already opened with a sentence about what the control
+   * is for, and pasting the model's full refusal after it restates that before
+   * getting to the point. What a grayed switch owes a reader is the way out,
+   * in the fewest words that name it.
+   */
+  lockedNote(): string {
+    const why = this.lockedRefusal();
+    if (!why) return '';
+    return why.actionKind === 'toEdit'
+      ? ' Switch to Edit mode to change.'
+      : ' Return to the start pose to change.';
+  }
+
+  /**
+   * Whether there is a force unit to pick.
+   *
+   * English has one — pounds-force — so the row would be a control with a
+   * single option, which is furniture rather than a choice. Metric and SI
+   * share newtons and kilograms-force.
+   */
+  showsForceUnit(): boolean {
+    return this.currentGlobalUnit !== GlobalUnit.ENGLISH;
+  }
+
+  /** Whether there is a mass unit to pick: grams or kilograms, under cm and m. */
+  showsMassUnit(): boolean {
+    return this.currentGlobalUnit !== GlobalUnit.ENGLISH;
+  }
+
+  /**
+   * What the units chosen above make of everything else.
+   *
+   * Torque and inertia are never picked -- each is a product of units that are
+   * -- so the panel says what they come to rather than offering a row for each.
+   * Under inches the mass and force rows are hidden for having a single option,
+   * and this is where the reader learns that the force is in pounds-force.
+   */
+  derivedUnitsNote(): string {
+    const length = this.currentLengthUnit;
+    const mass = displayMassUnit(length, this.currentMassUnit);
+    const force = this.currentForceUnit;
+    const torque = this.nup.torqueLabel(force, length);
+    const inertia = this.nup.unitLabel(inertiaUnitFor(mass, length));
+    const derived = `Torque is shown in ${torque} and inertia in ${inertia}.`;
+    if (this.showsMassUnit()) return derived;
+    return `Mass is in ${this.nup.unitLabel(mass)} and force in ${this.nup.unitLabel(force)}. ${derived}`;
+  }
+
+  /**
+   * The force unit that goes with the length system just chosen.
+   *
+   * Kilograms-force survives a move between centimeters and meters — both are
+   * metric, and re-picking it after every length change is a chore the switch
+   * can spare the reader. English has no kgf, so it lands on lbf whatever was
+   * chosen before, and picks up newtons on the way back.
+   */
+  private settleForceUnit(): void {
+    this.currentForceUnit = !this.showsForceUnit()
+      ? ForceUnit.LBF
+      : this.currentForceUnit === ForceUnit.KGF
+        ? ForceUnit.KGF
+        : ForceUnit.NEWTON;
+    this.settingsService.forceUnit.next(this.currentForceUnit);
+    this.settingsForm.patchValue(
+      { forceunit: forceUnitIndex(this.currentForceUnit) },
+      { emitEvent: false }
+    );
+  }
+
+  /**
+   * The mass unit that goes with the length just chosen: that length's own.
+   *
+   * Unlike kilograms-force, a mass pick does not survive a change of length.
+   * Grams suit centimeters and kilograms suit meters, and a reader who moves a
+   * drawing from one to the other and never opened Mass Units should see what
+   * the app has always shown them -- not a meter drawing weighed in grams with
+   * its inertia in g·m².
+   */
+  private settleMassUnit(length: LengthUnit): void {
+    this.currentMassUnit = MassUnit.NULL;
+    this.settingsService.massUnit.next(MassUnit.NULL);
+    this.settingsForm.patchValue(
+      { massunit: massUnitIndex(storedMassUnit(length)) },
+      { emitEvent: false }
+    );
+  }
+
+  /**
+   * The single length-unit switch. Both the Length Units radio and the internal
    * length control funnel here so a unit change always rescales the mechanism's
    * stored geometry, mass, inertia, and forces — never just relabels them.
    */
   private changeLengthUnit(toUnit: LengthUnit): void {
     const fromUnit = this.settingsService.lengthUnit.value;
+    // The mass first, as the URL reader does, so nothing listening to the
+    // length is handed a pairing the reader never had.
+    if (fromUnit !== toUnit) this.settleMassUnit(toUnit);
     this.currentLengthUnit = toUnit;
     this.settingsService.lengthUnit.next(toUnit);
     this.settingsForm.controls['lengthunit'].patchValue(String(toUnit), { emitEvent: false });
     if (fromUnit === toUnit) return;
 
+    SettingsService.preservedCylinderScale = this.nup.convertLength(
+      SettingsService.preservedCylinderScale,
+      fromUnit,
+      toUnit
+    );
+    SettingsService._objectScale.next(
+      this.nup.convertLength(SettingsService.objectScale, fromUnit, toUnit)
+    );
     this.mechanismSrv.updateLinkageUnits(fromUnit, toUnit);
+
+    // Nothing drawn, nothing to hold still: the compensation below exists to
+    // keep a mechanism at its apparent size, and applied to an empty grid it
+    // zoomed the view a hundredfold and raised the far-too-large warning over
+    // a drawing that did not exist. The view starts over instead.
+    if (this.mechanismSrv.joints.length === 0 && this.mechanismSrv.links.length === 0) {
+      this.svgGrid.scaleToFitLinkage();
+      this.mechanismSrv.onMechUpdateState.next(2);
+      return;
+    }
 
     // Compensate the viewport zoom so the mechanism keeps its apparent size,
     // then scale visual affordances to match.
-    const tempOriginInScreen = this.svgGrid.SVGtoScreen(new Coord(0, 0));
-    this.svgGrid.panZoomObject.zoomAtPointBy(this.nup.convertLength(1, toUnit, fromUnit), {
-      x: tempOriginInScreen.x,
-      y: tempOriginInScreen.y,
-    });
-    SettingsService._objectScale.next(
-      this.nup.convertLength(SettingsService.objectScale, fromUnit, toUnit)
+    const tempOriginInScreen = this.svgGrid.modelToScreen(new Coord(0, 0));
+    // Through `ourOwnMove`: holding the drawing still across a change of units
+    // is the app compensating, not the reader choosing a zoom, and the canvas
+    // tells the two apart by which of them made the move.
+    this.svgGrid.ourOwnMove(() =>
+      this.svgGrid.panZoomObject.zoomAtPointBy(this.nup.convertLength(1, toUnit, fromUnit), {
+        x: tempOriginInScreen.x,
+        y: tempOriginInScreen.y,
+      })
     );
 
     // Update graphs with the new units.
     this.mechanismSrv.onMechUpdateState.next(2);
   }
 
+  /** The unit's suffix, spelled by the one service that knows them all. */
   getUnitStr(unit: LengthUnit): string {
-    switch (unit) {
-      case LengthUnit.CM:
-        return 'cm';
-      case LengthUnit.INCH:
-        return 'in';
-      case LengthUnit.METER:
-        return 'm';
-      default:
-        return 'cm';
-    }
+    return this.nup.unitLabel(unit);
   }
 
-  numRegex = '^-?[0-9]+(.[0-9]{0,10})?$';
   settingsForm = this.fb.group(
     {
-      objectScale: ['', [Validators.required, Validators.pattern(this.numRegex)]],
+      drawingStyle: ['0', { updateOn: 'change' }],
       lengthunit: ['', { updateOn: 'change' }],
       angleunit: ['', { updateOn: 'change' }],
+      forceunit: ['', { updateOn: 'change' }],
+      massunit: ['', { updateOn: 'change' }],
       torqueunit: ['', { updateOn: 'change' }],
       globalunit: ['', { updateOn: 'change' }],
       showMinorGrid: [true, { updateOn: 'change' }],
       showMajorGrid: [true, { updateOn: 'change' }],
+      snapToGrid: [false, { updateOn: 'change' }],
+      snapToAlignment: [true, { updateOn: 'change' }],
+      gravity: [true, { updateOn: 'change' }],
     },
     { updateOn: 'blur' }
   );
+}
 
-  updateObjectScale() {
-    this.svgGrid.updateObjectScale();
-  }
+/** Which option of the Mass Units pill stands for this unit. */
+function massUnitIndex(unit: MassUnit): string {
+  return unit === MassUnit.KG ? '1' : '0';
+}
+
+/** Which option of the Force Units pill stands for this unit. */
+function forceUnitIndex(unit: ForceUnit): string {
+  return unit === ForceUnit.KGF ? '1' : '0';
 }
 
 function ParseLengthUnit(val: string | null): LengthUnit {

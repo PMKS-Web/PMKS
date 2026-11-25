@@ -1,28 +1,117 @@
-import { booleanAttribute, Component, Input, ChangeDetectionStrategy } from '@angular/core';
-import { FormGroup } from '@angular/forms';
+import { NumberDragDirective } from '../../../directives/number-drag.directive';
+import {
+  booleanAttribute,
+  Component,
+  Input,
+  ChangeDetectionStrategy,
+  input,
+  output,
+} from '@angular/core';
+import { FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { MatIcon } from '@angular/material/icon';
+import { MatTooltip } from '@angular/material/tooltip';
+import { MatFormField, MatSuffix } from '@angular/material/form-field';
+import { MatInput } from '@angular/material/input';
+import { FieldOverlay } from '../field-overlay';
+import { selectAll } from '../select-all';
+
+let nextInputId = 0;
 
 @Component({
   selector: 'input-block',
   templateUrl: './input.component.html',
   styleUrls: ['./input.component.scss'],
   changeDetection: ChangeDetectionStrategy.Eager,
-  standalone: false,
+  imports: [
+    NumberDragDirective,
+    FormsModule,
+    ReactiveFormsModule,
+    MatIcon,
+    MatTooltip,
+    MatFormField,
+    MatInput,
+    MatSuffix,
+  ],
 })
 export class InputComponent {
+  /**
+   * A click selects the whole value — including a second click on a field
+   * that already has focus, which `select()` alone loses to the caret the
+   * browser places afterwards (`BLOCKS/select-all.ts`).
+   */
+  protected readonly selectAll = selectAll;
+
+  protected readonly labelId = `pmks-input-label-${nextInputId++}`;
   @Input() unit: string | undefined;
   /** Widens the field for values whose unit suffix does not fit the default. */
   @Input({ transform: booleanAttribute }) wide: boolean = false;
-  @Input() tooltip: string | undefined;
+  /**
+   * Put the label on its own line, with the field under it.
+   *
+   * For a label too long to share a line with its field -- "Moment of Inertia"
+   * next to a value in kg&middot;cm&sup2; wants 239px of a 220px row, and one
+   * of the two gets crushed. The panel already reads this way for Joint
+   * Position and Center of Mass.
+   */
+  readonly stacked = input<boolean, unknown>(false, { transform: booleanAttribute });
+  /**
+   * A cell in a table rather than a field in a panel.
+   *
+   * The mass table in the analysis setup drawer heads its own columns, so the
+   * block's label, help mark and spacer would say everything twice; the field
+   * takes the cell instead. The drawer used to get this by naming this block's
+   * insides from its own stylesheet, which is how renaming anything in here
+   * broke a panel nobody had edited.
+   */
+  readonly cell = input<boolean, unknown>(false, { transform: booleanAttribute });
+  readonly tooltip = input<string>();
   @Input() _formControl!: string;
   @Input() formGroup!: FormGroup;
+  /** Optional mixed-value copy and test hook for bulk-edit forms. */
+  readonly placeholder = input<string>('');
+  readonly dataField = input<string>();
   /**
    * Turns the static unit suffix into a picker sharing the field's fill, for
    * values whose unit the user chooses rather than types. Needs unitFormControl.
    */
-  @Input() unitOptions: { value: string; label: string }[] | undefined;
-  @Input() unitFormControl: string | undefined;
+  readonly unitOptions = input<
+    {
+      value: string;
+      label: string;
+    }[]
+  >();
+  readonly unitFormControl = input<string>();
 
-  get hasUnitSelect(): boolean {
-    return !!this.unitOptions?.length && !!this.unitFormControl;
+  protected get hasUnitSelect(): boolean {
+    return !!this.unitOptions()?.length && !!this.unitFormControl();
+  }
+
+  /**
+   * Hovering or focusing this field asks the canvas to draw what it measures,
+   * exactly as `dual-input-block` already does for link length and angle.
+   *
+   * Lifted here because a cylinder's axis is a single field, not half of a
+   * pair: the ram's length and its angle are two unrelated numbers — the size
+   * of the part and where it points — so they cannot share a row, and the
+   * overlay is the whole reason the link's angle field is legible without one.
+   * Silent unless a caller supplies an id, so every other `input-block` in the
+   * app is untouched.
+   */
+  readonly fieldEntry = output<number>();
+  readonly emitterOutputID = input<number>(-2);
+
+  /** The rule this block wrote first, now shared: see `FieldOverlay`. */
+  private readonly overlay = new FieldOverlay<number>(
+    (value) => this.fieldEntry.emit(value),
+    () => this.emitterOutputID(),
+    () => -2
+  );
+
+  protected setMouseOver(over: boolean): void {
+    this.overlay.hover(over);
+  }
+
+  protected setFocused(focused: boolean): void {
+    this.overlay.focus(focused);
   }
 }

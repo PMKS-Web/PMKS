@@ -1,36 +1,90 @@
 <div id="settingsWrapper">
   <panel-section>
     <!-- {{ this.currentAngleUnit }} -->
-    <title-block> Settings</title-block>
-    <collapsible-subseciton titleLabel="Basic Settings" [expanded]="true">
+    <title-block>Settings</title-block>
+    <collapsible-subsection #basicSettings titleLabel="Basic Settings" [expanded]="true">
+      <!-- The Edit panel's own strip, verbatim: same indigo, same glyph, same
+           underlined way out. It was a bare sentence here, which read as a
+           note somebody had left rather than as the panel saying why the
+           controls under it are gray.
+
+           Behind an `@if` rather than left to render nothing: the section lays
+           its children out in a flex column with a gap between them, so an
+           element that is present and empty still spends that gap. Standing
+           where the strip would be, it pushed the first setting twelve pixels
+           down the panel whenever there was nothing to say. -->
+      @if (lockedRefusal(); as why) {
+        <app-edit-banner class="settingsBanner" [refusal]="why" />
+      }
       <radio-block
-        option1="English (in)"
-        option2="Metric (cm)"
-        option3="SI (m)"
+        #globalUnits
+        option1="Inch (in)"
+        option2="Centimeter (cm)"
+        option3="Meter (m)"
+        weighted
         [formGroup]="this.settingsForm"
         _formControl="globalunit"
-        tooltip="Select the global units to be used for the analysis."
-        [disabled]="this.settingsService.animating.value"
-        >Global Units
+        [tooltip]="'The length unit the whole drawing is measured in.' + lockedNote()"
+        [disabled]="!documentEditable()"
+        >Length Units
       </radio-block>
+      <!-- Length, mass and force, then what they come to. Inches have one mass
+           and one force, so both rows hide there and the note says what the
+           reader gets instead. Angle stands apart: nothing is derived from it. -->
+      @if (showsMassUnit()) {
+        <radio-block
+          option1="Gram (g)"
+          option2="Kilogram (kg)"
+          [formGroup]="this.settingsForm"
+          _formControl="massunit"
+          [tooltip]="'Unit used for mass and mass moment of inertia.' + lockedNote()"
+          [disabled]="!documentEditable()"
+          >Mass Units
+        </radio-block>
+      }
+      @if (showsForceUnit()) {
+        <radio-block
+          option1="Newton (N)"
+          option2="Kilogram-force (kgf)"
+          [formGroup]="this.settingsForm"
+          _formControl="forceunit"
+          [tooltip]="'Unit used for forces, reactions, and torque.' + lockedNote()"
+          [disabled]="!documentEditable()"
+          >Force Units
+        </radio-block>
+      }
+      <p class="unitsNote">{{ derivedUnitsNote() }}</p>
       <radio-block
         option1="Degree (&deg;)"
-        option2="Radian"
+        option2="Radian (rad)"
         [formGroup]="this.settingsForm"
         _formControl="angleunit"
-        tooltip="Select the units to be used for angles. This updates units for derived units as well (e.g. angular velocity, etc.)"
-        [disabled]="this.settingsService.animating.value"
+        [tooltip]="
+          'The unit for angles, angular velocity, and angular acceleration.' + lockedNote()
+        "
+        [disabled]="!documentEditable()"
         >Angle Units
       </radio-block>
+      <toggle-block
+        [formGroup]="this.settingsForm"
+        _formControl="gravity"
+        [tooltip]="
+          'Applies downward weight to every link with mass. Turn off to analyze forces without gravity.' +
+          lockedNote()
+        "
+        [disabled]="!documentEditable()"
+      >
+        Gravity
+      </toggle-block>
       <!-- Input direction and speed belong to the input joint, so they live in that
            joint's Input Settings section in the Edit panel rather than here. -->
-    </collapsible-subseciton>
+    </collapsible-subsection>
 
-    <collapsible-subseciton titleLabel="Visual Settings" [expanded]="true">
+    <collapsible-subsection titleLabel="Visual Settings" [expanded]="true">
       <toggle-block
         [formGroup]="this.settingsForm"
         _formControl="showMajorGrid"
-        tooltip="Show / hide the major grid lines."
+        tooltip="Show or hide the major grid lines."
       >
         Grid
       </toggle-block>
@@ -38,21 +92,51 @@
         <toggle-block
           [formGroup]="this.settingsForm"
           _formControl="showMinorGrid"
-          tooltip="Show / hide the minor grid lines."
+          tooltip="Show or hide the minor grid lines."
         >
           Minor Gridlines
         </toggle-block>
       }
-      <input-block
-        type="number"
+      <toggle-block
         [formGroup]="this.settingsForm"
-        _formControl="objectScale"
-        tooltip="Scales all links, joints, and forces. A save and reload is for changes to take effect. (Default: 1)"
-        >Object Scale
-      </input-block>
-      <button-block icon="auto_fix_normal" [click]="updateObjectScale.bind(this)"
-        >Update Object Scale</button-block
+        _formControl="snapToGrid"
+        [tooltip]="
+          'Snaps dragged joints and links to the grid. Hold ' +
+          altKey +
+          ' while dragging to bypass snapping.'
+        "
       >
-    </collapsible-subseciton>
+        Snap to Grid
+      </toggle-block>
+      <toggle-block
+        [formGroup]="this.settingsForm"
+        _formControl="snapToAlignment"
+        [tooltip]="
+          'Snaps a dragged joint into horizontal or vertical alignment with nearby joints. Hold ' +
+          altKey +
+          ' while dragging to bypass.'
+        "
+      >
+        Snap to Alignment
+      </toggle-block>
+      <radio-block
+        option1="Standard"
+        option2="Fine"
+        option3="Schematic"
+        [formGroup]="settingsForm"
+        _formControl="drawingStyle"
+        tooltip="Standard shows filled bodies. Fine uses slimmer bodies and symbols. Schematic shows connections and outlined cylinders and sliders. All three stay readable as you zoom, without changing dimensions or analysis."
+        >Drawing Style</radio-block
+      >
+    </collapsible-subsection>
+
+    <!-- Which build this is. It used to sit in the status strip along the
+         bottom, where it was permanent furniture answering a question asked
+         about twice a year; here it is one line away from the person who wants
+         it, and inside the card rather than floating under it. -->
+    <div class="versionRow">
+      <span class="versionLabel">Version</span>
+      <span class="versionValue">PMKS {{ appVersion }}</span>
+    </div>
   </panel-section>
 </div>

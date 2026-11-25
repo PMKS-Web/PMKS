@@ -1,0 +1,167 @@
+import { TestBed } from '@angular/core/testing';
+import { MatDialog } from '@angular/material/dialog';
+import { KeyboardShortcutsService, ShortcutId } from './keyboard-shortcuts.service';
+
+/**
+ * The arrows are the one key in the table that means two things, so the choice
+ * between them is the part worth pinning down.
+ */
+describe('KeyboardShortcutsService', () => {
+  function setup() {
+    TestBed.configureTestingModule({
+      providers: [KeyboardShortcutsService, { provide: MatDialog, useValue: { openDialogs: [] } }],
+    });
+    const service = TestBed.inject(KeyboardShortcutsService);
+    const heard: ShortcutId[] = [];
+    service.pressed.subscribe((id) => heard.push(id));
+    return { service, heard };
+  }
+
+  // Cancelable, as a real keystroke is: otherwise `defaultPrevented` stays false
+  // whatever a listener does, and the "not swallowed" checks below prove nothing.
+  const press = (key: string, init: KeyboardEventInit = {}) => {
+    const event = new KeyboardEvent('keydown', { key, cancelable: true, ...init });
+    window.dispatchEvent(event);
+    return event;
+  };
+
+  it('gives the arrows to the transport while nothing is selected', () => {
+    const { heard } = setup();
+    press('ArrowLeft');
+    press('ArrowRight');
+    expect(heard).toEqual(['playback.back', 'playback.forward']);
+  });
+
+  it('and to the selection once the canvas says there is one', () => {
+    const { service, heard } = setup();
+    service.whenArrowsNudge(() => true);
+    press('ArrowLeft');
+    press('ArrowRight');
+    press('ArrowUp');
+    press('ArrowDown');
+    expect(heard).toEqual(['edit.nudgeLeft', 'edit.nudgeRight', 'edit.nudgeUp', 'edit.nudgeDown']);
+  });
+
+  it('leaves Up and Down alone when there is nothing to nudge', () => {
+    const { heard } = setup();
+    // Nothing to move and no transport meaning either, so the keystroke is not
+    // answered -- and not swallowed on the way past.
+    const up = press('ArrowUp');
+    expect(heard).toEqual([]);
+    expect(up.defaultPrevented).toBe(false);
+  });
+
+  it('carries the keystroke, because a coarse nudge is the same shortcut', () => {
+    const { service } = setup();
+    service.whenArrowsNudge(() => true);
+    const seen: boolean[] = [];
+    service.pressedKeys.subscribe(({ event }) => seen.push(event.altKey));
+    press('ArrowUp', { altKey: true });
+    press('ArrowUp');
+    expect(seen).toEqual([true, false]);
+  });
+
+  it('leaves the arrows to a menu standing open, and does not swallow them', () => {
+    const { service, heard } = setup();
+    service.whenArrowsNudge(() => true);
+    // What the CDK builds: `cdk-menu` is its host class, and the guard asks for
+    // that rather than for `[role="menu"]`, which other things wear too.
+    const menu = document.createElement('div');
+    menu.className = 'cdk-menu';
+    menu.setAttribute('role', 'menu');
+    const item = document.createElement('div');
+    item.setAttribute('role', 'menuitemradio');
+    menu.appendChild(item);
+    document.body.appendChild(menu);
+    // A right-click selects what it opened its card on, so Down was a nudge:
+    // the joint moved behind the card, and the card closed itself on the way.
+    const event = new KeyboardEvent('keydown', {
+      key: 'ArrowDown',
+      bubbles: true,
+      cancelable: true,
+    });
+    item.dispatchEvent(event);
+    expect(heard).toEqual([]);
+    // Not answered *and* not prevented: the menu is the one that needs it.
+    expect(event.defaultPrevented).toBe(false);
+    menu.remove();
+  });
+
+  it('still answers the keys inside the phone sheet, which is a menu in name only', () => {
+    const { service, heard } = setup();
+    service.whenArrowsNudge(() => true);
+    // `view-controls.component.html` gives the visibility drawer `role="menu"`,
+    // but its rows are plain buttons that keep focus after a tap and the sheet
+    // stays up until its backdrop is clicked. Guarding on the role alone left
+    // every shortcut dead from the moment a row there was tapped, and the sheet
+    // answers no arrow keys itself, so nothing was walking anything.
+    const sheet = document.createElement('div');
+    sheet.className = 'viewSheet';
+    sheet.setAttribute('role', 'menu');
+    const row = document.createElement('button');
+    sheet.appendChild(row);
+    document.body.appendChild(sheet);
+    row.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(heard).toEqual(['edit.nudgeDown']);
+    sheet.remove();
+  });
+
+  it('lists the four arrows as one line for a reader', () => {
+    const { service } = setup();
+    const editing = service.bySection().find((one) => one.section === 'Editing')!;
+    const nudges = editing.shortcuts.filter((one) => one.id.startsWith('edit.nudge'));
+    expect(nudges).toHaveLength(1);
+    expect(nudges[0].keys).toBe('← → ↑ ↓');
+    // The coarser step is the modifier list's to say, not a bracket here.
+    expect(nudges[0].label).toBe('Nudge selection');
+  });
+
+  describe('the modifier keys', () => {
+    const onPlatform = (platform: string) => {
+      vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);
+      return setup().service.modifiers;
+    };
+    afterEach(() => vi.restoreAllMocks());
+
+    it('names them the way a Mac keyboard does', () => {
+      const keys = onPlatform('MacIntel').map((one) => one.keys);
+      expect(keys).toEqual([
+        '⌘ + click',
+        'Option + drag',
+        'Option + click',
+        'Option + arrows',
+        'Shift + drag',
+      ]);
+    });
+
+    it('and the way every other keyboard does', () => {
+      const keys = onPlatform('Win32').map((one) => one.keys);
+      expect(keys).toEqual([
+        'Ctrl + click',
+        'Alt + drag',
+        'Alt + click',
+        'Alt + arrows',
+        'Shift + drag',
+      ]);
+    });
+
+    it('fires nothing: holding one is not a shortcut', () => {
+      const { heard } = setup();
+      for (const key of ['Alt', 'Shift', 'Meta', 'Control']) {
+        const event = press(key, { altKey: key === 'Alt', shiftKey: key === 'Shift' });
+        expect(event.defaultPrevented, key).toBe(false);
+      }
+      expect(heard).toEqual([]);
+    });
+  });
+
+  it('says each key in words for a screen reader, which can skip a bare glyph', () => {
+    const { service } = setup();
+    expect(service.spokenKeysFor('view.zoomIn')).toBe('Plus');
+    expect(service.spokenKeysFor('view.zoomOut')).toBe('Minus');
+    expect(service.spokenKeysFor('playback.toggle')).toBe('Space');
+    expect(service.spokenKeysFor('history.redo')).toMatch(/^(Command|Control) Shift Z$/);
+    // The drawn tip keeps its glyphs.
+    expect(service.keysFor('view.zoomIn')).toBe('+');
+  });
+});

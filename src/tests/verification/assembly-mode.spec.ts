@@ -1,4 +1,5 @@
 // joint.ts first: the model modules form an import cycle that only
+import { createMechanismHarness } from '../../test-utils/mechanism-harness';
 // initializes cleanly when entered here (see test-utils/verification/fixture.ts).
 import '../../app/model/joint';
 import { Injector } from '@angular/core';
@@ -9,9 +10,12 @@ import { MechanismService } from '../../app/services/mechanism.service';
 import { NumberUnitParserService } from '../../app/services/number-unit-parser.service';
 import { SettingsService } from '../../app/services/settings.service';
 import { SvgGridService } from '../../app/services/svg-grid.service';
+import { DragStateService } from '../../app/services/drag-state.service';
 import { SynthesisBuilderService } from '../../app/services/synthesis/synthesis-builder.service';
 import { MechanismBuilder } from '../../app/services/transcoding/mechanism-builder';
 import { StringTranscoder } from '../../app/services/transcoding/string-transcoder';
+import { MODEL_SCALE } from '../../app/model/render-scale';
+import { silentNotifications } from '../../test-utils/notification-stub';
 
 // The linkage from issue #199. An exact parallelogram four-bar: A->B and D->C are
 // the same vector, so every revolution the crank lines up with the ground link and
@@ -22,23 +26,14 @@ const PARALLELOGRAM_FOUR_BAR =
 
 // The same linkage reduced to a square: every link is 5 units, so the crank is as
 // long as the ground and joint B passes exactly through ground joint D once per
-// revolution. There the two circles locating C share a centre and C is undefined;
+// revolution. There the two circles locating C share a center and C is undefined;
 // half a turn later they are externally tangent. Both are singular, and neither is
 // a toggle — a parallelogram rotates straight through.
 const SQUARE_FOUR_BAR =
   '2P.SI.K,2q.1011.MA,A,0,0,0.GB,B,0,1E8,0.GC,C,1E8,1E8,0.KD,D,1E8,0,0..YRAB,AB,Fe,Fe,0,d4,c5cae9,A,B,,.YRBC,BC,Fe,Fe,d4,1E8,303e9f,B,C,,.YRCD,CD,Fe,Fe,1E8,d4,c5cae9,C,D,,...JDn';
 
 function loadMechanism(payload: string) {
-  if (!ColorService.instance) new ColorService();
-  const settings = new SettingsService();
-  const parser = new NumberUnitParserService();
-  const grid = new GridUtilsService(
-    new SynthesisBuilderService(parser, settings),
-    new SvgGridService(settings)
-  );
-  const active = new ActiveObjService();
-  const injector = { get: () => ({ save: () => {} }) } as unknown as Injector;
-  const service = new MechanismService(grid, active, injector, settings, parser);
+  const { service, settings, active } = createMechanismHarness();
 
   const decoder = new StringTranscoder();
   decoder.decodeURL(payload);
@@ -70,9 +65,10 @@ describe('Assembly mode tracking', () => {
     expect(service.mechanisms[0].isMechanismValid()).toBe(true);
 
     // One degree of crank per sample: no joint on this linkage moves more than a
-    // fraction of a unit per step. The old branch flip moved joint C by ~9.9.
+    // fraction of a user unit per step. The old branch flip moved joint C by
+    // ~9.9. Solved coordinates are model units, so measure in user units.
     const worst = largestStep(service);
-    expect(worst.distance).toBeLessThan(0.5);
+    expect(worst.distance / MODEL_SCALE).toBeLessThan(0.5);
   });
 
   it('keeps every link rigid across the full revolution', () => {
@@ -100,7 +96,7 @@ describe('Assembly mode tracking', () => {
     // Reversing at the fold used to nearly double the sample count; one clean
     // revolution is 360 one-degree steps plus the pose at t = 0.
     expect(service.mechanisms[0].joints.length).toBe(361);
-    expect(largestStep(service).distance).toBeLessThan(0.5);
+    expect(largestStep(service).distance / MODEL_SCALE).toBeLessThan(0.5);
   });
 
   it('keeps a square parallelogram in parallelogram mode the whole revolution', () => {

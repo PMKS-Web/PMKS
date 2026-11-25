@@ -1,0 +1,375 @@
+import { Joint, PrisJoint, RealJoint } from '../joint';
+import { CoordinateRule, coordinatesAcross, slotCoordinateRuleFor } from './anchor';
+import { Mechanism } from './mechanism';
+
+/**
+ * Where a machine's input sits, as a fraction of everything it can do.
+ *
+ * The transport used to be a clock: the handle ran left to right as time
+ * passed, and everything the reader could ask it was really a question about
+ * time. That works for a crank and breaks for anything else. A ram spends the
+ * second half of its cycle undoing the first, so a handle following the clock
+ * carried on to the right while the ram came back; a rocker never leaves a
+ * forty-degree arc, and the handle claimed the whole track for it.
+ *
+ * So the handle measures the input instead:
+ *
+ * - A ram or slider runs from one end of its stroke to the other.
+ * - A rocking crank runs from one angular limit to the other.
+ * - A crank that goes all the way round has no limits to run between, so the
+ *   whole cycle spans the track -- one turn usually, two for a rod that swaps
+ *   assembly branch at a slot tangency -- with zero at the pose the drawing
+ *   was authored in.
+ *
+ * Time is still what the machine is *at*, and still what the readout shows. It
+ * is just no longer what the handle means.
+ */
+export interface DriveProfile {
+  /** 0..1 for each solved sample: where the input is, out of everything it does. */
+  readonly along: number[];
+  /** True when the input goes all the way round rather than turning back. */
+  readonly continuous: boolean;
+  /** A slider or ram, which extends; otherwise a crank, which turns. */
+  readonly linear: boolean;
+  /**
+   * What one whole unit of `along` is worth, in the input's own raw units:
+   * radians for a crank, model units for a slide.
+   *
+   * For an input that turns back this is end to end of its travel. For one that
+   * goes all the way round it is the whole turn -- which used to be recorded as
+   * zero, on the grounds that a loop has no two ends to measure between. True,
+   * and it left `along` as the one coordinate on the transport with no scale
+   * attached, so "how far is this from its start" could be asked of a rocker
+   * and not of a crank. Always positive: which way it went is `along`'s to say.
+   */
+  readonly span: number;
+}
+
+/** The two joints a ram's length is measured between, when the input is one. */
+export interface RamEnds {
+  readonly from: string;
+  readonly to: string;
+}
+
+/**
+ * Read the input's own coordinate out of a solved cycle.
+ *
+ * Sample by sample, from the drawn positions rather than from a stored angle: a
+ * slot's rail, a ram's bore and a pin's crank are described three different
+ * ways in the model and are all just a moving joint here.
+ */
+export function driveProfileOf(
+  mechanism: Mechanism,
+  ram?: RamEnds,
+  /**
+   * The driven joint as the *drawing* holds it, not as these frames copy it.
+   *
+   * Which way a slot points is a question about the drawing — a floating slot's
+   * direction is its carrier's, and a frame's joints are positions with no
+   * carrier to ask. Handed in for that reason alone, and only to get the rule
+   * the **anchor** is taken against: it is what gives a bare slider's
+   * coordinate a *direction*. See `slotwiseOf` below.
+   */
+  block?: Joint
+): DriveProfile | undefined {
+  const frames = mechanism.joints;
+  if (!mechanism.isMechanismValid() || frames.length < 2) {
+    return undefined;
+  }
+  const at = frames[0].findIndex((joint) => (joint as RealJoint).input);
+  if (at === -1) {
+    return undefined;
+  }
+
+  const linear = frames[0][at] instanceof PrisJoint;
+  // A ram is measured by how far out its rod is, not by how far its slider has
+  // moved from wherever the drawing put it: the two run opposite ways as often
+  // as not, and the second one has no name a reader would recognize. Anything
+  // else linear is measured along its own slot, in the slot's own forward
+  // sense — and only where the drawing could not say which way that is does it
+  // fall back to the line the block happens to travel.
+  const raw = linear
+    ? ((ram && lengthOf(frames, ram)) ??
+      slotwiseOf(frames, block && slotCoordinateRuleFor(block)) ??
+      strokeOf(frames, at))
+    : turnOf(mechanism);
+  if (!raw) {
+    return undefined;
+  }
+
+  // A cycle whose input never turns back has no two ends to measure between --
+  // it is a loop, and the only honest thing to show is how far round it is,
+  // from the pose the drawing was authored in.
+  //
+  // Round the WHOLE cycle, however many turns that is: a rod that swaps
+  // assembly branch at a slot tangency closes after two, and a track wrapped
+  // to one turn made every handle position name two different poses -- the
+  // scrubber flickered between them, float noise picking the winner.
+  //
+  // Signed, and taken from the angle rather than from the sample index: the
+  // crank is at the angle it is at whichever way it is being driven, so turning
+  // the drive round must leave the handle where it is. Off the sample index it
+  // would jump to the mirror image of itself.
+  const continuous = !turnsBack(raw);
+  if (continuous) {
+    const total = raw[raw.length - 1] - raw[0];
+    const denominator = Math.abs(total) > 1e-9 ? total : 1;
+    return {
+      along: raw.map((value) => (value - raw[0]) / denominator),
+      continuous,
+      linear,
+      span: Math.abs(total),
+    };
+  }
+
+  const low = Math.min(...raw);
+  const span = Math.max(...raw) - low;
+  if (!(span > 0)) {
+    return undefined;
+  }
+  return { along: raw.map((value) => (value - low) / span), continuous, linear, span };
+}
+
+/** How far the ram's rod is out, sample by sample. */
+function lengthOf(frames: Mechanism['joints'], ram: RamEnds): number[] | undefined {
+  const from = frames[0].findIndex((joint) => joint.id === ram.from);
+  const to = frames[0].findIndex((joint) => joint.id === ram.to);
+  if (from === -1 || to === -1) {
+    return undefined;
+  }
+  return frames.map((frame) =>
+    Math.hypot(frame[to].x - frame[from].x, frame[to].y - frame[from].y)
+  );
+}
+
+/**
+ * How far along its own slot the block stands, sample by sample, in the slot's
+ * own forward sense.
+ *
+ * **This is the coordinate that has a direction**, and it is the anchor's: the
+ * same `CoordinateRule` that says where a machine's cycle starts says which way
+ * its input runs, so the scrub handle, the transport's *Forward* / *Backward*,
+ * the Edit panel's *Forward along slot* button, the heavier of the two drive
+ * arrows and the sign of `Joint.driveSpeed` are all one fact. They were not:
+ * `strokeOf` below takes its axis from the two ends of the path the block
+ * actually travels, which is a direction the *drawing* chose rather than one
+ * the slot has, so reversing the drive left every sample of `along` identical
+ * and the transport reported the same heading either way. Measured on
+ * `Scotch_Yoke` and `Punch_Press`; `Slider_Crank` happened to reverse its
+ * sample order and so happened to flip.
+ *
+ * **A floating slot turns with its carrier, and "forward along it" turns with
+ * it too.** The rule answers that by measuring the block from the carrier's own
+ * end along the carrier's own direction, re-read in every pose — a quantity a
+ * moving carrier cannot change, where a world projection is one it can. So the
+ * coordinate is the block's place *in the part it slides in*, and a carrier
+ * swinging under a block that has not slid contributes nothing to it. A
+ * grounded guide has no carrier and takes the slot's stored axis instead, which
+ * is fixed in the world because the guide is.
+ *
+ * Nothing here is unwrapped or normalized: `driveProfileOf` does both, and an
+ * angle rule never reaches this because a slider's rule is always `'length'`.
+ */
+function slotwiseOf(
+  frames: Mechanism['joints'],
+  rule: CoordinateRule | undefined
+): number[] | undefined {
+  if (!rule || rule.kind !== 'length') return undefined;
+  const read = coordinatesAcross(rule, frames);
+  // All or nothing. A frame the rule cannot read is a frame with no place on
+  // the track, and a track with a hole in it is worse than one measured the old
+  // way: every consumer here interpolates between neighbors.
+  return read.every((value): value is number => value !== undefined) ? read : undefined;
+}
+
+/**
+ * How far the input has moved along the line it slides on, sample by sample.
+ *
+ * The fallback, for a drive whose slot the drawing cannot describe — a block
+ * with no carrier and no readable angle. Direction-blind by construction, and
+ * documented as such: there is no slot here to be forward along.
+ */
+function strokeOf(frames: Mechanism['joints'], at: number): number[] | undefined {
+  const start = frames[0][at];
+  // The two ends of the path it actually takes give its direction; a stored
+  // angle would only agree with them for one of the ways a slide is built.
+  const far = frames.reduce(
+    (best, frame) => {
+      const distance = Math.hypot(frame[at].x - start.x, frame[at].y - start.y);
+      return distance > best.distance ? { distance, x: frame[at].x, y: frame[at].y } : best;
+    },
+    { distance: 0, x: start.x, y: start.y }
+  );
+  if (!(far.distance > 0)) {
+    return undefined;
+  }
+  const ux = (far.x - start.x) / far.distance;
+  const uy = (far.y - start.y) / far.distance;
+  return frames.map((frame) => (frame[at].x - start.x) * ux + (frame[at].y - start.y) * uy);
+}
+
+/**
+ * How far the crank has turned, sample by sample, unwrapped.
+ *
+ * Unwrapped so that going round twice reads as twice as far rather than as
+ * back where it started, which is what tells a full revolution apart from a
+ * rocker that happens to end where it began.
+ */
+function turnOf(mechanism: Mechanism): number[] | undefined {
+  const speeds = mechanism.inputAngularVelocities;
+  const times = mechanism.timeNum ?? [];
+  if (speeds.length === 0 || times.length !== speeds.length) {
+    return undefined;
+  }
+  // Negated, because the app stores a clockwise drive as a negative speed and
+  // the reader expects a clockwise input to run the handle left to right.
+  //
+  // Against the frames, not against the drive. This walks the samples adding up
+  // how far the crank has turned between them, so it has to follow the order
+  // the samples are in. Turning the drive round leaves those samples alone --
+  // the crank is at the same angle at each of them -- and reading the drive's
+  // new sign here instead mirrored the whole track, so the handle jumped to the
+  // far end of a machine that had not moved.
+  const sense = mechanism.framesRunBackwards ? -1 : 1;
+  let angle = 0;
+  return times.map((time, i) => {
+    if (i > 0) {
+      angle -= sense * speeds[i - 1] * (time - times[i - 1]);
+    }
+    return angle;
+  });
+}
+
+/** Does the input reverse anywhere in the cycle? */
+function turnsBack(raw: number[]): boolean {
+  let rising = false;
+  let falling = false;
+  for (let i = 1; i < raw.length; i++) {
+    const step = raw[i] - raw[i - 1];
+    if (step > 1e-9) rising = true;
+    if (step < -1e-9) falling = true;
+    if (rising && falling) return true;
+  }
+  return false;
+}
+
+/**
+ * The sample at a given place along the track.
+ *
+ * Searched rather than inverted: the mapping is a sampled curve, and on a
+ * machine that turns back it passes every place twice. `near` is the sample the
+ * machine is at now, and ties go to whichever leg that is on -- so pulling the
+ * handle backwards does not jump it to the other half of the cycle.
+ */
+export function sampleAlong(profile: DriveProfile, along: number, near: number): number {
+  return Math.round(fractionalSampleAlong(profile, along, near));
+}
+
+/**
+ * The same answer, between samples.
+ *
+ * A drag is continuous and the samples are not: a degree of crank is a couple
+ * of pixels of track, so snapping to the nearest one holds the drawing still
+ * for two pixels and then jumps it. Interpolating between the sample found and
+ * its neighbor on the side the reader is pointing lets the drawing follow the
+ * hand.
+ */
+export function fractionalSampleAlong(profile: DriveProfile, along: number, near: number): number {
+  const last = profile.along.length - 1;
+  if (last <= 0) return 0;
+  if (!profile.continuous) return nearestPlaceOnTrack(profile.along, along, near);
+  const at = nearestSample(profile, along, near);
+  const here = profile.along[at];
+  // Toward whichever neighbor lies on the side the reader asked for.
+  const step = along > here ? 1 : -1;
+  const next = at + step;
+  if (next < 0 || next > last) return at;
+  const span = profile.along[next] - here;
+  if (Math.abs(span) < 1e-9) return at;
+  const share = (along - here) / span;
+  // Only between the two. Off the end of a loop the nearest sample is the one
+  // at the far end -- the right edge of the track being the left edge -- and
+  // interpolating away from it would walk back the way the drag came.
+  if (!(share > 0 && share < 1)) return at;
+  return at + step * share;
+}
+
+/**
+ * Where on a track that turns back a place is, measured from where the machine
+ * is now.
+ *
+ * A ram passes every extension at least twice a cycle -- going out and coming
+ * back -- and a drawing authored mid-stroke passes its start three times: the
+ * leg it opens on, the return, and the leg that closes the cycle. So a place on
+ * the handle is several moments, and the old rule picked between them by which
+ * half of the sample list the machine was in. That split lands nowhere near the
+ * turnarounds of a mid-stroke start, and a drag across the wrong one jumped
+ * the machine -- and the graphs' marker with it -- a third of a cycle.
+ *
+ * The rule now is continuity along the track itself. Every moment at the asked
+ * place is a candidate, between samples as well as on them, and the winner is
+ * the one nearest to `near` walking the samples, the two ends of the cycle
+ * being one place. Pulling the handle back retraces the way the machine came,
+ * and it only changes legs where the track does: at a turnaround, where the
+ * two ways on are the same distance and the tie goes forward in time, because
+ * a hand pushing the handle to the end of the stroke and back is the ram going
+ * out and coming home.
+ */
+function nearestPlaceOnTrack(track: number[], along: number, near: number): number {
+  const last = track.length - 1;
+  const count = last + 1;
+  let best: number | undefined;
+  let bestCost = Infinity;
+  let bestAhead = false;
+  const consider = (place: number): void => {
+    const forward = (((place - near) % count) + count) % count;
+    const cost = Math.min(forward, count - forward);
+    const ahead = forward <= count - forward;
+    if (cost < bestCost - 1e-9 || (Math.abs(cost - bestCost) <= 1e-9 && ahead && !bestAhead)) {
+      best = place;
+      bestCost = cost;
+      bestAhead = ahead;
+    }
+  };
+  for (let i = 0; i <= last; i++) {
+    if (Math.abs(track[i] - along) < 1e-9) consider(i);
+    if (i < last) {
+      const a = track[i];
+      const b = track[i + 1];
+      if ((along > a && along < b) || (along < a && along > b)) consider(i + (along - a) / (b - a));
+    }
+  }
+  if (best !== undefined) return best;
+  // Off either end of the stroke: the nearest moment the ram is at that end.
+  const min = Math.min(...track);
+  const max = Math.max(...track);
+  const end = along <= min ? min : max;
+  for (let i = 0; i <= last; i++) if (Math.abs(track[i] - end) < 1e-9) consider(i);
+  return best ?? near;
+}
+
+function nearestSample(profile: DriveProfile, along: number, near: number): number {
+  const last = profile.along.length - 1;
+  if (last <= 0) {
+    return 0;
+  }
+  if (profile.continuous) {
+    // Round the loop: the place next to 0 is 1, not the far side of the track.
+    // The seam makes the track's two ends the same place, so distance to the
+    // sample the machine is at breaks that tie -- enough to keep a drag on its
+    // own end of the track, never enough to reach a place the reader did not
+    // point at.
+    let best = 0;
+    let bestCost = Infinity;
+    profile.along.forEach((value, sample) => {
+      const gap = Math.abs(value - along);
+      const cost = Math.min(gap, 1 - gap) + (Math.abs(sample - near) / last) * 1e-6;
+      if (cost < bestCost) {
+        bestCost = cost;
+        best = sample;
+      }
+    });
+    return best;
+  }
+  return Math.round(nearestPlaceOnTrack(profile.along, along, near));
+}

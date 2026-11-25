@@ -1,16 +1,20 @@
 import { Joint, PrisJoint, RealJoint } from '../joint';
-import { Link, Piston, RealLink } from '../link';
+import { Link, RealLink } from '../link';
+import { Cylinder, cylindersIn } from '../cylinder';
+import { BodyOfLink, frozenCylinderAtSeal } from '../cylinder-frozen';
+import { visibleBodyName } from '../body-label';
+import { slideAssemblies } from '../slide-assembly';
+import { GROUND_BODY, resolveActuator } from '../actuator';
+import { assignBodies } from './bodies';
 import { KinematicsSolver } from './kinematic-solver';
+import { Loop } from './loop-solver';
 import { siUnitFactors, SiUnitFactors } from '../unit-conversions';
+import { MODEL_SCALE } from '../render-scale';
 
 export type ForceAnalysisMode = 'static' | 'dynamic';
 
 export type ForceAnalysisStatus =
-  | 'ok'
-  | 'singular'
-  | 'unsupported-topology'
-  | 'missing-kinematics'
-  | 'invalid-properties';
+  'ok' | 'singular' | 'unsupported-topology' | 'missing-kinematics' | 'invalid-properties';
 
 export type ForceVector = [number, number];
 
@@ -29,9 +33,23 @@ export interface ForceAnalysisFrame {
   jointReactionsByLink: Map<string, Map<string, ForceVector>>;
   /** Compatibility/default view: the resultant on the joint's first root body. */
   jointReactions: Map<string, ForceVector>;
+  /**
+   * The couple each welded guide applies to its rider, keyed by the sliding
+   * joint's id. N·m, counterclockwise-positive on the rider. Only welded
+   * prismatic pairs carry one; a free-turning block cannot transmit a moment.
+   */
+  guideCouples: Map<string, number>;
   inputEffort?: ForceAnalysisEffort;
   rank: number;
   residual: number;
+  /** Smallest scaled pivot of the solve — how far this pose sat from singular. */
+  minPivot?: number;
+  /**
+   * True when equilibrium alone could not split the load between supports
+   * that share a line, and the evenest split was taken -- see `sharedSupport`
+   * in `analyzeFrame`.
+   */
+  sharedSupport?: boolean;
   message?: string;
 }
 
@@ -52,6 +70,8 @@ export interface ForceAnalysisSeries {
   mode: ForceAnalysisMode;
   frames: ForceAnalysisFrame[];
   successfulFrames: number;
+  /** Frames whose reactions rest on the evenest split of a shared support. */
+  sharedSupportFrames: number;
   reactionIndex: ForceReactionIndex;
   diagnostic?: string;
 }
@@ -67,7 +87,8 @@ interface MechanismFrames {
   links: Link[][];
   timeNum: number[];
   inputAngularVelocities: number[];
-  requiredLoops: string[];
+  requiredLoops: Loop[];
+  prepareSolvers?(): void;
   gravity: boolean;
   unit: string;
 }
@@ -88,14 +109,79 @@ interface ReactionUnknown {
   column: number;
 }
 
+/**
+ * The couple a welded guide transmits (docs/phase-3-slide-spec.md §3.8, §9).
+ *
+ * A free-turning block exchanges only a normal force with its slot. Welding a
+ * rider to the block stops the pair rotating, so the guide must also supply a
+ * moment — the unknown the count guard used to come up one short by. The block
+ * is zero-length and has no moment equation, so the couple passes through it
+ * untouched and can couple the rider to the guide directly.
+ */
+interface GuideCouple {
+  /** The sliding joint whose guide supplies the couple. */
+  slider: PrisJoint;
+  /** The root body the weld holds rigid with the block; +1 in its moment row. */
+  rider: RealLink;
+  /** The slot's carrier when it is cut into a moving body; −1 in its moment row. */
+  carrier?: Link;
+  column: number;
+}
+
 interface LinearSolution {
   values: number[];
   rank: number;
   residual: number;
+  /** Smallest scaled pivot the elimination met — distance from singular. */
+  minPivot: number;
 }
 
 const GRAVITY = 9.80665;
 const MAX_NORMALIZED_RESIDUAL = 1e-8;
+/**
+ * What an evenest split may leave unbalanced, relative to the loads. Supports
+ * that share a line are seldom on it to the last digit -- a rail's pins sit a
+ * rounding apart -- so the exact solution is a pair of enormous reactions
+ * cancelling across that hair, and the even split balances the loads to a
+ * part in a thousand instead. Measured against the loads alone, so a load
+ * nothing can balance is still refused however large the reactions grow.
+ */
+const SHARED_SUPPORT_RESIDUAL = 1e-3;
+/**
+ * How many times the evenest split is refined against the original system.
+ * Each pass takes the ridge's bias off a well-held direction by another
+ * factor of (λ / (σ² + λ)); three leave a direction ten times the tolerance
+ * exact to a part in a million and a direction below it damped as before.
+ */
+const EVENEST_REFINEMENTS = 3;
+/**
+ * What is said when the loads have no balance at all: the supports leave a
+ * motion open at first order that only binds at second, and the loads push
+ * along it. In a rigid model the reactions along such a motion are
+ * unbounded, the way a toggle's are at dead center, so nothing finite can be
+ * drawn. Said as a motion and a remedy, because "residual exceeds tolerance"
+ * is the solver talking to itself.
+ */
+export const SECOND_ORDER_LOCK_MESSAGE =
+  'The applied loads push in a direction the mechanism only resists after deflecting, so no ' +
+  'finite rigid-body reactions exist. Add a support to the moving link, or remove the load.';
+/**
+ * The smallest scaled pivot the elimination accepts before calling the pose
+ * singular.
+ *
+ * A toggle pose reached through exact arithmetic pivots at exactly zero, but
+ * the same pose reached through floating-point trig lands within round-off of
+ * zero — and *which* side of zero differs by browser, because engines round
+ * transcendentals differently at the last bit. Chrome refused the square-rod
+ * tangency frame while Safari "solved" it into 8.5e5 N reactions from a 10 N
+ * load. Refusing anything below this line makes the call deterministic. The
+ * smallest scaled pivot of any healthy solve is 1.3e-2 across the production
+ * fixtures and templates (force-solver.fixture.spec.ts holds every frame above
+ * 1e-3) and 2.9e-3 across the fixture gallery, the same in every unit since
+ * `momentArmScale`, so frames the sampler lands merely *near* a toggle still
+ * solve, as designed.
+ */
+const SINGULAR_PIVOT_TOLERANCE = 1e-4;
 
 /**
  * Free-body force analysis for the current root topology.
@@ -150,8 +236,9 @@ export class ForceSolver {
     unit: string
   ): ForceAnalysisFrame {
     const mode = this.normalizeMode(analysisType);
-    const kinematics = mode === 'dynamic' ? this.captureCurrentKinematics(links) : undefined;
-    const result = this.analyzeFrame(joints, links, mode, gravity, unit, 0, kinematics);
+    const kinematics =
+      mode === 'dynamic' ? this.captureCurrentKinematics(joints, links) : undefined;
+    const result = this.analyzeFrame(joints, links, mode, gravity, unit, 0, kinematics, false);
 
     this.lastResult = result;
     this.unknownVariableForcesMap = new Map(
@@ -162,7 +249,7 @@ export class ForceSolver {
   }
 
   /** Loop-derived setup is no longer required; keep this as a harmless adapter. */
-  static determineDesiredLoopLettersForce(_requiredLoops: string[]): void {
+  static determineDesiredLoopLettersForce(_requiredLoops: Loop[]): void {
     this.desiredLoopLetters = [];
   }
 
@@ -175,37 +262,27 @@ export class ForceSolver {
       mode === 'dynamic' ? this.finiteDifferenceKinematics(mechanism, frameCount) : [];
     const frames: ForceAnalysisFrame[] = [];
 
+    // Two passes at most. The first refuses every rank-deficient pose, which
+    // is right for a toggle: an isolated pose where the reactions grow
+    // without bound and the chart shows a gap. A support that shares a line
+    // is deficient at *every* pose -- or at all but the few where round-off
+    // happens to find a pivot -- and only then is the second pass run, taking
+    // the evenest split at every frame of the cycle, the ones the first pass
+    // solved included. Not only at the frames that failed: a cycle read half
+    // from the exact answer of a nearly dependent system and half from the
+    // even split of a dependent one alternates between two curves, and the
+    // chart draws a solid band where there should be a line. So a toggle
+    // keeps its gap, a redundant rail keeps its cycle, and the two are never
+    // confused.
     for (let index = 0; index < frameCount; index++) {
-      let kinematics: FrameKinematics | undefined;
-      if (mode === 'dynamic') {
-        // Clear the solver's shared maps each frame so a mid-solve failure at
-        // frame k cannot leave frame k-1's finite values in place — which would
-        // read as "current" and hide the failure from the fallback below.
-        KinematicsSolver.resetVariables();
-        KinematicsSolver.requiredLoops = mechanism.requiredLoops;
-        try {
-          KinematicsSolver.determineKinematics(
-            mechanism.joints[index],
-            mechanism.links[index],
-            mechanism.inputAngularVelocities[index] ?? 0
-          );
-        } catch {
-          // The position sequence is still a valid source for a complete,
-          // topology-independent finite-difference fallback.
-        }
-        kinematics = this.captureCurrentKinematics(mechanism.links[index], fallback[index]);
+      frames.push(this.frameAt(mechanism, mode, fallback, index, false));
+    }
+    const singular = frames.filter((frame) => frame.status !== 'ok').length;
+    if (frameCount > 0 && singular * 2 > frameCount) {
+      frames.length = 0;
+      for (let index = 0; index < frameCount; index++) {
+        frames.push(this.frameAt(mechanism, mode, fallback, index, true));
       }
-      frames.push(
-        this.analyzeFrame(
-          mechanism.joints[index],
-          mechanism.links[index],
-          mode,
-          mechanism.gravity,
-          mechanism.unit,
-          mechanism.timeNum[index] ?? index,
-          kinematics
-        )
-      );
     }
 
     const successfulFrames = frames.filter((frame) => frame.status === 'ok').length;
@@ -213,12 +290,58 @@ export class ForceSolver {
       mode,
       frames,
       successfulFrames,
+      sharedSupportFrames: frames.filter((frame) => frame.sharedSupport).length,
       reactionIndex: this.buildReactionIndex(mechanism.joints[0] ?? [], mechanism.links[0] ?? []),
+      // The frame's own message first: it names the joint or the count, where
+      // the status alone can only say "topology".
       diagnostic:
         successfulFrames === 0
-          ? this.statusMessage(frames[0]?.status ?? 'unsupported-topology')
+          ? (frames[0]?.message ?? this.statusMessage(frames[0]?.status ?? 'unsupported-topology'))
           : undefined,
     };
+  }
+
+  private static frameAt(
+    mechanism: MechanismFrames,
+    mode: ForceAnalysisMode,
+    fallback: FrameKinematics[],
+    index: number,
+    evenest: boolean
+  ): ForceAnalysisFrame {
+    let kinematics: FrameKinematics | undefined;
+    if (mode === 'dynamic') {
+      mechanism.prepareSolvers?.();
+      // Clear the solver's shared maps each frame so a mid-solve failure at
+      // frame k cannot leave frame k-1's finite values in place — which would
+      // read as "current" and hide the failure from the fallback below.
+      KinematicsSolver.resetVariables();
+      KinematicsSolver.requiredLoops = mechanism.requiredLoops;
+      try {
+        KinematicsSolver.determineKinematics(
+          mechanism.joints[index],
+          mechanism.links[index],
+          mechanism.inputAngularVelocities[index] ?? 0
+        );
+      } catch {
+        // The position sequence is still a valid source for a complete,
+        // topology-independent finite-difference fallback.
+      }
+      kinematics = this.captureCurrentKinematics(
+        mechanism.joints[index],
+        mechanism.links[index],
+        fallback[index]
+      );
+    }
+    return this.analyzeFrame(
+      mechanism.joints[index],
+      mechanism.links[index],
+      mode,
+      mechanism.gravity,
+      mechanism.unit,
+      mechanism.timeNum[index] ?? index,
+      kinematics,
+      evenest
+    );
   }
 
   static analyzeFrame(
@@ -228,11 +351,14 @@ export class ForceSolver {
     gravity: boolean,
     unit: string,
     timeSeconds = 0,
-    kinematics?: FrameKinematics
+    kinematics?: FrameKinematics,
+    evenest = false
   ): ForceAnalysisFrame {
-    const bodies = links.filter(
-      (link): link is RealLink | Piston => link instanceof RealLink || link instanceof Piston
-    );
+    const every = links.filter((link): link is RealLink => link instanceof RealLink);
+    // A body pinned to the world at two points is fixed: it is frame, not a
+    // link, and gets no equilibrium of its own -- see `frameBodies`.
+    const frame = this.frameBodies(every);
+    const bodies = [...every.filter((body) => !frame.has(body.id)), ...this.pointBodies(joints)];
     const units = this.unitFactors(unit);
     const empty = (
       status: ForceAnalysisStatus,
@@ -245,13 +371,15 @@ export class ForceSolver {
       timeSeconds,
       jointReactionsByLink: new Map(),
       jointReactions: new Map(),
+      guideCouples: new Map(),
       rank,
       residual,
       message,
     });
 
     if (bodies.length === 0) return empty('unsupported-topology');
-    if (!this.propertiesAreValid(bodies, units)) return empty('invalid-properties');
+    const badProperty = this.invalidProperty(bodies, units, cylindersIn(joints));
+    if (badProperty) return empty('invalid-properties', badProperty);
     if (mode === 'dynamic' && !this.kinematicsAreComplete(bodies, kinematics)) {
       return empty('missing-kinematics');
     }
@@ -264,36 +392,114 @@ export class ForceSolver {
       rowCount += count;
     }
 
-    const { reactions, incidentByJoint } = this.enumerateReactions(joints, bodies);
+    const { bodyOf } = assignBodies(joints, every);
+    const { reactions, incidentByJoint } = this.enumerateReactions(
+      joints,
+      bodies,
+      every,
+      frame,
+      bodyOf
+    );
+
+    // One couple unknown per welded slide (docs/phase-3-slide-spec.md §9).
+    // Shapes the couple cannot be written for are refused by name rather than
+    // left to the count guard, which would only catch them by coincidence.
+    const couples: GuideCouple[] = [];
+    for (const assembly of slideAssemblies(joints)) {
+      // A dangling guide exerts nothing, so it owes no couple either.
+      if (!assembly.slider.ground && !assembly.slider.isFloating) continue;
+      // A cylinder frozen inside one body is not a sliding pair (decision S25):
+      // the slot and the thing riding in it are the same rigid body, so nothing
+      // crosses the seal that is external to that body. What the barrel and the
+      // rod push on each other with is an internal force, and an internal force
+      // in a rigid body is statically indeterminate -- there are infinitely
+      // many that satisfy equilibrium, and no reason to prefer one. A couple
+      // column for it would be a column no row can pin, which is how a singular
+      // matrix is built on purpose. So the slide is left out and the body's own
+      // reactions at its real joints come out exactly as they would if it were
+      // drawn as plain welded bars, which is what it is.
+      if (frozenCylinderAtSeal(assembly.slider, bodyOf)) continue;
+      // A settled weld has fused every rider into one compound. Mid-edit, the
+      // riders can still be several distinct bodies, and one couple cannot
+      // speak for all of them — refuse rather than pick a favorite.
+      const riderRoots = new Set(assembly.riders.map((leaf) => this.rootBody(bodies, leaf)));
+      const rider = riderRoots.size === 1 ? [...riderRoots][0] : undefined;
+      const carrier = assembly.slider.isFloating
+        ? this.rootBody(bodies, assembly.slider.carrier)
+        : undefined;
+      if (
+        !(rider instanceof RealLink) ||
+        rider === carrier ||
+        (carrier !== undefined && !(carrier instanceof RealLink))
+      ) {
+        return empty(
+          'unsupported-topology',
+          `Joint ${assembly.slider.id} holds ${assembly.riders[0]?.id ?? 'a link'} rigidly ` +
+            'against its slot, and that shape has no force model.'
+        );
+      }
+      couples.push({
+        slider: assembly.slider,
+        rider,
+        carrier,
+        column: reactions.length + couples.length,
+      });
+    }
 
     const inputJoint = joints.find(
       (joint): joint is RealJoint => joint instanceof RealJoint && joint.input
     );
     let inputBody: Link | undefined;
+    // The body a motor between two moving links pushes back on; undefined when
+    // that is the frame, whose reaction is not an unknown here.
+    let inputReactionBody: Link | undefined;
     let inputKind: 'torque' | 'force' | undefined;
     let inputDirection: ForceVector = [0, 0];
     if (inputJoint) {
       const incident = incidentByJoint.get(inputJoint.id) ?? [];
       if (inputJoint instanceof PrisJoint) {
-        inputBody = incident.find((body) => body instanceof Piston);
+        inputBody = bodies.find((body) => body.id === inputJoint.id);
         inputKind = inputBody ? 'force' : undefined;
-        inputDirection = [Math.cos(inputJoint.angle_rad), Math.sin(inputJoint.angle_rad)];
+        // slotAngle, not angle_rad: a slot cut into a moving link points
+        // somewhere different at every timestep.
+        inputDirection = [Math.cos(inputJoint.slotAngle), Math.sin(inputJoint.slotAngle)];
       } else {
-        inputBody = incident.find((body) => body instanceof RealLink);
-        inputKind = inputBody ? 'torque' : undefined;
+        // A motor turns one body against another, so it pushes on both: +τ on
+        // the body it drives and −τ on the one it is measured against. The
+        // actuator record names which is which, as it does for the position
+        // solve; only a refused input, which is never solved, falls back to the
+        // first body met here.
+        const actuator = resolveActuator(inputJoint);
+        const bodyFor = (body: Link | typeof GROUND_BODY | undefined): Link | undefined =>
+          body === undefined || body === GROUND_BODY ? undefined : this.rootBody(bodies, body);
+        inputBody =
+          actuator?.kind === 'angle'
+            ? bodyFor(actuator.drivenBody)
+            : incident.find((body) => body instanceof RealLink);
+        inputReactionBody =
+          actuator?.kind === 'angle' ? bodyFor(actuator.referenceBody) : undefined;
+        if (inputReactionBody === inputBody) inputReactionBody = undefined;
+        inputKind = inputBody instanceof RealLink ? 'torque' : undefined;
       }
     }
 
-    const unknownCount = reactions.length + (inputBody && inputKind ? 1 : 0);
+    const unknownCount = reactions.length + couples.length + (inputBody && inputKind ? 1 : 0);
     if (unknownCount !== rowCount) {
+      // Cause first, arithmetic second: "10 equations, 9 unknowns" is the
+      // solver talking to itself. What a reader can act on is which way the
+      // count is off — too many supports, or a body with none.
+      const counts = `(${rowCount} equilibrium equations, ${unknownCount} unknowns)`;
       return empty(
         'unsupported-topology',
-        `Force equilibrium has ${rowCount} equations and ${unknownCount} unknowns.`
+        unknownCount > rowCount
+          ? `This mechanism is statically indeterminate—a redundant support, link, or weld leaves the load distribution ambiguous. Remove one ${counts}.`
+          : `A body here has nothing to react against, so its equilibrium cannot be written. Check for a part carrying load with no support ${counts}.`
       );
     }
 
     const A = Array.from({ length: rowCount }, () => Array(unknownCount).fill(0));
     const b = Array(rowCount).fill(0);
+    const armScale = this.momentArmScale(bodies, units);
 
     const addForceCoefficient = (
       body: Link,
@@ -331,14 +537,37 @@ export class ForceSolver {
       }
     }
 
-    const inputColumn = reactions.length;
+    // A couple has no force resultant: it enters moment rows alone, written
+    // at the linkage's own size (see `momentArmScale`).
+    for (const couple of couples) {
+      A[bodyRows.get(couple.rider.id)!.start + 2][couple.column] += armScale;
+      if (couple.carrier) {
+        A[bodyRows.get(couple.carrier.id)!.start + 2][couple.column] -= armScale;
+      }
+    }
+
+    const inputColumn = reactions.length + couples.length;
     if (inputBody && inputKind) {
       const rows = bodyRows.get(inputBody.id)!;
       if (inputKind === 'torque' && inputBody instanceof RealLink) {
-        A[rows.start + 2][inputColumn] = 1;
+        A[rows.start + 2][inputColumn] = armScale;
+        if (inputReactionBody instanceof RealLink) {
+          A[bodyRows.get(inputReactionBody.id)!.start + 2][inputColumn] = -armScale;
+        }
       } else if (inputKind === 'force') {
         A[rows.start][inputColumn] = inputDirection[0];
         A[rows.start + 1][inputColumn] = inputDirection[1];
+        // An actuator pushes against something. On a grounded guide that is
+        // the world; in a sealed cylinder it is the barrel, and leaving the
+        // reaction off turns the drive into an outside hand pushing the block
+        // through space — which breaks the oldest property a cylinder has, of
+        // being a two-force member between its mounts.
+        if (inputJoint instanceof PrisJoint && inputJoint.isFloating) {
+          const carrier = this.rootBody(bodies, inputJoint.carrier);
+          if (carrier) {
+            addForceCoefficient(carrier, inputJoint, inputDirection, inputColumn, -1);
+          }
+        }
       }
     }
 
@@ -373,12 +602,33 @@ export class ForceSolver {
       }
     }
 
-    const solution = this.solveLinearSystem(A, b);
+    // Statics alone cannot split a load between supports that share a line
+    // -- two rails holding one jaw at one height, say -- and the elimination
+    // finds no pivot. That is not a dead pose; it is one degree of ambiguity
+    // in how a determinate total is shared. A body's stiffness would share it
+    // evenly, and the evenest split is exactly the minimum-norm solution, so
+    // that is the answer taken, and said: the frame is marked and the
+    // readiness list carries the warning. A pose where no split balances the
+    // load at all -- a true toggle -- still fails the residual below.
+    let sharedSupport = false;
+    let solution = this.solveLinearSystem(A, b);
+    if (!solution && evenest) {
+      solution = this.evenestSolution(A, b);
+      sharedSupport = solution !== undefined;
+    }
     if (!solution) return empty('singular');
-    if (solution.residual > MAX_NORMALIZED_RESIDUAL) {
+    if (solution.residual > (sharedSupport ? SHARED_SUPPORT_RESIDUAL : MAX_NORMALIZED_RESIDUAL)) {
       return empty(
         'singular',
-        `Force equilibrium residual ${solution.residual.toExponential(2)} exceeds tolerance.`,
+        // A rank-deficient system whose loads no split balances: the loads
+        // do work along a motion the linkage allows to first order and locks
+        // only at second -- a cylinder on one pin swinging while its carriage
+        // rides up the rails, a jaw on two rails at one height tilting until
+        // its pins bind. A rigid body cannot answer that with a finite
+        // reaction, so it is said as the motion it is, not as a residual.
+        sharedSupport
+          ? SECOND_ORDER_LOCK_MESSAGE
+          : `The forces don't balance at this pose (residual ${solution.residual.toExponential(2)}).`,
         solution.rank,
         solution.residual
       );
@@ -412,12 +662,17 @@ export class ForceSolver {
       if (value) jointReactions.set(jointId, value);
     }
 
+    const guideCouples = new Map<string, number>();
+    for (const couple of couples) {
+      guideCouples.set(couple.slider.id, solution.values[couple.column] * armScale);
+    }
+
     const inputEffort =
       inputJoint && inputKind
         ? {
             jointId: inputJoint.id,
             kind: inputKind,
-            valueSI: solution.values[inputColumn],
+            valueSI: solution.values[inputColumn] * (inputKind === 'torque' ? armScale : 1),
           }
         : undefined;
 
@@ -427,22 +682,74 @@ export class ForceSolver {
       timeSeconds,
       jointReactionsByLink,
       jointReactions,
+      guideCouples,
       inputEffort,
       rank: solution.rank,
       residual: solution.residual,
+      minPivot: solution.minPivot,
+      sharedSupport,
     };
+  }
+
+  /**
+   * A slider's own mass, as the two-row body the block used to be.
+   *
+   * The block was a link, so it was a body with an equilibrium of its own: mass
+   * and gravity, no moment row, no inertia and no applied forces, with its
+   * acceleration read from the pin it carried. A slider is one joint now and
+   * the mass is the joint's, so the body is made here instead of found among
+   * the links.
+   *
+   * A plain `Link` rather than a `RealLink`, deliberately: every place below
+   * that decides how many rows a body gets, whether it carries a moment, or
+   * whether it has inertia and forces, asks `instanceof RealLink` -- so being
+   * one and not the other is what reproduces the block's two rows exactly,
+   * without a second notion of "body" for the assembly to disagree about.
+   *
+   * Keyed by the joint's own id, which is what `pistonAccelerations` and the
+   * finite-difference fallback look it up by.
+   *
+   * That id shares a namespace with the link ids in `bodyRows`, `rootBody` and
+   * `incidentBodies`, and a joint's id is a single letter. No link can be named
+   * with one -- a link id is the sorted concatenation of at least two joint
+   * letters -- so this is a latent collision rather than a live one. Prefixing
+   * it (`slider:<id>`) would remove the class, but the key is read in more
+   * places than these three, including the reaction pairs and the
+   * finite-difference sweep, so it is a rekeying of the verified force solver
+   * rather than a rename. Worth doing where something else is already moving
+   * through here; not worth doing on its own.
+   */
+  private static pointBodies(joints: Joint[]): Link[] {
+    return joints
+      .filter((joint): joint is PrisJoint => joint instanceof PrisJoint)
+      .map((joint) => new Link(joint.id, [joint], joint.mass));
+  }
+
+  /**
+   * The root body in `bodies` that `leaf` belongs to.
+   *
+   * A weld fuses links into a compound whose members survive as `subset`
+   * leaves, so the link a slide assembly names is not always the body the
+   * equilibrium rows are written for.
+   */
+  private static rootBody(bodies: Link[], leaf: Link | undefined): Link | undefined {
+    if (!leaf) return undefined;
+    const contains = (link: Link): boolean =>
+      link.id === leaf.id ||
+      (link instanceof RealLink && link.subset.some((member) => contains(member)));
+    return bodies.find(contains);
   }
 
   static statusMessage(status: ForceAnalysisStatus): string {
     switch (status) {
       case 'singular':
-        return 'Force equilibrium is singular at this position.';
+        return 'The force equations have no unique solution at this pose.';
       case 'unsupported-topology':
-        return 'This topology does not have a determinate force-equilibrium model.';
+        return "Force analysis can't model this kind of mechanism yet.";
       case 'missing-kinematics':
-        return 'Dynamic analysis is missing motion data for one or more bodies.';
+        return 'Some links are missing the motion data in-motion analysis needs.';
       case 'invalid-properties':
-        return 'Mass, moment of inertia, or force properties are invalid.';
+        return 'A mass, mass moment of inertia, or force value isn’t a valid number.';
       default:
         return '';
     }
@@ -461,32 +768,134 @@ export class ForceSolver {
   }
 
   /** The pin-reaction unknowns implied by the topology, before any solve. */
+  /**
+   * The bodies that are frame rather than links: pinned to the world at two
+   * distinct points, so they cannot move at all.
+   *
+   * Kinematics never minded one -- the position solver holds both pins still.
+   * Statics did: three equilibrium equations against four ground reactions,
+   * and the split of load between the two pins has no unique answer, so a
+   * drawing with a bracket like this refused with "more supports than
+   * equilibrium can determine". The bracket is the world's, not the
+   * mechanism's. It gets no rows here, its other joints act as ground pins for
+   * whatever hangs on them (`jointsOnFrame`), and the reactions at its own two
+   * pins -- the indeterminate pair -- are simply not asked for.
+   */
+  private static frameBodies(bodies: Link[]): Set<string> {
+    const frame = new Set<string>();
+    for (const body of bodies) {
+      if (!(body instanceof RealLink)) continue;
+      const pins = body.joints.filter(
+        (joint): joint is RealJoint =>
+          joint instanceof RealJoint && joint.ground && !(joint instanceof PrisJoint)
+      );
+      const distinct = pins.filter(
+        (pin, index) =>
+          pins.findIndex((other) => Math.hypot(other.x - pin.x, other.y - pin.y) < 1e-6) === index
+      );
+      if (distinct.length >= 2) frame.add(body.id);
+    }
+    return frame;
+  }
+
+  /** Every joint on a frame body: a ground pin to whatever else meets it there. */
+  private static jointsOnFrame(bodies: Link[], frame: ReadonlySet<string>): Set<string> {
+    const joints = new Set<string>();
+    for (const body of bodies) {
+      if (frame.has(body.id)) body.joints.forEach((joint) => joints.add(joint.id));
+    }
+    return joints;
+  }
+
   private static enumerateReactions(
     joints: Joint[],
-    bodies: Link[]
+    bodies: Link[],
+    every: Link[] = bodies,
+    frame: ReadonlySet<string> = new Set(),
+    // Which rigid body each link belongs to, so a frozen cylinder can be
+    // recognized. Passed in because the caller has already asked, and this runs
+    // once per sample of the cycle.
+    bodyOf: BodyOfLink = assignBodies(joints, every).bodyOf
   ): { reactions: ReactionUnknown[]; incidentByJoint: Map<string, Link[]> } {
     const reactions: ReactionUnknown[] = [];
     const incidentByJoint = new Map<string, Link[]>();
+    const frameJoints = this.jointsOnFrame(every, frame);
+    const onFrame = (leaf: Link | undefined): boolean => {
+      const root = this.rootBody(every, leaf);
+      return !!root && frame.has(root.id);
+    };
     for (const candidate of joints) {
       if (!(candidate instanceof RealJoint)) continue;
       const incident = this.incidentBodies(candidate, bodies);
       incidentByJoint.set(candidate.id, incident);
       if (incident.length === 0) continue;
+      // Ground, or as good as: a pin on a frame body is a pin on the world.
+      const grounded = candidate.ground || frameJoints.has(candidate.id);
 
-      if (candidate instanceof PrisJoint && candidate.ground) {
-        const piston = incident.find((body) => body instanceof Piston);
-        if (piston) {
+      if (candidate instanceof PrisJoint) {
+        const piston = bodies.find((body) => body.id === candidate.id);
+        // A cylinder frozen inside one body (decision S25). The seal does not
+        // slide against anything: it is a point of that body, held to it in
+        // both directions rather than pressed against a slot. So it exchanges
+        // an ordinary pin pair with the body instead of a single normal force
+        // -- two unknowns against the two equilibrium rows a point body has,
+        // which is exactly determinate and carries the seal's own mass into
+        // the body's reactions where it belongs.
+        const frozenSeal = frozenCylinderAtSeal(candidate, bodyOf) !== undefined;
+        // A grounded slot pushes against the world, which needs no equation of
+        // its own. A floating one pushes against the carrier, and that reaction
+        // has to appear in the carrier's equilibrium as well or the slot
+        // transmits force out of nowhere. Resolved through compounds: a weld
+        // may have folded the carrier into a root whose id is not its own. A
+        // slot cut into a frame body resolves to no carrier here, which is the
+        // grounded case: it pushes against the world.
+        const carrier = candidate.isFloating ? this.rootBody(bodies, candidate.carrier) : undefined;
+        const cutIntoFrame = candidate.isFloating && onFrame(candidate.carrier);
+        if (piston && !frozenSeal && (candidate.ground || carrier || cutIntoFrame)) {
           reactions.push({
             joint: candidate,
             positiveBody: piston,
-            direction: [-Math.sin(candidate.angle_rad), Math.cos(candidate.angle_rad)],
+            negativeBody: carrier,
+            // The reaction is normal to the slot, so it rotates with it.
+            direction: [-Math.sin(candidate.slotAngle), Math.cos(candidate.slotAngle)],
             column: reactions.length,
           });
+        }
+        // And the pin the slider carries, which used to be a joint of its own.
+        // The block exchanged an ordinary two-component pin reaction with its
+        // rider there; that joint is this one now, so the pair is written here
+        // rather than being reached by the generic branch below -- which would
+        // read a grounded slider as a ground pin and give it two reactions
+        // against the world it does not have.
+        //
+        // The carrier is left out: it sits on the far side of the slot and is
+        // coupled by the normal force alone.
+        if (piston) {
+          for (const other of incident) {
+            if (other.id === piston.id) continue;
+            // The carrier sits on the far side of the slot and is coupled by
+            // the normal force alone -- unless the slide is frozen, where there
+            // is no slot to be on the far side of and the pair above is the
+            // whole of the connection.
+            if (!frozenSeal && other.id === carrier?.id) continue;
+            for (const direction of [
+              [1, 0],
+              [0, 1],
+            ] as ForceVector[]) {
+              reactions.push({
+                joint: candidate,
+                positiveBody: piston,
+                negativeBody: other,
+                direction,
+                column: reactions.length,
+              });
+            }
+          }
         }
         continue;
       }
 
-      if (candidate.ground) {
+      if (grounded) {
         for (const body of incident) {
           reactions.push({
             joint: candidate,
@@ -526,9 +935,11 @@ export class ForceSolver {
 
   /** Joint <-> root-body pairing that both analysis panels enumerate rows from. */
   static buildReactionIndex(joints: Joint[], links: Link[]): ForceReactionIndex {
-    const bodies = links.filter(
-      (link): link is RealLink | Piston => link instanceof RealLink || link instanceof Piston
-    );
+    const every = links.filter((link): link is RealLink => link instanceof RealLink);
+    // The same cut the frame assembly makes: a frame body has no reactions
+    // of its own to list, and its pins are ground to its neighbors.
+    const frame = this.frameBodies(every);
+    const bodies = [...every.filter((body) => !frame.has(body.id)), ...this.pointBodies(joints)];
     const linksByJoint = new Map<string, string[]>();
     const jointsByLink = new Map<string, string[]>();
     const pair = (jointId: string, bodyId: string): void => {
@@ -541,7 +952,7 @@ export class ForceSolver {
       jointsByLink.set(bodyId, forLink);
     };
 
-    for (const reaction of this.enumerateReactions(joints, bodies).reactions) {
+    for (const reaction of this.enumerateReactions(joints, bodies, every, frame).reactions) {
       pair(reaction.joint.id, reaction.positiveBody.id);
       if (reaction.negativeBody) pair(reaction.joint.id, reaction.negativeBody.id);
     }
@@ -557,25 +968,55 @@ export class ForceSolver {
     bodies.forEach((body) => {
       if (body.joints.some((candidate) => candidate.id === joint.id)) add(body);
     });
+    // A slot's carrier is reachable through neither route: Option A keeps it out
+    // of the slider's `links` and keeps the slider out of the carrier's
+    // `joints`, so without this the body on the far side of the slot is simply
+    // missing from the joint's incidence.
+    if (joint instanceof PrisJoint && joint.isFloating) {
+      add(this.rootBody(bodies, joint.carrier));
+    }
     return ordered;
   }
 
-  private static propertiesAreValid(bodies: Link[], units: UnitFactors): boolean {
-    if (!Object.values(units).every(Number.isFinite)) return false;
-    return bodies.every((body) => {
-      if (!Number.isFinite(body.mass) || body.mass < 0) return false;
-      if (body instanceof RealLink) {
-        if (!Number.isFinite(body.massMoI) || body.massMoI < 0) return false;
-        return body.forces.every(
-          (force) =>
-            Number.isFinite(force.mag) &&
-            Number.isFinite(force.angleRad) &&
-            Number.isFinite(force.startCoord.x) &&
-            Number.isFinite(force.startCoord.y)
-        );
+  /**
+   * The first invalid mass, inertia, or force property, described by name —
+   * or undefined when everything is a usable number. The panel shows this
+   * sentence verbatim, so it has to say which part to go and fix.
+   */
+  private static invalidProperty(
+    bodies: Link[],
+    units: UnitFactors,
+    cylinders: readonly Cylinder[] = []
+  ): string | undefined {
+    if (!Object.values(units).every(Number.isFinite)) {
+      return "The units don't convert. Choose them again in the Settings panel.";
+    }
+    // The name the canvas tags the body with. It was the body's own, which is
+    // its id -- and a barrel's id holds the buried inner end (D14, S11), so a
+    // sentence telling the reader which part to go and fix named a joint they
+    // have never been shown. A point body has no name of its own at all.
+    const nameOf = (body: Link): string => visibleBodyName(body, cylinders);
+    for (const body of bodies) {
+      if (!Number.isFinite(body.mass) || body.mass < 0) {
+        return `Link ${nameOf(body)} has a mass that isn’t a valid number. Re-enter it in the Masses table.`;
       }
-      return true;
-    });
+      if (body instanceof RealLink) {
+        if (!Number.isFinite(body.massMoI) || body.massMoI < 0) {
+          return `Link ${nameOf(body)} has a mass moment of inertia that isn’t a valid number. Re-enter it in the Masses table.`;
+        }
+        for (const force of body.forces) {
+          if (
+            !Number.isFinite(force.mag) ||
+            !Number.isFinite(force.angleRad) ||
+            !Number.isFinite(force.startCoord.x) ||
+            !Number.isFinite(force.startCoord.y)
+          ) {
+            return `The force on link ${nameOf(body)} has a magnitude or position that isn’t a valid number. Select it and re-enter its values.`;
+          }
+        }
+      }
+    }
+    return undefined;
   }
 
   private static kinematicsAreComplete(
@@ -583,8 +1024,7 @@ export class ForceSolver {
     kinematics?: FrameKinematics
   ): kinematics is FrameKinematics {
     if (!kinematics) return false;
-    const vectorFinite = (value?: ForceVector): boolean =>
-      !!value && value.every(Number.isFinite);
+    const vectorFinite = (value?: ForceVector): boolean => !!value && value.every(Number.isFinite);
     return bodies.every((body) => {
       if (body instanceof RealLink) {
         return (
@@ -597,6 +1037,7 @@ export class ForceSolver {
   }
 
   private static captureCurrentKinematics(
+    joints: Joint[],
     links: Link[],
     fallback?: FrameKinematics
   ): FrameKinematics {
@@ -620,16 +1061,19 @@ export class ForceSolver {
           link.id,
           Number.isFinite(angular) ? angular! : fallback?.linkAngularAccelerations.get(link.id)!
         );
-      } else if (link instanceof Piston) {
-        const movingJoint = link.joints.find((joint) => !(joint instanceof PrisJoint));
-        const acceleration = movingJoint
-          ? KinematicsSolver.jointAccMap.get(movingJoint.id)
-          : undefined;
-        captured.pistonAccelerations.set(
-          link.id,
-          finiteVector(acceleration) ? acceleration : fallback?.pistonAccelerations.get(link.id)!
-        );
       }
+    }
+    // The sliders' own masses. This used to read the block's coincident pin,
+    // because the block had no coordinate of its own; the slider is that point
+    // now, so its acceleration is simply the joint's -- which for a grounded
+    // guide is what the loop's own sliding end solved for (`guideEnds`).
+    for (const joint of joints) {
+      if (!(joint instanceof PrisJoint)) continue;
+      const acceleration = KinematicsSolver.jointAccMap.get(joint.id);
+      captured.pistonAccelerations.set(
+        joint.id,
+        finiteVector(acceleration) ? acceleration : fallback?.pistonAccelerations.get(joint.id)!
+      );
     }
     return captured;
   }
@@ -655,17 +1099,26 @@ export class ForceSolver {
       times.push(Number.isFinite(time) && time > previous ? time : previous + 1);
     });
     const ids = new Set(mechanism.links.flatMap((links) => links.map((link) => link.id)));
+    // The sliders as well as the links. A slider's mass is a body here and its
+    // id names a joint rather than a link, so a sweep over link ids alone
+    // leaves every point body without a fallback -- which reads downstream as
+    // missing kinematics for a drawing whose positions are perfectly good.
+    const sliderIds = new Set(
+      mechanism.joints.flatMap((frame) =>
+        frame.filter((joint) => joint instanceof PrisJoint).map((joint) => joint.id)
+      )
+    );
 
-    for (const id of ids) {
+    for (const id of new Set([...ids, ...sliderIds])) {
       const bodyAt = (index: number): Link | undefined =>
         mechanism.links[index]?.find((link) => link.id === id);
+      const sliderAt = (index: number): Joint | undefined =>
+        mechanism.joints[index]?.find((joint) => joint.id === id && joint instanceof PrisJoint);
       const positions = Array.from({ length: frameCount }, (_, index): ForceVector => {
         const body = bodyAt(index);
         if (body instanceof RealLink) return [body.CoM.x, body.CoM.y];
-        if (body instanceof Piston) {
-          const moving = body.joints.find((joint) => !(joint instanceof PrisJoint));
-          return [moving?.x ?? 0, moving?.y ?? 0];
-        }
+        const slider = sliderAt(index);
+        if (slider) return [slider.x, slider.y];
         return [0, 0];
       });
       const angles = this.unwrapAngles(
@@ -697,7 +1150,7 @@ export class ForceSolver {
             id,
             this.secondDerivative(angles, times, index)
           );
-        } else if (body instanceof Piston) {
+        } else if (sliderAt(index)) {
           frames[index].pistonAccelerations.set(id, [ax, ay]);
         }
       }
@@ -742,8 +1195,134 @@ export class ForceSolver {
     return result;
   }
 
+  /**
+   * The length a torque or couple column is written in: the longest moment arm
+   * any body has, in meters.
+   *
+   * Every other column is a force, and its moment-row entries are arms. A
+   * torque entered its row as a bare 1 instead, so against arms of a few
+   * centimeters it was dozens of times larger than its neighbors and against
+   * arms of meters about their size. Scaled pivoting judges a row by its
+   * largest entry, so how close a pose came to the singular line depended on
+   * the unit it was drawn in. Written as armScale × (τ / armScale), a torque
+   * sits in its row like a force at the linkage's own size; a change of unit
+   * then only rescales whole rows, which the pivoting ignores, and whether a
+   * pose is singular is a question about its geometry alone.
+   */
+  private static momentArmScale(bodies: Link[], units: UnitFactors): number {
+    let longest = 0;
+    for (const body of bodies) {
+      if (!(body instanceof RealLink)) continue;
+      for (const joint of body.joints) {
+        longest = Math.max(longest, Math.hypot(joint.x - body.CoM.x, joint.y - body.CoM.y));
+      }
+    }
+    const meters = longest * units.distanceToM;
+    return Number.isFinite(meters) && meters > 0 ? meters : 1;
+  }
+
+  /**
+   * SI factors for what this solver is handed, whose lengths are model units:
+   * MODEL_SCALE of them to one of the reader's (render-scale.ts). The scale is
+   * folded into the length factor so every moment arm and every m·a is in real
+   * meters. Left out, the force rows carried m·a two hundred times over and the
+   * moment rows weighed I·α, which has no length in it, against arms two
+   * hundred times too long -- statics never showed it, because there every
+   * term of a moment row scales together and only the torque came out large.
+   */
   private static unitFactors(unit: string): UnitFactors {
-    return siUnitFactors(unit);
+    const units = siUnitFactors(unit);
+    return { ...units, distanceToM: units.distanceToM / MODEL_SCALE };
+  }
+
+  /**
+   * The minimum-norm solution of a rank-deficient but consistent system.
+   *
+   * Through the normal equations with a ridge, (AᵀA + λI)x = Aᵀb, refined a
+   * few times against the original system. The ridge is sized to the same
+   * tolerance the elimination draws its singular line at, on rows scaled to
+   * unit size the way the elimination scales them: a direction the matrix
+   * holds firmly passes through almost untouched, and the refinement takes
+   * away what little the ridge cost it; a direction it barely holds -- the
+   * hair between two supports that are meant to share a line -- is damped to
+   * the even split instead of being followed into an enormous cancelling
+   * pair. The first cut used a ridge a million times smaller, which put the
+   * change-over right where round-off lives, so that from one pose to the
+   * next the answer flipped between the two and the curve became a band.
+   *
+   * The residual is then measured against the original system, so a system
+   * the elimination refused for being contradictory rather than redundant
+   * is refused here too.
+   */
+  private static evenestSolution(A: number[][], b: number[]): LinearSolution | undefined {
+    // Rows and columns counted apart: the binding couples widen the system
+    // past square, and the least-norm answer is as well posed either way.
+    const m = A.length;
+    const n = A[0]?.length ?? 0;
+    if (m === 0 || n === 0) return undefined;
+    const scales = A.map((row) => Math.max(...row.map(Math.abs), 0));
+    if (scales.some((scale) => !(scale > 0))) return undefined;
+    const scaled = A.map((row, i) => row.map((value) => value / scales[i]));
+    const rhs = b.map((value, i) => value / scales[i]);
+    const ridge = SINGULAR_PIVOT_TOLERANCE * SINGULAR_PIVOT_TOLERANCE;
+    const normal = Array.from({ length: n }, (_, i) =>
+      Array.from({ length: n }, (_, j) => {
+        let sum = 0;
+        for (let k = 0; k < m; k++) sum += scaled[k][i] * scaled[k][j];
+        return i === j ? sum + ridge : sum;
+      })
+    );
+    const transposeTimes = (vector: number[]): number[] =>
+      Array.from({ length: n }, (_, i) => {
+        let sum = 0;
+        for (let k = 0; k < m; k++) sum += scaled[k][i] * vector[k];
+        return sum;
+      });
+    const leftover = (values: number[]): number[] =>
+      scaled.map((row, i) => rhs[i] - row.reduce((sum, c, column) => sum + c * values[column], 0));
+    // Plain elimination, without the pivot floor the main solve applies: the
+    // ridge is meant to be small against the matrix, and that floor would
+    // refuse it as singular, which is the situation this exists to answer.
+    let values = this.solvePositiveDefinite(normal, transposeTimes(rhs));
+    if (!values) return undefined;
+    for (let pass = 0; pass < EVENEST_REFINEMENTS; pass++) {
+      const correction = this.solvePositiveDefinite(normal, transposeTimes(leftover(values)));
+      if (!correction) return undefined;
+      values = values.map((value, i) => value + correction[i]);
+    }
+    // Against the loads alone: the main solve's measure divides by the size
+    // of the solution as well, and a pair of enormous cancelling reactions
+    // would make an unbalanced load look balanced.
+    const residualNorm = Math.max(...leftover(values).map(Math.abs));
+    const rhsNorm = Math.max(...rhs.map(Math.abs));
+    const residual = residualNorm / Math.max(rhsNorm, 1e-9);
+    return { values, rank: Math.min(m, n), residual, minPivot: 0 };
+  }
+
+  /** Gaussian elimination with partial pivoting, refusing only what is not finite. */
+  private static solvePositiveDefinite(M: number[][], rhs: number[]): number[] | undefined {
+    const n = M.length;
+    const m = M.map((row, i) => [...row, rhs[i]]);
+    for (let column = 0; column < n; column++) {
+      let pivot = column;
+      for (let row = column + 1; row < n; row++) {
+        if (Math.abs(m[row][column]) > Math.abs(m[pivot][column])) pivot = row;
+      }
+      if (!(Math.abs(m[pivot][column]) > 0)) return undefined;
+      if (pivot !== column) [m[column], m[pivot]] = [m[pivot], m[column]];
+      for (let row = column + 1; row < n; row++) {
+        const factor = m[row][column] / m[column][column];
+        if (factor === 0) continue;
+        for (let next = column; next <= n; next++) m[row][next] -= factor * m[column][next];
+      }
+    }
+    const values = Array(n).fill(0);
+    for (let row = n - 1; row >= 0; row--) {
+      let value = m[row][n];
+      for (let column = row + 1; column < n; column++) value -= m[row][column] * values[column];
+      values[row] = value / m[row][row];
+    }
+    return values.every(Number.isFinite) ? values : undefined;
   }
 
   private static solveLinearSystem(A: number[][], b: number[]): LinearSolution | undefined {
@@ -752,6 +1331,7 @@ export class ForceSolver {
     const matrix = A.map((row, index) => [...row, b[index]]);
     const scales = A.map((row) => Math.max(...row.map(Math.abs), 0));
     let rank = 0;
+    let minPivot = Infinity;
 
     for (let column = 0; column < n; column++) {
       let pivotRow = -1;
@@ -763,16 +1343,18 @@ export class ForceSolver {
           pivotRow = row;
         }
       }
-      // Near-toggle frames legitimately have extremely small pivots and very
-      // large reactions. Solve them, then let the normalized residual decide
-      // whether the result is usable; reject only an exact/non-finite pivot.
+      // Near-toggle frames legitimately have small pivots and large reactions;
+      // they solve, and the normalized residual judges the result. But a pivot
+      // within SINGULAR_PIVOT_TOLERANCE of zero is a toggle pose seen through
+      // round-off, and which browser's round-off must not decide the answer.
       if (
         pivotRow < 0 ||
         !Number.isFinite(matrix[pivotRow][column]) ||
-        matrix[pivotRow][column] === 0
+        pivotScore < SINGULAR_PIVOT_TOLERANCE
       ) {
         return undefined;
       }
+      minPivot = Math.min(minPivot, pivotScore);
       if (pivotRow !== column) {
         [matrix[column], matrix[pivotRow]] = [matrix[pivotRow], matrix[column]];
         [scales[column], scales[pivotRow]] = [scales[pivotRow], scales[column]];
@@ -807,11 +1389,14 @@ export class ForceSolver {
         0
       );
       residualNorm = Math.max(residualNorm, Math.abs(calculated - b[row]));
-      matrixNorm = Math.max(matrixNorm, A[row].reduce((sum, value) => sum + Math.abs(value), 0));
+      matrixNorm = Math.max(
+        matrixNorm,
+        A[row].reduce((sum, value) => sum + Math.abs(value), 0)
+      );
       rhsNorm = Math.max(rhsNorm, Math.abs(b[row]));
       solutionNorm = Math.max(solutionNorm, Math.abs(values[row]));
     }
     const residual = residualNorm / Math.max(1, matrixNorm * solutionNorm + rhsNorm);
-    return { values, rank, residual };
+    return { values, rank, residual, minPivot };
   }
 }

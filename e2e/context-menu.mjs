@@ -1,0 +1,680 @@
+/**
+ * The right-click menu, in every mode and on every kind of part.
+ *
+ * The menu used to be one flat list of up to eight equally weighted rows with
+ * Delete at the top, labels that rewrote themselves as the object changed, and
+ * three different ways of saying no -- hidden here, grayed silently there,
+ * clickable-and-then-refused somewhere else. What is checked here is the
+ * promise the redesign makes instead: a fixed ladder, states written as states,
+ * and one availability rule with the model's own reason on every grayed row.
+ *
+ * The reasons matter more than the rows. A row grayed for the wrong reason
+ * sends a student to fix the wrong thing, so the assertions read the text in
+ * the right-hand slot rather than just the disabled flag.
+ *
+ *   PMKS_BASE_URL=<origin> node e2e/context-menu.mjs
+ */
+
+const { chromium } = await import(
+  (process.env.PMKS_PLAYWRIGHT_DIR ?? '/tmp/pmks-playwright') + '/node_modules/playwright/index.mjs'
+);
+import { openMechanism } from './app-ready.mjs';
+
+const BASE = process.env.PMKS_BASE_URL ?? 'http://localhost:4200';
+
+/** A crank-rocker with a tracer on the coupler. */
+const FOURBAR =
+  '?2P.Ay,1E8.5,0.1011.4O,O,0,0,0.0A,A,72,MM,0.2C,C,pa,bW,0.4D,D,_W,0,0.0T,T,Wq,pa,0..YROA,OA,Fe,Fe,3X,BB,c5cae9,O,A,,.YRACT,ACT,Fe,Fe,UU,b9,303e9f,A,C,T,,.YRCD,CD,Fe,Fe,v2,Im,0d125a,C,D,,...N_3';
+/** A sealed cylinder driving a rocker. */
+const CYLINDER =
+  '?2P.Ay,1E8.5,0.1011.4A,A,0_W,0,0.0B,B,07E,0,0.8C,C,0OE,0,0.0D,D,V4,0,0.6E,E,V4,ku,0.XP,P,0OE,0,0,AB,A,B..YRAB,AB,Fe,Fe,0Yt,0,c5cae9,A,B,,.YRCD,CD,Fe,Fe,3R,0,303e9f,C,D,,.YRDE,DE,Fe,Fe,V4,NS,0d125a,D,E,,.YPCP,CP,0,0,0,0,,C,P,,...N_h';
+/** Three synthesis positions and nothing else drawn. */
+const POSITIONS =
+  '?2P.KB,1E8.5,0.1011....N_.SD~w3~1~9,SP~12a~eO~01DP8,SP~2w9~x2~05t0,SP~3xv~0vL~0bAtJ';
+
+const checks = [];
+const check = (what, ok, detail) => {
+  checks.push([what, ok]);
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${what}${ok ? '' : ' — ' + JSON.stringify(detail)}`);
+};
+
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
+const errors = [];
+page.on('pageerror', (error) => errors.push(String(error)));
+
+/** The open menu, read as data: rows, their state, and the slot on the right. */
+const readMenu = () =>
+  page.evaluate(() => {
+    const card = document.querySelector('#contextMenu');
+    if (!card || getComputedStyle(card).display === 'none') return null;
+    const slot = (row) =>
+      row.querySelector('.cm-row__reason')?.textContent?.trim() ??
+      row.querySelector('.cm-row__hint')?.textContent?.trim() ??
+      row.querySelector('.cm-row__key')?.textContent?.trim() ??
+      (row.querySelector('.cm-row__check') ? 'check' : '');
+    const cross = card.querySelector('.cm-cross');
+    const grid = card.querySelector('.cm-choice');
+    return {
+      title: card.querySelector('.cm-header__title')?.textContent?.trim() ?? null,
+      subtitle: card.querySelector('.cm-header__subtitle')?.textContent?.trim() ?? null,
+      // What the part can be, above the ladder: one cell per value.
+      choice: grid
+        ? {
+            label: grid.getAttribute('aria-label'),
+            cells: [...grid.querySelectorAll('.cm-choice__cell')].map((cell) => ({
+              label: cell.querySelector('.cm-choice__label')?.textContent?.trim() ?? '',
+              chosen: cell.classList.contains('cm-choice__cell--chosen'),
+              off: cell.classList.contains('cm-choice__cell--off'),
+              fault: cell.classList.contains('cm-choice__cell--fault'),
+            })),
+          }
+        : null,
+      cross: cross ? (cross.classList.contains('cm-cross--off') ? 'off' : 'on') : null,
+      // Upper-cased by the stylesheet, so the text node keeps its own case.
+      groups: [...card.querySelectorAll('.cm-group__label')].map((one) =>
+        one.textContent.trim().toUpperCase()
+      ),
+      rows: [...card.querySelectorAll('.cm-row')].map((one) => ({
+        label: one.querySelector('.cm-row__label')?.textContent?.trim() ?? '',
+        detail: one.querySelector('.cm-row__detail')?.textContent?.trim() ?? '',
+        slot: slot(one),
+        on: one.classList.contains('cm-row--on'),
+        off: one.classList.contains('cm-row--off'),
+        destructive: one.classList.contains('cm-row--destructive'),
+      })),
+    };
+  });
+
+const rowNamed = (menu, label) => menu?.rows.find((one) => one.label === label);
+
+/**
+ * Right-click a point that is actually on the element.
+ *
+ * Not simply its bounding-box center: the left card is 250px wide and 400px in
+ * the analysis modes, and a part drawn near the left edge has its center under
+ * that card — the click then lands on the panel and no menu opens at all,
+ * which reads as the menu being broken rather than the aim being off.
+ */
+async function openOn(selector) {
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  const at = await page.evaluate((sel) => {
+    const node = document.querySelector(sel);
+    if (!node) return null;
+    const box = node.getBoundingClientRect();
+    const owns = (x, y) => {
+      const hit = document.elementFromPoint(x, y);
+      return !!hit && (hit === node || node.contains(hit) || hit.closest(sel) === node);
+    };
+    const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    if (owns(center.x, center.y)) return center;
+    for (const fx of [0.7, 0.3, 0.85, 0.15]) {
+      for (const fy of [0.5, 0.3, 0.7]) {
+        const spot = { x: box.x + box.width * fx, y: box.y + box.height * fy };
+        if (owns(spot.x, spot.y)) return spot;
+      }
+    }
+    return center;
+  }, selector);
+  if (!at) return null;
+  await page.mouse.click(at.x, at.y, { button: 'right' });
+  await page.waitForTimeout(350);
+  return readMenu();
+}
+
+/**
+ * Build the menu for a part the pointer cannot reliably land on.
+ *
+ * A force is drawn as a thin arrow: its bounding box is large but almost none
+ * of it is the stroke, so sampling points inside the box hits the canvas
+ * behind it. The gesture is covered by every other case here; what this is
+ * for is what the menu *says* about a force.
+ */
+async function openOnForce(id) {
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  return page.evaluate((forceId) => {
+    const grid = ng.getComponent(document.querySelector('app-new-grid'));
+    const force = grid.mechanismSrv.forces.find((one) => (one.id ?? one.name) === forceId);
+    if (!force) return null;
+    grid.setLastRightClick(force);
+    const rows = grid.cMenu.groups.flatMap((group) =>
+      group.rows.map((row) => ({
+        label: row.label,
+        detail: row.detail,
+        slot: row.refusal?.short ?? (row.checked ? 'check' : (row.hint ?? row.shortcut ?? '')),
+        on: row.checked && !row.disabled,
+        off: row.disabled,
+        destructive: row.destructive,
+      }))
+    );
+    return {
+      title: grid.cMenu.header?.title ?? null,
+      subtitle: grid.cMenu.header?.subtitle ?? null,
+      cross: grid.cMenu.header?.crossing ? 'on' : null,
+      groups: grid.cMenu.groups.map((group) => group.label).filter(Boolean),
+      rows,
+    };
+  }, id);
+}
+
+async function openAt(x, y) {
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  await page.mouse.click(x, y, { button: 'right' });
+  await page.waitForTimeout(350);
+  return readMenu();
+}
+
+// ---------------------------------------------------------------- Edit mode
+
+await openMechanism(page, BASE + FOURBAR);
+
+/**
+ * The row that deletes the part itself.
+ *
+ * In Edit mode the ladder now ends with two destructive rows — the part's own
+ * Delete, and below it the whole-mechanism delete, which takes the machine. So the
+ * part's Delete is the last row only where the machine-wide one is not offered.
+ */
+const ownDelete = (menu) => {
+  const rows = menu?.rows ?? [];
+  const last = rows.at(-1);
+  return last?.label.startsWith('Delete Entire Mechanism') ? rows.at(-2) : last;
+};
+
+const jointA = await openOn('#joint_A');
+check('a joint menu names the joint it is about', jointA?.title === 'Joint A', jointA?.title);
+check('and what it is made of', jointA?.subtitle === 'Pin · Links OA, ACT', jointA?.subtitle);
+check(
+  'the ladder is Attach, State, Traces, Actions',
+  JSON.stringify(jointA?.groups) === JSON.stringify(['ATTACH', 'STATE', 'TRACES', 'ACTIONS']),
+  jointA?.groups
+);
+check(
+  'Split Joint names the number of bodies it will separate',
+  rowNamed(jointA, 'Split Joint')?.off === false &&
+    rowNamed(jointA, 'Split Joint')?.slot === '2 links',
+  rowNamed(jointA, 'Split Joint')
+);
+check(
+  'the deletions are the last rows, and the only red ones',
+  jointA?.rows.at(-1)?.destructive === true &&
+    ownDelete(jointA)?.destructive === true &&
+    // Red belongs to the foot of the ladder and nowhere above it.
+    jointA?.rows.filter((one) => one.destructive).length === 2 &&
+    jointA?.rows.slice(0, -2).every((one) => !one.destructive),
+  jointA?.rows.map((one) => one.label)
+);
+check(
+  'states are states, not verbs that rewrite themselves',
+  ['Grounded', 'Driven Input', 'Trace Path', 'Locked'].every((label) => rowNamed(jointA, label)) &&
+    !jointA?.rows.some((one) => /^(Add|Remove) /.test(one.label)),
+  jointA?.rows.map((one) => one.label)
+);
+check(
+  'and what the joint is is one choice above them, not two rows among them',
+  jointA?.choice?.label === 'Joint Type' &&
+    JSON.stringify(jointA.choice.cells.map((one) => one.label)) ===
+      JSON.stringify(['Revolute', 'Prismatic', 'Pin-in-slot', 'Welded']) &&
+    jointA.choice.cells.find((one) => one.chosen)?.label === 'Revolute' &&
+    !jointA.rows.some((one) => /^(Slider|Welded)$/.test(one.label)),
+  jointA?.choice
+);
+check(
+  'a load will not anchor where two links share the pin',
+  rowNamed(jointA, 'Force')?.off === true && rowNamed(jointA, 'Force')?.slot === '2 links share it',
+  rowNamed(jointA, 'Force')
+);
+check(
+  'the destructive row names what goes with it',
+  ownDelete(jointA)?.label === 'Delete Joint' &&
+    ownDelete(jointA)?.detail === 'Also removes Link OA',
+  ownDelete(jointA)?.label
+);
+check(
+  'and carries its key from the registry',
+  ownDelete(jointA)?.slot === 'Delete' && rowNamed(jointA, 'Locked')?.slot === 'K',
+  { del: ownDelete(jointA)?.slot, lock: rowNamed(jointA, 'Locked')?.slot }
+);
+
+const groundO = await openOn('#joint_O');
+check(
+  'a ground pivot reads as one, with its state ticked',
+  groundO?.subtitle === 'Ground pin · Link OA' && rowNamed(groundO, 'Grounded')?.on === true,
+  { subtitle: groundO?.subtitle, grounded: rowNamed(groundO, 'Grounded') }
+);
+check(
+  'a weld with nothing to fuse is grayed in the choice',
+  groundO?.choice?.cells.find((one) => one.label === 'Welded')?.off === true,
+  groundO?.choice
+);
+
+const tracerT = await openOn('#joint_T');
+check(
+  'a tracer cannot be driven, and the model says why',
+  rowNamed(tracerT, 'Driven Input')?.slot === 'needs 2 links',
+  rowNamed(tracerT, 'Driven Input')
+);
+check(
+  'a joint that orphans nothing says plain Delete Joint',
+  ownDelete(tracerT)?.label === 'Delete Joint',
+  ownDelete(tracerT)?.label
+);
+
+const link = await openOn('[id="OA"]');
+check(
+  'a link menu offers the four attachments and a copy',
+  ['Link', 'Cylinder', 'Tracer Point', 'Force', 'Duplicate Link'].every((label) =>
+    rowNamed(link, label)
+  ),
+  link?.rows.map((one) => one.label)
+);
+check(
+  'and counts the joints its deletion would sweep up',
+  ownDelete(link)?.label === 'Delete Link' && ownDelete(link)?.detail === 'Also removes Joint O',
+  ownDelete(link)?.label
+);
+
+const canvas = await openAt(1150, 780);
+check(
+  'the canvas menu says Add rather than Attach',
+  JSON.stringify(canvas?.groups) === JSON.stringify(['ADD', 'MECHANISM']),
+  canvas?.groups
+);
+check(
+  'and counts what Lock All and Unlock All would touch',
+  rowNamed(canvas, 'Lock All')?.slot === '5 open' &&
+    rowNamed(canvas, 'Unlock All')?.slot === 'nothing locked' &&
+    rowNamed(canvas, 'Unlock All')?.off === true,
+  { lock: rowNamed(canvas, 'Lock All'), unlock: rowNamed(canvas, 'Unlock All') }
+);
+
+// A lock, set from the menu, and read back from it.
+await openOn('#joint_A');
+await page.click('.cm-row:has(.cm-row__label:text-is("Locked"))');
+await page.waitForTimeout(700);
+const locked = await openOn('#joint_A');
+check(
+  'a locked joint ticks its own switch',
+  rowNamed(locked, 'Locked')?.on === true,
+  rowNamed(locked, 'Locked')
+);
+check(
+  'still offers to delete it -- a lock is about position, not existence',
+  ownDelete(locked)?.off === false && ownDelete(locked)?.slot !== 'unlock first',
+  ownDelete(locked)
+);
+check(
+  'and offers attachments for the same reason again',
+  rowNamed(locked, 'Link')?.off === false && rowNamed(locked, 'Link')?.slot !== 'unlock first',
+  rowNamed(locked, 'Link')
+);
+check(
+  'while the switch that frees it stays live',
+  rowNamed(locked, 'Locked')?.off === false,
+  rowNamed(locked, 'Locked')
+);
+
+// ------------------------------------------------------------ analysis mode
+
+await page.keyboard.press('Escape');
+const editJoint = await openOn('#joint_T');
+await page.keyboard.press('Escape');
+await page.click('text=Kinematic Analysis');
+await page.waitForTimeout(900);
+const analysisJoint = await openOn('#joint_T');
+check(
+  'analysis offers the same rows as Edit at the start pose',
+  JSON.stringify(analysisJoint?.rows.map((one) => one.label)) ===
+    JSON.stringify(editJoint?.rows.map((one) => one.label)),
+  analysisJoint?.rows.map((one) => one.label)
+);
+check('and the way back into Edit rides the header', analysisJoint?.cross === 'on', analysisJoint);
+
+await page.keyboard.press('Escape');
+await page.click('text=Force Analysis');
+await page.waitForTimeout(900);
+const forceJoint = await openOn('#joint_T');
+// The reason lives on the vector toggle now. "Graph Joint Force" used to sit
+// beside it and did nothing a left click does not already do -- it selected the
+// joint -- so the reader who wanted the arrows was offered the panel instead,
+// one row under the switch that draws them.
+check(
+  'a tracer is not offered force arrows, and the row says why',
+  rowNamed(forceJoint, 'Force Vectors')?.off === true &&
+    !!rowNamed(forceJoint, 'Force Vectors')?.slot,
+  rowNamed(forceJoint, 'Force Vectors')
+);
+check(
+  'and nothing offers to graph what a click already opens',
+  rowNamed(forceJoint, 'Graph Joint Force') === undefined,
+  forceJoint?.rows?.map((one) => one.label)
+);
+check(
+  'while the trace stays live: it is a view, not geometry',
+  rowNamed(forceJoint, 'Trace Path')?.off === false,
+  rowNamed(forceJoint, 'Trace Path')
+);
+
+// ---------------------------------------------------------------- cylinder
+
+await openMechanism(page, BASE + CYLINDER);
+
+/** What the drawing calls the four pieces of its one cylinder. */
+const part = await page.evaluate(() => {
+  const one = ng
+    .getComponent(document.querySelector('app-new-grid'))
+    .mechanismSrv.sealedStructures()[0];
+  const named = (joint) => joint.name || joint.id;
+  return {
+    a: named(one.mountA),
+    b: named(one.mountB),
+    seal: named(one.seal),
+    inner: named(one.inner),
+  };
+});
+
+const cylinderJoint = await openOn(`#joint_${part.a}`);
+// A joint at either end is a pin like any other (D13), so it says what kind of
+// pin it is and which body it is on -- with the member named as the member.
+// All four of a cylinder's joints used to answer "Barrel joint · Cylinder AB",
+// which told a reader neither thing.
+check(
+  'a joint at a cylinder’s end is described as the pin it is, on the member it is on',
+  cylinderJoint?.subtitle === `Ground pin · Barrel ${part.a}${part.seal}`,
+  cylinderJoint?.subtitle
+);
+// A mount is an ordinary joint now: it welds, it takes a block, and the only
+// thing standing in the way of *this* one is that a weld needs two links to
+// fuse and it has one. That is arithmetic, not a rule about cylinders, and the
+// row says the arithmetic.
+check(
+  'a mount alone is refused a weld for having nothing to weld to',
+  cylinderJoint?.choice?.cells.find((one) => one.label === 'Welded')?.off === true,
+  cylinderJoint?.choice
+);
+check(
+  'and the deletion says it takes the whole part',
+  ownDelete(cylinderJoint)?.label === 'Delete Joint' &&
+    ownDelete(cylinderJoint)?.detail === 'Also removes Cylinder',
+  ownDelete(cylinderJoint)?.label
+);
+// The row is offered rather than grayed: a block on a mount is a carriage, and
+// that is how an excavator's boom is drawn. What the menu refuses is the
+// cylinder's inside.
+check(
+  'a mount takes a block, like any other joint',
+  cylinderJoint?.choice?.cells.find((one) => one.label === 'Pin-in-slot')?.off === false,
+  cylinderJoint?.choice
+);
+check(
+  'and it grounds, like any other joint',
+  rowNamed(cylinderJoint, 'Grounded')?.off === false,
+  rowNamed(cylinderJoint, 'Grounded')
+);
+
+// ------------------------------------------------- the joint it slides on
+
+const sealMenu = await openOn(`#joint_${part.seal}`);
+check(
+  'the square is a joint, and its card names the whole part it slides in',
+  sealMenu?.title === `Joint ${part.seal}` &&
+    sealMenu?.subtitle === `Slider · Cylinder ${part.a}${part.b}`,
+  { title: sealMenu?.title, subtitle: sealMenu?.subtitle }
+);
+check(
+  'it is Prismatic at full ink, and the other three say they are inside a cylinder',
+  sealMenu?.choice?.cells.find((one) => one.chosen)?.label === 'Prismatic' &&
+    sealMenu?.choice?.cells.filter((one) => !one.chosen).every((one) => one.off === true),
+  sealMenu?.choice
+);
+check(
+  'nothing attaches to it, and each row says why in the model’s four words',
+  ['Link', 'Cylinder', 'Force'].every(
+    (label) =>
+      rowNamed(sealMenu, label)?.off === true &&
+      rowNamed(sealMenu, label)?.slot === 'inside a cylinder'
+  ),
+  sealMenu?.rows.filter((one) => ['Link', 'Cylinder', 'Force'].includes(one.label))
+);
+check(
+  'a ground on it is sent to one of the joints at the ends',
+  rowNamed(sealMenu, 'Grounded')?.off === true &&
+    rowNamed(sealMenu, 'Grounded')?.slot === 'ground an end joint instead',
+  rowNamed(sealMenu, 'Grounded')
+);
+// The cylinder's drive is this joint's drive (D9), so the row is live here and
+// offered nowhere else on the part -- see the member cards below.
+check(
+  'the drive is set here, and the row works',
+  rowNamed(sealMenu, 'Driven Input')?.off === false,
+  rowNamed(sealMenu, 'Driven Input')
+);
+await page.click('.cm-row:has(.cm-row__label:text-is("Driven Input"))');
+await page.waitForTimeout(700);
+check(
+  'and it lands on the joint that slides',
+  (await page.evaluate(
+    () =>
+      ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv.sealedStructures()[0]
+        .seal.input
+  )) === true,
+  'the seal did not take the input'
+);
+check(
+  'and its deletion takes the cylinder with it',
+  ownDelete(sealMenu)?.label === 'Delete Joint' &&
+    ownDelete(sealMenu)?.detail === 'Also removes Cylinder',
+  ownDelete(sealMenu)?.label
+);
+// One fewer than the drawing holds: the buried end a cylinder derives is never
+// drawn, so it is never counted (D14). The seal is, because the square is.
+const drawnJoints = await page.evaluate(() => {
+  const m = ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv;
+  return { visible: m.visibleJoints().length, all: m.joints.length };
+});
+check(
+  'the whole-mechanism row counts the joints a reader can see',
+  sealMenu?.rows.at(-1)?.slot === `${drawnJoints.visible} joints` &&
+    drawnJoints.visible === drawnJoints.all - 1,
+  { slot: sealMenu?.rows.at(-1)?.slot, ...drawnJoints }
+);
+
+// -------------------------------------------------- the barrel and the rod
+
+const barrelMenu = await openOn('.cylinder-barrel');
+check(
+  'the barrel’s card is the barrel’s, under the part it is half of',
+  barrelMenu?.title === `Barrel ${part.a}${part.seal}` &&
+    barrelMenu?.subtitle === `Cylinder ${part.a}${part.b}`,
+  { title: barrelMenu?.title, subtitle: barrelMenu?.subtitle }
+);
+check(
+  'a member takes no third body: there is no Attach group at all',
+  barrelMenu?.groups.includes('ATTACH') === false &&
+    ['Link', 'Cylinder', 'Tracer Point', 'Force', 'Duplicate Link'].every(
+      (label) => rowNamed(barrelMenu, label) === undefined
+    ),
+  barrelMenu?.groups
+);
+check(
+  'it holds its own length and the part’s angle, like the bar it is',
+  rowNamed(barrelMenu, 'Fixed Length')?.off === false &&
+    rowNamed(barrelMenu, 'Fixed Angle')?.off === false,
+  barrelMenu?.rows.map((one) => one.label)
+);
+// The drive belongs to the joint that slides, and the member card no longer
+// offers a second door to it.
+check(
+  'and it offers no drive of its own',
+  rowNamed(barrelMenu, 'Driven Input') === undefined,
+  barrelMenu?.rows.map((one) => one.label)
+);
+check(
+  'its deletion is the cylinder’s, named as the cylinder',
+  ownDelete(barrelMenu)?.label === 'Delete Cylinder',
+  ownDelete(barrelMenu)?.label
+);
+
+const rodMenu = await openOn('.cylinder-rod');
+check(
+  'the rod’s card is the rod’s: the other half, the same part',
+  rodMenu?.title === `Rod ${part.seal}${part.b}` && rodMenu?.subtitle === barrelMenu?.subtitle,
+  { title: rodMenu?.title, subtitle: rodMenu?.subtitle }
+);
+// Decision S5: the angle is the whole part's, written on whichever member was
+// free and ticked on both. Pressing it on the barrel ticks it on the rod.
+await page.click('.cm-row:has(.cm-row__label:text-is("Fixed Angle"))');
+await page.waitForTimeout(600);
+const heldBarrel = await openOn('.cylinder-barrel');
+check(
+  'an angle fixed from one member reads fixed on the other',
+  rowNamed(heldBarrel, 'Fixed Angle')?.on === true,
+  rowNamed(heldBarrel, 'Fixed Angle')
+);
+
+// Duplicate on a link with three joints: the case that used to accept the
+// click and silently do nothing.
+await openMechanism(page, BASE + FOURBAR);
+const linksBefore = await page.$$eval('path[id]', (nodes) => nodes.map((one) => one.id));
+await openOn('[id="ACT"]');
+await page.click('.cm-row:has(.cm-row__label:text-is("Duplicate Link"))');
+await page.waitForTimeout(1000);
+const linksAfter = await page.$$eval('path[id]', (nodes) => nodes.map((one) => one.id));
+const copyMade = await page.evaluate((known) => {
+  const service = ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv;
+  const source = service.links.find((one) => one.id === 'ACT');
+  const copy = service.links.find((one) => !known.includes(one.id));
+  if (!copy || !source) return null;
+  const gap = Math.hypot(
+    copy.joints[0].x - source.joints[0].x,
+    copy.joints[0].y - source.joints[0].y
+  );
+  return {
+    joints: copy.joints.length,
+    sharesAJoint: copy.joints.some((one) => source.joints.some((other) => other.id === one.id)),
+    gap: Math.round(gap),
+    // The copy is set aside by a fixed share of the object scale, and the
+    // object scale follows the zoom the canvas settles at -- so the distance
+    // in model units is not a constant, and asserting one made this check
+    // depend on how much room the chrome happened to leave the canvas.
+    expectedGap: Math.round(0.9 * service.settingsService.objectScale),
+    mass: copy.mass,
+    sourceMass: source.mass,
+  };
+}, linksBefore);
+check(
+  'Duplicate copies a three-joint link, free-standing and clear of the original',
+  copyMade?.joints === 3 &&
+    copyMade?.sharesAJoint === false &&
+    Math.abs((copyMade?.gap ?? 0) - (copyMade?.expectedGap ?? -1)) <= 1,
+  copyMade
+);
+check(
+  'and copies the body with it, not just its outline',
+  copyMade?.mass === copyMade?.sourceMass,
+  copyMade
+);
+
+// -------------------------------------------------------- synthesis positions
+
+await openMechanism(page, BASE + POSITIONS);
+await page.click('text=Synthesis');
+await page.waitForTimeout(900);
+const synthCanvas = await openAt(1250, 830);
+check(
+  'Synthesis offers the positions and nothing else',
+  JSON.stringify(synthCanvas?.rows.map((one) => one.label)) ===
+    JSON.stringify(['Delete 3 Synthesis Positions']),
+  synthCanvas?.rows.map((one) => one.label)
+);
+
+// --------------------------------------------------- one grid, two machines
+
+/** Two four-bars side by side, each with its own drive. */
+const TWO_FOUR_BARS =
+  '?2P.Ay,1E8.K,0.1011.6A,A,0mv,0VU,0.0B,B,0e_,E6,0.0C,C,l1,WW,0.4D,D,qD,0Pk,0.6E,E,2Y_,0,0.' +
+  '0F,F,2Y_,GJ,0.0G,G,3Jt,Wc,0.4H,H,3aA,0,0..YRAB,AB,Fe,Fe,0ix,08i,c5cae9,A,B,,.' +
+  'YRBC,BC,Fe,Fe,32,NJ,303e9f,B,C,,.YRCD,CD,Fe,Fe,nd,3P,0d125a,C,D,,.' +
+  'AREF,EF,0,0,2Y_,8A,555555,E,F,,.ARFG,FG,0,0,2xQ,OS,555555,F,G,,.' +
+  'ARGH,GH,0,0,3S0,GJ,555555,G,H,,...N_L';
+
+await openMechanism(page, BASE + TWO_FOUR_BARS);
+const bothFine = await openOn('#joint_F');
+check(
+  'a part of a machine that runs offers the way into analysis',
+  bothFine?.cross === 'on',
+  bothFine
+);
+
+// Take the input off the second machine only.
+await openOn('#joint_E');
+await page.click('.cm-row:has(.cm-row__label:text-is("Driven Input"))');
+await page.waitForTimeout(900);
+const broken = await openOn('#joint_F');
+check('a part of a machine that cannot run does not', broken?.cross === 'off', broken);
+const stillFine = await openOn('#joint_C');
+check(
+  'while the machine beside it still does — the question is per part',
+  stillFine?.cross === 'on',
+  stillFine
+);
+
+// -------------------------------------------- a slider, and a load on a bar
+
+/** An inverted slider-crank carrying a force: a floating slider and an F1. */
+const SLIDER_AND_LOAD =
+  '?2P.Ay,1E8.5,0.1011.6A,A,0,0,0.0B,B,0,Fe,0.4C,C,ku,0,0.0D,D,0RF,Oj,0.1P,P,0,Fe,0,CD,C,D..' +
+  'YRAB,AB,Fe,Fe,0,7q,c5cae9,A,B,,.YRCD,CD,Fe,Fe,9q,CN,303e9f,C,D,,.YPBP,BP,0,0,0,0,,B,P,,..' +
+  '2F1,CD,F1,0RF,Oj,0RF,95,2SG..N_M';
+
+await openMechanism(page, BASE + SLIDER_AND_LOAD);
+const sliderPin = await openOn('#joint_B');
+check(
+  'a slider pin says it is one, and the choice shows Pin-in-slot',
+  /^Slider · /.test(sliderPin?.subtitle ?? '') &&
+    sliderPin?.choice?.cells.find((one) => one.chosen)?.label === 'Pin-in-slot',
+  sliderPin
+);
+check(
+  // Offered rather than hidden: the model has no rule against welding a slider
+  // pin, and the panel offers it, so the menu does too -- a slot welded to what
+  // rides it is a Slide, which the choice names Prismatic.
+  'and Prismatic is live on it, as the panel offers',
+  sliderPin?.choice?.cells.find((one) => one.label === 'Prismatic')?.off === false,
+  sliderPin?.choice
+);
+
+const forceTarget = await openOnForce('F1');
+check(
+  'a force menu names the frame it is in and offers the state, not a verb',
+  /frame$/.test(forceTarget?.subtitle ?? '') && !!rowNamed(forceTarget, 'Grid Frame'),
+  forceTarget
+);
+check(
+  'and reversing it is a verb, under Set',
+  rowNamed(forceTarget, 'Flip Force')?.off === false,
+  forceTarget?.groups
+);
+
+// The floating slider's carrier is deliberately not one of its `links`, so a
+// menu that counted links called this "one part meets it" while the force
+// solver was generating a reaction against two.
+await page.keyboard.press('Escape');
+await page.click('text=Force Analysis');
+await page.waitForTimeout(900);
+const sliderForce = await openOn('#joint_B');
+check(
+  'a slider pin is not told it has no force to draw',
+  rowNamed(sliderForce, 'Force Vectors')?.off === false,
+  rowNamed(sliderForce, 'Force Vectors')
+);
+
+check('nothing threw', errors.length === 0, errors.slice(0, 3));
+await browser.close();
+
+const failed = checks.filter(([, ok]) => !ok);
+console.log(`\n${checks.length - failed.length}/${checks.length} checks passed`);
+process.exit(failed.length ? 1 : 0);

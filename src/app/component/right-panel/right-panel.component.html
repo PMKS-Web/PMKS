@@ -1,135 +1,113 @@
 <div>
   <div
     [@openClose]="
-      getIsOpen() ? (getOpenTab() === 1 || getOpenTab() == 3 ? 'open' : 'openWide') : 'closed'
+      frameOpen()
+        ? getOpenTab() === 1 ||
+          getOpenTab() === 3 ||
+          getOpenTab() === 5 ||
+          getOpenTab() === 6 ||
+          getOpenTab() === 7
+          ? 'open'
+          : 'openWide'
+        : 'closed'
     "
     id="rightPanel"
+    data-canvas-inset="right"
+    [class.insisting]="attention"
+    [class.wide]="drawerWidthClass() === 'wide'"
   >
-    @if (getOpenTab() === 1) {
-      <div class="page1">
-        <app-settings-panel></app-settings-panel>
+    <!-- Pinned above whatever else the drawer is showing, rather than taking
+         the drawer to itself. A student is meant to be able to open Settings or
+         Export *while* following a step, and the drawer showing one page at a
+         time meant doing either put the tutorial away. -->
+    @if (tutorialShowing()) {
+      <!-- Leaves the same way the page below it does: held open by an open page,
+           it has to fade on its own; alone in the frame, it travels with the
+           frame and only has to stay in the document long enough to do it. -->
+      <div class="tutorialSlot" [@drawerCard]="getIsOpen() ? 'held' : 'sole'">
+        <app-tutorial-panel></app-tutorial-panel>
       </div>
     }
-    @if (getOpenTab() === 2) {
-      <div class="page2">
-        <app-equation-panel></app-equation-panel>
-      </div>
-    }
-    @if (getOpenTab() === 3) {
-      <div class="page3">
-        <div id="helpWrapper">
-          <panel-section>
-            <title-block>Help</title-block>
-            <div style="padding: 10px 0 10px 10px; width: calc(100% - 20px)">
-              <button-block icon="help_center" [click]="gotoHelpSite">Tutorial Videos</button-block>
-              <!--           <button-block icon='info' [click]='sendNotReady'>Restart Tutorial</button-block> -->
-              <subtitle-block>
-                PMKS+ is open source! Do you want to help us develop it?</subtitle-block
+    <!-- One box for whichever page is open, so the close button can be
+         positioned against *it* rather than against the frame. With the
+         tutorial pinned above, a button anchored to the frame landed on the
+         tutorial's own corner. -->
+    @if (getIsOpen()) {
+      <div
+        class="drawerPage"
+        [@drawerCard]="tutorialShowing() ? 'held' : 'sole'"
+        [class.page4]="getOpenTab() === 4"
+      >
+        @if (getOpenTab() === 5) {
+          <app-analysis-setup mode="kinematic"></app-analysis-setup>
+        }
+        @if (getOpenTab() === 6) {
+          <app-analysis-setup mode="force"></app-analysis-setup>
+        }
+        @if (getOpenTab() === 7) {
+          <app-export-panel></app-export-panel>
+        }
+        @if (getOpenTab() === 1) {
+          <app-settings-panel></app-settings-panel>
+        }
+        @if (getOpenTab() === 2) {
+          <app-equation-panel></app-equation-panel>
+        }
+        @if (getOpenTab() === 3) {
+          <app-help-panel></app-help-panel>
+        }
+        @if (getOpenTab() === 4) {
+          <div id="debugWrapper">
+            <panel-section>
+              <button-block icon="terminal" [click]="printActiveObject.bind(this)"
+                >Console Log Active Object</button-block
               >
-              <button-block customIcon="github" [click]="gotoGithub">Github Repo</button-block>
-            </div>
-          </panel-section>
-          <panel-section>
-            <title-block
-              description="Do you want to attach a file? Send us an email at gr-pmksplus@wpi.edu"
-            >
-              Send Feedback
-            </title-block>
-            <form [formGroup]="commentForm">
-              <mat-form-field class="max-width">
-                <mat-label>Leave a message</mat-label>
-                <textarea type="text" matInput formControlName="comment"></textarea>
-                @if (commentForm.controls['comment'].hasError('required')) {
-                  <mat-error> Message is required </mat-error>
-                }
-              </mat-form-field>
-              <mat-checkbox color="primary" formControlName="response"
-                >I would like a response</mat-checkbox
+              <button-block icon="terminal" [click]="printMechanism.bind(this)"
+                >Console Log Mechanism</button-block
               >
-              @if (commentForm.value.response) {
-                <mat-form-field class="max-width">
-                  <mat-label>Email</mat-label>
-                  <input
-                    type="email"
-                    matInput
-                    formControlName="email"
-                    [errorStateMatcher]="matcher"
-                    placeholder="Ex. pat@example.com"
-                  />
-                  @if (
-                    commentForm.controls['email'].hasError('email') &&
-                    !commentForm.controls['email'].hasError('required')
-                  ) {
-                    <mat-error> Invalid email address </mat-error>
-                  }
-                </mat-form-field>
-              }
-              <mat-checkbox color="primary" checked formControlName="diagnostics"
-                >Send browser and version data
-              </mat-checkbox>
-              <mat-checkbox color="primary" checked formControlName="project"
-                >Send a copy of the open project
-              </mat-checkbox>
-              <div style="padding: 10px 0 10px 10px; width: calc(100% - 20px)">
-                <button-block
-                  [disabled]="sendingEmail"
-                  icon="send"
-                  [click]="sendCommentEmail.bind(this)"
-                  >Send Message
-                </button-block>
-              </div>
-            </form>
-          </panel-section>
-        </div>
-      </div>
-    }
-    @if (getOpenTab() === 4) {
-      <div class="page4">
-        <div id="debugWrapper">
-          <panel-section>
-            <button-block icon="terminal" [click]="printActiveObject.bind(this)"
-              >Console Log Active Object</button-block
-            >
-            <button-block icon="terminal" [click]="printMechanism.bind(this)"
-              >Console Log Mechanism</button-block
-            >
-            <button-block icon="draw" [click]="redrawAllLinks.bind(this)">Redraw</button-block>
-            <button-block icon="quiz" [click]="runGeometryUnitTests.bind(this)"
-              >Run Intersection Unit Tests
-            </button-block>
-            <button-block icon="report" [click]="turnOnDebugger.bind(this)"
-              >Turn on Grid Debug Info</button-block
-            >
-            <app-linkage-table></app-linkage-table>
-            <li>GridState: {{ debugGetGridState() }}</li>
-            <li>LinkState: {{ debugGetLinkState() }}</li>
-            <li>JointState: {{ debugGetJointState() }}</li>
-            <li>ForceState: {{ debugGetForceState() }}</li>
-            <li>
-              AOS.objType: <b>{{ activeObjService.objType }}</b>
-            </li>
-            <li>
-              AOS.selectedJoint.id: <b>{{ activeObjService.selectedJoint?.id }}</b>
-            </li>
-            <li>
-              AOS.selectedLink.id: <b>{{ activeObjService.selectedLink?.id }}</b>
-            </li>
-            <li>
-              AOS.selectedForce.id: <b>{{ activeObjService.selectedForce?.id }}</b>
-            </li>
-            <li>
-              AOS.prevSelectedJoint.id: <b>{{ activeObjService.prevSelectedJoint?.id }}</b>
-            </li>
-            <li>
-              AOS.selectedForce.isStartSelected:
-              {{ activeObjService.selectedForce?.isStartSelected }}
-            </li>
-            <li>
-              AOS.selectedForce.isEndSelected: {{ activeObjService.selectedForce?.isEndSelected }}
-            </li>
-            <div style="height: 50px"></div>
-          </panel-section>
-        </div>
+              <button-block icon="draw" [click]="redrawAllLinks.bind(this)">Redraw</button-block>
+              <button-block icon="quiz" [click]="runGeometryUnitTests.bind(this)"
+                >Run Intersection Unit Tests
+              </button-block>
+              <button-block icon="report" [click]="turnOnDebugger.bind(this)"
+                >Turn on Grid Debug Information</button-block
+              >
+              <app-linkage-table></app-linkage-table>
+              <li>GridState: {{ debugGetGridState() }}</li>
+              <li>LinkState: {{ debugGetLinkState() }}</li>
+              <li>JointState: {{ debugGetJointState() }}</li>
+              <li>ForceState: {{ debugGetForceState() }}</li>
+              <li>
+                AOS.objType: <b>{{ activeObjService.objType }}</b>
+              </li>
+              <li>
+                AOS.selectedJoint.id: <b>{{ activeObjService.selectedJoint?.id }}</b>
+              </li>
+              <li>
+                AOS.selectedLink.id: <b>{{ activeObjService.selectedLink?.id }}</b>
+              </li>
+              <li>
+                AOS.selectedForce.id: <b>{{ activeObjService.selectedForce?.id }}</b>
+              </li>
+              <li>
+                AOS.prevSelectedJoint.id: <b>{{ activeObjService.prevSelectedJoint?.id }}</b>
+              </li>
+              <li>
+                AOS.selectedForce.isStartSelected:
+                {{ activeObjService.selectedForce?.isStartSelected }}
+              </li>
+              <li>
+                AOS.selectedForce.isEndSelected: {{ activeObjService.selectedForce?.isEndSelected }}
+              </li>
+              <div style="height: 50px"></div>
+            </panel-section>
+          </div>
+        }
+
+        <!-- Every drawer closes the same way, from the same corner. Last in the
+             page so it paints over the panel it sits on: it shares a line with
+             the title, and a title row drawn after it covered it up. -->
+        <close-button class="closeDrawer" tooltip="Close" (pressed)="close()"></close-button>
       </div>
     }
   </div>

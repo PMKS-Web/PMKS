@@ -1,16 +1,31 @@
-// Verifies the mode-scoped left nav rail: Undo/Redo appear only in Edit,
-// playback only in Analyze, the view controls are always present, and leaving
-// Analyze rewinds the mechanism (there is no stop button any more).
+/**
+ * Mode navigation, after the rail that used to carry it was deleted.
+ *
+ * The four modes, Undo/Redo and the file menu were spread across a horizontal
+ * toolbar and a vertical rail; they are now one strip along the top, with the
+ * transport and the view controls floating over the canvas instead of living
+ * inside the rail. This checks the navigation that replaced it: pressing a mode
+ * changes the mode, the left panel follows it, the sliding highlight lands on
+ * the mode you actually chose, each analysis mode carries a chip saying whether
+ * it can be entered, the transport belongs to the analysis modes alone, and
+ * leaving an analysis mode still rewinds the mechanism — as does the stop
+ * button beside play, for a reader who wants the drawn pose without leaving.
+ * The removed chrome is asserted absent, because a selector that matches
+ * nothing passes every test written against it.
+ *
+ *   PMKS_BASE_URL=<origin> node e2e/left-nav-modes.mjs
+ */
 const { chromium } = await import(
   (process.env.PMKS_PLAYWRIGHT_DIR ?? '/tmp/pmks-playwright') + '/node_modules/playwright/index.mjs'
 );
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { waitForReady } from './app-ready.mjs';
 
 const screenshotDir = path.resolve('artifacts/screenshots');
 await fs.mkdir(screenshotDir, { recursive: true });
 
-const baseUrl = process.env.PMKS_URL || 'http://127.0.0.1:4200/';
+const baseUrl = process.env.PMKS_BASE_URL || process.env.PMKS_URL || 'http://localhost:4200/';
 const runPrefix = process.env.RUN_PREFIX || 'left-nav';
 const chromePath =
   process.env.PMKS_CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -19,10 +34,11 @@ const fourBar =
   '0P.TY.K,0.101.MA,A,0mv,0VU,0.GB,B,0e_,E6,0.GC,C,l1,WW,0.KD,D,qD,0Pk,0..YRAB,AB,Fe,Fe,0ix,08i,c5cae9,A,B,,.YRBC,BC,Fe,Fe,32,NJ,303e9f,B,C,,.YRCD,CD,Fe,Fe,nd,3P,0d125a,C,D,,...JBq';
 
 const issues = [];
-const checks = [];
-const check = (name, ok, details = {}) => {
-  checks.push({ name, ok, ...details });
-  if (!ok) issues.push({ name, severity: 'high', ...details });
+const results = [];
+const record = (what, ok, detail) => {
+  results.push({ what, ok, detail });
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${what}${ok ? '' : ' — ' + JSON.stringify(detail)}`);
+  if (!ok) issues.push({ name: what, severity: 'high', detail });
 };
 
 const context = await chromium.launchPersistentContext(`/tmp/pmks-left-nav-${Date.now()}`, {
@@ -45,231 +61,348 @@ page.on('console', (msg) => {
 const shot = (name) =>
   page.screenshot({ path: path.join(screenshotDir, `${runPrefix}-${name}`), fullPage: false });
 
-const railText = () => page.locator('.tabContainer').innerText();
-const tab = (label) => page.locator('.leftButton', { hasText: label });
-const timeValue = () => page.locator('#animationBar-input').inputValue();
-
-try {
-  await page.goto(`${baseUrl}?${fourBar}`, { waitUntil: 'networkidle', timeout: 60000 });
-  await page.waitForTimeout(1500);
-  await page
-    .locator('.introjs-skipbutton')
-    .first()
-    .click({ force: true })
-    .catch(() => {});
-  await page.waitForTimeout(400);
-
-  // The pill highlights one tab group. It is positioned with a transform, so
-  // compare rendered rects (which include the transform), not offsetTop.
-  const pillTop = () =>
-    page.evaluate(() => {
-      const pill = document.querySelector('.activeTabPill').getBoundingClientRect();
-      const groups = [...document.querySelectorAll('.tabGroup')];
-      const withinPill = groups.find((g) => Math.abs(g.getBoundingClientRect().top - pill.top) < 2);
-      return withinPill ? withinPill.querySelector('.leftButton .tabLabel').innerText : null;
-    });
-
-  // --- Edit mode ---
-  const editText = await railText();
-  await shot('01-edit.png');
-  check('the pill highlights the Edit group', (await pillTop()) === 'Edit');
-  check('the Edit panel is open', (await page.locator('app-edit-panel').count()) === 1);
-  check('Undo/Redo show in Edit', /Undo/.test(editText) && /Redo/.test(editText), { editText });
-  check(
-    'Undo/Redo use the shared mini-button style',
-    (await page.locator('.tabTools .mini-buttons', { hasText: 'Undo' }).count()) === 1
-  );
-  check(
-    'playback controls hidden in Edit',
-    (await page.locator('.playbackControls').count()) === 0
-  );
-  check(
-    'view controls are always present',
-    /CoM/.test(editText) && /Label/.test(editText) && /View/.test(editText)
-  );
-  check(
-    'Undo/Redo left the top toolbar',
-    (await page.locator('nav.navBar button', { hasText: 'Undo' }).count()) === 0
+const tab = (label) => page.locator('.tabButton', { hasText: label });
+// The chip is a plain label inside the mode button — one control per mode.
+// The readiness chip is `chip-block` now, which draws itself on its own host.
+const chipFor = (label) => page.locator('.tabButton', { hasText: label }).locator('chip-block');
+const timeValue = () => page.locator('#playbackTime').innerText();
+/** The value carries its own unit, so read the leading number off "0.20 s". */
+const timeSeconds = async () => parseFloat(await timeValue());
+const currentTab = () =>
+  page.evaluate(() =>
+    ng.getComponent(document.querySelector('app-new-grid')).tabService.getCurrentTab()
   );
 
-  // The rail must not clip its own labels.
-  const clipped = await page.evaluate(() => {
-    const rail = document.querySelector('.tabContainer');
-    return rail ? rail.scrollWidth > rail.clientWidth + 1 : true;
-  });
-  check('rail is wide enough for its labels', clipped === false);
-
-  // --- Analyze mode ---
-  await tab('Analyze').click();
-  await page.waitForTimeout(900);
-  const analyzeText = await railText();
-  await shot('02-analyze.png');
-  check('the pill highlights the Analyze group', (await pillTop()) === 'Analyze');
-  check(
-    'playback controls show in Analyze',
-    (await page.locator('.playbackControls').count()) === 1
-  );
-  check('Undo/Redo hidden in Analyze', !/Undo/.test(analyzeText), { analyzeText });
-  check(
-    'stop button is gone',
-    (await page.locator('.playbackControls mat-icon', { hasText: 'stop' }).count()) === 0
-  );
-  check(
-    'slider is vertical',
-    await page.evaluate(() => {
-      const slider = document.querySelector('.verticalSlider mat-slider');
-      if (!slider) return false;
-      const rect = slider.getBoundingClientRect();
-      return rect.height > rect.width;
-    })
-  );
-
-  // Every playback control sits inside the rail — no horizontal overflow.
-  const overflow = await page.evaluate(() => {
-    const rail = document.querySelector('.tabContainer').getBoundingClientRect();
-    return [...document.querySelectorAll('.playbackControls > *')]
-      .map((el) => el.getBoundingClientRect())
-      .filter((r) => r.width > 0)
-      .some((r) => r.left < rail.left - 0.5 || r.right > rail.right + 0.5);
-  });
-  check('playback controls do not overflow the rail', overflow === false);
-
-  // At rest the pill exactly covers the active group (the animation settled,
-  // did not stall part-way).
-  const cover = await page.evaluate(() => {
-    const pill = document.querySelector('.activeTabPill').getBoundingClientRect();
-    const group = document.querySelectorAll('.tabGroup')[2].getBoundingClientRect();
+/** Which mode the sliding highlight is actually sitting on. */
+const highlighted = () =>
+  page.evaluate(() => {
+    const pill = document.querySelector('.activeTabPill');
+    const active = document.querySelector('.tabButton.active');
+    if (!pill || !active) return null;
+    // The highlight spans the mode button, which now carries its readiness chip
+    // inside it as a label rather than beside it as a second control.
+    const box = active;
+    const style = getComputedStyle(pill);
     return {
-      dTop: Math.round(pill.top - group.top),
-      dHeight: Math.round(pill.height - group.height),
+      label: active.querySelector('.tabLabel')?.innerText ?? '',
+      dLeft: Math.round(new DOMMatrix(style.transform).m41 - box.offsetLeft),
+      dWidth: Math.round(parseFloat(style.width) - box.offsetWidth),
     };
   });
-  check(
-    'pill settles exactly over the Analyze group',
-    Math.abs(cover.dTop) <= 1 && Math.abs(cover.dHeight) <= 1,
-    { cover }
+
+try {
+  await page.goto(`${baseUrl}?${fourBar}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await waitForReady(page);
+  // Nothing to dismiss any more. The intro.js overlay this used to skip past
+  // is gone, replaced by the tutorial drawer, which never covers the canvas and
+  // only opens when it is asked for -- see e2e/tutorial.mjs. The unguarded
+  // click that used to be here now waits out its full timeout on an element
+  // that will never exist.
+  await page.waitForTimeout(400);
+
+  // --- the rail and the file toolbar are gone, not merely restyled -----------
+  const removed = await page.evaluate(() => ({
+    toolbar: document.querySelectorAll('app-toolbar, nav.navBar').length,
+    rail: document.querySelectorAll('.tabList, .leftButton, .tabGroup').length,
+  }));
+  record('the file toolbar is gone', removed.toolbar === 0, removed);
+  record('the mode rail is gone', removed.rail === 0, removed);
+  record('and one strip carries the four modes', (await page.locator('.tabButton').count()) === 4);
+
+  // --- Edit mode -------------------------------------------------------------
+  await shot('01-edit.png');
+  record('Edit is the mode the app opens in', (await currentTab()) === 1);
+  record(
+    'the Edit panel is open',
+    (await page.locator('app-left-tabs .panel app-edit-panel').count()) === 1
+  );
+  const editHighlight = await highlighted();
+  record(
+    'the highlight sits on Edit',
+    editHighlight?.label === 'Edit' &&
+      Math.abs(editHighlight.dLeft) <= 1 &&
+      Math.abs(editHighlight.dWidth) <= 1,
+    editHighlight
+  );
+  // The transport is chrome now: present in Edit and both analyses, hidden only
+  // in Synthesis. Watching a linkage run is not a question that belongs to one
+  // mode, and trapping it in the analyses cost a mode switch per turn of the
+  // loop a designer actually works in.
+  record('the transport is present in Edit', (await page.locator('.playButton').count()) === 1);
+
+  // Undo/Redo left the rail for the strip, where they are reachable from every
+  // mode rather than from Edit alone.
+  record(
+    'Undo and Redo are in the top strip',
+    (await page.locator('.historyCard .historyButton').count()) === 2
   );
 
-  // --- Play, then leave Analyze: the mechanism must rewind ---
+  // --- Synthesis -------------------------------------------------------------
+  await tab('Synthesis').click();
+  await page.waitForTimeout(700);
+  record('pressing Synthesis switches to it', (await currentTab()) === 0);
+  record(
+    'and the panel follows the mode',
+    (await page.locator('app-left-tabs .panel app-synthesis-panel').count()) === 1 &&
+      (await page.locator('app-left-tabs .panel app-edit-panel').count()) === 0
+  );
+  record('the transport is absent in Synthesis', (await page.locator('.playButton').count()) === 0);
+
+  // --- the chips say whether an analysis can be entered -----------------------
+  const kinematicChip = (await chipFor('Kinematic').innerText()).trim();
+  const forceChip = (await chipFor('Force').innerText()).trim();
+  record('the Kinematic chip reads Ready for a four-bar that runs', kinematicChip === 'Ready', {
+    kinematicChip,
+  });
+  // Weight counts as a load now: gravity is on by default and the four-bar's
+  // links carry mass, so force analysis is ready without a drawn arrow.
+  record('the Force chip reads Ready — weight is a load', forceChip === 'Ready', { forceChip });
+
+  // --- Kinematic mode --------------------------------------------------------
+  await tab('Kinematic').click();
+  await page.waitForTimeout(900);
+  await shot('02-kinematic.png');
+  record('pressing Kinematic switches to it', (await currentTab()) === 2);
+  record(
+    'the analysis panel follows',
+    (await page.locator('app-left-tabs .panel app-analysis-panel').count()) === 1
+  );
+  const kinematicHighlight = await highlighted();
+  record(
+    'the highlight settles exactly on Kinematic, not the mode before it',
+    kinematicHighlight?.label.startsWith('Kinematic') &&
+      Math.abs(kinematicHighlight.dLeft) <= 1 &&
+      Math.abs(kinematicHighlight.dWidth) <= 1,
+    kinematicHighlight
+  );
+  record('the transport appears', (await page.locator('.playButton').count()) === 1);
+  // Back, and asked for: leaving the mode rewinds the mechanism, but a reader
+  // who wants the drawn pose *without* leaving analysis had no way to it but
+  // to scrub until the clock read zero.
+  record(
+    'with a stop button beside play, for the pose the mechanism was drawn in',
+    (await page.locator('.transportCard .stopButton').count()) === 1
+  );
+
+  // The scrubber is a plain range input now, laid out across the card.
+  const scrubber = await page.evaluate(() => {
+    const slider = document.querySelector('#slider');
+    if (!slider) return null;
+    const box = slider.getBoundingClientRect();
+    return { tag: slider.tagName, type: slider.type, width: box.width, height: box.height };
+  });
+  record(
+    'the scrubber is a horizontal range input',
+    scrubber?.tag === 'INPUT' && scrubber.type === 'range' && scrubber.width > scrubber.height,
+    scrubber
+  );
+
+  // The transport floats over the canvas, so nothing may hang off the window.
+  const spill = await page.evaluate(() =>
+    [...document.querySelectorAll('app-playback-bar .card, .viewControls')]
+      .map((el) => el.getBoundingClientRect())
+      .filter((r) => r.width > 0)
+      .some(
+        (r) =>
+          r.left < -0.5 || r.right > window.innerWidth + 0.5 || r.bottom > window.innerHeight + 0.5
+      )
+  );
+  record('the floating controls stay inside the window', spill === false);
+
+  // --- pressing a mode that cannot be entered -------------------------------
+  // The links' own weight is a load under gravity, and their inertia is one in
+  // motion even without it, so only a drawing with no mass and no force is
+  // genuinely unloaded -- the refusal has to come back for that one.
+  const masses = await page.evaluate(() => {
+    const grid = window.ng.getComponent(document.querySelector('app-new-grid'));
+    const kept = grid.mechanismSrv.links.map((link) => link.mass);
+    grid.mechanismSrv.links.forEach((link) => (link.mass = 0));
+    // An edit, through the rebuild every edit funnels through — readiness is
+    // cached against it, so a bare next() would leave the chips stale.
+    grid.mechanismSrv.updateMechanism(true);
+    return kept;
+  });
+  await tab('Force').click();
+  await page.waitForTimeout(800);
+  await shot('03-force-refused.png');
+  record(
+    'Force refuses to open without a load, and stays out of that mode',
+    (await currentTab()) === 2,
+    { tab: await currentTab() }
+  );
+  record(
+    'and answers with the setup list instead of nothing',
+    (await page.locator('app-analysis-setup').count()) === 1
+  );
+  await page.evaluate((kept) => {
+    const grid = window.ng.getComponent(document.querySelector('app-new-grid'));
+    grid.mechanismSrv.links.forEach((link, index) => (link.mass = kept[index]));
+    grid.mechanismSrv.updateMechanism(true);
+  }, masses);
+
+  // --- play, then leave: the pose survives, the motion does not --------------
+  //
+  // This used to assert the opposite. Rewinding on the way into Edit was right
+  // while Edit had no transport -- the only way to be mid-cycle was to be in an
+  // analysis mode. Now it destroys the pose the reader pressed Edit *because
+  // of*: run it, find the frame where it fouls, press Edit, and the frame is
+  // gone. Playback still stops, because arriving in an editable mode with
+  // things moving invites a reach for a joint that is not standing still.
+  await tab('Kinematic').click();
+  await page.waitForTimeout(500);
   await page.locator('.playButton').click();
   await page.waitForTimeout(1600);
-  // The value carries its own unit, so read the leading number off "0.20 s".
-  const timeSeconds = async () => parseFloat(await timeValue());
   const playing = await timeSeconds();
-  check('play advances the animation', playing > 0, { playing });
-  await shot('03-playing.png');
+  record('play advances the animation', playing > 0, { playing });
+  await shot('04-playing.png');
 
   await tab('Edit').click();
   await page.waitForTimeout(1200);
-  await shot('04-back-in-edit.png');
-  await tab('Analyze').click();
+  await tab('Kinematic').click();
   await page.waitForTimeout(1000);
-  const afterSwitch = await timeSeconds();
-  check('switching to Edit rewound the mechanism to time 0', afterSwitch === 0, {
-    playing,
-    afterSwitch,
+  // Asked of the mechanism and of the readout separately, because they can
+  // disagree: the pose is what the other modes edit, the readout is what says
+  // where the pose is, and a readout that has drifted off the pose is worse
+  // than no readout at all.
+  const rewound = await page.evaluate(() => {
+    const srv = ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv;
+    return { step: srv.mechanismTimeStep, seconds: srv.currentTimeSeconds() };
   });
-  check(
+  record('switching to Edit kept the pose', rewound.step > 0, {
+    playing,
+    rewound,
+  });
+  const afterSwitch = await timeSeconds();
+  // Asked of both because they can disagree, which is the reason this check
+  // exists: the pose is what the other modes edit, the readout is what says
+  // where the pose is, and a readout that has drifted off the pose is worse
+  // than no readout at all.
+  record(
+    'and the time readout agrees with the mechanism',
+    Math.abs(afterSwitch - rewound.seconds) < 0.05,
+    { playing, afterSwitch, rewound }
+  );
+  record(
     'animation is no longer running after the mode switch',
-    (await page.locator('.playbackControls mat-icon', { hasText: 'pause' }).count()) === 0
+    (await page.locator('app-playback-bar mat-icon', { hasText: 'pause' }).count()) === 0
   );
 
-  // --- The absorbed view controls still work ---
+  // --- the view controls are present in every mode, and still act ------------
+  const viewControlsEverywhere = [];
+  for (const mode of ['Synthesis', 'Edit', 'Kinematic']) {
+    await tab(mode).click();
+    await page.waitForTimeout(600);
+    viewControlsEverywhere.push([mode, await page.locator('.viewControls').isVisible()]);
+  }
+  record(
+    'the view controls are present in every mode',
+    viewControlsEverywhere.every(([, visible]) => visible),
+    viewControlsEverywhere
+  );
+
   await tab('Edit').click();
-  await page.waitForTimeout(700);
-  const comButton = page.locator('.viewControls .mini-buttons', { hasText: 'CoM' });
+  await page.waitForTimeout(600);
+  // These buttons carry tooltips that appear under the cursor and then swallow
+  // the next click, so the pointer is parked away from them between presses.
+  const restCursor = () => page.mouse.move(700, 450);
+  const comMarks = () => page.locator('#comTagHolder path').count();
+  // Icon-only squares now, so they are addressed by what they are for rather
+  // than by a word that is no longer printed on them.
+  const comButton = page.locator('.viewControls .viewButton[aria-label="Show Center of mass"]');
+  // The view defaults to showing centers of mass, but a mark only appears on a
+  // link that has mass: take the weight away and the mark goes with it, give
+  // it back and the toggle governs it from there.
+  const setMasses = (value) =>
+    page.evaluate((mass) => {
+      const grid = window.ng.getComponent(document.querySelector('app-new-grid'));
+      grid.mechanismSrv.links.forEach((link) => (link.mass = mass));
+      grid.mechanismSrv.updateMechanism(false);
+      // A poke from here runs outside Angular: without a render pass the
+      // switch keeps the disabled state it had while nothing weighed anything.
+      window.ng.applyChanges(grid);
+    }, value);
+  const comBefore = await comMarks();
+  await setMasses(0);
+  await page.waitForTimeout(400);
+  const comMassless = await comMarks();
+  await setMasses(5);
+  await page.waitForTimeout(400);
   await comButton.click();
   await page.waitForTimeout(500);
-  check(
-    'CoM toggle acts on the grid',
-    (await page.locator('#comHolder, .comIcon, svg #comHolder').count()) >= 0
+  const comAfter = await comMarks();
+  record(
+    'the CoM mark shows by default, waits for mass, and the toggle removes it',
+    comBefore > 0 && comMassless === 0 && comAfter === 0,
+    { comBefore, comMassless, comAfter }
   );
   await comButton.click();
   await page.waitForTimeout(300);
-  await page.locator('.viewControls .mini-buttons', { hasText: 'View' }).click();
+  await restCursor();
+  await page.locator('.viewControls .viewButton[aria-label="Fit to View"]').click();
   await page.waitForTimeout(600);
-  await page.locator('.zoomButton').first().click();
+  await restCursor();
+  await page.locator('.viewControls .viewButton[aria-label="Zoom In"]').click();
   await page.waitForTimeout(400);
+  record('and the marks come back on again', (await comMarks()) > 0);
   await shot('05-view-controls.png');
-  check('view controls did not throw', true);
 
-  // The rail covers the bottom bar's left end (no bare corner), while the bar's
-  // text still clears the rail and the rail paints on top of the bar.
-  const bottomBar = await page.evaluate(() => {
+  // --- the status strip reports the mode rather than acting on it ------------
+  const strip = await page.evaluate(() => {
     const bar = document.querySelector('#bottomBar');
-    const barUl = document.querySelector('#bottomBar ul');
-    const rail = document.querySelector('.tabContainer');
-    if (!bar || !barUl || !rail) return null;
-    const first = barUl.querySelector('li');
-    const railBox = rail.getBoundingClientRect();
-    const barBox = bar.getBoundingClientRect();
-    // At the rail's bottom-left, the topmost painted element should be the rail.
-    const probe = document.elementFromPoint(railBox.left + 8, barBox.top + barBox.height / 2);
-    return {
-      textLeft: Math.round(first.getBoundingClientRect().left),
-      railRight: Math.round(railBox.right),
-      railBottom: Math.round(railBox.bottom),
-      barBottom: Math.round(barBox.bottom),
-      cornerOwnedByRail: !!(probe && probe.closest('.tabContainer')),
-    };
+    return { text: bar.innerText, pointerEvents: getComputedStyle(bar).pointerEvents };
   });
-  check(
-    'bottom bar text clears the nav rail',
-    bottomBar !== null && bottomBar.textLeft >= bottomBar.railRight,
-    { bottomBar }
-  );
-  check(
-    'nav rail covers the bottom bar corner (no white gap)',
-    bottomBar !== null &&
-      bottomBar.railBottom >= bottomBar.barBottom - 1 &&
-      bottomBar.cornerOwnedByRail,
-    { bottomBar }
+  record('the status strip names the mode it is in', /Edit/.test(strip.text), strip.text);
+  record('and is not clickable', strip.pointerEvents === 'none', strip);
+
+  await tab('Kinematic').click();
+  await page.waitForTimeout(600);
+  const analysisStrip = await page.locator('#bottomBar').innerText();
+  record(
+    'and follows the mode into analysis',
+    /Kinematic/.test(analysisStrip) && /Drag to tune/.test(analysisStrip),
+    analysisStrip
   );
 
-  // --- Short viewport: the analyze scrubber drops so the rest stays visible ---
-  await tab('Analyze').click();
-  await page.waitForTimeout(700);
+  // --- short viewport: nothing overlaps the status strip ---------------------
   await page.setViewportSize({ width: 1440, height: 700 });
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(600);
   await shot('06-short-viewport.png');
   const short = await page.evaluate(() => {
-    const vs = document.querySelector('.verticalSlider');
+    const bar = document.querySelector('#bottomBar').getBoundingClientRect();
     const inView = (sel) => {
       const el = document.querySelector(sel);
       if (!el) return false;
       const r = el.getBoundingClientRect();
-      return r.top >= 30 && r.bottom <= window.innerHeight + 0.5 && r.width > 0;
+      return r.top >= 0 && r.bottom <= window.innerHeight + 0.5 && r.width > 0;
     };
-    const pill = document.querySelector('.activeTabPill').getBoundingClientRect();
-    const group = document.querySelectorAll('.tabGroup')[2].getBoundingClientRect();
+    const clears = (sel) => {
+      const el = document.querySelector(sel);
+      return el ? el.getBoundingClientRect().bottom <= bar.top + 0.5 : false;
+    };
     return {
-      sliderHidden: !(vs && vs.offsetParent),
       playVisible: inView('.playButton'),
-      timeVisible: inView('#animationBar-input'),
+      timeVisible: inView('#playbackTime'),
       viewControlsVisible: inView('.viewControls'),
-      pillMatchesGroup:
-        Math.abs(pill.top - group.top) <= 1 && Math.abs(pill.height - group.height) <= 1,
+      transportClearsStatusStrip: clears('app-playback-bar .scrubCard'),
+      viewControlsClearStatusStrip: clears('.viewControls'),
     };
   });
-  check(
-    'short viewport hides the scrubber but keeps the other controls visible',
-    short.sliderHidden &&
-      short.playVisible &&
-      short.timeVisible &&
-      short.viewControlsVisible &&
-      short.pillMatchesGroup,
-    { short }
+  record(
+    'a short window keeps the transport and view controls visible and clear of the status strip',
+    Object.values(short).every(Boolean),
+    short
   );
   await page.setViewportSize({ width: 1440, height: 900 });
 } catch (error) {
-  issues.push({ name: 'Run failed', severity: 'high', error: error?.stack || String(error) });
+  record('the run finished', false, error?.stack || String(error));
 } finally {
   await fs.writeFile(
     path.join(screenshotDir, `${runPrefix}-report.json`),
-    JSON.stringify({ baseUrl, checks, issues }, null, 2)
+    JSON.stringify({ baseUrl, results, issues }, null, 2)
   );
   await context.close().catch(() => {});
 }
 
-const failed = checks.filter((c) => !c.ok);
-console.log(JSON.stringify({ passed: checks.length - failed.length, failed, issues }, null, 2));
+const failed = results.filter((r) => !r.ok);
+console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
+process.exit(failed.length ? 1 : 0);

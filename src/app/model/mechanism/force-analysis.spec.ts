@@ -1,7 +1,7 @@
 import { Coord } from '../coord';
 import { Force } from '../force';
 import { PrisJoint, RevJoint } from '../joint';
-import { Piston, RealLink } from '../link';
+import { RealLink } from '../link';
 import { ColorService } from '../../services/color.service';
 import { SettingsService } from '../../services/settings.service';
 import { buildMechanism } from '../../../test-utils/verification/fixture';
@@ -10,6 +10,7 @@ import {
   teachingLabSliderCrankFixture,
 } from '../../../test-utils/verification/fixtures';
 import { ForceAnalysisFrame, ForceSolver } from './force-solver';
+import { MODEL_SCALE } from '../render-scale';
 import { Mechanism } from './mechanism';
 
 interface SingleBodyModel {
@@ -23,15 +24,19 @@ function initializeModels(): void {
   new SettingsService();
 }
 
+/**
+ * A 2 m bar pinned at one end, in the given unit system, drawn the way the app
+ * draws it: every coordinate MODEL_SCALE times the reader's number.
+ */
 function singleBody(unit: 'm' | 'cm' | 'in', welded = false): SingleBodyModel {
   initializeModels();
   const factors =
     unit === 'm'
-      ? { distance: 1, mass: 1, inertia: 1, force: 1 }
+      ? { distance: MODEL_SCALE, mass: 1, inertia: 1, force: 1 }
       : unit === 'cm'
-        ? { distance: 100, mass: 1000, inertia: 1 / 0.0001, force: 1 }
+        ? { distance: 100 * MODEL_SCALE, mass: 1000, inertia: 1 / 0.0001, force: 1 }
         : {
-            distance: 1 / 0.0254,
+            distance: MODEL_SCALE / 0.0254,
             mass: 1 / 0.45359237,
             inertia: 1 / (0.45359237 * 0.0254 * 0.0254),
             force: 1 / 4.4482216152605,
@@ -78,13 +83,7 @@ function expectOk(frame: ForceAnalysisFrame): void {
 describe('ForceSolver physical model', () => {
   it('balances one open rigid body under gravity and an applied load', () => {
     const model = singleBody('m');
-    const result = ForceSolver.analyzeFrame(
-      model.joints,
-      model.links,
-      'static',
-      true,
-      'm'
-    );
+    const result = ForceSolver.analyzeFrame(model.joints, model.links, 'static', true, 'm');
     expectOk(result);
     expect(result.jointReactions.get('A')![0]).toBeCloseTo(0, 10);
     expect(result.jointReactions.get('A')![1]).toBeCloseTo(29.6133, 4);
@@ -121,22 +120,13 @@ describe('ForceSolver physical model', () => {
       true,
       'm'
     );
-    const weldedResult = ForceSolver.analyzeFrame(
-      welded.joints,
-      welded.links,
-      'static',
-      true,
-      'm'
-    );
+    const weldedResult = ForceSolver.analyzeFrame(welded.joints, welded.links, 'static', true, 'm');
     expectOk(unsplitResult);
     expectOk(weldedResult);
     expect(weldedResult.jointReactions.get('A')).toEqual(
       expect.arrayContaining(unsplitResult.jointReactions.get('A')!)
     );
-    expect(weldedResult.inputEffort!.valueSI).toBeCloseTo(
-      unsplitResult.inputEffort!.valueSI,
-      12
-    );
+    expect(weldedResult.inputEffort!.valueSI).toBeCloseTo(unsplitResult.inputEffort!.valueSI, 12);
   });
 
   it('adds centripetal inertia dynamically and scales it with speed squared', () => {
@@ -150,10 +140,7 @@ describe('ForceSolver physical model', () => {
     expectOk(fast);
     expect(slow.jointReactions.get('A')![0]).toBeCloseTo(-2, 5);
     expect(fast.jointReactions.get('A')![0]).toBeCloseTo(-8, 5);
-    expect(fast.jointReactions.get('A')![0] / slow.jointReactions.get('A')![0]).toBeCloseTo(
-      4,
-      5
-    );
+    expect(fast.jointReactions.get('A')![0] / slow.jointReactions.get('A')![0]).toBeCloseTo(4, 5);
   });
 
   it('makes zero-speed dynamic equilibrium identical to static equilibrium', () => {
@@ -171,10 +158,7 @@ describe('ForceSolver physical model', () => {
       staticFrame.jointReactions.get('A')![1],
       10
     );
-    expect(dynamicFrame.inputEffort!.valueSI).toBeCloseTo(
-      staticFrame.inputEffort!.valueSI,
-      10
-    );
+    expect(dynamicFrame.inputEffort!.valueSI).toBeCloseTo(staticFrame.inputEffort!.valueSI, 10);
   });
 
   it('balances binary and three-body pin reactions by root-link side', () => {
@@ -190,15 +174,7 @@ describe('ForceSolver physical model', () => {
     b.links = [bj];
     c.links = [cj];
     j.links = [aj, bj, cj];
-    const load = new Force(
-      'F1',
-      cj,
-      new Coord(0.5, 1),
-      new Coord(0.5, 0),
-      false,
-      true,
-      10
-    );
+    const load = new Force('F1', cj, new Coord(0.5, 1), new Coord(0.5, 0), false, true, 10);
     cj.forces = [load];
 
     const result = ForceSolver.analyzeFrame([a, b, c, j], [aj, bj, cj], 'static', false, 'm');
@@ -217,30 +193,32 @@ describe('ForceSolver physical model', () => {
     initializeModels();
     const a = new RevJoint('A', 0, 0, false, true);
     const b = new RevJoint('B', 1, 1);
-    const c = new RevJoint('C', 2, 0);
+    // The rod's far end and the sliding joint are one joint now, so the rod
+    // reaches the slider directly and the slider's own mass is a point body
+    // the solver makes for itself -- keyed, like the block's rows before it,
+    // by the id the kinematics are handed under.
     const d = new PrisJoint('D', 2, 0, true, true);
     d.angle_rad = 0;
+    d.mass = 1;
     const ab = new RealLink('AB', [a, b], 1, 1);
-    const bc = new RealLink('BC', [b, c], 1, 1);
-    const piston = new Piston('CD', [c, d], 1);
+    const bd = new RealLink('BD', [b, d], 1, 1);
     a.links = [ab];
-    b.links = [ab, bc];
-    c.links = [bc, piston];
-    d.links = [piston];
+    b.links = [ab, bd];
+    d.links = [bd];
     const kinematics = {
       linkAccelerations: new Map([
         ['AB', [0, 0]],
-        ['BC', [0, 0]],
+        ['BD', [0, 0]],
       ]),
       linkAngularAccelerations: new Map([
         ['AB', 0],
-        ['BC', 0],
+        ['BD', 0],
       ]),
-      pistonAccelerations: new Map([['CD', [0, 0]]]),
+      pistonAccelerations: new Map([['D', [0, 0]]]),
     };
     const result = (ForceSolver.analyzeFrame as any)(
-      [a, b, c, d],
-      [ab, bc, piston],
+      [a, b, d],
+      [ab, bd],
       'dynamic',
       true,
       'm',
@@ -250,7 +228,7 @@ describe('ForceSolver physical model', () => {
     expectOk(result);
     expect(result.inputEffort!.kind).toBe('force');
     expect(Number.isFinite(result.inputEffort!.valueSI)).toBe(true);
-    expect(result.jointReactionsByLink.get('D')!.get('CD')!.every(Number.isFinite)).toBe(true);
+    expect(result.jointReactionsByLink.get('D')!.get('D')!.every(Number.isFinite)).toBe(true);
   });
 
   it('returns explicit diagnostics for invalid, underconstrained, and missing data', () => {
@@ -309,9 +287,10 @@ describe('ForceSolver physical model', () => {
       (frame, index) => frame.status === 'ok' && baseResult.frames[index]?.status === 'ok'
     );
     expect(comparableIndex).toBeGreaterThanOrEqual(0);
-    expect(
-      extensionResult.frames[comparableIndex].inputEffort!.valueSI
-    ).not.toBeCloseTo(baseResult.frames[comparableIndex].inputEffort!.valueSI, 6);
+    expect(extensionResult.frames[comparableIndex].inputEffort!.valueSI).not.toBeCloseTo(
+      baseResult.frames[comparableIndex].inputEffort!.valueSI,
+      6
+    );
   });
 });
 

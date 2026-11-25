@@ -1,0 +1,658 @@
+import '../model/joint';
+import { Coord } from '../model/coord';
+import { PrisJoint, RealJoint, RevJoint } from '../model/joint';
+import { RealLink } from '../model/link';
+import { cylinderAtSeal, cylindersIn } from '../model/cylinder';
+import { refuseJointMerge } from '../model/drop-target';
+import { createMechanismHarness, wireGraph } from '../../test-utils/mechanism-harness';
+import { SettingsService } from './settings.service';
+import { MODEL_SCALE } from '../model/render-scale';
+
+// Object scale is process-wide static state and every cylinder size question
+// reads it, so pin it for the file and put it back.
+let previousObjectScale: number;
+beforeEach(() => {
+  previousObjectScale = SettingsService.objectScale;
+  SettingsService._objectScale.next(1 * MODEL_SCALE);
+});
+afterEach(() => {
+  SettingsService._objectScale.next(previousObjectScale);
+});
+
+/**
+ * What survives an edit at a mount that is welded into something else.
+ *
+ * `cylinder-lifecycle.spec.ts` covers the part itself. This is about the
+ * *neighborhood*: a mount is an ordinary attachment point now, so it can hold
+ * a bracket of two bars, or two rams at once, and an edit that takes one thing
+ * away has to leave everything else standing exactly as it was.
+ */
+
+/** A ram from the origin, with `bars` bars hung on its rod mount and welded. */
+function ramWithBracket(bars: number, options: { weld?: boolean } = {}) {
+  const harness = createMechanismHarness();
+  harness.service.createCylinderFrom(new Coord(0, 0), new Coord(3 * MODEL_SCALE, 0));
+  const slider = harness.service.joints.find(
+    (joint): joint is PrisJoint => joint instanceof PrisJoint
+  )!;
+  const sealed = cylinderAtSeal(slider)!;
+  const mount = sealed.mountB as RealJoint;
+  const tips: RevJoint[] = [];
+  for (let index = 0; index < bars; index++) {
+    const tip = new RevJoint(
+      String.fromCharCode('W'.charCodeAt(0) + index),
+      mount.x + MODEL_SCALE,
+      mount.y + (index + 1) * MODEL_SCALE
+    );
+    tips.push(tip);
+    harness.service.joints.push(tip);
+    harness.service.links.push(new RealLink(mount.id + tip.id, [mount, tip]));
+  }
+  wireGraph(harness.service);
+  harness.active.updateSelectedObj(mount);
+  if (options.weld ?? true) harness.service.weldJoint();
+  return { ...harness, sealed, mount, tips };
+}
+
+/** The cylinders the drawing resolves to, from scratch. */
+const cylindersOf = (harness: { service: { joints: unknown } }) =>
+  cylindersIn((harness.service as { joints: never }).joints);
+
+describe('a mount welded to a bracket of more than one bar', () => {
+  it('keeps the bracket welded to itself when the ram is deleted', () => {
+    // The ram is one member of a compound of three. Taking it away leaves two
+    // bars that are still welded to each other, and the weld at the mount is
+    // still doing something -- so it has to survive. Unwelding the mount
+    // wholesale to get the ram's leaf out takes the bracket apart as well: a
+    // second, silent edit the reader did not ask for.
+    const h = ramWithBracket(2);
+    expect(h.mount.isWelded).toBe(true);
+
+    h.service.deleteCylinder(cylindersOf(h)[0]);
+
+    expect(cylindersOf(h)).toHaveLength(0);
+    const survivor = h.service.joints.find((joint) => joint.id === h.mount.id) as RealJoint;
+    expect(survivor, 'the mount itself').toBeDefined();
+    expect(survivor.isWelded, 'the bracket is still one body').toBe(true);
+    const compounds = h.service.links.filter(
+      (link): link is RealLink => link instanceof RealLink && link.subset.length > 0
+    );
+    expect(compounds).toHaveLength(1);
+    expect(compounds[0].subset.map((leaf) => leaf.id).sort()).toEqual(
+      h.tips.map((tip) => h.mount.id + tip.id).sort()
+    );
+  });
+
+  it('drops the weld when the ram was the only thing it held', () => {
+    // The other half of the same rule, and the reason it cannot simply be
+    // "keep the flag": one bar left is nothing to be rigid *with*.
+    const h = ramWithBracket(1);
+
+    h.service.deleteCylinder(cylindersOf(h)[0]);
+
+    const survivor = h.service.joints.find((joint) => joint.id === h.mount.id) as RealJoint;
+    expect(survivor.isWelded).toBe(false);
+    expect(h.service.links.map((link) => link.id)).toEqual([h.mount.id + h.tips[0].id]);
+  });
+
+  it('costs one undo entry', () => {
+    const h = ramWithBracket(2);
+    const before = h.saveCount();
+
+    h.service.deleteCylinder(cylindersOf(h)[0]);
+
+    expect(h.saveCount() - before).toBe(1);
+  });
+});
+
+describe('two rams sharing one welded mount', () => {
+  /**
+   * A second ram whose barrel mount *is* the first ram's rod mount, with a bar
+   * on it as well, and the whole lot welded into one body.
+   *
+   * Hung on the mount before the weld rather than after. Either order works
+   * now -- the guards that refused a ram on a welded joint came off in step 5,
+   * and `cylinder-weld-guards.spec.ts` is where that is asserted -- and this
+   * one is kept because it is the order a reader actually draws in.
+   */
+  function twoRams() {
+    const h = ramWithBracket(1, { weld: false });
+    const mount = h.mount;
+    h.service.createCylinderFrom(
+      new Coord(mount.x, mount.y),
+      new Coord(mount.x, mount.y + 3 * MODEL_SCALE),
+      undefined,
+      mount
+    );
+    h.active.updateSelectedObj(mount);
+    h.service.weldJoint();
+    return { ...h, mount };
+  }
+
+  it('leaves the other ram sealed and the weld intact when one is deleted', () => {
+    const h = twoRams();
+    expect(cylindersOf(h)).toHaveLength(2);
+    const doomed = cylindersOf(h).find((one) => one.mountB.id === h.sealed.mountB.id)!;
+    const before = h.saveCount();
+
+    h.service.deleteCylinder(doomed);
+
+    const left = cylindersOf(h);
+    expect(left, 'the other ram').toHaveLength(1);
+    expect(left[0].seal.isSealed).toBe(true);
+    // The seal is `rotates` on the sliding joint: it was the weld on the
+    // coincident pin a zero-length block paired it with.
+    expect(left[0].seal.rotates).toBe(false);
+    // The mount held three leaves -- two rams and a bar -- so what is left is
+    // still a body of two, rebuilt rather than dissolved.
+    const survivor = h.service.joints.find((joint) => joint.id === h.mount.id) as RealJoint;
+    expect(survivor.isWelded).toBe(true);
+    // One rebuild, one entry, however many parts the removal touched.
+    expect(h.saveCount() - before).toBe(1);
+  });
+});
+
+describe('three rams in a chain', () => {
+  /** Ram A's rod mount on ram B's barrel mount, and B's rod on C's barrel. */
+  function chain() {
+    const harness = createMechanismHarness();
+    const spans: { mountA: string; mountB: string }[] = [];
+    for (let index = 0; index < 3; index++) {
+      harness.service.createCylinderFrom(
+        new Coord(index * 3 * MODEL_SCALE, 0),
+        new Coord((index + 1) * 3 * MODEL_SCALE, 0)
+      );
+    }
+    // Drawn end to end; each pair is joined by merging the far mount of one
+    // onto the near mount of the next.
+    for (let index = 0; index < 2; index++) {
+      const rams = cylindersIn(harness.service.joints).sort(
+        (left, right) => left.mountA.x - right.mountA.x
+      );
+      harness.service.mergeJoints(
+        rams[index + 1].mountA as RealJoint,
+        rams[index].mountB as RealJoint
+      );
+      harness.service.finishStructuralEdit(true);
+    }
+    for (const ram of cylindersIn(harness.service.joints)) {
+      spans.push({ mountA: ram.mountA.id, mountB: ram.mountB.id });
+    }
+    return { ...harness, spans };
+  }
+
+  it('loses only the one deleted, in one entry', () => {
+    const h = chain();
+    expect(cylindersIn(h.service.joints)).toHaveLength(3);
+    const middle = cylindersIn(h.service.joints).sort(
+      (left, right) => left.mountA.x - right.mountA.x
+    )[1];
+    const outerIds = cylindersIn(h.service.joints)
+      .filter((ram) => ram.seal.id !== middle.seal.id)
+      .map((ram) => ram.seal.id)
+      .sort();
+    const before = h.saveCount();
+
+    h.service.deleteCylinder(middle);
+
+    const left = cylindersIn(h.service.joints);
+    expect(left).toHaveLength(2);
+    expect(left.map((ram) => ram.seal.id).sort()).toEqual(outerIds);
+    expect(left.every((ram) => ram.seal.isSealed && !ram.seal.rotates)).toBe(true);
+    expect(h.saveCount() - before).toBe(1);
+  });
+});
+
+describe('a slider and a weld at the same mount, in either order', () => {
+  function withBoth(order: 'slider-first' | 'weld-first') {
+    const harness = createMechanismHarness();
+    harness.service.createCylinderFrom(new Coord(0, 0), new Coord(3 * MODEL_SCALE, 0));
+    const slider = harness.service.joints.find(
+      (joint): joint is PrisJoint => joint instanceof PrisJoint
+    )!;
+    const sealed = cylinderAtSeal(slider)!;
+    const mount = sealed.mountB as RealJoint;
+    const tip = new RevJoint('W', mount.x + MODEL_SCALE, mount.y + MODEL_SCALE);
+    harness.service.joints.push(tip);
+    harness.service.links.push(new RealLink(mount.id + tip.id, [mount, tip]));
+    wireGraph(harness.service);
+    harness.active.updateSelectedObj(mount);
+    // Through the topology rather than through `toggleSlider`. The control no
+    // longer refuses a block on a mount, and `cylinder-weld-guards.spec.ts`
+    // asserts that; this file is about the shape underneath, and reaching it
+    // directly keeps the two questions apart.
+    const addBlock = () => {
+      (harness.service as unknown as { sliderTopology: () => void }).sliderTopology();
+      harness.service.finishStructuralEdit(true);
+    };
+    // Cutting a slot exchanges the joint for a `PrisJoint` of the same letter
+    // (Stage 1 of `docs/joint-type-and-cylinder-plan.md`), so the mount is
+    // fetched again between the two edits: the object this fixture started with
+    // is not in the drawing any more, and selecting it would weld a corpse.
+    const live = () => harness.service.joints.find((joint) => joint.id === mount.id) as RealJoint;
+    if (order === 'slider-first') {
+      addBlock();
+      harness.active.updateSelectedObj(live());
+      harness.service.weldJoint();
+    } else {
+      harness.service.weldJoint();
+      harness.active.updateSelectedObj(live());
+      addBlock();
+    }
+    return { ...harness, sealed, mount, tip };
+  }
+
+  for (const order of ['slider-first', 'weld-first'] as const) {
+    it(`recognizes the ram and the Slide, ${order}`, () => {
+      const h = withBoth(order);
+
+      // The ram survives both orders: a transient moment with two riders on
+      // one block is a shape the repair pass has an answer for, and it has to
+      // run before anything decides the sealed structure is gone.
+      const cylinders = cylindersOf(h);
+      expect(cylinders, 'the ram').toHaveLength(1);
+      expect(cylinders[0].seal.isSealed).toBe(true);
+      const survivor = h.service.joints.find((joint) => joint.id === h.mount.id) as RealJoint;
+      // Both bits, in either order: the compound the weld fused still stands
+      // (`isWelded`), and the joint is the Slide the reader asked for rather
+      // than a pin-in-slot (`rotates`). One joint carries both now, and the
+      // order the two edits arrived in must not decide which survives.
+      expect(survivor.isWelded, 'the mount is welded').toBe(true);
+      expect(survivor instanceof PrisJoint && !survivor.rotates, 'the mount is a Slide').toBe(true);
+      // And the external slider is there, on its own guide.
+      const blocks = h.service.joints.filter(
+        (joint): joint is PrisJoint => joint instanceof PrisJoint && !joint.isSealed
+      );
+      expect(blocks, 'the external block').toHaveLength(1);
+    });
+  }
+});
+
+describe('deleting one bar of a bracket the ram is welded into', () => {
+  it('leaves the ram welded to the bar that is left', () => {
+    // The deletion used to reach the compound by unwelding the mount, which
+    // takes the *whole* bracket apart to remove one leaf of it. What has to
+    // happen is the same thing that happens when any other joint of a compound
+    // goes: prune the leaf, keep every weld that still holds two things
+    // together.
+    const h = ramWithBracket(2);
+    const doomed = h.service.joints.find((joint) => joint.id === h.tips[0].id)!;
+    h.active.updateSelectedObj(doomed);
+
+    h.service.deleteJoint();
+
+    expect(h.service.joints.some((joint) => joint.id === h.tips[0].id)).toBe(false);
+    const cylinders = cylindersOf(h);
+    expect(cylinders, 'the ram').toHaveLength(1);
+    expect(cylinders[0].seal.isSealed).toBe(true);
+    const survivor = h.service.joints.find((joint) => joint.id === h.mount.id) as RealJoint;
+    expect(survivor.isWelded, 'still welded to the surviving bar').toBe(true);
+    const compounds = h.service.links.filter(
+      (link): link is RealLink => link instanceof RealLink && link.subset.length > 0
+    );
+    expect(compounds, 'one compound').toHaveLength(1);
+    expect(compounds[0].subset.map((leaf) => leaf.id)).toContain(h.mount.id + h.tips[1].id);
+  });
+
+  it('drops the weld when the bar it was holding was the last one', () => {
+    const h = ramWithBracket(1);
+    const doomed = h.service.joints.find((joint) => joint.id === h.tips[0].id)!;
+    h.active.updateSelectedObj(doomed);
+
+    h.service.deleteJoint();
+
+    const cylinders = cylindersOf(h);
+    expect(cylinders).toHaveLength(1);
+    const survivor = h.service.joints.find((joint) => joint.id === h.mount.id) as RealJoint;
+    expect(survivor.isWelded).toBe(false);
+  });
+});
+
+describe('attaching a new bar to a joint that is already welded', () => {
+  it('takes the newcomer into the compound rather than pinning it beside it', () => {
+    // A weld says every body meeting here is rigid. A bar attached afterwards
+    // meets here too, so it is part of that body -- and if it is not, the
+    // joint draws its weld marker while one of its links is still free to
+    // turn. The canvas used to finish a link creation at `updateMechanism`,
+    // which runs the sealed-cylinder normalizer without running the repair
+    // that answers this; the sequence below is what those gestures do now.
+    const h = ramWithBracket(2);
+    const newcomer = new RevJoint('Q', h.mount.x - MODEL_SCALE, h.mount.y);
+    h.service.joints.push(newcomer);
+    h.service.links.push(new RealLink(h.mount.id + newcomer.id, [h.mount, newcomer]));
+    h.service.finishStructuralEdit(true);
+
+    const compounds = h.service.links.filter(
+      (link): link is RealLink => link instanceof RealLink && link.subset.length > 0
+    );
+    expect(compounds, 'one body at the weld').toHaveLength(1);
+    expect(compounds[0].subset.map((leaf) => leaf.id)).toContain(h.mount.id + newcomer.id);
+    // And the ram is still a ram inside it.
+    expect(cylindersOf(h)).toHaveLength(1);
+  });
+});
+
+describe('a merge that could not put the weld back', () => {
+  it('is refused, and the weld is still there afterwards', () => {
+    // A driven joint cannot be welded, and the survivor of a merge inherits
+    // `input` from either half -- so this merge ends with a joint that cannot
+    // carry the weld it started with. The merge used to take the weld apart
+    // first and discover that afterwards, leaving the weld gone and the merge
+    // reported as having worked.
+    //
+    // Reachable because the driven-joint rule counts *bodies*: a loose driven
+    // joint brings none, so the count stays at two and the drop is allowed.
+    const h = ramWithBracket(2);
+    const loose = new RevJoint('Q', h.mount.x + 3 * MODEL_SCALE, h.mount.y);
+    loose.input = true;
+    h.service.joints.push(loose);
+    wireGraph(h.service);
+    const before = h.service.links.length;
+
+    const refusal = h.service.mergeJoints(loose, h.mount);
+
+    expect(refusal).toBe('weld-cannot-survive');
+    expect(h.mount.isWelded, 'the weld is untouched').toBe(true);
+    expect(h.service.links).toHaveLength(before);
+    expect(
+      h.service.joints.some((joint) => joint.id === 'Q'),
+      'nothing merged'
+    ).toBe(true);
+    expect(cylindersOf(h)).toHaveLength(1);
+  });
+
+  it('and an ordinary merge onto a welded joint still takes the newcomer in', () => {
+    // The other side of it: when the survivor *can* be welded, the merge goes
+    // through and the newcomer's bar joins the body, because a weld means
+    // every link meeting there is rigid.
+    const h = ramWithBracket(2);
+    const far = new RevJoint('Q', h.mount.x + 3 * MODEL_SCALE, h.mount.y);
+    const near = new RevJoint('R', h.mount.x + 2 * MODEL_SCALE, h.mount.y + MODEL_SCALE);
+    h.service.joints.push(far, near);
+    h.service.links.push(new RealLink('QR', [far, near]));
+    wireGraph(h.service);
+
+    const refusal = h.service.mergeJoints(far, h.mount);
+
+    expect(refusal).toBeUndefined();
+    const survivor = h.service.joints.find((joint) => joint.id === h.mount.id) as RealJoint;
+    expect(survivor.isWelded).toBe(true);
+    const compounds = h.service.links.filter(
+      (link): link is RealLink => link instanceof RealLink && link.subset.length > 0
+    );
+    expect(compounds).toHaveLength(1);
+    // The newcomer's bar is renamed by the merge -- Q became the mount -- and
+    // it is inside the body, not pinned beside it.
+    expect(compounds[0].subset.map((leaf) => leaf.id)).toContain(h.mount.id + 'R');
+    expect(cylindersOf(h)).toHaveLength(1);
+  });
+});
+
+describe('deleting a mount two rams share', () => {
+  /** Both rams hanging on one welded mount, as `twoRams` builds it. */
+  function shared(order: 'as-drawn' | 'reversed') {
+    const h = ramWithBracket(1, { weld: false });
+    const mount = h.mount;
+    h.service.createCylinderFrom(
+      new Coord(mount.x, mount.y),
+      new Coord(mount.x, mount.y + 3 * MODEL_SCALE),
+      undefined,
+      mount
+    );
+    h.active.updateSelectedObj(mount);
+    h.service.weldJoint();
+    // The resolver walks the joint list, so reversing it enumerates the two
+    // rams the other way round. Which one is found first must not decide which
+    // one survives.
+    if (order === 'reversed') h.service.joints = [...h.service.joints].reverse();
+    return { ...h, mount };
+  }
+
+  for (const order of ['as-drawn', 'reversed'] as const) {
+    it(`takes both parts, ${order}`, () => {
+      // Asking for the *first* cylinder at the joint and removing that one
+      // left the other's mount gone with its interior joints still in the
+      // drawing -- a part with nothing to hang on, and no way to select or
+      // delete it. The casualty set is every cylinder incident to the joint,
+      // worked out before anything is removed.
+      const h = shared(order);
+      const parts = cylindersOf(h);
+      expect(parts, 'two rams before').toHaveLength(2);
+      // Two interior joints per ram, where there were three: the seal and the
+      // pin the rod hangs on are one joint (Stage 1 of
+      // `docs/joint-type-and-cylinder-plan.md`).
+      const interiors = parts.flatMap((ram) => [ram.inner.id, ram.seal.id]);
+      const before = h.saveCount();
+
+      h.active.updateSelectedObj(h.mount);
+      h.service.deleteJoint();
+
+      expect(cylindersOf(h), 'no ram left').toHaveLength(0);
+      expect(
+        h.service.joints.filter((joint) => interiors.includes(joint.id)).map((j) => j.id),
+        'no orphaned interior joints'
+      ).toEqual([]);
+      expect(h.service.joints.some((joint) => joint.id === h.mount.id)).toBe(false);
+      // The bracket bar's far joint is not a casualty of either ram.
+      expect(h.service.joints.some((joint) => joint.id === h.tips[0].id)).toBe(true);
+      expect(h.saveCount() - before, 'one entry for the whole cascade').toBe(1);
+    });
+  }
+});
+
+describe('a slot whose carrier is deleted outright', () => {
+  it('is detached, not handed to a different body that shares its end pins', () => {
+    // Two separate bodies can hold the same pair of pins. Recovering a slot by
+    // looking for a live link that spans its two ends found the wrong one and
+    // produced a slot line that was geometrically identical and owned by a
+    // body the reader never cut it into -- which is what the force reactions
+    // read. Continuity has to be shown: the surviving body must actually hold
+    // the carrier's own members.
+    const h = createMechanismHarness();
+    const a = new RevJoint('A', 0, 0);
+    const b = new RevJoint('B', 10 * MODEL_SCALE, 0);
+    const c = new RevJoint('C', 0, 4 * MODEL_SCALE);
+    const d = new RevJoint('D', 10 * MODEL_SCALE, 4 * MODEL_SCALE);
+    // The slider is the joint its rider hangs on. It was a prismatic joint, a
+    // coincident pin and a zero-length block joining the two until Stage 1 of
+    // `docs/joint-type-and-cylinder-plan.md`.
+    const slider = new PrisJoint('S', 5 * MODEL_SCALE, 0);
+    const far = new RevJoint('R', 5 * MODEL_SCALE, 4 * MODEL_SCALE);
+    const carrier = new RealLink('ABC', [a, b, c]);
+    const other = new RealLink('ABD', [a, b, d]);
+    slider.slideOn(carrier, a, b);
+    h.service.joints = [a, b, c, d, slider, far];
+    h.service.links = [carrier, other, new RealLink('SR', [slider, far])];
+    wireGraph(h.service);
+
+    h.active.updateSelectedObj(carrier);
+    h.service.deleteLink();
+
+    expect(slider.isFloating, 'the slot has no carrier any more').toBe(false);
+    expect(
+      h.service.links.some((link) => link.id === 'ABD'),
+      'the other body is untouched'
+    ).toBe(true);
+  });
+});
+
+describe('unwelding a mount from a bracket', () => {
+  /** A ram welded to a bracket, with the compound listing one or the other first. */
+  function weldedToBracket(order: 'bracket-first' | 'barrel-first') {
+    const harness = createMechanismHarness();
+    harness.service.createCylinderFrom(new Coord(0, 0), new Coord(3 * MODEL_SCALE, 0));
+    const slider = harness.service.joints.find(
+      (joint): joint is PrisJoint => joint instanceof PrisJoint
+    )!;
+    const sealed = cylinderAtSeal(slider)!;
+    const mount = sealed.mountA as RealJoint;
+    const tip = new RevJoint('W', mount.x - MODEL_SCALE, mount.y + MODEL_SCALE);
+    harness.service.joints.push(tip);
+    harness.service.links.push(new RealLink(mount.id + tip.id, [mount, tip]));
+    wireGraph(harness.service);
+    harness.active.updateSelectedObj(mount);
+    harness.service.weldJoint();
+
+    // Which member the compound happens to list first is not a fact about the
+    // mechanism, and nothing may depend on it.
+    const compound = harness.service.links.find(
+      (link): link is RealLink => link instanceof RealLink && link.subset.length > 0
+    )!;
+    const bracketFirst = compound.subset[0].id === mount.id + tip.id;
+    if ((order === 'bracket-first') !== bracketFirst) compound.subset.reverse();
+    return { ...harness, sealed, mount, tip };
+  }
+
+  for (const order of ['bracket-first', 'barrel-first'] as const) {
+    it(`gives the bore back to the barrel, ${order}`, () => {
+      // Recovering a rebuilt carrier by taking the first surviving member's
+      // body handed the bore to whichever leaf the subset listed first. A
+      // bracket cannot define a bore -- its two joints are not the barrel's --
+      // so the slider was detached and the ram lost its bore, on nothing but
+      // the order of an array.
+      const h = weldedToBracket(order);
+      expect(cylindersOf(h)).toHaveLength(1);
+
+      h.service.unWeldJoint(h.mount);
+
+      const left = cylindersOf(h);
+      expect(left, 'the ram survives the unweld').toHaveLength(1);
+      expect(left[0].seal.isFloating, 'and keeps its bore').toBe(true);
+      expect(left[0].seal.isSealed).toBe(true);
+      // The bore is cut into the barrel, which is a top-level bar again.
+      expect(left[0].seal.carrier!.id).toBe(h.sealed.barrel.id);
+      expect(h.mount.isWelded).toBe(false);
+    });
+  }
+});
+
+describe('two rams that share one mount', () => {
+  /** A's rod mount is B's barrel mount, the way a boom meets a stick. */
+  function chained() {
+    const harness = createMechanismHarness();
+    harness.service.createCylinderFrom(new Coord(0, 0), new Coord(3 * MODEL_SCALE, 0));
+    const first = cylindersIn(harness.service.joints)[0];
+    const shared = first.mountB as RealJoint;
+    harness.service.createCylinderFrom(
+      new Coord(shared.x, shared.y),
+      new Coord(shared.x + 3 * MODEL_SCALE, shared.y + MODEL_SCALE),
+      undefined,
+      shared
+    );
+    const rams = cylindersIn(harness.service.joints);
+    const second = rams.find((ram) => ram.mountA.id === shared.id)!;
+    const other = rams.find((ram) => ram.seal.id !== second.seal.id)!;
+    return { ...harness, shared, second, other };
+  }
+
+  for (const reversed of [false, true]) {
+    it(`refuses folding either of them, cylinders enumerated ${reversed ? 'backwards' : 'forwards'}`, () => {
+      // The shared mount belongs to two rams, and asking for *the* cylinder at
+      // a joint found a different one at each end -- so "is this a cylinder
+      // folding onto itself" compared two different rams, said no, and let a
+      // merge through that collapsed one of them.
+      const h = chained();
+      const cylinders = cylindersIn(h.service.joints);
+      const facts = reversed ? [...cylinders].reverse() : cylinders;
+
+      for (const ram of cylinders) {
+        expect(
+          refuseJointMerge(ram.mountA, ram.mountB, facts),
+          `folding the ram at ${ram.seal.id}`
+        ).toBe('own-cylinder');
+        expect(refuseJointMerge(ram.mountB, ram.mountA, facts), 'and the other way').toBe(
+          'own-cylinder'
+        );
+      }
+    });
+  }
+
+  it('and the merge itself is refused, leaving both rams standing', () => {
+    const h = chained();
+    const opposite = h.second.mountB as RealJoint;
+    const links = h.service.links.length;
+
+    expect(h.service.mergeJoints(h.shared, opposite)).toBe('own-cylinder');
+    expect(h.service.mergeJoints(opposite, h.shared)).toBe('own-cylinder');
+
+    const left = cylindersIn(h.service.joints);
+    expect(left, 'both rams').toHaveLength(2);
+    expect(left.every((ram) => ram.seal.isSealed && !ram.seal.rotates)).toBe(true);
+    expect(h.service.links).toHaveLength(links);
+  });
+});
+
+describe('deleting a body that holds a ram and a bracket at once', () => {
+  it('takes the whole body, not just the ram', () => {
+    // The reader picked this body and pressed Delete. Stopping at the ram left
+    // the bracket standing on the grid -- half of the thing they asked to
+    // remove, and no obvious way to tell what had happened.
+    const h = ramWithBracket(2);
+    const compound = h.service.links.find(
+      (link): link is RealLink => link instanceof RealLink && link.subset.length > 0
+    )!;
+    h.active.updateSelectedObj(compound);
+    const before = h.saveCount();
+
+    h.service.deleteLink();
+
+    expect(cylindersOf(h), 'the ram is gone').toHaveLength(0);
+    expect(
+      h.service.links.map((link) => link.id),
+      'and so is the bracket'
+    ).toEqual([]);
+    expect(h.saveCount() - before, 'one entry for the whole body').toBe(1);
+  });
+
+  it('and still means only the ram when the ram is the whole body', () => {
+    // A cylinder standing on its own is selected as its own barrel or rod, and
+    // Delete there has always meant the part. Nothing about that changes.
+    const h = ramWithBracket(0);
+    const barrel = h.service.links.find((link) => link.id === h.sealed.barrel.id)!;
+    h.active.updateSelectedObj(barrel);
+
+    h.service.deleteLink();
+
+    expect(cylindersOf(h)).toHaveLength(0);
+    expect(h.service.links).toHaveLength(0);
+  });
+});
+
+describe('a body that survives losing a leaf', () => {
+  it('keeps the color it was drawn in', () => {
+    // Rebuilt from its surviving leaves, a compound took the first one's fill
+    // -- so removing a ram from a bracket repainted the bracket, and where the
+    // surviving leaf had no color of its own the whole body went to the
+    // placeholder gray. The body did not change; its paint must not either.
+    const h = ramWithBracket(2);
+    const compound = h.service.links.find(
+      (link): link is RealLink => link instanceof RealLink && link.subset.length > 0
+    )!;
+    compound.fill = '#123456';
+
+    h.service.deleteCylinder(cylindersOf(h)[0]);
+
+    const survivor = h.service.links.find(
+      (link): link is RealLink => link instanceof RealLink && link.subset.length > 0
+    );
+    expect(survivor, 'the bracket is still one body').toBeDefined();
+    expect(survivor!.fill, 'in the color it was').toBe('#123456');
+  });
+
+  it('and a leaf that comes back out on its own keeps its own', () => {
+    // The other half: an unweld is not a body surviving, it is a body ending,
+    // and each bar that comes out of it is itself again.
+    const h = ramWithBracket(1);
+    const bracketId = h.mount.id + h.tips[0].id;
+    const leaf = h.service.links
+      .find((link): link is RealLink => link instanceof RealLink && link.subset.length > 0)!
+      .subset.find((member) => member.id === bracketId) as RealLink;
+    leaf.fill = '#abcdef';
+
+    h.service.unWeldJoint(h.mount);
+
+    const back = h.service.links.find((link) => link.id === bracketId) as RealLink;
+    expect(back, 'the bracket is a bar again').toBeDefined();
+    expect(back.fill).toBe('#abcdef');
+  });
+});

@@ -1,0 +1,144 @@
+# Drawing styles and object sizing
+
+Settings has one **Drawing Style** choice, using the same radio block as Length Units:
+
+- **Standard:** filled colored bodies and prominent joint symbols.
+- **Fine:** slimmer filled bodies and smaller coordinated symbols.
+- **Schematic:** joint connections and outlined slider symbols. Welded compounds,
+  cylinder members, forces, synthesis previews, and start-pose ghosts use the same presentation.
+
+## Schematic symbols
+
+- **Lines have a fixed model width** (0.06 of drawing scale), and the barrel is 1.5 times heavier
+  than the rod, so its two members read as two bodies even in one color. All zoom together.
+- **A plate of three or more joints is traced round its outside**, the same convex hull its filled
+  body is drawn around in the other styles (`linkSkeletonPath`). Joined in joint order, a rectangle
+  came out as a bow tie. Its inside takes a click, so it is shaded at 12% in its own color; a bar
+  is an open line with no inside, so the same fill paints nothing on it.
+- **A link drawn as a disc is its rim and its spokes**: the circle about its ground pin through its
+  outermost joint, and a line from the pin to each other joint. Whether it is a disc at all is
+  `RealLink.discCenter`, the one question Standard's filled disc asks too, so the two styles cannot
+  disagree. The rim runs through the pin centers, as a plate's outline does, rather than past them
+  as Standard's does. Without the spokes the pivot was a loose pin in a ring, and a ring looks the
+  same at every angle. It is shaded like a plate, and its band runs round the rim and the spokes.
+- **A part inside a welded body is picked by its line first, then by its shaded inside**
+  (`GridUtilsService.pickLinkAt`), so a bar lying across a plate or a disc is still picked by its
+  line, and a click in the middle of a disc picks the disc rather than the whole body.
+- **Every joint is cream inside a proportional ink outline**: pins, slides (the bar a Prismatic joint
+  wears) and welds alike. The weld cross is drawn a little wider than a pin (1.15 pin radii, by
+  `schematicPlusPath`), with arms broad enough to show the cream.
+- **A rider is drawn above its block**, as the filled rider is in the other styles. The slider
+  layer draws a rider's line at the rider's depth in `slotStack`, and the link layer leaves it out
+  (`drawnBySlotStack`). A carrier stays under the block that slides on it.
+- **A cylinder is two lines that slide on each other**: mount A to the seal S (the barrel) and S
+  to mount B (the rod), meeting at S's slide mark. There is no head, bore or rod outline. Each line
+  keeps its member's color, selection and 12px invisible pointer target. The seal is grabbed within
+  an ordinary slider block of its mark (`sealBlock`), not along the whole head it has in Standard,
+  which reached far down a long barrel's line.
+- **What drives the machine is black.** A driven slider's block is filled with ink, as a driven
+  pin's motor is, and a driven cylinder gets an ordinary slider block at its seal. Two white heads
+  on the block (`schematicDriveHeads`) say which way it sets off, the leading one larger. Outlined
+  like every other block, a driven slider was far quieter than a driven pin, when both are what
+  make the machine move.
+- **A picked bar keeps its own color**, so a new color shows the moment it is chosen. The amber of
+  a selection is a band drawn under the line (`#selectionHaloHolder`, `model/selection-halo.ts`),
+  and the line's color is bound as an inline style so the state classes cannot replace it. An inert
+  part's gray is `!important` and still wins.
+- **A cylinder being drawn is the part it will become:** its two lines, the seal's mark and a pin at
+  each end, where the click will put them (`model/cylinder-preview.ts`).
+
+## Picking a whole body or a part of one
+
+A welded compound selects as a whole on its first click and as the part under the pointer on the
+next. The two never look alike:
+
+| | Whole body | One part of it |
+| --- | --- | --- |
+| Standard, Fine | Amber edge round the body; its parts' seams dashed inside it | Amber edge round the part, over a dashed amber edge round the whole body |
+| Schematic | Solid amber band under every line of the body | Solid band under the part, over a dashed band along the rest of the body |
+- **The start ghost is the schematic too:** each body's line in its own color, a cylinder as its two
+  lines, and pins drawn as pins, at 40% (60% under the pointer).
+
+There is no manual size field, size preset row, separate Lines switch, or Auto-size button.
+The style is a local view preference, remembered between visits. Existing Lines preferences migrate
+into Schematic. Opening a mechanism or using Undo/Redo does not change the style; choosing a style
+adds no undo entry and runs no analysis.
+
+## Zoom behavior
+
+Structural marks have fixed model proportions. The camera alone
+changes their screen size, with no pixel floor or ceiling for pins, ground marks, sliders, link
+widths, forces or CoM glyphs. A far zoom-in makes symbols large; no view operation changes their
+proportions.
+
+Names are the one exception. They scale with the zoom too, but hold between 11 and 16 px on
+screen (`MIN_LABEL_PX` and `MAX_LABEL_PX` in `canvas-labels.service.ts`): below 11 px nobody can
+read them, and above 16 px a small drawing's names outgrow its bars. Each body's name is drawn
+smaller when it would not fit between the pins, down to 11 px; a name that still does not fit sits
+beside its body.
+
+Names use a semibold sans-serif, in black at full opacity, on every body. The palette is painted
+light enough for that: the two navies are drawn a step lighter than they are stored (`paintOf` in
+`joint-colors.ts`), so URLs and the picker keep the stored values. Joint names choose an open
+sector from their connections at the authored pose, then follow those connections during playback.
+
+A body's name is placed once per edit, against everything on the drawing: other names and joint
+letters, pins, CoM marks, slider blocks, cylinder heads, ground and input glyphs, rails and force
+arrows. It sits wholly on its body or wholly beside it, never across the edge. A bar's name always
+runs along the bar, in every style, and a steep name always reads bottom to top
+(`uprightAngle`). Where a name lies across a rail, or in Schematic across a body's line, the line
+is cut for it (the `labelGaps` mask), the way a drawing breaks a line around a dimension.
+Long compound names follow a narrow member's axis and use the largest interval between its
+pins to keep the name clear of intermediate joints. Link names use plain ink without a contrasting
+outline.
+
+Forces remain Standard's size in every style (`SettingsService.forceScale`), with Schematic's
+application point at 0.8 width. Invisible pointer targets retain their screen minimums: 9px for
+joints, 12px for link bands and CoM grabs, and 20px for force handles. Selection affordances,
+dimension chips, grid spacing and axis readings remain camera/UI aids.
+
+`SettingsService.drawingScale` is presentation only. It combines the document's legacy scale
+and the selected style, without publishing to `OBJECT_SCALE`. No view operation
+changes document coordinates, geometric tolerances, stroke, constraints, or solver fingerprints.
+Fit to view now moves the camera only; it never silently rewrites a legacy document's scale.
+Before the very first part is created, the initial geometry scale is still established from the
+empty viewport so new parts start with sensible clearances.
+
+## Cylinder lengths, history and exports
+
+The document's legacy object scale and appended preserved cylinder scale continue to decode and
+serialize exactly as before. They remain the physical sizing/tolerance inputs. Unit conversion
+converts them with the other lengths. In particular, a cylinder's head length along its axis always
+uses physical clearance, even for older URLs whose preserved scale is zero. Its visual width can
+change without moving the mouth, head ends, or mounting joints.
+
+Typed Barrel Length, Rod Length, Starts at, available stroke, mass properties, forces, and solved
+motion survive style changes and zoom. Undo/Redo still addresses the user's edits. Explicit length
+edits retain their existing validation and constraint behavior.
+
+`link-artwork.ts` builds display copies at the style's width and caches their rigid placement across
+animation frames. It does not overwrite a link's document outline or CAD loops. Thus CAD exports
+remain independent of style and zoom. A held start-pose ghost takes its own geometry snapshot so
+changing its style cannot accidentally pick up an unreachable edited pose.
+
+## Verification
+
+Visual checks: [proportional zoom](images/object-sizing/zoom-film.png),
+[long compound ID](images/object-sizing/compound-label.png), and
+[locomotive joint I through a revolution](images/object-sizing/locomotive-film.png).
+
+- `e2e/drawing-styles.mjs`: all symbol types, style and zoom filmstrips, welded cylinder playback,
+  unchanged document/CAD data, local preference persistence, and narrow Settings layouts.
+- `e2e/bug-fixes-2.mjs`: types barrel and rod lengths in ordinary and welded cylinders; exercises
+  styles, zoom, Undo/Redo, units, and saved URLs against authored geometry and solved samples.
+- Model tests cover proportional scaling, display-copy isolation, animated compound placement,
+  legacy head lengths, and held ghosts.
+
+## Design references
+
+[AutoCAD point styles](https://help.autodesk.com/cloudhelp/2026/ENU/AutoCAD-LT/files/GUID-48AD2AE9-1EDE-4BF1-B3FA-F5B15225189E.htm)
+distinguish screen-relative marks from absolute geometry.
+[Rhino curve display](https://docs.mcneel.com/rhino/8/help/en-us/options/view_display_mode_curves.htm)
+and [Onshape display modes](https://cad.onshape.com/help/Content/View/shaded_unshaded__and_translucent.htm)
+provide presentation controls separately from dimensions. PMKS groups coordinated presentation into
+three styles instead of asking readers to manage several independent size and appearance controls.

@@ -12,7 +12,6 @@ describe('InputComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      declarations: [InputComponent],
       imports: [
         ReactiveFormsModule,
         MatFormFieldModule,
@@ -20,6 +19,7 @@ describe('InputComponent', () => {
         MatInputModule,
         MatTooltipModule,
         NoopAnimationsModule,
+        InputComponent,
       ],
     }).compileComponents();
 
@@ -35,6 +35,16 @@ describe('InputComponent', () => {
     expect(fixture.nativeElement.querySelector('.input-unit')?.textContent.trim()).toBe('kg·cm²');
     expect(fixture.nativeElement.querySelector('.customInputForm').classList).toContain('has-unit');
     expect(fixture.componentInstance.formGroup.value.value).toBe(1);
+  });
+
+  it('passes mixed-value copy and a field identity to the native input', () => {
+    fixture.componentRef.setInput('placeholder', 'Mixed');
+    fixture.componentRef.setInput('dataField', 'mass');
+    fixture.detectChanges();
+
+    const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+    expect(input.placeholder).toBe('Mixed');
+    expect(input.dataset['field']).toBe('mass');
   });
 
   it('keeps the compact field when no unit is supplied', () => {

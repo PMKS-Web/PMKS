@@ -1,72 +1,110 @@
+import { NumberDragDirective } from '../../../directives/number-drag.directive';
 import {
+  booleanAttribute,
   Component,
   Input,
-  OnInit,
-  OnChanges,
-  Output,
-  EventEmitter,
   ChangeDetectionStrategy,
+  input,
+  output,
 } from '@angular/core';
-import { FormGroup } from '@angular/forms';
+import { FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { MatIcon } from '@angular/material/icon';
+import { MatTooltip } from '@angular/material/tooltip';
+import { MatFormField } from '@angular/material/form-field';
+import { MatInput } from '@angular/material/input';
+import { FieldOverlay } from '../field-overlay';
+import { selectAll } from '../select-all';
+
+let nextInputId = 0;
 
 @Component({
   selector: 'dual-input-block',
   templateUrl: './dual-input.component.html',
   styleUrls: ['./dual-input.component.scss'],
   changeDetection: ChangeDetectionStrategy.Eager,
-  standalone: false,
+  imports: [
+    NumberDragDirective,
+    MatIcon,
+    MatTooltip,
+    FormsModule,
+    ReactiveFormsModule,
+    MatFormField,
+    MatInput,
+  ],
 })
 export class DualInputComponent {
-  @Input() tooltip!: string;
-  @Input() unit!: string;
-  @Input() formControl1!: string;
-  @Input() label1: string = 'X';
-  @Input() label2: string = 'Y';
-  @Input() formControl2!: string;
-  @Input() formGroup!: FormGroup;
-  @Input() formSubGroup: string | undefined;
-  @Input() disabled: boolean = false;
-  @Output() field1Entry: EventEmitter<number> = new EventEmitter();
-  @Output() field2Entry: EventEmitter<number> = new EventEmitter();
-  @Input() emitterOutputID: number = -2;
+  /**
+   * A click selects the whole value — including a second click on a field
+   * that already has focus, which `select()` alone loses to the caret the
+   * browser places afterwards (`BLOCKS/select-all.ts`).
+   */
+  protected readonly selectAll = selectAll;
 
-  isField1MouseOver: boolean = false;
-  isField1Focused: boolean = false;
-  showField1Overlay: boolean = false;
-  lastShowField1Overlay: boolean = false;
+  protected readonly labelId = `pmks-dual-input-label-${nextInputId++}`;
 
-  isField2MouseOver: boolean = false;
-  isField2Focused: boolean = false;
-  showField2Overlay: boolean = false;
-  lastShowField2Overlay: boolean = false;
-
-  updateOverlay() {
-    if (this.disabled) {
-      this.showField1Overlay = false;
-      this.showField2Overlay = false;
-      return;
-    }
-
-    this.showField1Overlay = this.isField1MouseOver || this.isField1Focused;
-    if (this.lastShowField1Overlay != this.showField1Overlay) {
-      if (this.showField1Overlay) {
-        this.field1Entry.emit(this.emitterOutputID);
-      } else {
-        this.field1Entry.emit(-2);
-      }
-    }
-    this.lastShowField1Overlay = this.showField1Overlay;
-
-    this.showField2Overlay = this.isField2MouseOver || this.isField2Focused;
-    if (this.lastShowField2Overlay != this.showField2Overlay) {
-      if (this.showField2Overlay) {
-        this.field2Entry.emit(this.emitterOutputID);
-      } else {
-        this.field2Entry.emit(-2);
-      }
-    }
-    this.lastShowField2Overlay = this.showField2Overlay;
+  /** Speak the quantity, including where the compact caption is only a glyph. */
+  protected fieldName(label: string): string {
+    const names: Record<string, string> = {
+      L: 'Length',
+      D: 'Distance',
+      M: 'Magnitude',
+      '⊾': 'Angle',
+    };
+    return names[label] ?? label;
   }
 
-  constructor() {}
+  readonly tooltip = input.required<string>();
+  readonly formControl1 = input.required<string>();
+  readonly label1 = input<string>('X');
+  readonly label2 = input<string>('Y');
+  readonly formControl2 = input.required<string>();
+  readonly formGroup = input.required<FormGroup>();
+  /** Optional mixed-value copy and test hooks for bulk-edit forms. */
+  readonly placeholder1 = input<string>('');
+  readonly placeholder2 = input<string>('');
+  readonly dataField1 = input<string>();
+  readonly dataField2 = input<string>();
+  @Input() formSubGroup: string | undefined;
+  /**
+   * Drop the label/help header row: for a pair whose caption is provided by
+   * the row above it (the mass panel's Center of Mass row owns the frame
+   * picker, so the pair beneath carries only the fields).
+   */
+  readonly noHeader = input<boolean, unknown>(false, { transform: booleanAttribute });
+
+  readonly disabled = input<boolean>(false);
+  readonly field1Entry = output<number>();
+  readonly field2Entry = output<number>();
+  readonly emitterOutputID = input<number>(-2);
+
+  /**
+   * One per field, shared with the other three field blocks.
+   *
+   * This block used to mutate four booleans straight from the template and
+   * emit only on a change -- the bug `FieldOverlay` describes, where a
+   * dimension the canvas dropped on a committed edit never came back because
+   * pointing at the same field again was a no-change.
+   */
+  private readonly overlays = [
+    new FieldOverlay<number>(
+      (value) => this.field1Entry.emit(value),
+      () => this.emitterOutputID(),
+      () => -2,
+      () => !this.disabled()
+    ),
+    new FieldOverlay<number>(
+      (value) => this.field2Entry.emit(value),
+      () => this.emitterOutputID(),
+      () => -2,
+      () => !this.disabled()
+    ),
+  ];
+
+  protected hover(field: 1 | 2, over: boolean): void {
+    this.overlays[field - 1].hover(over);
+  }
+
+  protected focus(field: 1 | 2, focused: boolean): void {
+    this.overlays[field - 1].focus(focused);
+  }
 }

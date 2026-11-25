@@ -1,0 +1,609 @@
+@use 'src/app/component/left-tabs/left-tabs.vars' as nav;
+// The CAD Export dialog. Four folded sections between a pair of preset cards
+// and a footer that says what is about to come down -- the arrangement the
+// brief argues for in docs/cad-export-design.md, and the designer drew.
+//
+// A plain component stylesheet rather than a theme mixin, as this component has
+// always been: the indigo below is the app's own primary, written out because
+// the dialog is the only thing wearing it here and a mixin would put its rules
+// in the global sheet for one overlay.
+$primary: var(--brand);
+$primary-mid: var(--brand-mid);
+$primary-dark: var(--brand-dark);
+$primary-tint: var(--brand-tint);
+$primary-wash: var(--brand-wash);
+$primary-pale: var(--brand-pale);
+$rule: var(--border-rule);
+
+.drawingExport {
+  display: flex;
+  flex-direction: column;
+  max-height: inherit;
+  color: var(--text-strong);
+
+  .titleRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px 4px 24px;
+
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 500;
+      line-height: 32px;
+      letter-spacing: 0.0125em;
+    }
+  }
+
+  .subtitle {
+    margin: 0;
+    padding: 0 24px 12px;
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+
+  // Settled, not an alert: this is the scope of the feature.
+  .scopeNote {
+    display: flex;
+    gap: 10px;
+    margin: 0 0 16px;
+    padding: 10px 12px;
+    border-radius: 5px;
+    background: $primary-wash;
+    color: var(--text-secondary);
+
+    mat-icon {
+      flex: 0 0 auto;
+      color: $primary;
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+    }
+
+    p {
+      margin: 0;
+      font-size: 12px;
+      line-height: 17px;
+    }
+  }
+
+  .presetHead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 6px;
+
+    .presetTitle {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+  }
+
+  .linkButton {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    color: $primary;
+    cursor: pointer;
+  }
+
+  // Cards rather than a segmented control: the line of description is what
+  // makes the choice answerable without opening anything.
+  .presetCards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .presetCard {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1 1 190px;
+    min-width: 0;
+    padding: 10px 12px;
+    box-sizing: border-box;
+    border: 1.5px solid rgba(0, 0, 0, 0.12);
+    border-radius: 6px;
+    background: var(--surface);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &.on {
+      border-color: $primary;
+      background: $primary-tint;
+    }
+
+    .presetName {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13.5px;
+      font-weight: 500;
+      color: var(--text-primary);
+
+      mat-icon {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+        color: $primary;
+      }
+    }
+
+    .presetNote {
+      font-size: 11.5px;
+      line-height: 15px;
+      color: var(--text-secondary);
+    }
+  }
+
+  .customBanner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 100%;
+    padding: 8px 10px;
+    box-sizing: border-box;
+    border: 1.5px solid $primary;
+    border-radius: 6px;
+    background: $primary-tint;
+    color: $primary-dark;
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
+
+    .customName {
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .customNote {
+      font-size: 12px;
+      color: $primary;
+    }
+  }
+
+  .sections {
+    margin: 16px -24px 0;
+    border-top: 1px solid $rule;
+  }
+
+  // Each header carries its own answers, so the reader can confirm the whole
+  // stack without opening any of it.
+  .sectionHead {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 11px 24px;
+    border: 0;
+    border-bottom: 1px solid $rule;
+    background: var(--surface);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--surface-hover);
+    }
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      color: var(--text-tertiary);
+      transition: transform 0.15s ease-in-out;
+
+      &.open {
+        transform: rotate(90deg);
+      }
+    }
+
+    .sectionName {
+      flex: 0 0 auto;
+      display: block;
+      padding: 0;
+      font-size: 14px;
+      color: var(--text-primary);
+    }
+
+    .sectionSummary {
+      flex: 1 1 auto;
+      min-width: 0;
+      text-align: right;
+      font-size: 12px;
+      color: var(--text-tertiary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  .sectionBody {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 14px 24px 16px;
+    border-bottom: 1px solid $rule;
+    background: var(--surface-subtle);
+
+    &.tight {
+      gap: 0;
+      padding: 10px 24px 14px;
+    }
+  }
+
+  .group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+
+    + .group {
+      padding-top: 12px;
+      border-top: 1px solid $rule;
+    }
+  }
+
+  .groupName {
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+
+  .field,
+  .subField {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .subField {
+    padding-left: 28px;
+  }
+
+  .fieldName {
+    flex: 0 0 auto;
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+
+  .field .fieldName {
+    flex-basis: 92px;
+  }
+
+  .fieldNote {
+    font-size: 12px;
+    color: var(--text-tertiary);
+  }
+
+  .textInput {
+    flex: 1 1 140px;
+    min-width: 0;
+    height: 32px;
+    padding: 0 8px;
+    border: 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.42);
+    border-radius: 4px 4px 0 0;
+    background: var(--surface-field);
+    box-sizing: border-box;
+    font: inherit;
+    font-size: 14px;
+    color: var(--text-primary);
+
+    // Wide enough for a derived pin diameter, which is not a round number:
+    // 62px clipped the last digit of "0.067".
+    &.narrow {
+      flex: 0 0 76px;
+      height: 28px;
+    }
+  }
+
+  // The pick-one controls are `segmented-block`, which brings its own look.
+
+  .radioRow {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 4px 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .radio {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    margin-top: 1px;
+    border: 2px solid rgba(0, 0, 0, 0.54);
+    border-radius: 50%;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+
+    &.on {
+      border-color: $primary;
+      background: $primary;
+
+      &::after {
+        content: '';
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--surface);
+      }
+    }
+  }
+
+  .radioLabel {
+    font-size: 14px;
+    color: var(--text-primary);
+  }
+
+  .checkRow {
+    display: flex;
+    border-radius: 4px;
+
+    &.blocked {
+      background: var(--surface-subtle);
+      cursor: help;
+    }
+
+    > button {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      width: 100%;
+      padding: 5px 4px;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+
+      &:disabled {
+        cursor: default;
+        // Out of the way, so the hover lands on the row that carries the
+        // reason rather than on a button that cannot receive it.
+        pointer-events: none;
+      }
+    }
+  }
+
+  // `padding` and `gap` are stated rather than left at nothing, and so are the
+  // two below. `analysis-setup.component.scss` used to put a bare `.check`
+  // carrying `padding-top: 10px` into the global stylesheet, which pushed this
+  // tick five pixels down its own box; that sheet is scoped now, so nothing is
+  // reaching in today. The declarations stay because 39 of the 43 component
+  // stylesheets are still emitted globally, and `.check`, `.checkText` and
+  // `.sectionName` are exactly the kind of name a second panel picks. A
+  // component rule wins wherever it declares a property and nowhere else, so
+  // declaring them is what keeps this box the size it looks.
+  .check {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+    padding: 0;
+    gap: 0;
+    border: 2px solid rgba(0, 0, 0, 0.54);
+    border-radius: 2px;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    background: var(--surface-sunken);
+    color: var(--text-on-accent);
+
+    // Sized to the 14px the two borders leave inside an 18px box, not to the
+    // box: a 15px glyph is a pixel too wide for it, and flex answers that by
+    // shrinking the element while the drawing keeps its width -- so the tick
+    // came out clipped down its right-hand edge and sitting off center.
+    mat-icon {
+      flex: 0 0 auto;
+      font-size: 14px;
+      width: 14px;
+      height: 14px;
+      line-height: 14px;
+      visibility: hidden;
+    }
+
+    &.on {
+      border-color: $primary;
+      background: $primary;
+
+      mat-icon {
+        visibility: visible;
+      }
+    }
+
+    &.off {
+      border-color: rgba(0, 0, 0, 0.2);
+      background: var(--surface-sunken);
+    }
+
+    &.on.off {
+      background: $primary-pale;
+    }
+  }
+
+  .checkText {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin: 0;
+  }
+
+  .checkName {
+    font-size: 14px;
+    color: var(--text-primary);
+  }
+
+  .blocked .checkName {
+    color: var(--text-muted);
+  }
+
+  .checkNote {
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--text-tertiary);
+  }
+
+  .spacer {
+    flex: 1 1 auto;
+  }
+
+  // The layer's name in CAD, so what is ticked here can be matched to what
+  // shows up there.
+  .cadName {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  // Against the button, because it answers a question asked at the moment of
+  // pressing it -- and a right-hand rail would lose it on the phone.
+  .footerStrip {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 24px;
+    background: var(--surface-sunken);
+  }
+
+  .preview {
+    flex: 0 0 auto;
+    width: 120px;
+    height: 90px;
+    border: 1px solid var(--border-divider);
+    border-radius: 4px;
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  .previewStroke {
+    fill: none;
+    stroke: $primary;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+  }
+
+  .previewHole {
+    fill: var(--surface);
+    stroke: var(--canvas-ink);
+    stroke-width: 1.2;
+  }
+
+  .previewEmpty {
+    fill: none;
+    stroke: var(--border-divider);
+    stroke-width: 3;
+    stroke-dasharray: 8 8;
+  }
+
+  .footerText {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .liveSummary {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .deliveryLine {
+    font-size: 12px;
+    color: var(--text-tertiary);
+  }
+
+  // Amber rather than red: the export will work, the part will not.
+  .warningLine {
+    display: flex;
+    align-items: flex-start;
+    gap: 5px;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--warning-text);
+
+    mat-icon {
+      flex: 0 0 auto;
+      font-size: 15px;
+      width: 15px;
+      height: 15px;
+      line-height: 15px;
+    }
+  }
+
+  [mat-dialog-content] {
+    padding: 0 24px;
+    overflow-y: auto;
+  }
+
+  [mat-dialog-actions] {
+    min-height: 52px;
+    padding: 8px 16px;
+    border-top: 1px solid $rule;
+    margin: 0;
+  }
+
+  // On a phone the sections are what make this survive: the cards stack, the
+  // summaries keep their ellipsis, and nothing scrolls sideways.
+  @media (max-width: nav.$phone-max-width) {
+    .titleRow,
+    .subtitle,
+    [mat-dialog-content] {
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+
+    .sections {
+      margin-left: -16px;
+      margin-right: -16px;
+    }
+
+    .sectionHead,
+    .sectionBody {
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+
+    .footerStrip {
+      padding: 10px 16px;
+      gap: 10px;
+    }
+
+    .preview {
+      width: 84px;
+      height: 63px;
+
+      svg {
+        width: 84px;
+        height: 63px;
+      }
+    }
+
+    .presetCard {
+      flex-basis: 100%;
+    }
+  }
+}

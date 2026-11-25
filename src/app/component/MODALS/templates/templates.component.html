@@ -1,76 +1,256 @@
-<div class='dialog_root' id='templates'>
-  <div class='dialog-header'>
-    <h1>Linkage Library (Example Linkages)</h1>
-    <button mat-icon-button mat-dialog-close>
-      <mat-icon>close</mat-icon>
-    </button>
-  </div>
-
-  <div mat-dialog-content id='remove_top_padding'>
-    <div class='linkage-grid'>
-
-      <panel-section (click)='openLinkage("4-Bar")'>
-        <title-block>Four Bar Linkage</title-block>
-        <img src='assets/gifs/fourbar.gif' alt='Fourbar Image' />
-        <img class='static' src='assets/gifs/fourbag.jpg' alt='Fourbar Image' />
-        <button mat-flat-button color='primary'>Open</button>
-      </panel-section>
-
-      <panel-section (click)='openLinkage("Watt_I")'>
-        <title-block>Watt's Linkage</title-block>
-        <img src='assets/gifs/watt.gif' alt='Watt I Linkage' />
-        <img class='static' src='assets/gifs/watt.jpg' alt='Watt I Linkage' />
-        <button mat-flat-button color='primary'>Open</button>
-      </panel-section>
-
-      <panel-section (click)='openLinkage("Watt_II")'>
-        <title-block>Watt's Linkage II Linkage</title-block>
-        <img src='assets/gifs/watt2.gif' alt='Watt II Linkage' />
-        <img class='static' src='assets/gifs/watt2.jpg' alt='Watt II Linkage' />
-        <button mat-flat-button color='primary'>Open</button>
-      </panel-section>
-
-      <panel-section (click)='openLinkage("Stephenson_III")'>
-        <title-block>Stephenson III Linkage</title-block>
-        <img src='assets/gifs/steph3.gif' alt='Stephenson III Linkage' />
-        <img class='static' src='assets/gifs/steph3.jpg' alt='Stephenson III Linkage' />
-        <button mat-flat-button color='primary'>Open</button>
-      </panel-section>
-
-      <panel-section (click)='openLinkage("Slider_Crank")'>
-        <title-block>Slider Crank</title-block>
-        <img src='assets/gifs/slider.gif' alt='Slider Crank Linkage' />
-        <img class='static' src='assets/gifs/slider.jpg' alt='Slider Crank Linkage' />
-        <button mat-flat-button color='primary'>Open</button>
-      </panel-section>
-
-      <!--      <panel-section (click)='openLinkage("Force")'>-->
-      <!--        <title-block>Four Bar Linkage with Force</title-block>-->
-      <!--        <img src='assets/gifs/fourbar.gif' alt='Fourbar Image' />-->
-      <!--        <button mat-flat-button color='primary'>Open</button>-->
-      <!--      </panel-section>-->
-
+<div class="dialog_root" id="templates" [class.phone]="viewport.isPhone()">
+  <!-- Hidden rather than taken down while the form is up, so the way back
+       finds the section, the search and the scroll exactly as they were, and
+       the button that opened the form is still there to take the focus. -->
+  <div class="browseView" [hidden]="view !== 'browse'">
+    <!-- Title, search and categories stay put while the cards scroll: at
+         forty-odd mechanisms the way to another section has to stay on screen. -->
+    <div class="titleRow">
+      <h1>Mechanism Library</h1>
+      <span class="titleSpacer"></span>
+      @if (!viewport.isPhone()) {
+        <ng-container *ngTemplateOutlet="searchBox"></ng-container>
+      }
+      <close-button label="Close the library" (pressed)="close()"></close-button>
     </div>
+
+    @if (viewport.isPhone()) {
+      <div class="phoneTools">
+        <ng-container *ngTemplateOutlet="searchBox"></ng-container>
+        <button
+          class="categoryButton"
+          type="button"
+          aria-haspopup="dialog"
+          [attr.aria-expanded]="categorySheetOpen"
+          (click)="openCategorySheet()"
+        >
+          <mat-icon class="lead" aria-hidden="true">filter_list</mat-icon>
+          <span class="categoryLabel">Category</span>
+          <span class="categoryValue">{{ categoryName }}</span>
+          <span class="chipCount">{{ categoryCount }}</span>
+          <mat-icon aria-hidden="true">expand_more</mat-icon>
+        </button>
+      </div>
+    }
+
+    <div class="split">
+      @if (!viewport.isPhone()) {
+        <!-- A rail rather than a row of chips: ten sections wrapped onto a
+             second line, and the next one would have made a third. -->
+        <nav class="rail" aria-label="Filter by category">
+          <div class="railLabel">Categories</div>
+          <div class="railList">
+            @for (chip of chips; track chip.id) {
+              <ng-container
+                *ngTemplateOutlet="categoryRow; context: { $implicit: chip, sheet: false }"
+              ></ng-container>
+            }
+          </div>
+          <!-- Pinned to the foot of the rail, so it is on screen whatever is
+               chosen or scrolled. -->
+          <div class="suggestCard">
+            <div class="suggestTop">
+              <span class="suggestIcon" aria-hidden="true"><mat-icon>lightbulb</mat-icon></span>
+              <div>
+                <div class="suggestTitle">Missing one?</div>
+                <div class="suggestSub">Suggest it for the library, with credit if you want.</div>
+              </div>
+            </div>
+            <button class="btnOutlined wide" type="button" (click)="suggest()">
+              <mat-icon aria-hidden="true">add_circle</mat-icon>Suggest a Mechanism
+            </button>
+          </div>
+        </nav>
+      }
+
+      <div class="libraryBody">
+        @for (group of groups; track group.id) {
+          <h2 class="sectionHeading">{{ group.name }}</h2>
+
+          <div class="templateGrid">
+            @for (card of group.cards; track card.id) {
+              <!-- The card is the hit area and the Open button is the control: a
+                   button inside a button is invalid, so the press is taken here
+                   and the button below is what a keyboard reaches. -->
+              <app-template-card
+                [card]="card"
+                [attr.data-template]="card.id"
+                (click)="openLinkage(card.id)"
+              >
+                <div class="cardActions">
+                  <button mat-flat-button color="primary" [attr.aria-label]="'Open ' + card.name">
+                    Open
+                  </button>
+                </div>
+              </app-template-card>
+            }
+          </div>
+        }
+
+        @if (shown > 0) {
+          <!-- After the last card in every filter: where to send the one that
+               is missing. -->
+          <div class="endLine">
+            <button class="btnText" type="button" (click)="suggest(category)">
+              <mat-icon aria-hidden="true">add_circle</mat-icon>
+              {{ category === 'all' ? 'Suggest a Mechanism' : 'Suggest one that belongs here' }}
+            </button>
+          </div>
+        } @else {
+          <div class="emptyState">
+            @if (category === 'all') {
+              <p>Nothing in the library matches “{{ query }}”.</p>
+            } @else {
+              <p>Nothing in {{ categoryName }} matches “{{ query }}”.</p>
+            }
+            <div class="emptyActions">
+              <button mat-flat-button color="primary" (click)="showEverything()">Show All</button>
+              <button class="btnOutlined" type="button" (click)="suggest(category, query)">
+                <mat-icon aria-hidden="true">add_circle</mat-icon>Suggest a Mechanism
+              </button>
+            </div>
+            <span class="emptyNote">Can’t find a mechanism? Suggest one.</span>
+          </div>
+        }
+      </div>
+    </div>
+
+    @if (viewport.isPhone() && categorySheetOpen) {
+      <div class="sheetScrim" (click)="closeCategorySheet()"></div>
+      <!-- Holds the focus while it is up, starting on the chosen section, and
+           hands it back to the Category button when it goes: left alone, Tab
+           walked into the cards behind it and Enter opened one. -->
+      <div
+        class="categorySheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="categorySheetTitle"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
+      >
+        <div class="handle" aria-hidden="true"></div>
+        <div class="sheetHead">
+          <h2 id="categorySheetTitle">Categories</h2>
+          <close-button label="Close categories" (pressed)="closeCategorySheet()"></close-button>
+        </div>
+        <div class="sheetList" role="group" aria-label="Filter by category">
+          @for (chip of chips; track chip.id) {
+            <ng-container
+              *ngTemplateOutlet="categoryRow; context: { $implicit: chip, sheet: true }"
+            ></ng-container>
+          }
+        </div>
+        <div class="suggestCard row">
+          <span class="suggestIcon" aria-hidden="true"><mat-icon>lightbulb</mat-icon></span>
+          <div class="suggestText">
+            <div class="suggestTitle">Missing one?</div>
+            <div class="suggestSub">Suggest it for the library.</div>
+          </div>
+          <button
+            class="btnOutlined"
+            type="button"
+            aria-label="Suggest a Mechanism"
+            (click)="suggest()"
+          >
+            Suggest
+          </button>
+        </div>
+      </div>
+    }
   </div>
 
+  @if (view !== 'browse') {
+    <div class="suggestHead">
+      <button
+        class="iconButton"
+        type="button"
+        aria-label="Back to the library"
+        [disabled]="drafts.sending"
+        (click)="backToLibrary()"
+      >
+        <mat-icon aria-hidden="true">arrow_back</mat-icon>
+      </button>
+      <h1 id="suggestTitle" tabindex="-1">Suggest a Mechanism</h1>
+      <close-button
+        label="Close the library"
+        [disabled]="drafts.sending"
+        (pressed)="close()"
+      ></close-button>
+    </div>
+    @if (view === 'suggest') {
+      <app-suggest-mechanism
+        class="suggestView"
+        [form]="draft"
+        (back)="backToLibrary()"
+        (sent)="onSent($event)"
+      ></app-suggest-mechanism>
+    } @else if (lastSent; as sent) {
+      <app-suggestion-sent
+        class="sentPage"
+        [sent]="sent"
+        (another)="suggestAnother()"
+        (library)="backToLibrary()"
+      ></app-suggestion-sent>
+    }
+  }
 </div>
+
+<ng-template #searchBox>
+  <div class="searchBox">
+    <mat-icon aria-hidden="true">search</mat-icon>
+    <input
+      id="librarySearch"
+      type="text"
+      [placeholder]="searchPlaceholder"
+      aria-label="Search the library"
+      [value]="query"
+      (input)="setQuery($event)"
+      (keydown.escape)="escapeSearch($event)"
+    />
+    @if (query !== '') {
+      <button class="clearSearch" (click)="clearQuery()" aria-label="Clear the search">
+        <mat-icon>close</mat-icon>
+      </button>
+    }
+  </div>
+</ng-template>
+
+<!-- One row per section, in the rail and in the phone's sheet alike. The
+     count answers the search too, so a row never offers cards the list would
+     not show. -->
+<ng-template #categoryRow let-chip let-sheet="sheet">
+  <button
+    class="category"
+    type="button"
+    [attr.cdkFocusInitial]="sheet && category === chip.id ? '' : null"
+    [class.on]="category === chip.id"
+    [attr.aria-pressed]="category === chip.id"
+    (click)="sheet ? chooseFromSheet(chip.id) : selectCategory(chip.id)"
+  >
+    @if (sheet) {
+      <mat-icon class="tick" aria-hidden="true">{{ category === chip.id ? 'check' : '' }}</mat-icon>
+    }
+    <span class="name">{{ chip.name }}</span>
+    <span class="chipCount">{{ chip.count }}</span>
+  </button>
+</ng-template>
 
 <!-- Shown when the grid already holds work: opening a template must not
      silently discard it. Replacing goes through the undo history, so it is
      recoverable either way. -->
+<!-- The title names the mechanism being opened, which is what lets the sentence
+     underneath say only what the reader does not already know: that there is
+     something here to lose, and that losing it is recoverable. -->
 <ng-template #openChoiceDialog>
-  <div class='modal'>
-    <h1 mat-dialog-title>There is already a linkage on the grid.</h1>
+  <div class="modal choiceModal">
+    <h1 mat-dialog-title>Open {{ choosing }}?</h1>
     <div mat-dialog-content>
-      <p>
-        Open the template in a new tab, or replace the current linkage?
-        Replacing can be undone.
-      </p>
+      <p>There is already a mechanism on the grid. Replacing it can be undone.</p>
     </div>
-    <div mat-dialog-actions align='end'>
-      <button mat-button mat-dialog-close>Cancel</button>
-      <button mat-button [mat-dialog-close]="'new-tab'">Open in a new tab</button>
-      <button mat-button cdkFocusInitial [mat-dialog-close]="'replace'">Replace</button>
+    <div mat-dialog-actions align="end">
+      <button dialogButton="quiet" mat-dialog-close>Cancel</button>
+      <button dialogButton="outlined" [mat-dialog-close]="'new-tab'">New Tab</button>
+      <button dialogButton="filled" cdkFocusInitial [mat-dialog-close]="'replace'">Replace</button>
     </div>
   </div>
 </ng-template>

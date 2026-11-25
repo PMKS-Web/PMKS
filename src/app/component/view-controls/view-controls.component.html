@@ -1,64 +1,143 @@
-<div class="viewControls">
+<!-- On a phone the six become one.
+     Two of them duplicate a pinch, and the three switches are set once and
+     left, so they do not earn permanent space in a 390px window. Behind a
+     single button whose noun is already "what you can see", they get their real
+     names back: crammed at gap:0 on a phone they are six glyphs nobody learns,
+     and a row can say why a switch is refused where a dimmed icon cannot. -->
+@if (viewport.isPhone()) {
   <button
-    class="mini-buttons blue"
-    mat-stroked-button
-    color="primary"
-    [disabled]="noLinkExists()"
-    (click)="showCenterOfMass()"
-    matTooltip="Show Center of Mass"
-    matTooltipPosition="right"
-    [matTooltipShowDelay]="1000"
+    class="viewSheetButton"
+    [class.on]="sheetOpen"
+    cdkOverlayOrigin
+    #viewOrigin="cdkOverlayOrigin"
+    #viewButton
+    (click)="toggleSheet(viewButton)"
+    [attr.aria-expanded]="sheetOpen"
+    aria-label="Display Options"
   >
-    <mat-icon svgIcon="{{ comIconName() }}"></mat-icon>
-    CoM
+    <mat-icon>visibility</mat-icon>
   </button>
-  <button
-    class="mini-buttons blue"
-    mat-stroked-button
-    color="primary"
-    [disabled]="noJointExists()"
-    (click)="onShowIDPressed()"
-    matTooltip="Show ID Labels"
-    matTooltipPosition="right"
-    [matTooltipShowDelay]="1000"
+
+  <ng-template
+    cdkConnectedOverlay
+    [cdkConnectedOverlayOrigin]="viewOrigin"
+    [cdkConnectedOverlayOpen]="sheetOpen"
+    [cdkConnectedOverlayPositions]="sheetPosition"
+    [cdkConnectedOverlayHasBackdrop]="true"
+    cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+    (backdropClick)="sheetOpen = false"
+    (detach)="sheetOpen = false"
   >
-    <mat-icon svgIcon="{{ idLabelIconName() }}"></mat-icon>
-    Label
-  </button>
-  <button
-    class="mini-buttons blue"
-    mat-stroked-button
-    color="primary"
-    (click)="onReframePressed()"
-    matTooltip="Reset View"
-    matTooltipPosition="right"
-    [matTooltipShowDelay]="1000"
-  >
-    <mat-icon>crop_free</mat-icon>
-    View
-  </button>
-  <div class="zoomRow">
-    <button
-      class="mini-buttons blue zoomButton"
-      mat-stroked-button
-      color="primary"
-      (click)="onZoomOutPressed()"
-      matTooltip="Zoom Out"
-      matTooltipPosition="right"
-      [matTooltipShowDelay]="1000"
-    >
-      <mat-icon>zoom_out</mat-icon>
-    </button>
-    <button
-      class="mini-buttons blue zoomButton"
-      mat-stroked-button
-      color="primary"
-      (click)="onZoomInPressed()"
-      matTooltip="Zoom In"
-      matTooltipPosition="right"
-      [matTooltipShowDelay]="1000"
-    >
-      <mat-icon>zoom_in</mat-icon>
-    </button>
+    <div class="viewSheet" role="menu">
+      <span class="viewSheetGrip" aria-hidden="true"></span>
+      <div class="viewSheetTitle">Display Options</div>
+
+      <button class="viewRow" [disabled]="noMassiveLink()" (click)="showCenterOfMass()">
+        <mat-icon [svgIcon]="isShowingCoM() ? 'com' : 'com_off'"></mat-icon>
+        <span class="viewRowName">Center of mass</span>
+        <span class="viewRowSwitch" [class.on]="isShowingCoM()"></span>
+      </button>
+
+      <button class="viewRow" [disabled]="noJointExists()" (click)="onShowIDPressed()">
+        <mat-icon [svgIcon]="isShowingIDs() ? 'abc' : 'abc_off'"></mat-icon>
+        <span class="viewRowName">Joint and force names</span>
+        <span class="viewRowSwitch" [class.on]="isShowingIDs()"></span>
+      </button>
+
+      <!-- A row can say why it is refused, which is the whole reason these
+           stopped being glyphs. -->
+      <button class="viewRow" [disabled]="noTracedJoint()" (click)="onShowTracesPressed()">
+        <mat-icon [svgIcon]="isShowingTraces() ? 'show_path' : 'hide_path'"></mat-icon>
+        <span class="viewRowName">
+          Traced paths
+          @if (noTracedJoint()) {
+            <span class="viewRowWhy">No traced paths yet</span>
+          }
+        </span>
+        <span class="viewRowSwitch" [class.on]="isShowingTraces()"></span>
+      </button>
+
+      <div class="viewSheetRule" aria-hidden="true"></div>
+
+      <!-- Zoom does not come to the phone: pinching is already the gesture.
+           Reframing is the one thing pinching cannot do. -->
+      <button class="viewRow" (click)="onReframePressed(); sheetOpen = false">
+        <mat-icon svgIcon="fit_linkage"></mat-icon>
+        <span class="viewRowName">Fit to View</span>
+        <mat-icon class="viewRowGo">chevron_right</mat-icon>
+      </button>
+      <button class="viewRow" (click)="onFitFullMotionPressed(); sheetOpen = false">
+        <mat-icon svgIcon="fit_motion"></mat-icon>
+        <span class="viewRowName">Fit Full Motion</span>
+        <mat-icon class="viewRowGo">chevron_right</mat-icon>
+      </button>
+    </div>
+  </ng-template>
+} @else {
+  <div data-canvas-inset="bottom" class="viewControls">
+    <!-- The switches. Each says what it is about; how a switch looks and reads
+       is app-view-button's business, so the three cannot drift apart again. -->
+    <app-view-button
+      noun="Center of mass"
+      shownIcon="com"
+      hiddenIcon="com_off"
+      [shown]="isShowingCoM()"
+      [disabled]="noMassiveLink()"
+      shortcut="view.centerOfMass"
+      (pressed)="showCenterOfMass()"
+    />
+    <app-view-button
+      noun="Joint and force names"
+      shownIcon="abc"
+      hiddenIcon="abc_off"
+      [shown]="isShowingIDs()"
+      [disabled]="noJointExists()"
+      shortcut="view.jointIds"
+      (pressed)="onShowIDPressed()"
+    />
+    <!-- The app's own curve glyph, which is a traced point with its path behind
+       it. A line chart reads as another kind of analysis. -->
+    <app-view-button
+      noun="Traced paths"
+      shownIcon="show_path"
+      hiddenIcon="hide_path"
+      [shown]="isShowingTraces()"
+      [disabled]="noTracedJoint()"
+      shortcut="view.paths"
+      (pressed)="onShowTracesPressed()"
+    />
+    <!-- The switches above say what the drawing shows and stay pressed; the
+       actions below do something once and come back up. Two kinds of button
+       in one row, so the row says where one kind ends. -->
+    <div class="viewDivider" aria-hidden="true"></div>
+    <!-- The actions, which are always available: there is a view to zoom
+       whether or not there is anything drawn in it. -->
+    <app-view-button
+      icon="zoom_out"
+      tooltip="Zoom Out"
+      shortcut="view.zoomOut"
+      (pressed)="onZoomOutPressed()"
+    />
+    <app-view-button
+      icon="zoom_in"
+      tooltip="Zoom In"
+      shortcut="view.zoomIn"
+      (pressed)="onZoomInPressed()"
+    />
+    <!-- The same brackets on both, because both frame something; what differs
+         is what is inside them. Fit to view closes them on a single point --
+         the drawing as it sits. Fit full motion opens them around the dashed
+         ring that point sweeps through. -->
+    <app-view-button
+      svg="fit_linkage"
+      tooltip="Fit to View"
+      shortcut="view.reset"
+      (pressed)="onReframePressed()"
+    />
+    <app-view-button
+      svg="fit_motion"
+      tooltip="Fit Full Motion"
+      (pressed)="onFitFullMotionPressed()"
+    />
   </div>
-</div>
+}

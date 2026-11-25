@@ -1,44 +1,143 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to any coding agent working in this repository. Claude Code reads it
+directly; Codex reaches it through [`AGENTS.md`](AGENTS.md). Where a tool exists in only one of
+them, the instruction says so and names the other's counterpart.
 
 ## Project
 
-PMKS+ (Planar Mechanism Kinematic Simulator Plus) — an educational Angular 22 web app for creating, editing, and analyzing 2D planar linkages (kinematic + force analysis). Single-page app rendered as an interactive SVG grid; no routing.
+PMKS (Planar Mechanism Kinematic Simulator) — an educational Angular 22 web app for creating, editing, and analyzing 2D planar linkages (kinematic + force analysis). Single-page app rendered as an interactive SVG grid; no routing.
 
 Requires Node ≥22.22 (or 24.x). The esbuild `application` builder is used; `outputPath.browser` is pinned to `""` so output stays flat at `dist/pmksweb` for the Netlify publish dir. Runtime `require()` calls are not supported by the bundler — use ES imports.
 
+## Read this first
+
+**[`docs/environment.md`](docs/environment.md) is the one to read before your first change.** How
+to run the app and its checks, how to tell a failure you caused from one that was already there,
+and where it deploys. Its own opening lists what it saves you; this does not repeat the list.
+
+The other three are opened when you are already in the area they cover, not up front:
+
+- [`docs/ui-gotchas.md`](docs/ui-gotchas.md) — how these stylesheets actually reach the page (the
+  two `@media (max-width: 600px)` blocks where the later silently wins), and which of the several
+  things that can refuse an edit is refusing this one.
+- [`docs/domain-facts.md`](docs/domain-facts.md) — what a mechanism, a unit and a direction really
+  are here, and how to check an exported file.
+- [`docs/short-notes.md`](docs/short-notes.md) — eighty-odd single surprises, **searched by the
+  symbol you are touching** rather than read. This is where a new one goes: **add to it whenever
+  something surprises you.**
+
+[`docs/README.md`](docs/README.md) gives the reading order and indexes every other document, saying
+which are current and which are history.
+
+Two of those are the rules: [`docs/code-style.md`](docs/code-style.md) is what we ask of code and
+what `npm run check` enforces, and [`docs/ui-style-guide.md`](docs/ui-style-guide.md) is how
+anything a reader sees should look, behave and be worded, with
+[`docs/ui-vocabulary.md`](docs/ui-vocabulary.md) for the words. Read them before writing either.
+
+Project skills live in `.claude/skills/<name>/SKILL.md` and load when their task comes up. Codex
+loads `.agents/skills/` instead; each skill there is a pointer to its `.claude` copy, so edit the
+`.claude` copy and leave the pointer alone.
+
 ## Commands
 
-- `npm start` — dev server at http://localhost:4200 (live reload)
+- `npm start` — dev server at http://localhost:4200 (live reload). Use `localhost`, never `127.0.0.1`: the server binds IPv6 loopback only, so the IPv4 address refuses the connection. A worktree running its own server picks another free port (`ng serve --port <n>`).
 - `npm run build` — production build to `dist/pmksweb`
 - `npm test -- --watch=false` — Vitest suite (jsdom) via `@angular/build:unit-test`; drop the flag for watch mode
 
-There is no lint target (`tslint.json` is vestigial). Formatting follows `.prettierrc`: 100-char width, single quotes, 2-space indent.
+`.nvmrc` pins Node 24; run `nvm use` first, because a login shell may otherwise hand you an unsupported Node 20.
 
-## UI validation / computer use → GPT-5.5 via Codex CLI
+`npm run check` runs the three linters CI runs: `npm run lint` (ESLint over the invariants in [`docs/code-style.md`](docs/code-style.md), with `--max-warnings` at today's count so a new warning fails), `npm run lint:styles` (stylelint: no raw hex or named color anywhere but `src/styles/_tokens.scss`, so a new color is a named token) and `npm run lint:format` (Prettier over everything it can read). **CI fails a PR on any of them, and a PR cannot merge into `staging` or `main` without a passing check.** Formatting follows `.prettierrc`: 100-char width, single quotes, 2-space indent; `npm run format` fixes everything and `npx prettier --write <file>` one file. `.prettierignore` deliberately excludes Markdown and `.mdx` (Prettier pads every table cell and rewrites `*emphasis*` as `_emphasis_`, so a one-line doc edit lands as hundreds of lines of realignment, and its MDX printer breaks a JSX comment) and the generated `src/test-data/verification` tables.
 
-**Route ALL computer-use tasks (UI validation, browser automation, screenshots, visual
-verification, end-to-end interaction testing) to GPT-5.5 through the Codex CLI.** Do not use
-claude-in-chrome (`mcp__claude-in-chrome__*`) tools in this repo, and do not drive a browser
-yourself. Delegate via the `ui-validate` skill (`.claude/skills/ui-validate/SKILL.md`):
+## UI validation: run it yourself
+
+**Verify UI changes in the running app yourself**, following the `ui-validate` skill
+(`.claude/skills/ui-validate/SKILL.md`; Codex loads its pointer in `.agents/skills/`). It holds the
+detail: Playwright in a disposable profile, reports and screenshots in gitignored `artifacts/`, and
+**a filmstrip rather than a screenshot for anything that animates or responds to a drag**. The live
+browser tool depends on which runner you are in:
+
+- **Claude Code:** the Playwright MCP (`mcp__playwright__*`) to explore and reproduce;
+  claude-in-chrome (`mcp__claude-in-chrome__*`) only when the user's logged-in Chrome is the point.
+- **Codex:** standard Codex computer use (`mcp__cua_repl`), in an incognito Chrome window, to
+  explore and check live. Codex has neither the Playwright MCP nor claude-in-chrome.
+- **Both:** a tracked `e2e/*.mjs` suite to keep what you found.
+
+Inspect your own screenshots rather than trusting an exit code.
+
+Tests are Vitest but written in Jasmine style (globals via `vitest/globals`). Vitest errors on spec files containing no tests.
+
+The app is **fully standalone** — `src/main.ts` calls `bootstrapApplication`, there is no `AppModule` and no `NgModule` anywhere, and components declare their own `imports`. A component spec must therefore import the component itself rather than a declaring module. (`tsconfig.spec.json` used to include `src/app/app.module.ts` to keep NgModule-declared components' template scope under the per-file test compile; that file and that workaround are both gone.)
+
+Unit specs stay co-located in `src/**/*.spec.ts`; browser-driven E2E tests are Playwright scripts in `e2e/*.mjs` (run directly — see above), with outputs in gitignored `artifacts/`. Details in `e2e/README.md`.
+
+**The full e2e batch (every `e2e/*.mjs` suite) takes about an hour.** Do not run it as a matter of course. Run the suites that cover what you changed, plus the ones you have a concrete reason to think your change could break; run the whole batch only when the user asks for it or when a change is broad enough that you genuinely cannot name the suites it could reach.
+
+**Every verification mechanism is published as a URL.** A fixture is a TypeScript object and the app only speaks URLs, so a reviewer otherwise has to rebuild a linkage by hand to see what a failing test is about. `docs/fixture-urls.md` is generated from `src/test-utils/verification/fixture-gallery.ts`; `npm run fixture-urls` refreshes it, and a spec fails if it is stale, so adding a fixture without regenerating cannot slip through. Add new mechanisms to `FIXTURE_GALLERY` rather than inlining them in a spec.
+
+Regenerate against a PR's deploy preview when you want links a reviewer can click before merge — a mechanism using a feature that has not shipped yet will not decode on production:
 
 ```bash
-codex exec -m gpt-5.5 --sandbox workspace-write \
-  -c sandbox_workspace_write.network_access=true "<task prompt>"
+PMKS_FIXTURE_BASE_URL=https://deploy-preview-NNN--pmksprod.netlify.app npm run fixture-urls
 ```
-
-GPT-5.5 runs Playwright with disposable Chrome profiles under `/tmp`, inspects its own
-screenshots, and reports back a compact PASS/FAIL summary — keeping heavy browser output out of
-the primary context. See `SKILLS.md` for the routing policy and prompt template.
-
-Tests are Vitest but written in Jasmine style (globals via `vitest/globals`). `tsconfig.spec.json` deliberately includes `src/app/app.module.ts` — without it, NgModule-declared components lose their template scope under the per-file test compile and fail with NG8001. Vitest errors on spec files containing no tests.
-
-Unit specs stay co-located in `src/**/*.spec.ts`; browser-driven E2E tests are Playwright scripts in `e2e/*.mjs` (run by the GPT-5.5 subagent — see below), with outputs in gitignored `artifacts/`. Details in `e2e/README.md`.
 
 ## Deployment / branch rules
 
-**Never push directly to `main`** — commits to `main` auto-deploy to production (app.pmksplus.com). Work in branches/forks and open PRs. Every non-main branch auto-publishes to `https://[BRANCHNAME]--pmks.netlify.app`.
+**Agents and contributors open pull requests against `staging`.** The team manually opens a
+release pull request from `staging` to `main`. Never push directly to `main` — it is the production
+branch for app.pmksplus.com — and don't push directly to `staging` either. A PR into `staging` or
+`main` gets `https://deploy-preview-NNN--pmksprod.netlify.app`, and `staging` itself publishes to
+`https://staging--pmksprod.netlify.app`. No other branch builds, and neither does a PR into another
+branch (a stacked PR), so free build minutes go to what is reviewed.
+
+**The repository is `PMKS-Web/PMKS`.** It moved on 2026-11-07 from
+`PMKS-Web/Planar-Mechanism-Kinematic-Simulator`, now archived, into the repository then named
+`PMKSWeb`, which kept its stars and was renamed. Pull requests and their reviews stayed in the
+archive, so **a bare `#N` written before the move means the archive's numbering**: #1–#96 there are
+not this repository's #1–#96. Its seven open issues moved here as #250–#256.
+
+**A new worktree starts from `origin/main`**, the repository's default branch, which lags `staging`
+by a whole release. Reset it before writing anything: `git fetch origin && git reset --hard
+origin/staging`.
+
+**Automatic publishing to production is paused in Netlify**, so nothing reaches app.pmksplus.com
+until someone publishes it by hand. Being on `main` therefore does not mean being live; ask
+production's own bundle what students have.
+
+**CI** (`.github/workflows/verification.yml`) runs on every pull request: `npm ci`, `npm run lint`,
+`npm run lint:styles`, `npm run lint:format`, `npm test -- --watch=false`, `npm run build`,
+`npm run build-storybook`, and `git diff --check`, which fails on trailing whitespace. Every pull
+request fills in `.github/pull_request_template.md`: why, what changed, how it was verified, and
+the UI checklist when a reader can see the change. **A repository ruleset makes that check (`test`) required:** a pull
+request into `staging` or `main` cannot merge while it is red, and neither branch accepts direct or
+force pushes. Only a repository admin can override, and that is for emergencies.
+
+**Two lanes of the e2e suites run in CI too**, and `e2e/suites.mjs` is the list that decides which:
+`.github/workflows/e2e-gate.yml` runs the `gate` lane on every pull request, sharded four ways;
+`.github/workflows/e2e-nightly.yml` runs everything a runner can drive against `staging` each
+morning, and files what failed in one issue it keeps updating. **Neither replaces running the
+suites your change needs yourself** — the gate is about three fifths of the batch and none of the
+slow audits, and it reports after you have pushed. `node e2e/run-suites.mjs --list --lane gate`
+says what it will run. The nightly is where a suite earns its way into the gate.
+
+**The component gallery is hosted at [docs.pmksplus.com](https://docs.pmksplus.com)**, a second
+Netlify site (`pmksdocs`) that builds `npm run build-storybook` from `staging` on every push and
+publishes `storybook-static/`, the way `pmksprod` builds the app. It builds no pull request
+previews, so it shows `staging`, not your branch: check a change in a local `npm run storybook`.
+Its build command and publish directory live in that site's own settings, like the app site's, and
+`netlify.toml` stays as it is.
+
+**One Netlify site builds the app: `pmksprod`.** It serves production at app.pmksplus.com from
+`main`, a branch deploy of `staging`, and the deploy preview of every PR into `staging` or `main`.
+The `pmksnew` site that used to build branches and previews was deleted on 2026-11-07, so every
+`--pmksnew.netlify.app` link, in old PR comments included, is dead. Confirm a build landed by asking
+for something only the new commit has, not by the page loading. See
+[environment.md](docs/environment.md#deploys-domains-and-surrounding-services).
+
+`netlify.toml` carries exactly one setting — `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD`, so the deploy's
+`npm ci` does not fetch a browser for the `playwright` devDependency. A `netlify.toml` overrides only
+what it declares, so the build command, publish directory and functions directory still come from
+each site's own UI settings; keep it that way, because the two sites are configured separately.
 
 The `version` in `package.json` is now bumped by hand (the automated bump action was removed). It is what the bottom bar displays, via `environments/environment*.ts`, so raise it in the PR that ships a release.
 
@@ -57,38 +156,157 @@ Changing the encoding format breaks previously shared URLs — the transcoder fo
 
 ### MechanismService is the central hub
 
-`services/mechanism.service.ts` (root singleton) owns the **editable** mechanism: `joints`, `links`, `forces` arrays representing the state at timestep 0. All create/delete/weld/ground/slider/input mutations live here. `updateMechanism()` rebuilds `this.mechanisms[0]` — a `Mechanism` (`model/mechanism/mechanism.ts`) that deep-copies the current state and, if the linkage is valid (DOF = 1 with an input joint), precomputes joint/link/force positions for **all** timesteps up front. The `mechanisms` array only ever uses index 0 (multi-mechanism support was planned, never built).
+`services/mechanism.service.ts` (root singleton) owns the **editable** drawing: `joints`, `links`, `forces` arrays representing the state at timestep 0. All create/delete/weld/ground/slider/input mutations live here.
+
+`updateMechanism()` first **partitions** the drawing into independently solvable machines (`model/mechanism/mechanism-partition.ts`) — every shared joint joins what meets at it, a grounded pivot included, so only chains on pivots of their own are separate — then builds one `Mechanism` (`model/mechanism/mechanism.ts`) per partition — each deep-copies its own part of the state and, if that machine is valid (DOF = 1 with an input joint), precomputes joint/link/force positions for **all** its timesteps up front. `partitions[i]` and `mechanisms[i]` are the same machine seen two ways, and stay in the same order. One drawing can therefore hold several machines (M1, M2…), each with its own input, speed, direction and playback row — so **do not assume index 0**; ask `partitions`. Note `partition.joints` is everything the solver must be handed (shared frame pieces included) while `partition.ownJoints` is what that machine is actually made of — the one to ask "is this mine?".
+
+Two lookups follow from that split, and picking the wrong one is how a rail's end pins came to draw empty charts. `indexOfMechanismContaining` / `mechanismContaining` is **ownership**, built from `ownJoints`, and answers "whose input, whose clock, which machine did the reader just merge". `indexOfMechanismSolving` / `mechanismSolving` is "**whose samples hold this**" — ownership plus the frame a machine shares with its neighbors — and is what the analysis side asks: `mechanismForId`, `isPartSimulatable`, `readinessOfPart`, the vector-trace refusals. `isFramePart` is the gap between them.
 
 `onMechUpdateState` (BehaviorSubject<number>) broadcasts mechanism state: 0 = normal, 1 = being dragged (graphs disabled), 2 = pending graph redraw, 3 = pending analysis after add/remove.
 
-Animation (`animate()`) steps through the precomputed timesteps on a ~16 ms setTimeout loop, mutating the editable joints/links/forces in place. Editing is only allowed when the animation is paused at timestep 0.
+Animation ticks on a ~16 ms setTimeout (`FRAME_INTERVAL_MS`) but advances by **elapsed real time**, not one precomputed timestep per tick: samples are spaced a fixed amount of input travel apart (1 degree of crank rotation for a pin), so how much simulated time one sample covers depends on the input speed. That is what makes a faster input speed animate faster and one revolution take 60/RPM seconds regardless of frame rate. `animate(progress, playing)` mutates the editable joints/links/forces in place; any external call is treated as a seek. Machines run on one shared clock by default, and can be unsynced to run on their own.
+
+**Whether an edit is allowed is not decided here, and never by `mechanismTimeStep`.** One model
+answers it — `model/edit-permission.ts`, described through `services/edit-permission.service.ts` —
+and every gate quotes that: the canvas's drag gate, the Edit panel's attached refusal strip, the
+context menu's graying, undo/redo, the analysis lock, and the transport's refusal *row* — a row
+rather than a caption, so the scrub card is the same shape in every state. **The rule itself is
+[`docs/editing-rules.md`](docs/editing-rules.md)**: a reader must never be able to get stranded, so
+every control is one of six kinds (view, annotation, gesture, safe property, typed geometry,
+structure) and one table says where each kind is offered, and **the Edit panel and the context
+menu always agree**: no action is live in one and refused in the other. Read it before adding a
+control that edits. In every mode, a drag at a *paused* mid-cycle pose is still allowed; the design is put back on
+its per-machine **anchor** (`model/mechanism/anchor.ts`) at the commit, so the pose the drawing
+starts in does not ratchet forward. Structure, typed geometry and annotations wait for the start.
+`docs/edit-mode-playback-plan.md` is the history, and
+[ui-gotchas.md](docs/ui-gotchas.md#editing-playback-and-who-is-allowed-to-say-no) has the
+traps.
 
 ### Solvers (`src/app/model/mechanism/`)
 
-Pure computation, mostly static classes: `loop-solver` (finds kinematic loops), `position-solver`, `kinematic-solver` (velocity/acceleration), `force-solver`, `ic-solver` (instant centers). `app.component.spec.ts` numerically verifies these against MATLAB results (`SixBarVerification.m`) for a sixbar linkage — treat it as the regression test for solver changes.
+Pure computation, mostly static classes: `loop-solver` (finds kinematic loops), `position-solver`, `kinematic-solver` (velocity/acceleration), `force-solver`. `app.component.spec.ts` numerically verifies these against MATLAB results (`SixBarVerification.m`) for a sixbar linkage — treat it as the regression test for solver changes.
 
 ### Model classes (`src/app/model/`)
 
 - Joints: `Joint` → `RealJoint` → `RevJoint` (revolute) / `PrisJoint` (prismatic). Code frequently narrows with `instanceof RealJoint` guards.
-- Links: `Link` → `RealLink` / `Piston`. A **welded** compound link is a `RealLink` whose `subset` holds its constituent sub-links; weld/unweld logic in MechanismService restructures joints' `links`/`connectedJoints` arrays and link IDs (link IDs are the concatenated, sorted joint letters).
-- Joint IDs are single letters assigned alphabetically (`determineNextLetter`).
+- Links: `Link` → `RealLink`. There is no `SliderBlock` and no `Piston` class any more: a slider is one `PrisJoint` that carries its own `mass` and a `rotates` flag, and the links that ride it list it directly (Stage 1 of `docs/joint-type-and-cylinder-plan.md`). A **welded** compound link is a `RealLink` whose `subset` holds its constituent sub-links; weld/unweld logic in MechanismService restructures joints' `links`/`connectedJoints` arrays and link IDs (link IDs are the concatenated, sorted joint letters).
+- A **cylinder** is not a class either, and is not stored: it is a record looked up from its seal (`model/cylinder.ts`, `cylinderAtSeal`) — `seal` (S, the sealed `PrisJoint` the reader sees as the cream bar on the head), `mountA` and `mountB` (the two end joints), the hidden `inner` (N, the barrel's buried end) and the `barrel` and `rod` members. Nothing is measured to find a role: the slot's own order says which barrel joint is which, and the reader is the one place that still puts an old payload's slot in that order. After every rebuild N and S are **derived** rather than repaired — N one barrel-length along the A→B axis, S one rod back from B — which for a cylinder that is already straight writes nothing. **Barrel and rod have their own lengths**; the travel is the barrel's alone. Every typed or dragged edit goes through `model/cylinder-edit.ts`, which answers with a pose or a refusal: one angle for the whole part, *Starts at*, Barrel Length, Rod Length, and a drag of the seal. **What gives is one ladder, written once** in `whatGives` and quoted by all five (decision S17): a locked item never moves, the typed or dragged number is honored unless a lock prevents it, a grounded joint yields (ground is where the frame happens to be pinned), and a floating joint goes first — so a member's length changes only when no end joint may move at all. A structural limit — a rod under the barrel's travel, a barrel too short to reach the head — is *repaired* by the smallest change to the other, unfixed member rather than refused, and a typed number the constraints still cannot fully honor is taken **as far as it goes** by `asCloseAs`, landing as one edit plus one `NotificationService.news` sentence saying how far it got and what stopped it (S19). A refusal is left for the case where none of the request can be had. A member holds its length or the part's angle like any bar, and a held length is honored by the layout rather than handed to the hold solver. **A change of Object Size is not an edit and never moves a joint a reader can see** (decision S29): the head's travel is measured in R, so a size change can leave the head outside it and the part drawn in two pieces, and `model/cylinder-interiors.ts` puts the barrel's mouth back on the head — the hidden inner end is the one thing that moves, a barrel holding its length is left alone and said so, and a size the reader chose is one undo entry with the repair inside it. **Only a body drag carries a welded body** (decision S21): `dragCylinder` and `rotateCylinder` take everything welded to either member with them, and every other edit — a dragged end joint, a dragged slide, a typed number, a re-lay because a neighbor moved — writes the part's own joints, leaving a bar welded to a member to change shape exactly as a compound link does when one of its joints is dragged. **A cylinder nothing drives is a sliding joint like any other and adds its freedom** (decision S30, which withdrew S28's rule that a passive ram holds its length): a four-bar whose coupler is a passive cylinder counts two and is refused, and the drawer names the cylinder as the loose part. The one exception is S25's, a cylinder with both ends on one rigid body. `docs/joint-type-and-cylinder-plan.md` § Stage 2 (D9–D14, S1–S29) is the argument.
+- A joint's **type** — Revolute, Prismatic, Pin-in-slot or Welded — is not stored. `model/joint-type.ts` reads it off what the joint is: a `PrisJoint` slides, and `rotates` says whether its riders may turn against the slot (false is the Slide), while every other joint says in `isWelded` whether the bodies meeting at it are fused. It also says which edits a change of type runs and in what order, and composes their refusals; `services/joint-type.service.ts` runs a change as one undo entry. The Edit panel, the group panel and the right-click card offer it as one choice.
+- **Split Joint** is the inverse of merging by drop: `model/split-joint.ts` gives each body at one shared point its own ordinary revolute pin, and `services/split-joint.service.ts` stages the posed structural edit, moves the pins apart, and saves it once. A weld is let go first through the ordinary unweld path, so a Welded joint splits too, and so does a Prismatic block with several riders (it goes back to Prismatic once they are off). **Where the pins go** is `model/split-placement.ts`: one body keeps the point -- the one whose slot or cylinder would otherwise move under someone else, or else the one that keeps the joint's letter, unless only another body staying lets every pin clear (`chooseStayingPin`; a crosshead whose slide pin is nearer than one clearance) -- and every other pin takes the smallest move that leaves no pin on another bar and no bar over another pin, along its own link first (which reshapes nothing but that link) and sideways only when two links lie almost on top of each other. Bars that cross farther along, like a scissor's arms, are left crossing. A pin a lock or hold keeps still becomes the one that stays. The original pin keeps its letter and authored state; new pins take the next free letters. **A slider block is a part of its own**: splitting leaves it unmoved on its slot (moving or grounded) with no links -- drawn with the empty-joint ring -- and gives every rider its own Revolute pin, stepped clear of the block and its slot line, so one rider is enough to split. Only a block with nowhere to slide, a joint inside a cylinder, and a pin with one link (counted as the bodies releasing its weld would leave) refuse the action.
+- A driven joint carries its own speed: `Joint.driveSpeed`, signed for direction, in rpm for a pin and length/second for a slider. **Negative is clockwise**, and `model/drive-direction.ts` (`turnsClockwise` / `speedTurning`) is the only place that knows it — route any new direction question through it rather than writing `speed < 0` again. Zero means "use the document-wide default" — which is what every URL written before this existed says. A drawing with several machines needs one speed per machine, so it lives on the joint rather than in settings.
+- `mechanism/readiness.ts` produces the per-machine list of `SetupIssue`s (`mechanism/setup-issue.ts`) the mode chips and setup drawers show, with `unassigned-issues.ts` and `force-issues.ts` beside it; `model/actuator.ts` decides what can be driven. An issue is a title, a summary, an explanation and up to three fixes, the summary and fixes built as `prose` so the parts they name are links. [`docs/setup-issues-spec.md`](docs/setup-issues-spec.md) is the layout and the writing rules, and `setup-issue-budgets.spec.ts` holds every message to its word budget.
+- **Mobility is Gruebler's count, rescued by the geometry where the count is wrong.** `mechanism/mobility.ts` takes the rank of the constraint Jacobian, then steps along each freedom it finds and drops the ones that die at second order — a parallelogram with a redundant third crank moves; a tangency does not. Believed wherever it finds more than the count (decision S30), and never below 1 — so a redundant constraint can no longer hide a freedom the solver would otherwise decide for the reader. See [domain-facts.md](docs/domain-facts.md#grueblers-count-is-one-sided-so-the-geometry-gets-the-last-word).
+- Joint IDs are single letters assigned alphabetically. The rule is `model/joint-letters.ts` and nowhere else: `MechanismService.determineNextLetter` asks it of the drawing, and the URL reader asks it of the list it is building. A joint nothing shows keeps an interior name (`A1`), which has no place in the alphabet, so it never pushes the visible letters along.
 - `utils.ts` is a large grab-bag: interaction state enums (`gridStates`, `jointStates`, `linkStates`, `forceStates`), unit enums (`LengthUnit`, `GlobalUnit`, ...), and geometry helpers.
 
 ### UI layer
 
-- `AppComponent` is just a shell that registers SVG icons; `component/new-grid/new-grid.component.ts` is the real center — the SVG canvas handling the mouse/touch interaction state machine and context menus, with pan/zoom via `SvgGridService` (svg-pan-zoom + hammerjs).
-- Left panel tabs (Synthesis / Edit / Analyze) are coordinated by `SelectedTabService` (`TabID` enum); the Edit and Analyze panels operate on whatever `ActiveObjService` says is selected (joint, link, force, or synthesis pose).
-- `SettingsService` exposes global settings as RxJS BehaviorSubjects (units, input speed, gravity, grid visibility).
-- `component/BLOCKS/` holds the reusable form primitives (input, toggle, radio, dual-input, panel-section, ...) that the panels are composed from; `component/MODALS/` holds dialogs.
-- Components also communicate through static members (e.g. `NewGridComponent.sendNotification()`, `AnimationBarComponent.animate`) — grep for the static before assuming a service is the only channel.
-- Four-bar synthesis (generating a linkage from desired end-effector poses) lives in `services/synthesis/`.
+**Where things are on screen.** `app.component.html` is the whole layout, and it is worth reading before describing the UI — the arrangement below replaced an earlier one with a horizontal file toolbar and a *vertical mode rail down the left*, and stale descriptions of that older layout have outlived it in more than one place.
+
+| Region | Component | Holds |
+| --- | --- | --- |
+| Top strip | `app-top-bar` | project menu + logo · the four **mode tabs**, the two analysis tabs each carrying a readiness chip · a corner card that is Undo/Redo in Synthesis/Edit and swaps to **Export Data** in the analysis modes |
+| Left card (below the strip, `left: 0`) | `app-left-tabs` | the current mode's panel — Synthesis form, Edit properties, or Analysis graphs. 250px, widening to 400px in analysis |
+| Canvas (full bleed, behind everything) | `app-new-grid` | grid, right-click context menus, drag |
+| Bottom center | `app-playback-bar` | transport card (speed · play/pause · stop-to-start) and a scrub card with **one row per machine**. Present in Edit and both analyses, including over an empty grid; hidden only in Synthesis. **On a phone the two merge into one card** and the view controls join its transport line |
+| Bottom right | `app-view-controls` | center of mass · joint IDs · traced paths ‖ zoom out · zoom in · reset view. **On a phone all six collapse behind one `visibility` button** that raises a drawer of named rows |
+| Bottom strip | `app-bottombar` | mode name · status · cursor coords · units (a button: opens Settings at the unit choices, through `SettingsFocusService`). **Not drawn on a phone** |
+| Right drawer | `app-right-panel` | Settings, Help/Feedback, the two analysis setups, Export Data |
+
+The **modes are tabs in the top strip, not a left rail**, and there are four of them — Synthesis, Edit, Kinematic Analysis, Force Analysis (`TabID`) — not three. The left card is that mode's panel.
+
+- **The canvas draws y-up and the screen is y-down.** A drawing layer wears the `modelFrame` directive and everything inside it is written in the drawing's own coordinates; anything that must read the right way up wears `upright` (both in `model-frame.directive.ts`). `SvgGridService.screenToModel` / `modelToScreen` are the matching pair of conversions, and both carry the flip. See [domain-facts.md](docs/domain-facts.md#the-drawing-is-y-up-the-screen-is-y-down-and-two-directives-say-so).
+- `AppComponent` is just a shell that registers SVG icons; `component/new-grid/new-grid.component.ts` is the real center — the SVG canvas handling the mouse/touch interaction state machine, with pan/zoom via `SvgGridService` (svg-pan-zoom + hammerjs).
+- The right-click menu is **built in a service, not in the canvas**: `services/context-menu-builder.service.ts` turns whatever was right-clicked, plus the current mode, into a `ContextMenuModel` (`component/BLOCKS/context-menu/menu-model.ts`), and `component/BLOCKS/context-menu/` renders it. Every grayed row quotes the model that enforces it — `describeActuatorRefusal` in `model/actuator.ts`, `refuseJointOperation` in `model/joint-operation-permission.ts`, `refuseJointType` in `model/joint-type.ts`, `locksHolding` in `model/lock-set.ts` — rather than restating the rule, so the menu, the panel and the drag ring cannot disagree. A joint's card opens with the **Joint Type** choice (`MenuChoice`), whose four values are CDK radio menu items so the arrow keys reach them; the Slider and Welded rows it replaced are gone from State. New rows belong in the builder; the canvas only supplies the gesture handlers (`MenuHandlers`).
+- **The analysis modes read the motion; they barely edit it.** At any paused pose a reader may drag
+  joints, links and forces, and change a force's load -- its magnitude and Flip Force, which read
+  the same at every pose; at the start pose they may also add or delete tracer points and forces;
+  traces switch anywhere. Nothing else (no structure, locks, holds, other typed fields, nudges).
+  See
+  [`docs/editing-rules.md`](docs/editing-rules.md). Grab a joint and every open graph lays the
+  curve from before the gesture under the one following your hand, with the peak said as two
+  numbers. `docs/analysis-mode-editing-plan.md` is the history; `e2e/analysis-editing.mjs` is the
+  guard. Click selects, drag tunes: a drag does not move what the panel is graphing.
+- **A cylinder's skin is three things to click, not one body.** The cream bar on the black head is joint S — the mark every Prismatic slider wears in place of a weld's `+`, lying along its slot, and the one thing hover, selection and the lock badge are drawn on; the head under it is furniture that still takes the click (decision S13). Selecting it opens a joint's panel and a joint's card with Prismatic as its one live type, no Grounded row ("ground an end joint instead"), Slider Angle, *Starts at* in percent of the stroke, and Add Input — the cylinder's drive is this joint's. The barrel's path selects the barrel and the rod's the rod, each opening that member's own panel (Length and Angle as hold fields, mass as on a link, no tracer point and no force), and dragging either still drags the whole part. An end joint is an ordinary pin: it merges onto another joint, welds, grounds, and **drops onto a bar to ride the slot it cuts there** (decision S22) — Pin-in-slot if it was not welded, Prismatic if it was, with the cylinder re-posed around wherever the joint lands and re-laid between its two ends whenever something else moves it. **N alone is hidden** — no hitbox, no letter, and left out of every count a reader sees (`MechanismService.visibleJoints`) — while N *and* S are both "inside a cylinder" for the purposes of welding, merging and cutting a slot. The Edit Cylinder panel and the whole-cylinder menu card are gone. **A welded mount is one body**: weld a bar to an end joint and the bracket and that member draw as a single filleted outline in the body's own color, because the compound's union takes the member's skin silhouette (`model/cylinder-fusion.ts`, decision S16). The body is painted in that member's place in the skin's stack — under the head block for a barrel, over it for a rod — and the ordinary links layer leaves it alone, so a change to either has to keep both in step. **That place is worked out once for the whole drawing**, not per part: two cylinders can share one body, and only an order that knows about both can put it under one head and over the other. `model/cylinder-paint-order.ts` is the rule — the constraint, the tiebreak and what gives when they contradict each other (decision S24) — and the canvas walks the list it returns. **A cylinder with one body at both of its ends is a fixed part of that body, not a sliding pair** (`model/cylinder-frozen.ts`, decision S25): it costs no freedom, its seal and buried end are carried by the body's rigid motion, the force between barrel and rod is internal and is not solved for, a drive on its seal is refused in so many words, and the machine around it runs. A frozen ram's internal force is indeterminate, so the force solver does not solve for it.
+- A **Lock** is about position only: it refuses every gesture that would move what it holds and refuses nothing else, so a locked part deletes like any other and still takes a new link, cylinder or force (`model/lock-set.ts`). On a cylinder it is one mark on the seal and holds all four joints; on an end joint it holds the end joint.
+- A bar can **hold** its length or its angle against edits (`RealLink.hold`, the menu's Fixed Length / Fixed Angle rows, the padlocks in the Link panel's `hold-field-block`). It is a constraint, not a lock: every joint move goes through `GridUtilsService.dragJoint`, which asks `model/hold-solver.ts` for the CAD answer, and the hold rides the URL as an `H` entry beside the locks. [`docs/domain-facts.md`](docs/domain-facts.md#a-hold-is-a-constraint-not-a-lock-and-every-move-goes-through-the-solver) has the rules.
+- `SelectedTabService` (`TabID` enum) coordinates the four modes; the Edit and analysis panels operate on whatever `ActiveObjService` says is selected (joint, link, force, mechanism, background image, or synthesis pose).
+- The right drawer is addressed by number through statics on `RightPanelComponent`: 1 Settings, 3 Help, 4 Debug (dev only), 5 `KINEMATIC_SETUP_TAB`, 6 `FORCE_SETUP_TAB`, 7 `EXPORT_TAB`. **Tab 2 (`app-equation-panel`) is unreachable** — nothing calls `tabClicked(2)` and its content is placeholder images. It is unfinished work, not a feature.
+- `SettingsService` exposes document-wide settings as RxJS BehaviorSubjects (units, gravity, grid and snap visibility, object scale). Input **speed and direction are not global** — they belong to the driven joint (`Joint.driveSpeed`), because a drawing can hold several machines; the SettingsService values are only the default a joint falls back to. `forceUnit` is the unit a force is *read* in (lbf under inches; N or kgf under cm and m) and not the one it is stored in, and `massUnit` is the same for mass (g or kg under cm and m; `MassUnit.NULL` means the length's own) — see [domain-facts.md](docs/domain-facts.md#a-force-is-stored-in-one-unit-and-read-in-another).
+- **Analysis panel tabs.** Link kinematics uses Rotation / Center of mass; joint and link forces
+  use Static / In-motion. `BLOCKS/tabs` supplies the shared underline navigation, keyboard focus
+  and ARIA links. `AnalysisPanelStateService` remembers the kinematics tab for the session and
+  derives the CoM preview from the held graph subject; this view state never edits the document.
+  The title and tabs stay pinned together. See `docs/analysis-editing-visual-brief.md`.
+- `component/BLOCKS/` holds the reusable form primitives (input, toggle, radio, dual-input, panel-section, ...) that the panels are composed from. **The component gallery (`npm run storybook`) is the one place for UI documentation:** every block and shared component state by state, sectioned as Fields, Choices, Actions, Structure and Feedback; the design tokens grouped by role; the UI style guide, vocabulary and code style rendered from `docs/*.md` at build time (edit the `.md`, never the page); and a Reuse backlog naming where the app still hand-rolls a block. Build new panel UI from the blocks rather than copying a neighbor's CSS. Only `@Input`/`input()` members belong in a block's public surface: everything else is `protected` or `private`, or it shows up in the gallery's properties table. `component/MODALS/` holds the Templates dialog and the release-notes splash.
+- **A part named in a panel's text is a `part-link`** (BLOCKS), usually through `prose-block` and a `prose` sentence (`model/prose.ts`): pointing lights the part on the grid, whatever is selected (`MechanismService.linkedPart`), and pressing selects it in the current analysis mode, or switches to Edit elsewhere. The Masses table explicitly opens Edit at the selected body’s mass fields. A fix names the control it uses, in the Edit panel's and the menu's words (`Set joint C to Revolute`, `Turn off Grounded for joint E`, `Add Input to joint A`). The block hands both gestures to `PART_LINK_TARGET`, which `main.ts` provides as `PartNavigationService`; a story or a spec provides its own. The gallery's Reuse backlog lists the places that still name a part their own way.
+- Messages to the user go through `NotificationService`, which replaced the old `NewGridComponent.sendNotification()` static. Some components still talk through statics (e.g. `RightPanelComponent.openTab` / `insistOn`) — grep for the static before assuming a service is the only channel.
+- Four-bar synthesis (generating a linkage from three desired coupler poses) lives in `services/synthesis/`.
+- **Phone layout.** `ViewportService` owns the one breakpoint (600px; the stylesheets write it as
+  `nav.$phone-max-width` from `left-tabs.vars.scss`, and `stylesheet-fences.spec.ts` keeps the two
+  equal). Below it the mode panel is a
+  bottom sheet that starts collapsed and is opened by its handle, and it declares
+  `data-canvas-inset="bottom"` so `freeCanvasRect` frames above it rather than beside it. The sheet
+  publishes `--sheet-height`, and stands on `--controls-top` -- the measured
+  distance from the bottom of the window to the top of the controls row. Every
+  gap in the phone's bottom stack is `$card-inset`, the same one the top strip
+  keeps from the window, and `e2e/mobile.mjs` measures the strip and compares.
+  The sheet slides open and shut from `LeftTabsComponent.slide`, between the two
+  heights it has measured, rather than from a CSS transition on `max-height`:
+  the panel is capped well above its usual content, so a transition on the cap
+  spends most of its time moving a ceiling nothing is touching. `LongPressDirective` on the
+  canvas turns a held finger into a `contextmenu` event, so the whole right-click menu works on
+  touch without a second code path — see `onLongPress` in `new-grid.component.ts`. There is no
+  touchscreen warning dialog any more; `e2e/mobile.mjs` is what guards all of this.
+- **Arriving.** Three things can greet a reader and exactly one of them does, decided in
+  `NewGridComponent.ngOnInit`. `?library` wins outright (see below). Otherwise `WhatsNewService`
+  asks whether `localStorage` holds any mark of a previous visit: if it does, the release notes in
+  `model/whats-new.ts` open once and record `whatsNewSeen`; if it does not, the empty Edit panel offers Start Tutorial and No thanks. The tutorial
+  opens only when the reader asks for it.
+  Adding a release note is a row in `WHATS_NEW`, and raising `WHATS_NEW_VERSION` is what makes the
+  dialog speak again.
+- **`?library`** is a deep link for the landing page's "Browse the mechanism library" button:
+  `UrlProcessorService` recognizes it instead of handing it to the decoder, sets `wantsLibrary`,
+  and strips it from the address bar. Every door into the library goes through
+  `TemplatesComponent.openIn`.
+- **The library has three views** (`LibraryView`): browse, with the sections as a side rail (a
+  bottom sheet behind a Category button on a phone); **Suggest a Mechanism**
+  (`MODALS/templates/suggest-mechanism/`), a form beside the card it would become; and Sent. The
+  card is one component, `template-card`, so the grid and the preview cannot drift. A suggestion
+  is the open mechanism or a pasted link, read without touching the grid (`readPastedLink`), and
+  goes out by email through `MailService`, which the Help panel's feedback form uses too. Nothing
+  reaches the library until the team adds it to `template-catalog.ts`, where a row's `credit`
+  puts "Suggested by" on its card. `e2e/suggest-mechanism.mjs` is the guard.
+- **Loading indicators.** Decoding a URL solves every sample of the mechanism synchronously, so
+  nothing can paint during it. Two covers answer that: the `#bootSplash` block in `index.html`,
+  painted out of the HTML before the bundle runs and removed by `AppComponent`'s
+  `afterNextRender`; and `LoadingService.during`, which raises `app-loading-overlay`, waits for it
+  to actually reach the glass, and only then runs the work. Anything that replaces the whole
+  drawing goes through `during` -- undo and redo deliberately do not, because a cover flashing on
+  every undo is worse than the wait.
+- Onboarding is the **tutorial**: `services/tutorial.service.ts` with `model/tutorial-steps.ts`, shown by `component/tutorial-panel/` as a card *pinned* in the right drawer above whatever page is open (it is not one of the numbered pages). Its step is derived from the drawing by `progressFor`, never counted, which is what lets it follow an undo backwards. **It always begins on a bare grid**: every way in goes through `TutorialEntryService`, which asks before clearing a drawing (`MODALS/tutorial-clear`), and the tutorial believes only the drawing it watched being built (`ownsDrawing`, keyed on `SaveHistoryService` entry ids), stepping aside when a template, a file or an undo past its start replaces it. It is offered from the Edit panel's empty state, reopened from the project menu, and remembers in `localStorage` (`tutorialSeen`) that it has been finished, dismissed or walked out of. The `intro.js` overlay tour it replaced is gone, dependency and all.
+- The tutorial card asks the drawing for its step from `ngDoCheck`, not a subscription: every edit ends in `updateMechanism`, which publishes on nothing that could be listened to — `onMechUpdateState` carries the *analysis* state, which is why caches elsewhere key on `poseRevision` instead.
+
+### Editor interaction rules
+
+- **Drawing Style is presentation.** Settings offers Standard / Fine / Schematic as one local preference. Symbols, CoM glyphs and names keep fixed model proportions at every zoom; Schematic simplifies cylinders and sliders as well as links. Style, zoom and Fit change no geometry, solver inputs, history, or CAD outlines. `drawingScale` is display-only; `objectScale` and `cylinderObjectScale` remain physical compatibility inputs. See [object sizing](docs/object-sizing.md).
+
+- `NumberDragDirective` lets a reader drag the numeric field’s text label vertically; the value itself retains ordinary text selection and editing. Five pixels changes one step (default 0.1; Shift is ten times finer). Escape cancels, and release commits through the existing field validation as one undo entry.
+- A click on a welded compound selects the whole body, and so does every click after it; the one exception is a cylinder's barrel or rod welded into it, which a second click still reaches (`model/link-pick.ts`). A welded link has no panel of its own: its length and angle are in its joints' **Distance to Joints**, which `model/joint-distances.ts` limits to neighbors -- the far end of each welded bar the joint is on (drawn with the Link panel's `hold-field-block`, padlocks included, so the hold goes on that pair), and the other joints of a plate of three or more. One link is taken out of a body with the body menu's **Delete Link CD** row, for the link under the pointer.
+- New links, cylinders, and forces have free placement bearings by default; holding Option/Alt snaps them to 15-degree increments. `placementBearing` serves preview and commit; an eligible existing joint takes precedence and gets the yellow merge ring and merge pulse.
+- **Flip Force**, in the Edit panel and context menu, reverses the arrowhead at fixed endpoints and reverses the physical load. The application-point disc stays at `startCoord`: a white ring means Grid, a keyway aligned with the body means Local. Selection adds a dashed frame datum and a square direction handle; playback hides both. Hovering or focusing the Angle field draws an arc in the force’s own frame, matching the number in the field. `startCoord` remains the application point, `arrowOutward` selects which way the arrow faces, and `angleRad` always describes physical direction. The solve fingerprint must include `arrowOutward`. Changing the angle instead rotates the free handle around the application point.
+- `LinkTraceService` keeps transient CoM path choices for roots and primitive links. A path or vector trace shows the CoM mark even at zero mass. Vector traces thin samples by spatial separation and direction, so short travel does not accumulate a full cycle's arrows at one point.
+- A grounded welded revolute joint can be an input: welding fixes the bars to each other, not to the ground. A detached joint's panel explains that it is orphaned. Inert analysis geometry cannot begin a drag or reuse the previous drag target.
+- Notifications derive their default reading time from message length; callers can set `durationMs` or use `null` to keep one until dismissed. Warnings and failures remain persistent by default.
 
 ### Misc
 
 - `netlify/functions/getEmailJSKey.ts` is a Netlify serverless function supplying the EmailJS key for the feedback form.
+- The logo, icons, favicons and link-preview card are generated into `src/assets/brand/` by `npm run brand` from the rules in `brand/`; never edit them by hand. The landing page links to the app's published copies instead of keeping its own. See [`docs/brand.md`](docs/brand.md).
+- Analytics: every event is typed in `model/analytics-events.ts` and sent through `AnalyticsService`, only from app.pmksplus.com (elsewhere it goes to `console.debug`). Nothing the reader made is ever sent -- the Help panel promises it. [`docs/analytics.md`](docs/analytics.md) is the list and how to add one.
 - Circular service dependencies are broken with Angular's `Injector` (`injector.get(...)` at call time) in MechanismService, SaveHistoryService, and UrlProcessorService — keep that pattern in mind before adding constructor injections between those services.
 
 ## Conventions (from README)
 
-- Keep classes under ~200 lines and functions short; comment *why*, not *how*.
+- One responsibility per file: split when a file does two things, never to fit a line count; keep functions short; comment *why*, not *how*. The full guide, including the invariants the linter checks, is [`docs/code-style.md`](docs/code-style.md). Run `npm run lint` before you push.
 - Standard Angular naming: dash-delimited filenames with type suffixes (`foo-bar.service.ts`), `Component`/`Service`/`Module`/`Pipe` class suffixes, `app-` selector prefix.

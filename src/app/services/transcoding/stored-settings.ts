@@ -1,28 +1,67 @@
 // Define all the settings attributes to be encoded and decoded
 
 export enum EnumSetting {
-    LENGTH_UNIT,
-    ANGLE_UNIT,
-    FORCE_UNIT,
-    GLOBAL_UNIT,
+  LENGTH_UNIT,
+  ANGLE_UNIT,
+  FORCE_UNIT,
+  GLOBAL_UNIT,
 }
 
 export enum IntSetting {
-    INPUT_SPEED,
-    TIMESTEP,
+  INPUT_SPEED,
+  TIMESTEP,
 }
 
 export enum DecimalSetting {
-    SCALE,
+  SCALE,
+  /**
+   * A driven prismatic joint's speed, in user length units per second.
+   *
+   * Appended, so URLs written before it decode with the token missing; the
+   * decoder leaves those at zero and the builder reads zero as "this URL
+   * predates the setting" and keeps the default. Zero is safe to spend that
+   * way because a drive that does not move is not a speed anyone chose — the
+   * panel refuses it.
+   */
+  LINEAR_INPUT_SPEED,
+  CYLINDER_SCALE,
+  /**
+   * SCALE and CYLINDER_SCALE again, in millionths, for a scale the thousandths
+   * above round away. Zero -- every URL that predates them, and every one that
+   * did not need them -- means "read the token above" (fine-scale.ts).
+   */
+  FINE_SCALE,
+  FINE_CYLINDER_SCALE,
 }
 
 export enum BoolSetting {
-    IS_INPUT_CW,
-    IS_GRAVITY,
-    ANIMATING,
-    IS_SHOW_MAJOR_GRID,
-    IS_SHOW_MINOR_GRID,
-    IS_SHOW_ID,
-    IS_SHOW_COM,
-    IS_FORCES,
+  IS_INPUT_CW,
+  /**
+   * Dead slot. Written in an early era, then ignored once gravity was
+   * hardcoded on, so the bit in circulating URLs carries whatever that era
+   * wrote. Gravity lives in GRAVITY_OFF below — do not revive this slot, and
+   * do not reorder it away: the flags are packed by position.
+   */
+  IS_GRAVITY,
+  ANIMATING,
+  IS_SHOW_MAJOR_GRID,
+  IS_SHOW_MINOR_GRID,
+  IS_SHOW_ID,
+  IS_SHOW_COM,
+  IS_FORCES,
+  /**
+   * Appended, and inverted on purpose: every URL written before this flag
+   * existed unpacks it as false, and false has to keep meaning what those URLs
+   * have always meant — gravity on. Turning gravity *off* is the choice worth
+   * recording.
+   */
+  GRAVITY_OFF,
+  /**
+   * Appended: the reader reads mass in the *other* metric unit from the one
+   * stored under their length -- kilograms under centimeters, grams under
+   * meters. False is what every earlier URL unpacks, and false keeps meaning
+   * what those URLs have always shown. Ten flags still pack into the same two
+   * characters, so a URL that leaves it false is byte-identical.
+   */
+  OTHER_METRIC_MASS,
 }

@@ -1,0 +1,410 @@
+<!-- The three cards each declare the edge they take, so `freeCanvasRect` frames
+     the linkage above them. Only the view controls used to, which was near
+     enough while the cluster sat on one line at the bottom right -- and wrong
+     the moment it wrapped, which on a phone it always does: the transport and
+     the scrub card were two rows the drawing knew nothing about, and a ground
+     pivot would be framed neatly behind them. -->
+<div class="playbackRow">
+  <!-- In and out from the bottom edge, the way a transport arrives. The view
+       controls beside it never move: they say what you can see, which is a
+       question every mode has, so they belong in the same corner in all of
+       them. -->
+  <!-- Decided by mode alone, never by the drawing. The transport is chrome:
+       it is here over an empty grid, greyed, saying what is missing -- because
+       a control that appears when the first link is drawn is a control nobody
+       knew the app had, and because a bar sliding in and out as parts are added
+       and deleted animates on an event that is not a mode change. Hidden only
+       in Synthesis, where there is no mechanism yet to play. -->
+  <!-- Three cards on the desk, one on a phone.
+       The desk keeps the transport and the scrub card apart because there is
+       room and the sync tab needs an edge to hang from. A phone has neither, so
+       there they merge: one card, a full-width reading line, and the buttons
+       sharing the 52px line with the rail. The stack goes from two rows and
+       three cards to one -- 86px against 116, which is thirty pixels of canvas
+       back and one fewer thing for the eye to parse above the home indicator.
+
+       The reading line is the win: full width, so the machine's name, the
+       displacement chip and both numbers all fit, where before the chip had to
+       compete with a 108px readout inside a card that was also holding a
+       handle. -->
+  @if (!inSynthesis && !viewport.isPhone()) {
+    <div class="transportCard" data-canvas-inset="bottom" @riseFromBottom>
+      <ng-container *ngTemplateOutlet="transportButtons" />
+    </div>
+  }
+
+  @if (!inSynthesis) {
+    <div
+      class="scrubCard"
+      [class.phoneCard]="viewport.isPhone()"
+      data-canvas-inset="bottom"
+      @riseFromBottom
+    >
+      <!-- A tab off the top edge of the desktop card. On a phone the same
+           choice sits inside the card, where an overhanging tab would collide
+           with the sheet above it. -->
+      @if (canSync && !viewport.isPhone()) {
+        <button class="syncToggle" [class.on]="synced" (click)="toggleSync()">
+          <mat-icon>{{ synced ? 'unfold_more' : 'unfold_less' }}</mat-icon>
+          {{ synced ? 'Control mechanisms independently' : 'Synchronize mechanisms' }}
+        </button>
+      }
+      @if (canSync && viewport.isPhone()) {
+        <button class="phoneSync" [class.on]="!synced" (click)="toggleSync()">
+          <mat-icon>{{ synced ? 'unfold_more' : 'unfold_less' }}</mat-icon>
+          {{ synced ? 'Control independently' : 'Synchronize mechanisms' }}
+        </button>
+      }
+
+      @for (row of shownRows; track row.id; let first = $first) {
+        <!-- The row's own surface carries the selection, so nothing has to be
+             drawn around the controls and no button ever crosses the state.
+             Everything to read sits on the first line; the handle gets the
+             card's whole width underneath it. -->
+        <div
+          class="mechRow"
+          [class.selectable]="row.isMechanism"
+          [class.combined]="!row.isMechanism"
+          [class.selected]="isSelected(row)"
+          (click)="selectMechanism(row, $event)"
+          (mouseenter)="hoverMechanism(row, true)"
+          (mouseleave)="hoverMechanism(row, false)"
+        >
+          <div class="rowHead">
+            <div class="rowLabel">
+              <!-- A machine's name is the way to select it. The combined row is
+                   not a machine, so its name is a label rather than a control:
+                   as a button it could be focused, pressed and shown as
+                   selected, none of which lead anywhere. -->
+              @if (row.isMechanism) {
+                <!-- The row already selects on click, so the button stops here
+                     rather than letting one press run both handlers. -->
+                <button
+                  class="mechChip"
+                  (click)="selectMechanism(row); $event.stopPropagation()"
+                  [attr.title]="'Select ' + labelOf(row)"
+                >
+                  {{ row.label }}
+                </button>
+              } @else {
+                <span class="mechChip plain" title="All mechanisms move together">{{
+                  row.label
+                }}</span>
+              }
+
+              <!-- A machine that cannot run states its own blocker here, on the
+                   reading line, where the name and the note would be. The count
+                   is a chip because it is a number the reader can act on; the
+                   rest is a sentence. -->
+              @if (row.refusal; as why) {
+                @if (why.count) {
+                  <span class="rowBlockers">{{ why.count }}</span>
+                }
+                <span class="rowRefusal">{{ why.text }}</span>
+              }
+
+              <!-- What just happened to this machine's start. The message is
+                   gone in four seconds; this stays until the next transport
+                   action, so the fact survives a reader who looked away. Undo
+                   appears in both and does the same thing: takes back the edit
+                   and the old start together. -->
+              @if (row.startMoved) {
+                <span class="movedChip">
+                  Start moved here
+                  <button (click)="undoStartMove(); $event.stopPropagation()">Undo</button>
+                </span>
+              }
+
+              <!-- How far this machine is parked from its own start, and both
+                   ways back from there. Pressing the label is the one-press way
+                   home; the caret is only for the second answer. -->
+              @if (row.displaced; as away) {
+                <span
+                  class="startChip"
+                  [class.open]="startMenuFor === row.index"
+                  cdkOverlayOrigin
+                  #chip="cdkOverlayOrigin"
+                >
+                  <button
+                    class="startChipLabel"
+                    (click)="backToStart(row); $event.stopPropagation()"
+                    title="Return to start pose"
+                  >
+                    <mat-icon>first_page</mat-icon>
+                    {{ away }}
+                  </button>
+                  <span class="startChipRule"></span>
+                  <button
+                    class="startChipCaret"
+                    (click)="toggleStartMenu(row); $event.stopPropagation()"
+                    [attr.aria-expanded]="startMenuFor === row.index"
+                    aria-label="Start pose options"
+                  >
+                    <mat-icon>arrow_drop_up</mat-icon>
+                  </button>
+
+                  <!-- Upward, always: the transport is 38px off the bottom edge,
+                       so there is no downward room and never will be. Anchored
+                       to the caret's bottom edge with a 6px gap, left edges
+                       aligned, and fixed at 76px so it can never want to flip
+                       or scroll.
+
+                       In an overlay rather than in the row, because the row
+                       clips: `rowHead` and `rowLabel` both hide their overflow
+                       so a long note cannot make the card taller, and a menu
+                       drawn inside them was cut off at the card's own edge. -->
+                  <ng-template
+                    cdkConnectedOverlay
+                    [cdkConnectedOverlayOrigin]="chip"
+                    [cdkConnectedOverlayOpen]="startMenuFor === row.index"
+                    [cdkConnectedOverlayPositions]="startMenuPosition"
+                    [cdkConnectedOverlayHasBackdrop]="true"
+                    cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                    (backdropClick)="startMenuFor = null"
+                    (detach)="startMenuFor = null"
+                  >
+                    <div class="startMenu">
+                      <button (click)="backToStart(row)">
+                        <mat-icon>first_page</mat-icon>
+                        Return to Start
+                      </button>
+                      <!-- Grayed with its reason rather than refused after
+                           the click: aria-disabled and not disabled, so the
+                           longer sentence still opens on hover. -->
+                      @let refused = startRefusal(row);
+                      <button
+                        (click)="moveStartHere(row)"
+                        [class.off]="!!refused"
+                        [attr.aria-disabled]="refused ? 'true' : null"
+                        [matTooltip]="refused?.long ?? ''"
+                        matTooltipPosition="after"
+                      >
+                        <mat-icon>flag</mat-icon>
+                        <span class="startMenuLabel">
+                          Set Start Pose Here
+                          @if (refused) {
+                            <span class="startMenuReason">{{ refused.short }}</span>
+                          }
+                        </span>
+                      </button>
+                    </div>
+                  </ng-template>
+                </span>
+              }
+
+              <!-- The one refusal that is not one: the rail is real and every
+                   control is live, and this only warns that Play buys a wait. -->
+              @if (row.deferred) {
+                <span class="rowEnd">
+                  <mat-icon>hourglass_empty</mat-icon>
+                  Motion solves when you press Play
+                </span>
+              }
+
+              @if (row.note) {
+                <span
+                  class="rowNote"
+                  [attr.data-row]="row.index"
+                  [attr.data-full]="row.note"
+                  [matTooltip]="noteText(row) === row.note ? '' : row.note"
+                  >{{ noteText(row) }}</span
+                >
+              }
+
+              <!-- Amber rather than red: the mechanism runs, and runs correctly.
+                   What it is warning about is the linkage, not the answer. -->
+              @if (row.togglePoint) {
+                <span
+                  class="rowToggle"
+                  title="This mechanism passes through a toggle position, where a small input motion causes a large output motion. PMKS uses finer steps here because velocities and accelerations spike and change rapidly."
+                >
+                  <span class="toggleDot"></span>
+                  Toggle
+                </span>
+              }
+
+              <!-- Where the input is, and how long it has been going. Read
+                   only: the handle is how you move it, and a typed time is a
+                   question about a coordinate the transport no longer uses. A
+                   fixed width, so a value going negative or gaining a digit
+                   cannot shift the buttons beside it. -->
+              <span class="rowReadout" [class.blank]="row.inert">
+                @if (row.position) {
+                  <span class="rowPosition" [id]="row.master ? 'playbackPosition' : null">{{
+                    row.position
+                  }}</span>
+                }
+                <span class="rowTime" [id]="row.master ? 'playbackTime' : null">{{
+                  row.time
+                }}</span>
+              </span>
+            </div>
+
+            <!-- The transport stops the click here rather than letting it reach
+                 the row. The row's whole surface selects the machine, which
+                 changes what the panel is showing -- open analysis and all --
+                 and these two are what a reader presses over and over while
+                 watching one machine run. Sharing a hitbox with the selector
+                 meant every play and every reversal took their place away. -->
+            <!-- Where rowPlay would be. A row that cannot run offers the place
+                 the answer is instead of a control that can only refuse. -->
+            @if (row.refusal?.action; as label) {
+              <button class="rowAction" (click)="openSetup(); $event.stopPropagation()">
+                {{ label }}
+              </button>
+            }
+
+            @if (row.ownPlay) {
+              <button
+                class="rowPlay"
+                [class.live]="canPlay"
+                (click)="toggleRow(row); $event.stopPropagation()"
+                [appShortcutTip]="row.playing ? 'Pause' : 'Play'"
+                shortcutTipFor="playback.toggle"
+                [attr.aria-label]="row.playing ? 'Pause ' + row.id : 'Play ' + row.id"
+              >
+                <mat-icon>{{ row.playing ? 'pause' : 'play_arrow' }}</mat-icon>
+              </button>
+            }
+
+            @if (row.isMechanism) {
+              <!-- The glyph says what the note beside it says, from the same
+                   function (`driveDirectionIcon`): a turn for a pin, a straight
+                   arrow for anything that translates. It drew a rotate glyph
+                   for every drive, so a cylinder read "Opening" beside an icon
+                   of something spinning. The note is hidden at phone width, so
+                   the direction it carries goes in the label as well — the one
+                   place a reader who cannot see the glyph would otherwise be
+                   told nothing. -->
+              <button
+                class="dirButton"
+                (click)="flipDirection(row); $event.stopPropagation()"
+                [title]="row.heading ? 'Input direction: ' + row.heading : 'Input direction'"
+                [attr.aria-label]="
+                  row.heading ? 'Reverse ' + row.id + ', now ' + row.heading : 'Reverse ' + row.id
+                "
+              >
+                <mat-icon>{{ row.directionIcon }}</mat-icon>
+              </button>
+            }
+          </div>
+
+          @if (viewport.isPhone()) {
+            <!-- The shared transport and view menu occur once; every
+                 independent mechanism still gets its own rail and the play
+                 control in its heading. -->
+            <div class="phoneTransport">
+              @if (first) {
+                <ng-container *ngTemplateOutlet="transportButtons" />
+                <span class="phoneRule" aria-hidden="true"></span>
+              }
+              <ng-container *ngTemplateOutlet="machineRail; context: { $implicit: row }" />
+              @if (first) {
+                <span class="phoneRule tight" aria-hidden="true"></span>
+                <app-view-controls></app-view-controls>
+              }
+            </div>
+          } @else {
+            <ng-container *ngTemplateOutlet="machineRail; context: { $implicit: row }" />
+          }
+        </div>
+      }
+    </div>
+  }
+
+  <!-- On a phone they are inside the card above, on the transport's own line. -->
+  @if (!viewport.isPhone()) {
+    <app-view-controls></app-view-controls>
+  }
+</div>
+
+<!-- The transport's three buttons and one machine's rail, declared once.
+     The desk gives them a card each; a phone has room for one card, so it
+     puts both on a single line inside it. Same markup either way, so the
+     two layouts cannot drift apart. -->
+<ng-template #transportButtons>
+  <button
+    class="speedButton"
+    (click)="cycleSpeed()"
+    [disabled]="!canPlay"
+    appShortcutTip="Animation Speed"
+    shortcutTipFor="playback.speed"
+  >
+    {{ speed }}x
+  </button>
+  <button
+    class="playButton"
+    [class.live]="canPlay"
+    (click)="play()"
+    [disabled]="!canPlay"
+    [appShortcutTip]="playing ? 'Pause' : 'Play'"
+    shortcutTipFor="playback.toggle"
+    [attr.aria-label]="playing ? 'Pause' : 'Play'"
+  >
+    <mat-icon>{{ playing ? 'pause' : 'play_arrow' }}</mat-icon>
+  </button>
+  <!-- Back to the pose the mechanism was drawn in, which is the one every
+           other mode shows. Beside the play button rather than in the row of
+           readings: it is the other half of the same question. -->
+  <button
+    class="stopButton"
+    (click)="stop()"
+    [disabled]="!canStop"
+    appShortcutTip="Return to start pose"
+    shortcutTipFor="playback.stop"
+    aria-label="Return to start pose"
+  >
+    <mat-icon>stop</mat-icon>
+  </button>
+</ng-template>
+
+<ng-template #machineRail let-row>
+  <div class="trackWell" [class.inert]="row.inert">
+    @if (row.inert) {
+      <!-- No cap, no seat, no handle: none of the three means anything
+             on a cycle that does not exist. The rail stays, so the card
+             is the same shape it is in every other state. -->
+      <span class="inertRail"></span>
+    } @else {
+      <!-- Where this machine's cycle starts, drawn as the handle's own
+             outline: hollow means "where the start is" here and on the
+             drawing, which is one vocabulary rather than two. Not drawn
+             when the handle is standing in it -- the mark exists exactly
+             when it has something to say -- and pressing it is the way
+             back. -->
+      @if (seatFor(row); as at) {
+        <button
+          class="anchorSeat"
+          [class.covered]="at.covered"
+          [style.--at]="at.percent"
+          (click)="backToStart(row); $event.stopPropagation()"
+          title="Return to this mechanism’s start pose"
+          aria-label="Return to start pose"
+        ></button>
+      }
+    }
+    <!-- The handle likewise: moving one machine along its own travel is
+           watching it, not picking it. -->
+    @if (!row.inert) {
+      <input
+        class="rowScrubber"
+        (click)="$event.stopPropagation()"
+        [id]="row.master ? 'slider' : null"
+        type="range"
+        min="0"
+        max="1000"
+        [attr.aria-label]="scrubLabel(row)"
+        [value]="row.scrub"
+        [style.--along.%]="row.scrub / 10"
+        [style.--travelled]="row.playing ? '#3f51b5' : '#9fa8da'"
+        [disabled]="!canPlay"
+        (mousedown)="onScrubDown(row)"
+        (mouseup)="onScrubUp(row)"
+        (input)="scrubRow(row, $event)"
+        (pointerdown)="holdScrub(row, $event)"
+        (keydown)="scrubPointerHeld = false"
+        (change)="settleScrub(row, $event)"
+      />
+    }
+  </div>
+</ng-template>

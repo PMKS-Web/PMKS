@@ -1,0 +1,955 @@
+@use 'sass:map';
+@use '@angular/material' as mat;
+@use '../BLOCKS/blocks.common.scss' as blocks;
+
+@use '../left-tabs/left-tabs.vars' as nav;
+
+// Every measurement in this file comes from the mock's own inline styles rather
+// than from an eye: the bottom cluster was tuned there, and re-deriving it by
+// looking at a screenshot is how it drifted the first time.
+@mixin css($theme) {
+  $primary-palette: map.get(mat.m2-get-color-config($theme), 'primary');
+  // How far the handle has come, and what is still ahead of it. Said once,
+  // because the two engines each want their own pseudo-element for the track.
+  // The part ahead of the handle sits as far below the selected row's fill as
+  // that fill sits below white, so the bar reads on a chosen row as clearly as
+  // it does on a plain one. The mock's own gray was the platform's, and it
+  // disappeared into the highlight.
+  // Indigo 500 while it is actually moving, indigo 200 while it is parked, so a
+  // stopped machine does not read as a running one at a glance -- the fill is
+  // the only thing on the card that says which.
+  $track: linear-gradient(
+    to right,
+    var(--travelled, var(--brand)) 0 var(--along, 0%),
+    var(--surface-disabled) var(--along, 0%) 100%
+  );
+  // Right-aligned in every mode, so the view controls at its right-hand end sit
+  // in exactly the same place whatever mode is open. They used to be pushed
+  // there by a growing spacer in Edit and centered with the transport in
+  // analysis, which moved them -- twice, and by different amounts at different
+  // window widths.
+  .playbackRow {
+    // Declared rather than written into `bottom` directly, because the
+    // component reads it back to work out the clearance the panels keep above
+    // this cluster (`publishHeight`). Restyling here moves both.
+    --playback-bottom: 38px;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: var(--playback-bottom);
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    // One gap in both directions. The wrapped cluster used to hold its lines
+    // 26px further apart, for the sync tab hanging off the top of the scrub
+    // card -- which is no longer between the lines, because the scrub card now
+    // takes the upper one.
+    gap: var(--card-gap);
+    padding: 0 var(--card-gap);
+    z-index: var(--layer-cluster);
+    pointer-events: none;
+  }
+
+  // A short window cannot hold everything at once. The scrub card grows a row
+  // per machine and, unsynced on a small phone in analysis, three of them plus
+  // the transport left about twelve pixels of canvas between the top strip and
+  // the cluster -- a drawing squeezed to nothing while the reader looked at the
+  // controls for it. The card takes what it can and scrolls the rest, which is
+  // what a list does when the window runs out.
+  @media (max-height: 560px) {
+    .scrubCard {
+      max-height: 40dvh;
+      overflow-y: auto;
+      justify-content: flex-start;
+    }
+  }
+
+  @media (max-width: nav.$phone-max-width) {
+    .playbackRow {
+      // Fixed to the bottom, just above the status strip. The sheet opens over
+      // the canvas *above* this row rather than under it, so nothing here moves
+      // when the panel does -- a control that changes place when a panel opens
+      // is a control the reader has to find twice.
+      // The one gap above the status strip, matching what the sheet keeps
+      // above this row and the top strip keeps from the window.
+      // The card is the only thing down there now, so it is measured against
+      // the home indicator directly rather than against a strip that has gone
+      // to the top of the window.
+      bottom: max(#{nav.$card-inset}, env(safe-area-inset-bottom));
+    }
+  }
+
+  .transportCard {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 60px;
+    padding: 0 12px;
+    background: var(--card-surface);
+    border-radius: var(--card-radius);
+    pointer-events: auto;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    box-shadow: var(--card-shadow);
+  }
+
+  // The card's own padding is now 4px rather than 12: a row is a surface of its
+  // own that has to be able to reach the card's edge, and the 12px optical
+  // inset the contents used to get is made up again inside it (4 card + 4 row
+  // + 4 head). Radii nest by the same rule -- outer = inner + padding.
+  .scrubCard {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    padding: 4px;
+    min-height: 60px;
+    background: var(--card-surface);
+    border-radius: var(--card-radius);
+    pointer-events: auto;
+    // Wider than it was: the line above the handle now carries the end-of-cycle
+    // reading as well as the name, the direction and the two numbers.
+    flex: 0 1 520px;
+    min-width: 250px;
+    box-sizing: border-box;
+    box-shadow: var(--card-shadow);
+  }
+
+  .speedButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 0;
+
+    &:hover:not(:disabled) {
+      background: var(--hover-wash);
+    }
+
+    &:disabled {
+      color: var(--text-disabled);
+      cursor: default;
+    }
+  }
+
+  // A rounded square rather than a disc, and the *same* rounded square as the
+  // speed button beside it and the view controls along the strip: every
+  // 40px button on this chrome takes one corner, so the one that is filled
+  // reads as the loud one of a set rather than as a shape of its own.
+  .playButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 6px;
+    background: var(--surface-disabled);
+    color: var(--text-on-accent);
+    cursor: pointer;
+    padding: 0;
+
+    &.live {
+      background: var(--brand-mid);
+    }
+
+    &:disabled {
+      cursor: default;
+    }
+
+    mat-icon {
+      width: 26px;
+      height: 26px;
+      font-size: 26px;
+      line-height: 26px;
+    }
+  }
+
+  // The same button as the speed control on its other side: forty square, one
+  // corner, no fill until it is pointed at. Play is the only filled thing in
+  // the cluster, which is what makes it the one you press.
+  .stopButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background: var(--hover-wash);
+    }
+
+    &:disabled {
+      color: var(--text-disabled);
+      cursor: default;
+    }
+
+    mat-icon {
+      width: 20px;
+      height: 20px;
+      font-size: 20px;
+      line-height: 20px;
+    }
+  }
+
+  // A tab off the top edge of the card, with the shadow above it that makes it
+  // read as attached rather than floating.
+  .syncToggle {
+    position: absolute;
+    top: -26px;
+    left: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 12px;
+    border: none;
+    border-radius: var(--card-radius) var(--card-radius) 0 0;
+    background: var(--card-surface);
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 12px;
+    white-space: nowrap;
+    cursor: pointer;
+    z-index: 1;
+    // Upward, unlike every other card: this one is a tab under nothing, and
+    // the card below it would otherwise cast a shadow onto its own tab.
+    box-shadow: 0 -3px 6px -2px rgba(0, 0, 0, 0.18);
+
+    &.on {
+      background: var(--selection);
+      color: var(--brand);
+    }
+
+    mat-icon {
+      width: 17px;
+      height: 17px;
+      font-size: 17px;
+      line-height: 17px;
+    }
+  }
+
+  // One machine, on two lines: everything to read on the first, the handle with
+  // the card's whole width under it on the second. The row is a surface of its
+  // own, which is what carries the selection -- no rail, no outline, nothing
+  // drawn around the controls, and so nothing that a control can cross.
+  .mechRow {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    padding: 3px 4px;
+    // Nested by the card's rule: outer radius = inner + the padding between.
+    border-radius: calc(var(--card-radius) - 4px);
+    // A single row is the card's whole content, so its fill is the card's.
+    flex: 1 1 auto;
+    transition: background 0.12s ease;
+
+    &.selectable {
+      cursor: pointer;
+
+      &:hover {
+        background: var(--border-rule);
+      }
+
+      // A shade darker, and that is the whole of it. Nothing added, nothing
+      // moved -- not even the name's weight, which would reflow the line it
+      // leads for a state the surface under it already says.
+      &.selected {
+        background: var(--surface-selected);
+      }
+    }
+  }
+
+  // Two spacings, as the mock has them: 8px between the things to read, and
+  // 6px between that whole group and the buttons -- which sit against the
+  // row's own padding rather than a second inset inside the line.
+  .rowHead {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 22px;
+    overflow: hidden;
+  }
+
+  .rowLabel {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 22px;
+    padding: 0 4px;
+    overflow: hidden;
+  }
+
+  // The way to select a machine, and the only one outside the canvas. It no
+  // longer has to look like a control on its own: the row it names is the
+  // control, so the name is just the name, in the app's own blue.
+  // A machine's own name where it has one, which can be long: it gives way
+  // to the readings on its line and ends in an ellipsis, the whole name on
+  // its tooltip.
+  .mechChip {
+    display: block;
+    height: 22px;
+    line-height: 22px;
+    padding: 0;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 14em;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    border: none;
+    background: transparent;
+    color: mat.m2-get-color-from-palette($primary-palette, 500);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    // A name, not a word to be dragged over. Selecting it paints the highlight
+    // across the row and leaves it looking like a second state.
+    user-select: none;
+
+    // The combined row stands for every machine at once, so there is no single
+    // thing for it to select.
+    &.plain {
+      cursor: default;
+      color: var(--text-secondary);
+    }
+  }
+
+  // Which way the input is going right now, and what it does when it gets to
+  // the end of the track. The second is gray in both readings: coming round
+  // again and turning back are two facts, not a good one and a bad one.
+  .rowToggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+    font-size: 11px;
+    color: var(--warning-text);
+    white-space: nowrap;
+    cursor: help;
+  }
+
+  .toggleDot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  // Scoped, unlike every earlier version of this rule: written bare it was a
+  // global `.rowNote`, and the export drawer's notes were inheriting it.
+  .playbackRow .rowNote {
+    flex: 0 1 auto;
+    min-width: 0;
+    @include blocks.quiet-note(11px);
+  }
+
+  .rowEnd {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 1 auto;
+    min-width: 0;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+
+    mat-icon {
+      width: 13px;
+      height: 13px;
+      flex: 0 0 auto;
+      font-size: 13px;
+      line-height: 13px;
+      color: var(--text-muted);
+    }
+  }
+
+  // Why this machine will not run, said on the reading line rather than as a
+  // caption under an empty card. The count is a chip because it is a number
+  // with somewhere to go; the rest is a sentence, at the 13px the name beside
+  // it uses -- a message, not a caption.
+  .rowBlockers {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 8px;
+    flex: 0 0 auto;
+    border-radius: 9px;
+    background: var(--refusal-bg);
+    color: var(--refusal-text);
+    font-size: 11px;
+    font-weight: 400;
+    white-space: nowrap;
+  }
+
+  .rowRefusal {
+    flex: 0 1 auto;
+    min-width: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  // The way out, standing where this row's play button would be. A row that
+  // cannot run offers the place the answer is rather than a control that can
+  // only refuse.
+  .rowAction {
+    height: 22px;
+    padding: 0 8px;
+    flex: 0 0 auto;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: mat.m2-get-color-from-palette($primary-palette, 500);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--press-wash);
+    }
+  }
+
+  // What just happened to this machine's start, kept on the row after the
+  // message that said it has gone. Flat on the row's own surface rather than
+  // raised like the displacement chip beside it: that one is a control, this is
+  // a record with a control in it.
+  .movedChip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 18px;
+    padding: 0 4px 0 8px;
+    flex: 0 0 auto;
+    border-radius: 9px;
+    background: var(--brand-tint);
+    color: var(--brand-dark);
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+
+    button {
+      height: 16px;
+      padding: 0 6px;
+      border: none;
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--brand-dark);
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+
+      &:hover {
+        background: var(--selection);
+      }
+    }
+  }
+
+  // How far this machine is parked from its own start, and both ways back.
+  // A raised pill on the row's own fill, so it reads as a thing to press
+  // rather than as a third reading among the numbers.
+  .startChip {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    flex: 0 0 auto;
+    border-radius: 9px;
+    background: var(--surface);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
+    // The menu hangs off it.
+    position: relative;
+    overflow: visible;
+  }
+
+  .startChipLabel,
+  .startChipCaret {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    border: none;
+    background: transparent;
+    color: var(--brand-dark);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .startChipLabel {
+    gap: 4px;
+    padding: 0 6px 0 4px;
+    border-radius: 9px 0 0 9px;
+
+    mat-icon {
+      width: 13px;
+      height: 13px;
+      font-size: 13px;
+      line-height: 13px;
+    }
+  }
+
+  .startChipCaret {
+    padding: 0 3px;
+    border-radius: 0 9px 9px 0;
+
+    mat-icon {
+      width: 14px;
+      height: 14px;
+      font-size: 14px;
+      line-height: 14px;
+    }
+  }
+
+  .startChipLabel:hover,
+  .startChipCaret:hover {
+    background: rgba(63, 81, 181, 0.08);
+  }
+
+  .startChip.open .startChipCaret {
+    background: var(--selection);
+  }
+
+  .startChipRule {
+    width: 1px;
+    height: 12px;
+    flex: 0 0 auto;
+    background: rgba(0, 0, 0, 0.12);
+  }
+
+  // A row with no cycle behind it has no numbers to line up, and the column
+  // would otherwise hold 108px of empty space in front of the way out.
+  .rowReadout.blank {
+    display: none;
+  }
+
+  // A fixed width holding the two numbers hard against the buttons, so a value
+  // gaining a digit or a minus sign cannot move anything beside it.
+  .rowReadout {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin-left: auto;
+    flex: 0 0 108px;
+    gap: 9px;
+    white-space: nowrap;
+  }
+
+  // The combined row names no machine and shows no position, so there is
+  // nothing for the column to line up with.
+  .mechRow.combined .rowReadout {
+    flex: 0 0 auto;
+  }
+
+  // Where the input is, then how long it has been going. The position leads
+  // because it is what the handle below it means.
+  .rowPosition {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .rowTime {
+    font-size: 11px;
+    color: var(--text-tertiary);
+  }
+
+  // Inside the row's padding rather than on its edge, at the same 22px as the
+  // line they sit on, so no button ever crosses the selected surface.
+  .rowPlay,
+  .dirButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    flex: 0 0 auto;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+    padding: 0;
+
+    &:hover {
+      background: var(--press-wash);
+    }
+  }
+
+  // Playing is the row's own doing, so its button carries the app's blue; the
+  // direction is a property of the drawing, so its button stays gray.
+  .rowPlay {
+    color: mat.m2-get-color-from-palette($primary-palette, 500);
+
+    mat-icon {
+      width: 18px;
+      height: 18px;
+      font-size: 18px;
+      line-height: 18px;
+    }
+  }
+
+  .dirButton {
+    color: var(--text-secondary);
+
+    mat-icon {
+      width: 15px;
+      height: 15px;
+      font-size: 15px;
+      line-height: 15px;
+    }
+  }
+
+  // The track sits in a 16px well with the input pinned 6px down it, so the
+  // handle centers on the line rather than on the row. The well is inset the
+  // same 4px the label group is, so the handle starts under the name.
+  .trackWell {
+    position: relative;
+    height: 16px;
+    margin: 0 4px;
+  }
+
+  // Where this machine's cycle starts, drawn as the handle's own outline.
+  //
+  // It was a 2x6px tick under the track, which read as the end cap of the fill
+  // it sat on -- and, sitting at zero on every machine, as a tick that never
+  // moved. Hollow, it is the same word the ghost on the canvas uses: this is
+  // where the start is. One vocabulary, learned once.
+  //
+  // And it is a target. 24x20 in a 16px well, against a tick nobody could ever
+  // have pressed; pressing it is back to the start.
+  .anchorSeat {
+    position: absolute;
+    // The handle's own geometry, so the seat and the handle coincide exactly
+    // rather than nearly: a range thumb's centre runs from half its width to
+    // half its width short of the far end, never edge to edge.
+    //
+    // `--at` is a bare number here, not a percentage. As a percentage this read
+    // `<length> * 41.7%`, which is not a thing calc can multiply, so the whole
+    // declaration was invalid and the seat fell back to its static position --
+    // at the left of the well, whatever the value said. Invisible for as long
+    // as the value was always zero.
+    left: calc(12px + (100% - 24px) * var(--at, 0) / 100);
+    top: -2px;
+    width: 24px;
+    height: 20px;
+    margin-left: -12px;
+    padding: 0;
+    box-sizing: border-box;
+    border: 1.5px dashed var(--brand-dark);
+    border-radius: 10px;
+    // Not opaque: the rail runs behind it, and the seat is a place on the rail
+    // rather than something standing on it.
+    background: rgba(255, 255, 255, 0.55);
+    cursor: pointer;
+    z-index: 1;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.8);
+      border-color: mat.m2-get-color-from-palette($primary-palette, 500);
+    }
+
+    // Under the handle, and out of the pointer's way, while the two overlap.
+    &.covered {
+      z-index: 0;
+      pointer-events: none;
+    }
+  }
+
+  // A cycle that does not exist gets a rail and nothing else -- no cap, no
+  // seat, no handle, because none of the three means anything. The card keeps
+  // the shape it has in every other state; only its contents go inert.
+  .inertRail {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 4px;
+    height: 8px;
+    border-radius: 4px;
+    background: var(--border-rule);
+    pointer-events: none;
+  }
+
+  // Drawn rather than themed, and drawn to look like what the platform was
+  // drawing. Left to the browser, `accent-color` colors the traveled part
+  // and the handle but the track keeps a 1px rim -- a gray line above and
+  // below the bar, a border round the one control here that has one. Taking
+  // the painting means saying the rest ourselves: the bar's thickness, the
+  // capsule handle macOS drew, and how far along it sits, which is the same
+  // number the handle itself is bound to.
+  //
+  // It also settles a difference. The native slider is the platform's, so the
+  // same page did not look the same on two machines; this one does.
+  .rowScrubber {
+    position: absolute;
+    left: 0;
+    right: 0;
+    // The handle is taller than the bar and taller than the well it sits in --
+    // 20px in 16px, as the mock has it, overhanging into the row's own padding
+    // rather than making the row taller. The element holds the handle, so it
+    // is the handle's height, hung so that its middle lands on the well's.
+    top: -2px;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    height: 20px;
+    padding: 0;
+    border: none;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+
+    &::-webkit-slider-runnable-track {
+      height: 8px;
+      border: none;
+      border-radius: 0 4px 4px 0;
+      background: $track;
+    }
+
+    &::-moz-range-track {
+      height: 8px;
+      border: none;
+      border-radius: 0 4px 4px 0;
+      background: $track;
+    }
+
+    &::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      box-sizing: border-box;
+      width: 24px;
+      height: 20px;
+      // Centered on the 8px bar rather than on the element.
+      margin-top: -6px;
+      border: 1px solid rgba(0, 0, 0, 0.16);
+      border-radius: 10px;
+      background: var(--surface);
+      box-shadow: var(--thumb-shadow);
+      cursor: inherit;
+    }
+
+    &::-moz-range-thumb {
+      box-sizing: border-box;
+      width: 24px;
+      height: 20px;
+      border: 1px solid rgba(0, 0, 0, 0.16);
+      border-radius: 10px;
+      background: var(--surface);
+      box-shadow: var(--thumb-shadow);
+      cursor: inherit;
+    }
+
+    &:disabled {
+      cursor: default;
+    }
+  }
+
+  // A narrow window cannot hold three cards across one line, so the cluster
+  // wraps: the scrub card takes a line of its own and the transport and the
+  // view controls sit under it.
+  //
+  // The scrub card leads rather than trails, because its sync tab hangs 26px
+  // off its top edge. On the lower line that tab pointed at the transport card
+  // above it, and the two lines had to be held 26px further apart to keep the
+  // two from touching; on the upper line the tab overhangs open grid, the same
+  // way it does when the cluster fits on one line.
+  //
+  // The width itself is in left-tabs.vars, because the right drawer measures
+  // itself differently on each side of it. Below it a row that cannot wrap
+  // pushed the transport off the left of the window instead of dropping a line.
+  @media (max-width: nav.$cluster-wraps) {
+    .playbackRow {
+      flex-wrap: wrap;
+    }
+
+    .scrubCard {
+      flex: 1 1 100%;
+      min-width: 0;
+      order: -1;
+    }
+  }
+
+  // The phone's own spacing, at the width the view controls tighten up at, so
+  // the two cards on the lower line change together.
+  @media (max-width: nav.$lower-line-tightens) {
+    .playbackRow {
+      gap: 8px;
+      padding: 0 8px;
+    }
+  }
+  // ---- the phone's one row ------------------------------------------------
+  //
+  // Everything the reader needs while something is running, on one line at the
+  // bottom of the window, with the mode panel opening and closing above it.
+  // The scrub card used to be dropped here: it was the widest of the three and
+  // the one that could not usefully shrink, carrying a row per machine with a
+  // name, a direction, two readings and a handle.
+  //
+  // It comes back, one row deep. Parking precisely mid-cycle is what editing at
+  // a pose is built on, so a phone without it is a phone without the feature --
+  // and the row that costs is the *per-machine* one, which is why the phone
+  // shows only the shared row (`shownRows`) and does not offer the control that
+  // would produce the others. What is left is a name, a reading and a handle on
+  // one line above the transport.
+  @media (max-width: nav.$phone-max-width) {
+    // One card, edge to edge on the line the top strip runs on. The transport
+    // and the view controls are inside it now, so there is nothing left to wrap
+    // and nothing to space apart.
+    .playbackRow {
+      flex-wrap: wrap;
+      justify-content: stretch;
+      gap: nav.$card-inset;
+      padding: 0 calc(#{nav.$card-inset} + env(safe-area-inset-right)) 0
+        calc(#{nav.$card-inset} + env(safe-area-inset-left));
+      // Above the mode strip, which is what takes the home indicator's room --
+      // so this is measured against the strip and nothing here has to know
+      // about the inset twice.
+      // The card is the only thing down there now, so it is measured against
+      // the home indicator directly rather than against a strip that has gone
+      // to the top of the window.
+      bottom: max(#{nav.$card-inset}, env(safe-area-inset-bottom));
+    }
+
+    .phoneCard {
+      flex: 1 1 auto;
+      // Its own line is as tall as one row needs and no taller; the desk
+      // minimum is sized for a card that could hold several.
+      min-height: 0;
+      gap: 0;
+    }
+
+    .phoneSync {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 34px;
+      margin: 2px 4px 0;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+
+      &.on {
+        background: var(--selection);
+        color: var(--brand-dark);
+      }
+
+      mat-icon {
+        width: 17px;
+        height: 17px;
+        font-size: 17px;
+        line-height: 17px;
+      }
+    }
+
+    // Nothing on the reading line but what a seek needs. The end-of-cycle
+    // reading and the toggle warning are explanations, and the line is holding
+    // a name, a chip and two numbers already.
+    .rowEnd,
+    .rowToggle,
+    .playbackRow .rowNote {
+      display: none;
+    }
+
+    // Full width, so the name, the chip and both readings all fit -- where
+    // before the chip had to compete with a 108px readout inside a card that
+    // was also holding a handle.
+    .rowReadout {
+      flex: 0 0 auto;
+    }
+
+    // Buttons and rail on one line, which is what merging the cards buys.
+    .phoneTransport {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      height: 52px;
+      padding: 0 2px;
+
+      // The rail takes what the buttons leave.
+      .trackWell {
+        flex: 1 1 auto;
+        min-width: 0;
+        margin: 0 4px;
+      }
+    }
+
+    // Where one kind of control ends and the next begins: the transport, the
+    // handle, and what the drawing shows are three different questions sharing
+    // one line.
+    .phoneRule {
+      width: 1px;
+      height: 30px;
+      flex: 0 0 auto;
+      margin: 0 4px;
+      background: rgba(0, 0, 0, 0.08);
+
+      &.tight {
+        margin: 0 2px;
+      }
+    }
+
+    .speedButton,
+    .stopButton {
+      width: 34px;
+      height: 34px;
+    }
+
+    .playButton {
+      width: 40px;
+      height: 40px;
+    }
+  }
+
+  // The same thirty pixels, taken off the other card in the row. Below this the
+  // two of them at their phone sizes want more than the window has, and what
+  // overflowed was the page itself: `top-strip-states` found a document that
+  // scrolled sideways by a pixel at 360.
+  @media (max-width: nav.$narrow-phone) {
+    .transportCard {
+      padding: 0 4px;
+    }
+
+    .speedButton,
+    .stopButton {
+      width: 30px;
+      height: 30px;
+    }
+
+    .playButton {
+      width: 36px;
+      height: 36px;
+    }
+  }
+}

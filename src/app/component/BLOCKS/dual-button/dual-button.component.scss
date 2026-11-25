@@ -13,18 +13,34 @@
 
   .dual-button {
     .buttonDisabled {
+      color: var(--text-disabled) !important;
+      // The tooltip lives on `.button-seat`: a disabled native button emits
+      // no pointer events, so let the wrapper receive the hover.
+      pointer-events: none;
+
       path {
-        fill: #969696 !important;
+        fill: var(--text-disabled) !important;
       }
 
-      border-color: #bbbbbb !important;
+      border-color: var(--border-divider) !important;
     }
 
-    display: grid;
-    //Equal width columns 10px apart
-    grid-template-columns: repeat(2, 1fr);
+    // Each button is as wide as its own words, and the two share what is
+    // left in proportion. Two equal columns gave "Add tracer point" the same
+    // room as "Add force", so the long label sat hard against its edges while
+    // the short one floated in space -- the padding read as uneven because it
+    // was. Growing from the label's own width evens it out without measuring.
+    display: flex;
+    gap: 10px;
+
+    .button-seat {
+      display: grid;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
 
     button {
+      grid-area: 1 / 1;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -33,7 +49,8 @@
       padding: 0 10px;
       margin: 0;
       height: 50px !important;
-      flex-grow: 1;
+      flex: 1 1 100%;
+      min-width: 0;
       overflow: hidden;
 
       .mat-mdc-button-touch-target {
@@ -48,6 +65,19 @@
         gap: 2px;
         line-height: 16px;
         white-space: nowrap;
+      }
+
+      .button-copy {
+        display: grid;
+
+        > span {
+          grid-area: 1 / 1;
+          white-space: nowrap;
+        }
+
+        .button-copy-sizer {
+          visibility: hidden;
+        }
       }
 
       .mat-icon {

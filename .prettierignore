@@ -1,0 +1,37 @@
+# Build output and throwaway run artifacts.
+/dist
+/out-tsc
+/tmp
+/artifacts
+/coverage
+
+# Markdown is hand-wrapped prose with a lot of tables. Prettier pads every table
+# cell to the widest entry and rewrites *emphasis* as _emphasis_, so a one-line
+# edit to a doc lands as a few hundred lines of realignment and buries itself.
+*.md
+
+# Machine-generated reference tables. These are regenerated wholesale from the
+# MATLAB verification runs, so reformatting them is noise that would also make
+# the next regeneration look like a change.
+/src/test-data/verification
+
+# Storybook docs pages. Prettier's MDX printer rewrites the `*` of a JSX comment
+# (`{/* … */}`) as `_`, which breaks the comment.
+*.mdx
+
+# A rendering of a brief, kept beside its PDF. Not source.
+/docs/*.html
+
+# The numerical oracle's problem and reference files, written by its Python
+# generator (oracle/pmks_oracle/run.py, benchmarks/derivations/). Like the
+# MATLAB tables above, they are regenerated wholesale and must not be reflowed.
+/oracle/benchmarks/cases
+/src/test-data/oracle
+
+# The oracle's Python environment (uv sync); oracle/.gitignore keeps it out of git.
+/oracle/.venv
+
+# The brand generator's Python environment and its scratch files (npm run brand);
+# brand/.gitignore keeps both out of git.
+/brand/.venv
+/brand/.work

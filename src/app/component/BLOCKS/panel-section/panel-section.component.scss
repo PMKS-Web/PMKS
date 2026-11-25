@@ -13,17 +13,80 @@
 
   #normalPanel {
     pointer-events: all;
-    @include mat.elevation(4);
+    // Nothing inside this card paints outside it. The sticky title below is
+    // raised above the card's own contents, and without this it is raised
+    // against everything the card is standing in as well -- including the
+    // drawer's close button, which shares the title's line and lost to it in
+    // Safari: covered by the title's white background while still taking the
+    // click. Confining the title to the card settles it by construction
+    // rather than by who has the larger number.
+    isolation: isolate;
+    // The card owns the scroll, not the frame around it. Scrolling the frame
+    // cut the card off square at the bottom of the window; scrolling the card
+    // keeps its own rounded corner as the edge, and lets the title stay put
+    // while the settings under it move. The height it is capped at is the
+    // frame's, which is set from the top strip and whatever is along the
+    // bottom in this mode.
+    max-height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    box-shadow: var(--card-shadow);
+    // 5px, matching the 5px accent bar above it: a border's inner edge is
+    // rounded by the corner radius minus the border width, so any radius wider
+    // than the bar curves the bar's underside. The floating chrome has no bar
+    // and keeps the wider corner.
     border-radius: var(--border-radius);
     display: flex;
     flex-direction: column;
     //gap: 10px;
-    background-color: mat.m2-get-color-from-palette($background, 'background');
+    background-color: var(--card-surface);
     border-top: 5px solid mat.m2-get-color-from-palette($primary-palette, 500);
     //padding: 20px;
 
-    > * {
+    // The freeze wrapper is not a box. It exists to carry one attribute, and a
+    // real box here would take the card's children out of its own flex column
+    // -- which is the height chain the card scrolls on.
+    .sectionBody {
+      display: contents;
+    }
+
+    // Stretched to the panel's own width -- which is a content-box width, so a
+    // child with side padding would come out wider than the panel it is in and
+    // overflow the drawer. That is how the version row ran off the edge.
+    > *,
+    > .sectionBody > * {
       width: 100%;
+      box-sizing: border-box;
+      flex: 0 0 auto;
+    }
+
+    // The name of the thing being edited, and what can be done to it, stay
+    // where they are; everything below them scrolls.
+    // Through the freeze wrapper, which has no box of its own -- `display:
+    // contents` takes an element out of the box tree but leaves it in the DOM,
+    // so a child combinator still has to pass it.
+    > .sectionBody:first-child > title-block:first-child,
+    > .sectionBody:first-child > editable-title-block:first-child,
+    > .sectionBody:first-child > .panelHead:first-child {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: var(--card-surface);
+      // Nothing under it yet, so nothing to cast onto -- but declared here so
+      // the shadow fades in rather than appearing the instant a card moves.
+      box-shadow: var(--scroll-shadow-hidden);
+      transition: box-shadow 0.15s ease-in-out;
+    }
+
+    // Something above, out of sight. The card scrolls under its own title, so
+    // scrolled off its top it read as a card that simply started there: the
+    // first setting ran up beneath the title and was gone, leaving white space
+    // that looked like the top of the panel. The title now casts a shadow onto
+    // whatever is passing under it.
+    &.scrolled > .sectionBody:first-child > title-block:first-child,
+    &.scrolled > .sectionBody:first-child > editable-title-block:first-child,
+    &.scrolled > .sectionBody:first-child > .panelHead:first-child {
+      box-shadow: var(--scroll-shadow);
     }
   }
 }

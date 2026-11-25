@@ -1,63 +1,123 @@
 /*
-    * This file contains the data structures used by the transcoder.
-    * These data structures are used to store the data in a format that is
-    * easy to encode and decode.
-*/
+ * This file contains the data structures used by the transcoder.
+ * These data structures are used to store the data in a format that is
+ * easy to encode and decode.
+ */
 
-export enum JOINT_TYPE {PRISMATIC, REVOLUTE};
-export enum LINK_TYPE {REAL, PISTON};
+export enum JOINT_TYPE {
+  PRISMATIC,
+  REVOLUTE,
+}
+export enum LINK_TYPE {
+  REAL,
+  PISTON,
+}
 
-export enum ACTIVE_TYPE {JOINT = "J", LINK = "L", FORCE = "F", NOTHING = "N"};
+export enum ACTIVE_TYPE {
+  JOINT = 'J',
+  LINK = 'L',
+  FORCE = 'F',
+  NOTHING = 'N',
+}
 
 export class ActiveObjData {
-    constructor(
-        public type: ACTIVE_TYPE,
-        public id: string,
-    ) {}
+  constructor(
+    public type: ACTIVE_TYPE,
+    public id: string
+  ) {}
 }
 
 export class JointData {
-    constructor(
-        public type: JOINT_TYPE,
-        public id: string,
-        public name: string,
-        public x: number,
-        public y: number,
-        public isGrounded: boolean,
-        public isInput: boolean,
-        public isWelded: boolean,
-        public angleRadians: number,
-        public showCurve: boolean,
-    ) {}
+  constructor(
+    public type: JOINT_TYPE,
+    public id: string,
+    public name: string,
+    public x: number,
+    public y: number,
+    public isGrounded: boolean,
+    public isInput: boolean,
+    public isWelded: boolean,
+    public angleRadians: number,
+    public showCurve: boolean,
+    // A floating slot carries all three or none of these (§2.4a). They are
+    // absent on every URL written before floating slots existed, which is
+    // what makes "no tokens" mean "grounded" unambiguously.
+    public carrierID: string = '',
+    public slotJointAID: string = '',
+    public slotJointBID: string = '',
+    // The sealed-cylinder bit (§ atomic cylinder). Sixth joint flag: base-64
+    // packs six flags into the same single character five occupied, so every
+    // pre-existing URL decodes it as false and nothing shifts.
+    public isSealed: boolean = false,
+    /**
+     * How fast this joint drives its own mechanism, signed for direction.
+     *
+     * Stored on the joint because a drawing can hold several mechanisms and
+     * each is driven at its own speed, and the driven joint is the only handle
+     * on a mechanism that the URL carries -- mechanism names are derived from
+     * the geometry, not saved, so there is nothing else stable to key on.
+     *
+     * Zero means "this URL predates the setting"; the builder then keeps the
+     * document-wide default. Zero is safe to spend that way because a drive
+     * that does not move is not a speed anyone chose -- the panel refuses it.
+     */
+    public driveSpeed: number = 0,
+    /**
+     * The mass of the block riding a slot, which is a joint's own now.
+     *
+     * It used to be a link's, because a slider was three objects and only a
+     * link could carry a mass (Stage 1 of
+     * `docs/joint-type-and-cylinder-plan.md`). Written last and only when there
+     * is a mass to write, so every URL of a massless slider — which is every
+     * URL written before this — keeps exactly the tokens it had.
+     */
+    public mass: number = 0,
+    /**
+     * The name of the mechanism this joint keeps (`model/mechanism/mechanism-name.ts`),
+     * or empty. Written after the mass and only when there is a name, so
+     * every URL without one keeps exactly the tokens it had.
+     */
+    public machineName: string = ''
+  ) {}
 }
 
 export class LinkData {
-    constructor(
-        public isRoot: boolean,
-        public type: LINK_TYPE,
-        public id: string,
-        public name: string,
-        public mass: number,
-        public massMoI: number = 0,
-        public xCoM: number = 0,
-        public yCoM: number = 0,
-        public color: string = "",
-        public jointIDs: string[] = [],
-        public subsetLinkIDs: string[] = [],
-    ) {}
+  constructor(
+    public isRoot: boolean,
+    public type: LINK_TYPE,
+    public id: string,
+    public name: string,
+    public mass: number,
+    public massMoI: number = 0,
+    public xCoM: number = 0,
+    public yCoM: number = 0,
+    public color: string = '',
+    public jointIDs: string[] = [],
+    public subsetLinkIDs: string[] = [],
+    /**
+     * Whether the author chose these values (legacy URLs always did — the
+     * whole format predates auto-derived properties). Carried in the record's
+     * leading character, not in a new field: the tail of a link record is
+     * variable-length, so there is nowhere behind it to append to.
+     */
+    public moiIsCustom: boolean = true,
+    public comIsCustom: boolean = true,
+    /** Whether the link is drawn as the disc it sweeps. Legacy URLs: a bar. */
+    public isCircle: boolean = false
+  ) {}
 }
 
 export class ForceData {
-    constructor(
-        public id: string,
-        public linkID: string,
-        public name: string,
-        public startX: number,
-        public startY: number,
-        public endX: number,
-        public endY: number,
-        public isLocal: boolean,
-        public isFacingOut: boolean,
-        public magnitude: number
-    ) {}
+  constructor(
+    public id: string,
+    public linkID: string,
+    public name: string,
+    public startX: number,
+    public startY: number,
+    public endX: number,
+    public endY: number,
+    public isLocal: boolean,
+    public isFacingOut: boolean,
+    public magnitude: number
+  ) {}
 }

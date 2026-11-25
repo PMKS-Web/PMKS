@@ -1,0 +1,211 @@
+<panel-section [frozen]="panelIsFrozen()">
+  <!-- The same block, and so the same buttons, a one-part selection is headed
+       with: Lock and Delete mean the same thing to eight joints as to one, and
+       a reader who has learned where they are should not learn again. Rename is
+       off, because a group has no one name to change. -->
+  <editable-title-block
+    [renamable]="false"
+    [displayName]="selectionLabel"
+    [lockState]="lockDisplay()"
+    [toggleLockAction]="toggleLock.bind(this)"
+    [deleteAction]="delete.bind(this)"
+    [deleteDisabled]="structureIsFrozen()"
+    deleteLabel="Delete"
+  ></editable-title-block>
+  <app-edit-banner panelAttached />
+
+  @if (homogeneousJoints) {
+    <collapsible-subsection titleLabel="Basic Settings" [expanded]="true">
+      <dual-input-block
+        label1="X"
+        label2="Y"
+        formControl1="x"
+        formControl2="y"
+        [formGroup]="form"
+        [placeholder1]="placeholder(jointValue('x'))"
+        [placeholder2]="placeholder(jointValue('y'))"
+        dataField1="x"
+        dataField2="y"
+        tooltip="Entering a value aligns every selected joint to that coordinate."
+      >
+        Joint Position
+      </dual-input-block>
+      <!-- The one-joint panel's Joint Type and Grounded, in the same order and
+           with the same words. A group in two minds says so: no type is chosen
+           and the row reads Mixed, and the switch says what pressing it will
+           make them, because eight joints half grounded have no state to toggle
+           to. Choosing a type makes every selected joint that type, as one
+           edit. -->
+      @if (jointTypeChoice(); as choice) {
+        <segmented-block
+          label="Joint Type"
+          tooltip="How the bodies meeting at each selected joint move against each other."
+          wrap
+          [options]="choice.labels"
+          [icons]="choice.icons"
+          [selected]="choice.chosen"
+          [disabledAt]="choice.disabledAt"
+          [reasons]="choice.reasons"
+          [mixed]="choice.chosen === -1"
+          [disabled]="structureIsFrozen()"
+          (selectedChange)="setJointType($event)"
+        ></segmented-block>
+      }
+      <toggle-block
+        [formGroup]="form"
+        _formControl="ground"
+        [disabled]="form.controls.ground.disabled"
+        dataAction="ground"
+        [mixed]="groundState().kind === 'mixed'"
+        tooltip="Fixes every selected joint to the frame, so nothing can move them."
+      >
+        Grounded
+      </toggle-block>
+    </collapsible-subsection>
+    <collapsible-subsection titleLabel="Visual Settings" [expanded]="true">
+      <toggle-block
+        [formGroup]="form"
+        _formControl="trace"
+        [disabled]="form.controls.trace.disabled"
+        dataAction="trace"
+        [mixed]="traceState().kind === 'mixed'"
+        tooltip="Show or hide the path each selected joint traces through the cycle."
+      >
+        Trace Path
+      </toggle-block>
+      <color-picker type="joint" [parts]="joints" tooltip="The color of every selected joint."
+        >Joint Color</color-picker
+      >
+    </collapsible-subsection>
+  }
+
+  @if (homogeneousLinks) {
+    <collapsible-subsection titleLabel="Basic Settings" [expanded]="true">
+      @if (ordinaryBinaryLinks) {
+        <dual-input-block
+          label1="L"
+          label2="⊾"
+          formControl1="length"
+          formControl2="angle"
+          [formGroup]="form"
+          [placeholder1]="placeholder(linkValue('length'))"
+          [placeholder2]="placeholder(linkValue('angle'))"
+          dataField1="length"
+          dataField2="angle"
+          tooltip="Each selected link keeps its own anchor joint."
+        >
+          Link Geometry
+        </dual-input-block>
+      } @else {
+        <p class="multiNote">Length and angle can only be edited on plain two-joint links.</p>
+      }
+      <input-block
+        [formGroup]="form"
+        _formControl="mass"
+        dataField="mass"
+        [placeholder]="placeholder(linkValue('mass'))"
+        tooltip="Applies one mass to every selected link."
+      >
+        Mass
+      </input-block>
+      @if (ordinaryBinaryLinks) {
+        <!-- The padlocks a single bar wears inside its two fields, said as
+             rows: the group's fields are one pair for the whole selection, so
+             there is no field of this bar's to put this bar's padlock in. The
+             two are exclusive, as they are on one bar -- holding an angle
+             lets go of a length. -->
+        <toggle-block
+          [formGroup]="form"
+          _formControl="fixedLength"
+          [disabled]="form.controls.fixedLength.disabled"
+          dataAction="fixedLength"
+          [mixed]="holdState('length').kind === 'mixed'"
+          tooltip="Keep every selected link at its current length. Its angle can still change."
+        >
+          Fixed Length
+        </toggle-block>
+        <toggle-block
+          [formGroup]="form"
+          _formControl="fixedAngle"
+          [disabled]="form.controls.fixedAngle.disabled"
+          dataAction="fixedAngle"
+          [mixed]="holdState('angle').kind === 'mixed'"
+          tooltip="Keep every selected link at its current angle. Its length can still change."
+        >
+          Fixed Angle
+        </toggle-block>
+      }
+    </collapsible-subsection>
+    <collapsible-subsection titleLabel="Visual Settings" [expanded]="true">
+      <color-picker type="link" [parts]="links" tooltip="The color of every selected link."
+        >Link Color</color-picker
+      >
+    </collapsible-subsection>
+  }
+
+  @if (homogeneousForces) {
+    <collapsible-subsection titleLabel="Basic Settings" [expanded]="true">
+      <!-- The three a set of forces has in common. Not where they are: a force
+           is anchored to the body it acts on, so its position is that body's
+           to decide. -->
+      <input-block
+        [formGroup]="form"
+        _formControl="magnitude"
+        dataField="magnitude"
+        [placeholder]="placeholder(forceValue('magnitude'))"
+        tooltip="Applies one magnitude to every selected force."
+      >
+        Magnitude
+      </input-block>
+      <input-block
+        [formGroup]="form"
+        _formControl="forceAngle"
+        dataField="forceAngle"
+        [placeholder]="placeholder(forceValue('angle'))"
+        tooltip="Points every selected force the same way. Counter-clockwise is positive."
+      >
+        Angle
+      </input-block>
+      <radio-block
+        [formGroup]="form"
+        _formControl="isGlobal"
+        [disabled]="form.controls.isGlobal.disabled"
+        tooltip="Grid keeps each force direction fixed; Link rotates it with the link it acts on."
+        [option1]="localOptionLabel"
+        option2="Grid"
+      >
+        Reference Frame
+      </radio-block>
+    </collapsible-subsection>
+    <collapsible-subsection titleLabel="Visual Settings" [expanded]="true">
+      <color-picker type="force" [parts]="forces" tooltip="The color of every selected force."
+        >Force Color</color-picker
+      >
+    </collapsible-subsection>
+  }
+
+  @if (!homogeneousJoints && !homogeneousLinks && !homogeneousForces) {
+    <collapsible-subsection titleLabel="Selected Objects" [expanded]="true">
+      <!-- Three separate facts, so three lines a reader can scan rather than
+           one paragraph. The title already counts what is selected, so the
+           note does not say it again. -->
+      <ul class="multiNote">
+        <li>Drag the selection or its handles to move, rotate, or scale it.</li>
+        <li>Property fields appear only when every selected part shares them.</li>
+        <li>Forces move with their links.</li>
+      </ul>
+    </collapsible-subsection>
+  }
+
+  <div class="multiActions" aria-label="Selection actions">
+    <button-block
+      icon="content_copy"
+      dataAction="duplicate"
+      [click]="duplicate.bind(this)"
+      [disabled]="structureIsFrozen()"
+      tooltip="Copies the selected parts one grid step away."
+    >
+      Duplicate Selected
+    </button-block>
+  </div>
+</panel-section>

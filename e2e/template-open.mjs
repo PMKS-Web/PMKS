@@ -9,6 +9,9 @@ const { chromium } = await import(
   (process.env.PMKS_PLAYWRIGHT_DIR ?? '/tmp/pmks-playwright') + '/node_modules/playwright/index.mjs'
 );
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { waitForReady } from './app-ready.mjs';
+import { startQuiet } from './quiet-start.mjs';
+import { TEMPLATE_LINKAGES as payloads } from './template-payloads.mjs';
 const OUT = 'artifacts/template-open';
 mkdirSync(OUT, { recursive: true });
 const FOUR_BAR =
@@ -20,25 +23,13 @@ const check = (name, pass, detail = '') => {
 };
 const browser = await chromium.launch();
 const context = await browser.newContext({ viewport: { width: 1500, height: 950 } });
+// This is about the library, not about onboarding. A first visit now opens the
+// tutorial by itself, and its card in the drawer is not what these checks are
+// looking at.
+await startQuiet(context);
 let newPages = 0;
 context.on('page', () => newPages++);
 
-const dismissIntro = async (page) => {
-  if (
-    await page
-      .locator('.introjs-tooltip, .introjs-overlay')
-      .first()
-      .isVisible()
-      .catch(() => false)
-  ) {
-    await page
-      .locator('.introjs-skipbutton')
-      .first()
-      .click({ force: true })
-      .catch(() => {});
-    await page.waitForTimeout(500);
-  }
-};
 const linkCount = (page) =>
   page.evaluate(
     () =>
@@ -47,26 +38,33 @@ const linkCount = (page) =>
       ).length
   );
 
+// Templates moved off the file toolbar and into the project menu, so it takes
+// two presses to reach now.
+const openTemplates = async (page) => {
+  await page.locator('.topStrip .iconButton').first().click();
+  await page.locator('.projectMenu #templatesButton').click();
+  await page.waitForTimeout(600);
+};
+
 // --- Case 1: empty grid, template loads in this window -----------------------
 const page = await context.newPage();
 page.setDefaultTimeout(15000);
 newPages = 0; // ignore the page we created ourselves
-const BASE = process.env.PMKS_URL ?? 'http://127.0.0.1:4200/';
-await page.goto(BASE, { waitUntil: 'networkidle' });
-await dismissIntro(page);
+const BASE = process.env.PMKS_BASE_URL ?? process.env.PMKS_URL ?? 'http://localhost:4200/';
+await page.goto(BASE, { waitUntil: 'domcontentloaded' });
+await waitForReady(page);
 await page.waitForTimeout(600);
-// The library opens by itself on a blank start; open it from the toolbar if not.
+// The library opens by itself on a blank start; open it from the menu if not.
 if (
   !(await page
     .locator('#templates')
     .isVisible()
     .catch(() => false))
 ) {
-  await page.locator('button:has-text("Templates")').first().click();
-  await page.waitForTimeout(600);
+  await openTemplates(page);
 }
 const before = await linkCount(page);
-await page.locator('#templates panel-section').first().click();
+await page.locator('#templates [data-template="4-Bar"]').click();
 await page.waitForTimeout(1500);
 const after = await linkCount(page);
 check(
@@ -83,15 +81,14 @@ check(
 );
 
 // --- Case 2: existing work brings up the choice dialog -----------------------
-await page.goto(`${BASE}?${FOUR_BAR}`, { waitUntil: 'networkidle' });
-await dismissIntro(page);
+await page.goto(`${BASE}?${FOUR_BAR}`, { waitUntil: 'domcontentloaded' });
+await waitForReady(page);
 await page.waitForTimeout(800);
-await page.locator('button:has-text("Templates")').first().click();
-await page.waitForTimeout(600);
-await page.locator('#templates panel-section').nth(1).click(); // Watt I
+await openTemplates(page);
+await page.locator('#templates [data-template="Watt_I"]').click();
 await page.waitForTimeout(600);
 const dialogVisible = await page
-  .locator('text=already a linkage on the grid')
+  .locator('text=already a mechanism on the grid')
   .isVisible()
   .catch(() => false);
 check('Existing work: choice dialog appears', dialogVisible);
@@ -109,7 +106,7 @@ check(
 
 // Replace swaps the linkage in this window (Watt I has more links than the four-bar).
 const beforeReplace = await linkCount(page);
-await page.locator('#templates panel-section').nth(1).click();
+await page.locator('#templates [data-template="Watt_I"]').click();
 await page.waitForTimeout(600);
 await page.locator('button:has-text("Replace")').click();
 await page.waitForTimeout(1500);
@@ -120,18 +117,11 @@ check(
   `links ${beforeReplace} -> ${afterReplace}, new tabs=${newPages}`
 );
 
-// Undo brings the old linkage back. The Undo button lives in the Edit tab's
-// tool strip, so open Edit first; it being enabled proves the replace saved.
-if (
-  !(await page
-    .locator('button:has-text("Undo")')
-    .isVisible()
-    .catch(() => false))
-) {
-  await page.locator('.leftButton', { hasText: 'Edit' }).click();
-  await page.waitForTimeout(700);
-}
-await page.locator('button:has-text("Undo")').click();
+// Undo brings the old linkage back. Undo now sits in the top strip in every
+// mode, so no mode switch is needed; it being enabled proves the replace saved.
+const undo = page.locator('.historyButton', { hasText: 'Undo' });
+check('Replace armed Undo', (await undo.isDisabled()) === false);
+await undo.click();
 await page.waitForTimeout(1200);
 const afterUndo = await linkCount(page);
 check(
@@ -147,14 +137,88 @@ if (
     .isVisible()
     .catch(() => false))
 ) {
-  await page.locator('button:has-text("Templates")').first().click();
-  await page.waitForTimeout(600);
+  await openTemplates(page);
 }
-await page.locator('#templates panel-section').first().click();
+await page.locator('#templates [data-template="4-Bar"]').click();
 await page.waitForTimeout(600);
-await page.locator('button:has-text("Open in a new tab")').click();
+// "New Tab", not "Open in a new tab": the choice dialog's buttons were shortened
+// to Cancel / New Tab / Replace, and this check went on quoting the old wording
+// until the locator timed out. It is the button's own words on purpose, like
+// Cancel and Replace above it.
+await page.locator('button:has-text("New Tab")').click();
 await page.waitForTimeout(2000);
-check('Open in a new tab spawns exactly one tab', newPages === 1, `new tabs=${newPages}`);
+check('New Tab spawns exactly one tab', newPages === 1, `new tabs=${newPages}`);
+
+// --- a card that ships a picture opens on top of it -------------------------
+//
+// The picture is an asset rather than anything in the URL: an image is
+// megabytes and a shared link is a few hundred characters. Both doors are
+// checked, because they carry it differently -- opened in place it is handed
+// straight over, and opened in a new tab only the card's *name* travels, in the
+// fragment, since the query is the mechanism and nothing fits beside it.
+const backdropNow = () =>
+  page.evaluate(() => {
+    const grid = ng.getComponent(document.querySelector('app-new-grid'));
+    const image = grid.bgImage.image();
+    return image ? { src: image.src, width: Math.round(image.width) } : null;
+  });
+
+await page.goto(`${BASE}?library`, { waitUntil: 'domcontentloaded' });
+await waitForReady(page);
+await page.waitForTimeout(1200);
+await page.locator('#templates [data-template="Excavator_Bucket"]').click();
+// Waited for rather than slept on: the card opens behind the loading cover and
+// the picture lands after the drawing is framed, which on a CI runner took
+// longer than the three seconds this used to allow.
+await page
+  .waitForFunction(
+    () => ng.getComponent(document.querySelector('app-new-grid')).bgImage.image()?.width > 0,
+    null,
+    { timeout: 15000 }
+  )
+  .catch(() => {});
+const opened = await backdropNow();
+check(
+  'a card with a backdrop opens on top of it',
+  opened?.src === 'assets/backdrops/backhoe-bucket.png' && opened.width > 0,
+  JSON.stringify(opened)
+);
+
+// The same payload with nothing after it, for the fragment to be measured
+// against.
+await page.goto(`${BASE}?${payloads['Excavator_Bucket']}`, { waitUntil: 'domcontentloaded' });
+await waitForReady(page);
+await page.waitForTimeout(1500);
+const plainLinks = await linkCount(page);
+
+// The address a New Tab builds, walked into directly.
+await page.goto(`${BASE}?${payloads['Excavator_Bucket']}#backdrop=Excavator_Bucket`, {
+  waitUntil: 'domcontentloaded',
+});
+await waitForReady(page);
+await page.waitForTimeout(2500);
+await page
+  .waitForFunction(
+    () => ng.getComponent(document.querySelector('app-new-grid')).bgImage.image(),
+    null,
+    { timeout: 15000 }
+  )
+  .catch(() => {});
+const inNewTab = await backdropNow();
+const withFragment = await linkCount(page);
+check(
+  'and a new tab picks it up from the fragment',
+  inNewTab?.src === 'assets/backdrops/backhoe-bucket.png',
+  JSON.stringify(inNewTab)
+);
+// The fragment must not reach the decoder: everything after the '?' used to be
+// handed over whole, so any anchor on a shared link failed its checksum and
+// opened an empty grid saying the link could not be read.
+check(
+  'and the fragment costs the mechanism nothing',
+  withFragment === plainLinks && plainLinks > 0,
+  `with=${withFragment} without=${plainLinks}`
+);
 
 await browser.close();
 writeFileSync(`${OUT}/report.json`, JSON.stringify({ results }, null, 2));

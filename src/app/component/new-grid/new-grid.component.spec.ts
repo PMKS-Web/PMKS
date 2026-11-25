@@ -1,53 +1,273 @@
 import { TestBed } from '@angular/core/testing';
-import { AppModule } from '../../app.module';
+import { provideAnimations } from '@angular/platform-browser/animations';
 import { RevJoint } from '../../model/joint';
 import { RealLink } from '../../model/link';
-import { jointStates } from '../../model/utils';
+import { Force } from '../../model/force';
 import { ActiveObjService } from '../../services/active-obj.service';
+import { DragStateService } from '../../services/drag-state.service';
 import { GridUtilsService } from '../../services/grid-utils.service';
 import { MechanismService } from '../../services/mechanism.service';
+import { linkStates } from '../../model/utils';
+import { SettingsService } from '../../services/settings.service';
 import { SvgGridService } from '../../services/svg-grid.service';
 import { NewGridComponent } from './new-grid.component';
+import { SelectedTabService, TabID } from '../../selected-tab.service';
+import { MODEL_SCALE } from '../../model/render-scale';
+import { BackgroundImageService } from '../../services/background-image.service';
+import { SynthesisBuilderService } from '../../services/synthesis/synthesis-builder.service';
+import { NotificationService } from '../../services/notification.service';
+import { EditPermissionService } from '../../services/edit-permission.service';
+import { Coord } from '../../model/coord';
+import { SaveHistoryService } from '../../services/save-history.service';
+import { LONGEST_ARROW_FRACTION } from '../../model/vector-trace';
+import { CYLINDER, MARK, slideMarkPath } from '../../model/joint-marks';
+import { ColorService } from '../../services/color.service';
+import { CanvasLabelsService } from '../../services/canvas-labels.service';
+import { StringTranscoder } from '../../services/transcoding/string-transcoder';
+import { MechanismBuilder } from '../../services/transcoding/mechanism-builder';
+import { fixturePayload } from '../../../test-utils/verification/fixture-gallery';
+import { fourBarDrivenAtFixture } from '../../../test-utils/verification/fixtures';
+
+/**
+ * NewGridComponent renders through svg-pan-zoom, which needs real SVG layout;
+ * jsdom has none. Every suite here stands the component up against a stub that
+ * maps screen coordinates straight through, so screen and SVG units are equal.
+ */
+/**
+ * The real one, put back when this file is done with it.
+ *
+ * The stub below answers `matches: true` to every query, which is what this
+ * suite wants -- and `(pointer: coarse)` is a query, so `ViewportService` reads
+ * the whole app as a touchscreen. Left in place it stayed true for whichever
+ * file ran next in the same environment: the analysis panel's copy tests began
+ * expecting "Click a joint" and reading "Tap a joint", and which of them failed
+ * depended on the order the files happened to run in.
+ */
+const REAL_MATCH_MEDIA = window.matchMedia;
+
+afterAll(() => {
+  window.matchMedia = REAL_MATCH_MEDIA;
+});
+
+async function configureGridTestBed() {
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: true,
+    media: '',
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }) as unknown as typeof matchMedia;
+  const svgGridStub = {
+    horizontalLines: [],
+    horizontalLinesMinor: [],
+    verticalLines: [],
+    verticalLinesMinor: [],
+    viewBoxMinX: -10,
+    viewBoxMaxX: 10,
+    viewBoxMinY: -10,
+    viewBoxMaxY: 10,
+    panZoomObject: { resize: vi.fn(), fit: vi.fn(), center: vi.fn() },
+    getZoom: () => 1,
+    scaleWithZoom: (value: number) => value,
+    screenToModelFromXY: (x: number, y: number) => ({ x, y }),
+    modelToScreen: (coord: { x: number; y: number }) => coord,
+    setNewElement: (element: HTMLElement) => element.classList.add('svg-pan-zoom_viewport'),
+    // Decoding a URL asks for a fit. The stub has always been missing this; the
+    // call used to be a second behind a timer, so it threw after the test had
+    // finished, into nothing. It happens inline now.
+    scaleToFitLinkage: vi.fn(),
+    // These tests are about what a drag does, not about snapping, so the grid
+    // here has no squares to snap to and hands every point back as it came.
+    minorCellSize: 0,
+    snapToGrid: (coord: { x: number; y: number }) => coord,
+  };
+  await TestBed.configureTestingModule({
+    imports: [NewGridComponent],
+    providers: [provideAnimations()],
+  })
+    .overrideProvider(SvgGridService, { useValue: svgGridStub })
+    // Packing uses real Canvas paths, just as framing uses real SVG layout.
+    // These drag tests keep the preferred model anchors; the browser library
+    // audit checks their final rendered clearance and contrast.
+    .overrideProvider(CanvasLabelsService, {
+      useFactory: () => {
+        const labels = new CanvasLabelsService();
+        vi.spyOn(labels, 'forLink').mockImplementation((link, preferred) => preferred(link, 1));
+        return labels;
+      },
+    })
+    .compileComponents();
+}
+
+/**
+ * A cylinder drawn on a bare grid, through the service call the canvas makes.
+ *
+ * The seal is the square mid-skin and the joint a reader selects (decision D9);
+ * the barrel's buried inner end is the one joint nothing draws (decision S11).
+ */
+function drawnCylinder() {
+  // Creation asks the palette for the barrel's color, and the palette is a
+  // static the app builds at startup rather than a provider.
+  if (!ColorService.instance) new ColorService();
+  const mechanism = TestBed.inject(MechanismService);
+  mechanism.createCylinderFrom(new Coord(0, 0), new Coord(4 * MODEL_SCALE, 0));
+  const cylinder = mechanism.sealedStructures()[0];
+  const fixture = TestBed.createComponent(NewGridComponent);
+  fixture.detectChanges();
+  return { mechanism, cylinder, fixture, component: fixture.componentInstance };
+}
+
+describe('NewGridComponent cylinder selectables', () => {
+  beforeEach(configureGridTestBed);
+
+  it('gives the seal a hitbox and a letter, and the buried barrel end neither', () => {
+    const { cylinder, fixture, component } = drawnCylinder();
+
+    expect(component.isCylinderInner(cylinder.inner)).toBe(true);
+    expect(component.isCylinderInner(cylinder.seal)).toBe(false);
+    // The seal is drawn from the ordinary joint loop like any other Prismatic
+    // slider: its cream bar rides the head the skin draws. Only N is skipped.
+    expect(component.slideMarkOn(cylinder.seal)).toBeDefined();
+    expect(component.isWeldMark(cylinder.seal)).toBe(false);
+
+    const hit = fixture.nativeElement.querySelector(`#joint_${cylinder.seal.id}`);
+    expect(hit, 'the seal has a hitbox').not.toBeNull();
+    expect(hit.classList, 'and it is the slide mark that carries it').toContain('slideMark');
+    expect(fixture.nativeElement.querySelector(`#joint_${cylinder.inner.id}`)).toBeNull();
+
+    const letters = [...fixture.nativeElement.querySelectorAll('#jointTagHolder text')].map(
+      (node: Element) => node.textContent?.trim()
+    );
+    expect(letters).toContain(cylinder.seal.id);
+    expect(letters).not.toContain(cylinder.inner.id);
+  });
+
+  it('outlines whichever member is picked, and neither when the seal is', () => {
+    const { fixture, component, cylinder } = drawnCylinder();
+    const active = TestBed.inject(ActiveObjService);
+    const outlineOf = (which: 'barrel' | 'rod') =>
+      component.cylinderMemberOutline(component.cylinderList[0], which);
+
+    active.updateSelectedObj(cylinder.barrel as RealLink);
+    fixture.detectChanges();
+    expect(outlineOf('barrel')).toBe('link-selected');
+    expect(outlineOf('rod')).toBeUndefined();
+
+    active.updateSelectedObj(cylinder.rod as RealLink);
+    fixture.detectChanges();
+    expect(outlineOf('barrel')).toBeUndefined();
+    expect(outlineOf('rod')).toBe('link-selected');
+
+    // The seal is a joint, so picking it picks neither body — and it says so
+    // on its own mark, the way every other joint does, rather than by outlining
+    // the head it rides.
+    active.updateSelectedObj(cylinder.seal as RevJoint);
+    fixture.detectChanges();
+    expect(outlineOf('barrel')).toBeUndefined();
+    expect(outlineOf('rod')).toBeUndefined();
+    expect(fixture.nativeElement.querySelector('.cylinder-seal-selected')).toBeNull();
+    const mark = fixture.nativeElement.querySelector(`#joint_${cylinder.seal.id}`);
+    expect(mark.classList).toContain('joint-selected');
+    // And the head under it is painted no differently for being picked.
+    const head = fixture.nativeElement.querySelector('.cylinder-seal');
+    expect(head.getAttribute('fill')).toBe('#000000');
+  });
+
+  it('turns the seal mark along its own axis and keeps it inside the head', () => {
+    const { component, cylinder, fixture } = drawnCylinder();
+    const mark = component.cylinderList[0];
+    const bar = component.slideMarkOn(cylinder.seal)!;
+
+    // The frame the head is drawn in, reused rather than measured again.
+    expect(bar.frame).toBe(component.sliderMarks.frame({ x: 0, y: 0, rotation: mark.rotation }));
+    const drawn = fixture.nativeElement.querySelector(`#joint_${cylinder.seal.id}`);
+    expect(drawn.closest('g').getAttribute('transform')).toContain(`rotate(${mark.rotation})`);
+
+    // A full-size ram carries a full-size head, so the mark is undiminished --
+    // and still well inside the black it is marked on.
+    const r = 0.15 * TestBed.inject(SettingsService).objectScale;
+    expect(mark.headAlongHalf).toBeCloseTo(MARK.blockAlongHalf * r, 9);
+    expect(bar.path).toBe(slideMarkPath(r));
+    expect(MARK.slideAlongHalf * r).toBeLessThan(mark.headAlongHalf);
+  });
+
+  it('keeps the seal off every drop candidate list, and the buried end out of the search', () => {
+    const { component, cylinder, mechanism } = drawnCylinder();
+    const offered = mechanism.joints.filter((joint) => !component.isCylinderInner(joint));
+    // Visible but refused: aiming a drag at the square is marked red and told
+    // why, rather than skipping quietly to the next joint along.
+    expect(offered.map((joint) => joint.id)).toContain(cylinder.seal.id);
+    expect(offered.map((joint) => joint.id)).not.toContain(cylinder.inner.id);
+  });
+
+  it('draws a member’s center-of-mass mark as a glyph, not a handle', () => {
+    // A member's center follows its own shape and no surface offers a field
+    // for it (decision S14), so the mark has nothing to drag it to.
+    const { component, cylinder, mechanism } = drawnCylinder();
+    const active = TestBed.inject(ActiveObjService);
+    const plain = mechanism.addBar(
+      new Coord(0, 6 * MODEL_SCALE),
+      new Coord(4 * MODEL_SCALE, 6 * MODEL_SCALE)
+    )!;
+
+    for (const member of [cylinder.barrel, cylinder.rod]) {
+      active.updateSelectedObj(member as RealLink);
+      expect(component.comDraggable(member)).toBe(false);
+    }
+    active.updateSelectedObj(plain);
+    expect(component.comDraggable(plain)).toBe(true);
+  });
+
+  it('tags each member with its own name, on its own half of the part', () => {
+    const { component, cylinder } = drawnCylinder();
+    const { mountA, seal, mountB } = cylinder;
+    const n = (joint: { name: string; id: string }) => joint.name || joint.id;
+    expect(component.linkDisplayName(cylinder.barrel)).toBe(`${n(mountA)}${n(seal)}`);
+    expect(component.linkDisplayName(cylinder.rod)).toBe(`${n(seal)}${n(mountB)}`);
+    (cylinder.barrel as RealLink).name = 'Boom ram';
+    (cylinder.rod as RealLink).name = 'Ram rod';
+    expect(component.linkDisplayName(cylinder.barrel)).toBe('Boom ram');
+    expect(component.linkDisplayName(cylinder.rod)).toBe('Ram rod');
+    const barrelTag = component.linkLabelStyle(cylinder.barrel);
+    const rodTag = component.linkLabelStyle(cylinder.rod);
+    expect(barrelTag.x).toBeCloseTo((mountA.x + seal.x) / 2, 6);
+    expect(rodTag.x).toBeCloseTo((seal.x + mountB.x) / 2, 6);
+  });
+
+  it('puts the seal’s letter clear of the barrel, across the part’s own axis', () => {
+    const { component, cylinder } = drawnCylinder();
+    const anchor = component.jointTagAnchor(cylinder.seal);
+    // The part runs along x, so its normal is y and the letter goes up the
+    // screen -- the tag layer flips y by hand, so "up" is a smaller number.
+    expect(anchor.x).toBeCloseTo(cylinder.seal.x, 6);
+    expect(anchor.y).toBeLessThan(-cylinder.seal.y);
+    // Clear of the barrel's own widest edge rather than at the ordinary
+    // half-objectScale, which lands on the metal for a part drawn upright.
+    const clear = -anchor.y - cylinder.seal.y;
+    expect(clear).toBeGreaterThan(CYLINDER.barrelHalf * 0.15 * SettingsService.objectScale);
+
+    // An ordinary joint's letter clears the pin and its connected bar.
+    const plain = component.jointTagAnchor(cylinder.mountA);
+    expect(Math.hypot(plain.x - cylinder.mountA.x, plain.y + cylinder.mountA.y)).toBeGreaterThan(
+      0.15 * SettingsService.objectScale
+    );
+  });
+});
 
 describe('NewGridComponent welded SVG presentation', () => {
-  beforeEach(async () => {
-    window.matchMedia = vi.fn().mockReturnValue({
-      matches: true,
-      media: '',
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    }) as unknown as typeof matchMedia;
-    const svgGridStub = {
-      horizontalLines: [],
-      horizontalLinesMinor: [],
-      verticalLines: [],
-      verticalLinesMinor: [],
-      viewBoxMinX: -10,
-      viewBoxMaxX: 10,
-      viewBoxMinY: -10,
-      viewBoxMaxY: 10,
-      panZoomObject: { resize: vi.fn(), fit: vi.fn(), center: vi.fn() },
-      getZoom: () => 1,
-      scaleWithZoom: (value: number) => value,
-      screenToSVGfromXY: (x: number, y: number) => ({ x, y }),
-      SVGtoScreen: (coord: { x: number; y: number }) => coord,
-      setNewElement: (element: HTMLElement) => element.classList.add('svg-pan-zoom_viewport'),
-    };
-    await TestBed.configureTestingModule({ imports: [AppModule] })
-      .overrideProvider(SvgGridService, { useValue: svgGridStub })
-      .compileComponents();
-  });
+  beforeEach(configureGridTestBed);
 
   it('renders one filleted root path plus dotted constituent paths when selected', () => {
     const mechanism = TestBed.inject(MechanismService);
     const active = TestBed.inject(ActiveObjService);
+    // Model units (user units x MODEL_SCALE), so the link geometry and the
+    // objectScale-derived link width keep the proportions the app renders at.
     const a = new RevJoint('A', 0, 0, true, true);
-    const b = new RevJoint('B', 0, 4);
-    const c = new RevJoint('C', 3, 5);
+    const b = new RevJoint('B', 0, 4 * MODEL_SCALE);
+    const c = new RevJoint('C', 3 * MODEL_SCALE, 5 * MODEL_SCALE);
     const ab = new RealLink('AB', [a, b]);
     const bc = new RealLink('BC', [b, c]);
     const compound = new RealLink('ABC', [a, b, c], 2, 1, undefined, [ab, bc]);
@@ -85,7 +305,7 @@ describe('NewGridComponent welded SVG presentation', () => {
 
     const fixture = TestBed.createComponent(NewGridComponent);
     const component = fixture.componentInstance;
-    component['jointStates'] = jointStates.dragging;
+    TestBed.inject(DragStateService).beginDraggingJoint();
     component['timeMouseDown'] = 0;
     component['startX'] = 0;
     component['startY'] = 0;
@@ -93,8 +313,1334 @@ describe('NewGridComponent welded SVG presentation', () => {
     const rebuild = vi.spyOn(mechanism, 'updateMechanism');
 
     component.mouseMove(new MouseEvent('mousemove', { clientX: 20, clientY: 20 }));
+    frame(component);
 
     expect(drag).toHaveBeenCalledTimes(1);
     expect(rebuild).toHaveBeenCalledTimes(1);
+  });
+
+  it('fingerprints the marks once per revision, however often the template reads them', () => {
+    const mechanism = TestBed.inject(MechanismService);
+    const joint = new RevJoint('A', 0, 0);
+    mechanism.joints = [joint];
+    mechanism.links = [];
+    const fixture = TestBed.createComponent(NewGridComponent);
+    const component = fixture.componentInstance;
+    // The fingerprint walks every link and every joint; `linkPaint` is its
+    // first step, so how often it runs is how often the walk did.
+    const walk = vi.spyOn(component as never, 'linkPaint' as never);
+
+    for (let i = 0; i < 50; i++) {
+      component.channelList;
+      component.sliderMarkList;
+      component.cylinderList;
+    }
+    expect(walk).toHaveBeenCalledTimes(1);
+
+    // A rebuild moves the revisions, and the next read walks the drawing again.
+    joint.x = 3;
+    mechanism.updateMechanism();
+    component.channelList;
+    component.channelList;
+    expect(walk).toHaveBeenCalledTimes(2);
+  });
+
+  it('takes one move per animation frame, the latest, and drops the ones between', () => {
+    const mechanism = TestBed.inject(MechanismService);
+    const active = TestBed.inject(ActiveObjService);
+    const gridUtils = TestBed.inject(GridUtilsService);
+    const joint = new RevJoint('A', 0, 0);
+    mechanism.joints = [joint];
+    mechanism.links = [];
+    active.selectedJoint = joint;
+
+    const fixture = TestBed.createComponent(NewGridComponent);
+    const component = fixture.componentInstance;
+    TestBed.inject(DragStateService).beginDraggingJoint();
+    component['timeMouseDown'] = 0;
+    component['startX'] = 0;
+    component['startY'] = 0;
+    const drag = vi.spyOn(gridUtils, 'dragJoint');
+
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 10, clientY: 10 }));
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 15, clientY: 15 }));
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 20, clientY: 20 }));
+    // Nothing has been solved yet: the frame has not come.
+    expect(drag).not.toHaveBeenCalled();
+    frame(component);
+    expect(drag).toHaveBeenCalledTimes(1);
+    const landed = drag.mock.calls[0][1] as { x: number; y: number };
+    expect([landed.x, landed.y]).toEqual([20, 20]);
+    // And a release lands the move still waiting, before it is read.
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 25, clientY: 25 }));
+    component.mouseUp(new MouseEvent('mouseup'));
+    expect(drag).toHaveBeenCalledTimes(2);
+  });
+
+  it('lets a move waiting for its frame land before Alt changes, so it cannot undo the key', () => {
+    const mechanism = TestBed.inject(MechanismService);
+    const active = TestBed.inject(ActiveObjService);
+    const joint = new RevJoint('A', 0, 0);
+    mechanism.joints = [joint];
+    mechanism.links = [];
+    active.selectedJoint = joint;
+
+    const fixture = TestBed.createComponent(NewGridComponent);
+    const component = fixture.componentInstance;
+    TestBed.inject(DragStateService).beginDraggingJoint();
+    component['timeMouseDown'] = 0;
+    component['startX'] = 0;
+    component['startY'] = 0;
+
+    // A move made without Alt is still waiting for its frame when Alt goes down.
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 20, clientY: 20, altKey: false }));
+    component['reconsiderDrop'](new KeyboardEvent('keydown', { key: 'Alt' }), true);
+    frame(component);
+    expect(component['snapSuspended']).toBe(true);
+  });
+
+  it('lets Alt move a joint only once the press has become a drag', () => {
+    const mechanism = TestBed.inject(MechanismService);
+    const active = TestBed.inject(ActiveObjService);
+    const gridUtils = TestBed.inject(GridUtilsService);
+    const joint = new RevJoint('A', 0, 0);
+    mechanism.joints = [joint];
+    mechanism.links = [];
+    active.selectedJoint = joint;
+
+    const fixture = TestBed.createComponent(NewGridComponent);
+    const component = fixture.componentInstance;
+    TestBed.inject(DragStateService).beginDraggingJoint();
+    component['startX'] = 0;
+    component['startY'] = 0;
+    const drag = vi.spyOn(gridUtils, 'dragJoint');
+    const alt = () =>
+      component['reconsiderDrop'](new KeyboardEvent('keydown', { key: 'Alt' }), true);
+
+    // Pressed, not moved: the key changes the snap and leaves the joint alone.
+    alt();
+    expect(component['snapSuspended']).toBe(true);
+    expect(drag).not.toHaveBeenCalled();
+
+    // Once a move has carried it, the key re-places it at once.
+    component['timeMouseDown'] = 0;
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 20, clientY: 20 }));
+    frame(component);
+    drag.mockClear();
+    alt();
+    expect(drag).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * A drag takes its moves on the next animation frame. The specs below want
+ * to read the state a move left behind, so they bring the frame themselves.
+ */
+function frame(component: NewGridComponent) {
+  component['applyPendingDragMove']();
+}
+
+/**
+ * Two separate bars, A-B and C-D, with C sitting exactly where a drag to
+ * (20, 20) lands. The SvgGridService stub maps screen coordinates straight
+ * through, so those numbers are also the SVG coordinates.
+ */
+function twoBars(mechanism: MechanismService) {
+  const a = new RevJoint('A', 0, 0, true, true);
+  const b = new RevJoint('B', 5, 5);
+  const c = new RevJoint('C', 20, 20);
+  const d = new RevJoint('D', 30, 20, false, true);
+  const wire = (id: string, joints: RevJoint[]) => {
+    const link = new RealLink(id, joints);
+    joints.forEach((joint) => {
+      joint.links.push(link);
+      joints.filter((o) => o !== joint).forEach((o) => joint.connectedJoints.push(o));
+    });
+    return link;
+  };
+  const ab = wire('AB', [a, b]);
+  const cd = wire('CD', [c, d]);
+  mechanism.joints = [a, b, c, d];
+  mechanism.links = [ab, cd];
+  mechanism.updateMechanism();
+  return { a, b, c, d, ab, cd };
+}
+
+function drag(component: NewGridComponent, steps: number) {
+  component.mouseDown(new MouseEvent('mousedown', { button: 0, clientX: 5, clientY: 5 }));
+  for (let step = 1; step <= steps; step++) {
+    const along = 5 + ((20 - 5) * step) / steps;
+    component.mouseMove(new MouseEvent('mousemove', { clientX: along, clientY: along }));
+  }
+  component.mouseUp(new MouseEvent('mouseup'));
+}
+
+describe('NewGridComponent link creation at a welded joint', () => {
+  beforeEach(configureGridTestBed);
+
+  it('takes the new bar into the welded body instead of pinning it beside it', () => {
+    // A weld says every body meeting at the joint is rigid, so a bar drawn
+    // from it afterwards belongs to that body. The six creation gestures used
+    // to end at `updateMechanism`, which runs the sealed-cylinder normalizer
+    // without the repair passes -- so the joint kept its weld marker with a
+    // loose bar beside it, welded and pinned at once.
+    const mechanism = TestBed.inject(MechanismService);
+    const active = TestBed.inject(ActiveObjService);
+    const a = new RevJoint('A', 0, 0, false, true);
+    const b = new RevJoint('B', 0, 4 * MODEL_SCALE);
+    const c = new RevJoint('C', 3 * MODEL_SCALE, 5 * MODEL_SCALE);
+    const ab = new RealLink('AB', [a, b]);
+    const bc = new RealLink('BC', [b, c]);
+    const compound = new RealLink('ABC', [a, b, c], 2, 1, undefined, [ab, bc]);
+    b.isWelded = true;
+    [a, b, c].forEach((joint) => (joint.links = [compound]));
+    mechanism.joints = [a, b, c];
+    mechanism.links = [compound];
+    active.updateSelectedObj(b);
+    active.prevSelectedJoint = b;
+
+    const fixture = TestBed.createComponent(NewGridComponent);
+    const component = fixture.componentInstance;
+    component['lastLeftClickType'] = 'Grid';
+    component['timeMouseDown'] = 0;
+    component['startX'] = 0;
+    component['startY'] = 0;
+    TestBed.inject(DragStateService).beginCreatingLinkFromJoint();
+    // The bar is committed by the *second click*, not by a release: the
+    // creation switch lives in the mouse-down path.
+    component.mouseDown(
+      new MouseEvent('mousedown', { button: 0, clientX: 6 * MODEL_SCALE, clientY: MODEL_SCALE })
+    );
+
+    const compounds = mechanism.links.filter(
+      (link): link is RealLink => link instanceof RealLink && link.subset.length > 0
+    );
+    expect(compounds, 'one body at the weld').toHaveLength(1);
+    expect(compounds[0].subset).toHaveLength(3);
+    expect(mechanism.links).toHaveLength(1);
+    expect(b.isWelded).toBe(true);
+  });
+});
+
+/**
+ * A link begun on bare grid finishes wherever it is released, and the slide is
+ * a square with a hitbox. So the menu graying Attach at the interior only ever
+ * covered *starting* a gesture there, and the other end was open: the bar
+ * landed, `finishStructuralEdit` welded it into the rod, and one seal was left
+ * with two bars answering to "the rod" -- so the lookup found neither and the
+ * cylinder stopped being a recognized part at all.
+ */
+describe('NewGridComponent link creation on a cylinder’s slide', () => {
+  beforeEach(configureGridTestBed);
+
+  /** Begin a bar on bare grid, then press the left button on `onto`. */
+  function finishALinkOn(component: NewGridComponent, onto: RevJoint) {
+    component['timeMouseDown'] = 0;
+    component['startX'] = 0;
+    component['startY'] = 0;
+    component['linkCreateStart'] = new Coord(0, 6 * MODEL_SCALE);
+    TestBed.inject(DragStateService).beginCreatingLinkFromGrid();
+    component.setLastLeftClick(onto);
+    TestBed.inject(ActiveObjService).updateSelectedObj(onto);
+    component.mouseDown(
+      new MouseEvent('mousedown', { button: 0, clientX: onto.x, clientY: onto.y })
+    );
+  }
+
+  it('refuses the press, and leaves the part and the history as they were', () => {
+    const { mechanism, cylinder, component } = drawnCylinder();
+    const notify = vi.spyOn(NotificationService.prototype, 'refusal').mockImplementation(() => {});
+    const saved = vi.spyOn(SaveHistoryService.prototype, 'save').mockImplementation(() => {});
+    const joints = mechanism.joints.length;
+    const links = mechanism.links.length;
+
+    finishALinkOn(component, cylinder.seal as unknown as RevJoint);
+
+    expect(mechanism.joints).toHaveLength(joints);
+    expect(mechanism.links).toHaveLength(links);
+    expect(mechanism.sealedStructures()).toHaveLength(1);
+    expect(mechanism.links.some((link) => link instanceof RealLink && link.subset.length > 0)).toBe(
+      false
+    );
+    expect(saved).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalled();
+    expect(notify.mock.calls[0][0]).toBe('cylinder.attach-at-an-end-joint');
+    expect(notify.mock.calls[0][1]).toContain('inside a cylinder');
+    // And the gesture is put down rather than left armed with a ghost.
+    expect(TestBed.inject(DragStateService).isCreatingLink).toBe(false);
+  });
+
+  it('still lets a bar land on either of the joints at the ends', () => {
+    const { mechanism, cylinder, component } = drawnCylinder();
+    const joints = mechanism.joints.length;
+
+    finishALinkOn(component, cylinder.mountB as RevJoint);
+
+    expect(mechanism.joints.length).toBe(joints + 1);
+    expect(mechanism.sealedStructures()).toHaveLength(1);
+  });
+});
+
+describe('NewGridComponent drag gestures', () => {
+  beforeEach(configureGridTestBed);
+
+  function setUp() {
+    const mechanism = TestBed.inject(MechanismService);
+    const scene = twoBars(mechanism);
+    const fixture = TestBed.createComponent(NewGridComponent);
+    const component = fixture.componentInstance;
+    fixture.detectChanges();
+    return { mechanism, component, fixture, ...scene };
+  }
+
+  // Undo is a stack of URL strings. A drag that saved per pointer-move would
+  // make the user press undo once for every frame of a gesture.
+  it('records exactly one undo entry for a multi-step joint drag', () => {
+    const { mechanism, component, b } = setUp();
+    const save = vi.spyOn(mechanism, 'save').mockImplementation(() => {});
+    component.setLastLeftClick(b);
+
+    drag(component, 8);
+
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it('records no undo entry for a click that only selected a joint', () => {
+    const { mechanism, component, b } = setUp();
+    const save = vi.spyOn(mechanism, 'save').mockImplementation(() => {});
+    component.setLastLeftClick(b);
+
+    component.mouseDown(new MouseEvent('mousedown', { button: 0, clientX: 5, clientY: 5 }));
+    component.mouseUp(new MouseEvent('mouseup'));
+
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('merges the dragged joint into the one it is released over', () => {
+    const { mechanism, component, b, c } = setUp();
+    vi.spyOn(mechanism, 'save').mockImplementation(() => {});
+    component.setLastLeftClick(b);
+
+    drag(component, 8);
+
+    expect(mechanism.joints.map((joint) => joint.id)).toEqual(['A', 'C', 'D']);
+    expect(mechanism.links.map((link) => link.id).sort()).toEqual(['AC', 'CD']);
+    expect(c.links.map((link) => link.id).sort()).toEqual(['AC', 'CD']);
+  });
+
+  it('still records one undo entry when the drag ends in a merge', () => {
+    const { mechanism, component, b } = setUp();
+    const save = vi.spyOn(mechanism, 'save').mockImplementation(() => {});
+    component.setLastLeftClick(b);
+
+    drag(component, 8);
+
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the snap indicator while hovering a legal target, and clears it on release', () => {
+    const { mechanism, component, b, c } = setUp();
+    vi.spyOn(mechanism, 'save').mockImplementation(() => {});
+    component.setLastLeftClick(b);
+
+    component.mouseDown(new MouseEvent('mousedown', { button: 0, clientX: 5, clientY: 5 }));
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 12, clientY: 12 }));
+    frame(component);
+    expect(component.snapTargetJoint).toBeUndefined();
+
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 20, clientY: 20 }));
+    frame(component);
+    expect(component.snapTargetJoint).toBe(c);
+
+    component.mouseUp(new MouseEvent('mouseup'));
+    expect(component.snapTargetJoint).toBeUndefined();
+  });
+
+  // A link drag translates by how far the pointer moved, not to where the
+  // pointer is: the grab point stays under the cursor. The moves have to clear
+  // the 10-unit hold that separates a drag from a click.
+  it('drags a whole link, moving all of its joints and saving once', () => {
+    const { mechanism, component, c, d, cd } = setUp();
+    const save = vi.spyOn(mechanism, 'save').mockImplementation(() => {});
+    component.setLastLeftClick(cd, new MouseEvent('mousedown'));
+
+    component.mouseDown(new MouseEvent('mousedown', { button: 0, clientX: 0, clientY: 0 }));
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 12, clientY: 13 }));
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 14, clientY: 16 }));
+    component.mouseUp(new MouseEvent('mouseup'));
+
+    expect([c.x, c.y]).toEqual([34, 36]);
+    expect([d.x, d.y]).toEqual([44, 36]);
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds a link still until the pointer clears the click threshold', () => {
+    const { component, c, cd } = setUp();
+    component.setLastLeftClick(cd, new MouseEvent('mousedown'));
+
+    component.mouseDown(new MouseEvent('mousedown', { button: 0, clientX: 0, clientY: 0 }));
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 3, clientY: 3 }));
+
+    expect([c.x, c.y]).toEqual([20, 20]);
+  });
+
+  // A link drag accumulates pointer deltas, so the press has to record where
+  // the gesture started. Without that, the first move would translate the link
+  // by the distance from the last unrelated pointer event — a jump on grab.
+  it('does not jump on the first move of a link drag', () => {
+    const { component, c, cd } = setUp();
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 300, clientY: 300 }));
+    component.setLastLeftClick(cd, new MouseEvent('mousedown'));
+
+    component.mouseDown(new MouseEvent('mousedown', { button: 0, clientX: 0, clientY: 0 }));
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 12, clientY: 13 }));
+    frame(component);
+
+    expect([c.x, c.y]).toEqual([32, 33]);
+  });
+
+  // An analysis mode used to refuse every drag, on the grounds that the graphs
+  // described a cycle the geometry could not move under. They redraw from
+  // whatever was last solved, so the lock was standing between the reader and
+  // the most instructive thing here: grab a joint and watch the curve follow.
+  //
+  // What a drag there may *not* do is change what the mechanism is. The
+  // helper's fixed path carries B exactly onto C, which in Edit is a merge --
+  // and this test used to pass on the strength of that merge, the very thing
+  // the mode now refuses. So it says both halves: the joint moves, and lands on
+  // C without becoming C.
+  it('lets a drag through in an analysis mode, joint and link alike', () => {
+    const { component, b, c, cd } = setUp();
+    const mechanism = TestBed.inject(MechanismService);
+    TestBed.inject(SelectedTabService).setTab(TabID.ANALYZE);
+
+    const topology = () => [mechanism.joints.length, mechanism.links.length];
+    const before = topology();
+    // Part of the way toward C, not onto it. The shared helper parks B exactly
+    // on C, which in Edit is a merge; here it is two joints on one point, a
+    // machine that cannot be solved, and so a machine whose parts cannot be
+    // grabbed for the second half of this test -- which is the app being
+    // right, not the drag being blocked.
+    component.setLastLeftClick(b);
+    component.mouseDown(new MouseEvent('mousedown', { button: 0, clientX: 5, clientY: 5 }));
+    for (let step = 1; step <= 8; step++) {
+      // The helper's travel, sideways: the same distance past the drag slop,
+      // ending at (20, 5) rather than on C at (20, 20).
+      const along = 5 + ((20 - 5) * step) / 8;
+      component.mouseMove(new MouseEvent('mousemove', { clientX: along, clientY: 5 }));
+    }
+    component.mouseUp(new MouseEvent('mouseup'));
+    expect([b.x, b.y]).not.toEqual([5, 5]);
+    expect(topology()).toEqual(before);
+    expect(mechanism.joints.some((joint) => joint.id === 'B')).toBe(true);
+
+    // The bar. This harness is two loose bars and no loop, which in an
+    // analysis mode is not a machine that runs -- and a part of no running
+    // machine is inert there, so the press on CD is refused rather than
+    // started. That is the rule, not a gap: analysis tunes what it can solve.
+    // The old version of this test dragged CD anyway, and passed only because
+    // the joint drag above had merged B onto C and joined the two bars into
+    // one chain first. The bar drag on a real, solvable linkage is what
+    // `e2e/analysis-editing.mjs` exercises.
+    expect(mechanism.isPartInert(cd)).toBe(true);
+    const wasC = [c.x, c.y];
+    component.setLastLeftClick(cd, new MouseEvent('mousedown'));
+    component.mouseDown(new MouseEvent('mousedown', { button: 0, clientX: 40, clientY: 40 }));
+    expect(TestBed.inject(DragStateService).link).toBe(linkStates.waiting);
+    component.mouseUp(new MouseEvent('mouseup'));
+    expect([c.x, c.y]).toEqual(wasC);
+  });
+
+  // The other half of the same rule, said where it can be read: the drop
+  // machinery is what a merge and a slot come from, and in an analysis mode it
+  // offers neither -- not because the target is refused, but because there is
+  // no target.
+  it('offers neither a merge nor a slot while dragging in an analysis mode', () => {
+    const { component, b } = setUp();
+    TestBed.inject(SelectedTabService).setTab(TabID.ANALYZE);
+    component.setLastLeftClick(b);
+    component.mouseDown(new MouseEvent('mousedown', { button: 0, clientX: 5, clientY: 5 }));
+    for (let step = 1; step <= 8; step++) {
+      const along = 5 + ((20 - 5) * step) / 8;
+      component.mouseMove(new MouseEvent('mousemove', { clientX: along, clientY: along }));
+      expect(component.snapTargetJoint).toBeUndefined();
+      expect(component.slotCandidate).toBeUndefined();
+    }
+    component.mouseUp(new MouseEvent('mouseup'));
+  });
+
+  // What it still refuses is changing what the mechanism is made of, which is
+  // where the graphs' own subject would go out from under them.
+  it('lets an analysis mode drag and annotate, and leaves structure to Edit', () => {
+    // docs/editing-rules.md: the analysis modes read the motion.
+    const { component } = setUp();
+    TestBed.inject(SelectedTabService).setTab(TabID.ANALYZE);
+    const permission = TestBed.inject(EditPermissionService);
+    expect(permission.may('drag')).toBe(true);
+    expect(permission.may('history')).toBe(true);
+    expect(permission.may('annotate')).toBe(true);
+    expect(permission.may('structure')).toBe(false);
+    expect(permission.may('build')).toBe(false);
+    expect(permission.may('placement')).toBe(false);
+    expect(component.structureLocked).toBe(true);
+  });
+
+  // "the refusal a fixed geometry earns" was here -- five tests around the
+  // `analysis.geometry-fixed` notice, which said "Geometry is fixed while
+  // analyzing. Switch to Edit mode to move this part." Nothing is fixed while
+  // analyzing any more, so there is no refusal to earn and no notice to arm.
+  // What an analysis mode still refuses is covered above.
+
+  // A drag let go of over the floating panel comes up on the window, not on the
+  // canvas, so `mouseUp` never fires. Left unreleased the joint kept following a
+  // button-less cursor, panning stayed refused, and the move earned no undo
+  // entry.
+  it('commits a joint drag released away from the grid', () => {
+    const { mechanism, component, b } = setUp();
+    const save = vi.spyOn(mechanism, 'save').mockImplementation(() => {});
+    const dragState = TestBed.inject(DragStateService);
+    component.setLastLeftClick(b);
+
+    component.mouseDown(new MouseEvent('mousedown', { button: 0, clientX: 5, clientY: 5 }));
+    // Far enough to clear the hold that separates a drag from a click. B is
+    // then captured by C, so the release has the whole of a drop to land.
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 14, clientY: 14 }));
+    expect(dragState.isDragging).toBe(true);
+
+    component.releaseCanvasGestures(new MouseEvent('pointerup') as PointerEvent);
+
+    expect(dragState.isDragging).toBe(false);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(mechanism.joints.map((joint) => joint.id)).toEqual(['A', 'C', 'D']);
+  });
+});
+
+describe('NewGridComponent typed multi-selection', () => {
+  beforeEach(configureGridTestBed);
+
+  function setUpSelection() {
+    const mechanism = TestBed.inject(MechanismService);
+    const a = new RevJoint('A', 0, 0);
+    const b = new RevJoint('B', 2 * MODEL_SCALE, 0);
+    const link = new RealLink('A', [a, b]); // Deliberate joint/link id collision.
+    a.links = [link];
+    b.links = [link];
+    mechanism.joints = [a, b];
+    mechanism.links = [link];
+    const fixture = TestBed.createComponent(NewGridComponent);
+    const component = fixture.componentInstance;
+    fixture.detectChanges();
+    return { fixture, component, mechanism, active: TestBed.inject(ActiveObjService), a, b, link };
+  }
+
+  it('Meta-click toggles typed parts on macOS and plain click replaces them', () => {
+    const { component, active, a, b, link } = setUpSelection();
+    const oldPlatform = navigator.platform;
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' });
+    try {
+      component.setLastLeftClick(a, new MouseEvent('pointerdown', { metaKey: true }));
+      component.setLastLeftClick(b, new MouseEvent('pointerdown', { metaKey: true }));
+      expect(active.selectedPartRefs).toEqual([
+        { kind: 'joint', id: 'A' },
+        { kind: 'joint', id: 'B' },
+      ]);
+
+      component.setLastLeftClick(a, new MouseEvent('pointerdown', { metaKey: true }));
+      expect(active.selectedPartRefs).toEqual([{ kind: 'joint', id: 'B' }]);
+
+      // A link is another kind, so it starts a selection of its own.
+      component.setLastLeftClick(link, new MouseEvent('pointerdown', { metaKey: true }));
+      expect(active.selectedPartRefs).toEqual([{ kind: 'link', id: 'A' }]);
+
+      component.setLastLeftClick(a, new MouseEvent('pointerdown'));
+      expect(active.selectedPartRefs).toEqual([{ kind: 'joint', id: 'A' }]);
+    } finally {
+      Object.defineProperty(navigator, 'platform', { configurable: true, value: oldPlatform });
+    }
+  });
+
+  it('treats Meta-click on a force as a plain click: a force does not join a group', () => {
+    const { component, active, mechanism, a, b, link } = setUpSelection();
+    const force = (id: string, x: number) =>
+      new Force(id, link, new Coord(x, 0), new Coord(x, MODEL_SCALE));
+    const f1 = force('F1', 0.5 * MODEL_SCALE);
+    const f2 = force('F2', 1.5 * MODEL_SCALE);
+    mechanism.forces = [f1, f2];
+    // The template's order: the body grab runs first, then the click.
+    const press = (target: Force, init: MouseEventInit) => {
+      const event = new MouseEvent('pointerdown', { button: 0, ...init }) as PointerEvent;
+      component.beginDraggingForceBody(target, event);
+      component.setLastLeftClick(target, event);
+    };
+    const oldPlatform = navigator.platform;
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' });
+    try {
+      press(f1, {});
+      press(f2, { metaKey: true });
+      expect(active.selectedPartRefs).toEqual([{ kind: 'force', id: 'F2' }]);
+      expect(active.objType).toBe('Force');
+
+      // Nor does it join, or end, a group of joints: it is selected on its own.
+      component.setLastLeftClick(a, new MouseEvent('pointerdown', { metaKey: true }));
+      component.setLastLeftClick(b, new MouseEvent('pointerdown', { metaKey: true }));
+      press(f1, { metaKey: true });
+      expect(active.selectedPartRefs).toEqual([{ kind: 'force', id: 'F1' }]);
+    } finally {
+      Object.defineProperty(navigator, 'platform', { configurable: true, value: oldPlatform });
+    }
+  });
+
+  it('draws the box round one link picked with Meta, but not one picked plainly or a lone joint', () => {
+    const { fixture, component, active, a, link } = setUpSelection();
+    const oldPlatform = navigator.platform;
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' });
+    try {
+      component.setLastLeftClick(link, new MouseEvent('pointerdown'));
+      fixture.detectChanges();
+      expect(component.selectionBounds()).toBeUndefined();
+
+      // Resizing a link should not need a second part beside it (#295 review).
+      component.setLastLeftClick(link, new MouseEvent('pointerdown', { metaKey: true }));
+      component.setLastLeftClick(link, new MouseEvent('pointerdown', { metaKey: true }));
+      fixture.detectChanges();
+      expect(active.selectedPartRefs).toEqual([{ kind: 'link', id: link.id }]);
+      expect(component.selectionBounds()).toBeDefined();
+      expect(fixture.nativeElement.querySelector('.selectionBounds')).not.toBeNull();
+
+      // A joint alone has nothing to turn or resize, Meta or not.
+      component.setLastLeftClick(a, new MouseEvent('pointerdown', { metaKey: true }));
+      fixture.detectChanges();
+      expect(active.selectedPartRefs).toEqual([{ kind: 'joint', id: 'A' }]);
+      expect(component.selectionBounds()).toBeUndefined();
+    } finally {
+      Object.defineProperty(navigator, 'platform', { configurable: true, value: oldPlatform });
+    }
+  });
+
+  it('marks every force in a group as selected, and draws no box round forces alone', () => {
+    const { fixture, component, active, mechanism, link } = setUpSelection();
+    const f1 = new Force('F1', link, new Coord(0, 0), new Coord(0, MODEL_SCALE));
+    const f2 = new Force(
+      'F2',
+      link,
+      new Coord(MODEL_SCALE, 0),
+      new Coord(MODEL_SCALE, MODEL_SCALE)
+    );
+    const f3 = new Force('F3', link, new Coord(MODEL_SCALE, 0), new Coord(0, MODEL_SCALE));
+    mechanism.forces = [f1, f2, f3];
+
+    active.updateSelectedObj(f1);
+    expect([f1, f2, f3].map((force) => component.activeObjService.holdsForce(force))).toEqual([
+      true,
+      false,
+      false,
+    ]);
+
+    active.replacePartSelection(f1);
+    active.togglePartSelection(f2);
+    fixture.detectChanges();
+    // Every member, not only the last one picked -- which is all
+    // `selectedForce` can name.
+    expect([f1, f2, f3].map((force) => component.activeObjService.holdsForce(force))).toEqual([
+      true,
+      true,
+      false,
+    ]);
+    const picked = (id: string) =>
+      fixture.nativeElement
+        .querySelector(`#${id}`)
+        ?.parentElement?.querySelector('.forceSelectedLine');
+    expect(picked('F1')).not.toBeNull();
+    expect(picked('F2')).not.toBeNull();
+    expect(picked('F3')).toBeNull();
+    // Forces move with their bodies, so a group of nothing but forces has no
+    // handles to offer: a box would promise a move the drag refuses.
+    expect(component.selectionBounds()).toBeUndefined();
+    expect(fixture.nativeElement.querySelector('.selectionBounds')).toBeNull();
+  });
+
+  it('draws no box round joints that all sit on one spot', () => {
+    const { fixture, component, active, a, b } = setUpSelection();
+    b.x = a.x;
+    b.y = a.y;
+    active.replacePartSelection(a);
+    active.togglePartSelection(b);
+    fixture.detectChanges();
+    // A box round one point is zero wide, and every grip lands on that point.
+    expect(component.selectionBounds()).toBeUndefined();
+    expect(fixture.nativeElement.querySelector('.selectionBounds')).toBeNull();
+
+    b.x = 2 * MODEL_SCALE;
+    fixture.detectChanges();
+    expect(component.selectionBounds()).toBeDefined();
+  });
+
+  it('a body press clears a force handle mark left from an earlier grab', () => {
+    const { component, active, mechanism, link } = setUpSelection();
+    const f1 = new Force('F1', link, new Coord(0, 0), new Coord(0, MODEL_SCALE));
+    mechanism.forces = [f1];
+    active.updateSelectedObj(f1.endCoord, f1);
+    expect(f1.isEndSelected).toBe(true);
+
+    const event = new MouseEvent('pointerdown', { button: 0 }) as PointerEvent;
+    component.beginDraggingForceBody(f1, event);
+    component.setLastLeftClick(f1, event);
+
+    expect(f1.isEndSelected).toBe(false);
+    expect(active.selectedForce).toBe(f1);
+    expect(active.objType).toBe('Force');
+  });
+
+  it('preserves an existing multi-selection for an inside right-click and replaces it outside', () => {
+    const { component, active, a, b, link } = setUpSelection();
+    active.replacePartSelection(a);
+    active.togglePartSelection(b);
+    const oldPlatform = navigator.platform;
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' });
+    try {
+      component.setLastLeftClick(a, new MouseEvent('pointerdown', { button: 0, ctrlKey: true }));
+      component.mouseDown(new MouseEvent('mousedown', { button: 0, ctrlKey: true }));
+      component.setLastRightClick(a, new MouseEvent('contextmenu', { button: 2, ctrlKey: true }));
+      component.mouseUp(new MouseEvent('mouseup', { button: 0, ctrlKey: true }));
+      expect(active.selectedPartRefs).toHaveLength(2);
+
+      component.setLastRightClick(link, new MouseEvent('contextmenu', { ctrlKey: true }));
+      expect(active.selectedPartRefs).toEqual([{ kind: 'link', id: 'A' }]);
+    } finally {
+      Object.defineProperty(navigator, 'platform', { configurable: true, value: oldPlatform });
+    }
+  });
+
+  it('translates a multi-selection from a gesture-start snapshot and saves once', () => {
+    const { component, active, mechanism, a, b } = setUpSelection();
+    active.replacePartSelection(a);
+    active.togglePartSelection(b);
+    const save = vi.spyOn(mechanism, 'save').mockImplementation(() => {});
+
+    component.setLastLeftClick(a, new MouseEvent('pointerdown'));
+    component.mouseDown(new MouseEvent('mousedown', { button: 0, clientX: 0, clientY: 0 }));
+    component['timeMouseDown'] = 0;
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 10, clientY: 5 }));
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 20, clientY: 10 }));
+    component.mouseUp(new MouseEvent('mouseup', { button: 0, clientX: 20, clientY: 10 }));
+
+    expect([a.x, a.y]).toEqual([20, 10]);
+    expect([b.x, b.y]).toEqual([2 * MODEL_SCALE + 20, 10]);
+    expect(active.selectedPartRefs).toHaveLength(2);
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it('turns and uniformly scales around the group bounds through the overlay handles', () => {
+    const { component, fixture, active, a, b } = setUpSelection();
+    active.replacePartSelection(a);
+    active.togglePartSelection(b);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-selection-handle="rotate"]')).not.toBeNull();
+    // Eight grips, on the box rather than beside it: four corners and four edge
+    // midpoints, the arrangement every drawing program uses.
+    const grips = [
+      ...fixture.nativeElement.querySelectorAll('[data-selection-handle="scale"]'),
+    ] as SVGRectElement[];
+    expect(grips.map((grip) => grip.getAttribute('data-selection-grip'))).toEqual([
+      'nw',
+      'ne',
+      'se',
+      'sw',
+      'n',
+      's',
+      'e',
+      'w',
+    ]);
+    // On the drawn box, which stands off the parts so a grip does not land on
+    // top of the very joint it was derived from.
+    const box = component.selectionBox(component.selectionBounds()!);
+    const east = grips.find((grip) => grip.getAttribute('data-selection-grip') === 'e')!;
+    const size = component.selectionHandleSize();
+    expect(Number(east.getAttribute('x'))).toBeCloseTo(box.maxX - size / 2);
+    expect(box.maxX).toBeGreaterThan(component.selectionBounds()!.maxX);
+
+    component['beginSelectionGesture']('rotate', new Coord(MODEL_SCALE, MODEL_SCALE));
+    expect(NewGridComponent.isSelectionGestureLive()).toBe(true);
+    component['timeMouseDown'] = 0;
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 2 * MODEL_SCALE, clientY: 0 }));
+    component.mouseUp(new MouseEvent('mouseup', { clientX: 2 * MODEL_SCALE, clientY: 0 }));
+    expect(NewGridComponent.isSelectionGestureLive()).toBe(false);
+    expect(a.x).toBeCloseTo(MODEL_SCALE);
+    expect(a.y).toBeCloseTo(MODEL_SCALE);
+    expect(b.x).toBeCloseTo(MODEL_SCALE);
+    expect(b.y).toBeCloseTo(-MODEL_SCALE);
+
+    component['beginSelectionGesture']('scale', new Coord(2 * MODEL_SCALE, 0));
+    component['timeMouseDown'] = 0;
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 3 * MODEL_SCALE, clientY: 0 }));
+    component.mouseUp(new MouseEvent('mouseup', { clientX: 3 * MODEL_SCALE, clientY: 0 }));
+    expect(a.y).toBeCloseTo(2 * MODEL_SCALE);
+    expect(b.y).toBeCloseTo(-2 * MODEL_SCALE);
+  });
+
+  it('does not spin the box round a group a Lock holds still', () => {
+    const { component, fixture, active, a, b } = setUpSelection();
+    b.locked = true;
+    active.replacePartSelection(a);
+    active.togglePartSelection(b);
+    fixture.detectChanges();
+
+    component['beginSelectionGesture']('rotate', new Coord(MODEL_SCALE, MODEL_SCALE));
+    component['timeMouseDown'] = 0;
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 2 * MODEL_SCALE, clientY: 0 }));
+    // The turn was refused, so the box stays square on parts that did not move.
+    expect(component.selectionSpin()).toBeNull();
+    expect([a.x, a.y, b.x, b.y]).toEqual([0, 0, 2 * MODEL_SCALE, 0]);
+    component.mouseUp(new MouseEvent('mouseup', { clientX: 2 * MODEL_SCALE, clientY: 0 }));
+  });
+
+  it('turns in fifteen-degree steps, and freely while Alt is held', () => {
+    const { component, fixture, active, a, b } = setUpSelection();
+    active.replacePartSelection(a);
+    active.togglePartSelection(b);
+    fixture.detectChanges();
+
+    // A and B lie along y = 0 either side of the pivot, so the bar's own angle
+    // is the turn that was applied.
+    const barAngle = () => Math.atan2(b.y - a.y, b.x - a.x);
+    const turnTo = (radians: number, alt: boolean) => {
+      const pivot = component.selectionBounds()!;
+      const at = {
+        x: (pivot.minX + pivot.maxX) / 2 + MODEL_SCALE * Math.cos(radians),
+        y: (pivot.minY + pivot.maxY) / 2 + MODEL_SCALE * Math.sin(radians),
+      };
+      component['beginSelectionGesture']('rotate', new Coord(at.x + MODEL_SCALE, at.y));
+      component['timeMouseDown'] = 0;
+      component.mouseMove(
+        new MouseEvent('mousemove', { clientX: at.x, clientY: at.y, altKey: alt })
+      );
+      component.mouseUp(new MouseEvent('mouseup', { clientX: at.x, clientY: at.y }));
+    };
+
+    // Asked for something between two steps; lands on one of them.
+    turnTo(Math.PI / 9, false); // 20 degrees
+    const snapped = barAngle();
+    const step = Math.PI / 12;
+    expect(Math.abs(snapped / step - Math.round(snapped / step))).toBeLessThan(1e-6);
+
+    // Alt hands the angle back, so a linkage can be put anywhere it has to go.
+    const before = barAngle();
+    turnTo(Math.PI / 9 + 0.07, true);
+    const free = barAngle() - before;
+    expect(Math.abs(free / step - Math.round(free / step))).toBeGreaterThan(1e-3);
+  });
+
+  it('an edge grip stretches one dimension and leaves the other alone', () => {
+    const mechanism = TestBed.inject(MechanismService);
+    // A box with both a width and a height, which the two-joint fixture above
+    // does not have: an edge grip is only a different thing from a corner one
+    // when there is a second dimension for it to leave alone.
+    const a = new RevJoint('A', 0, 0);
+    const b = new RevJoint('B', 2 * MODEL_SCALE, MODEL_SCALE);
+    const link = new RealLink('AB', [a, b]);
+    a.links = [link];
+    b.links = [link];
+    mechanism.joints = [a, b];
+    mechanism.links = [link];
+    const fixture = TestBed.createComponent(NewGridComponent);
+    const component = fixture.componentInstance;
+    fixture.detectChanges();
+    const active = TestBed.inject(ActiveObjService);
+    active.replacePartSelection(a);
+    active.togglePartSelection(b);
+    fixture.detectChanges();
+
+    const east = component
+      .selectionGrips(component.selectionBounds()!)
+      .find((grip) => grip.id === 'e')!;
+    expect(east.axes).toBe('x');
+    // The anchor is the westmost joint, not the box's west edge, so the side
+    // being held still does not creep by the width of the inset.
+    expect(east.anchor).toEqual({ x: 0, y: MODEL_SCALE / 2 });
+
+    component['beginSelectionGesture']('scale', new Coord(east.x, east.y), undefined, east);
+    component['timeMouseDown'] = 0;
+    const pulled = east.x + MODEL_SCALE;
+    component.mouseMove(new MouseEvent('mousemove', { clientX: pulled, clientY: east.y }));
+    component.mouseUp(new MouseEvent('mouseup', { clientX: pulled, clientY: east.y }));
+
+    // Wider, exactly as tall, and the anchored joint did not move at all.
+    expect(a.x).toBeCloseTo(0);
+    expect(a.y).toBeCloseTo(0);
+    expect(b.x).toBeGreaterThan(2 * MODEL_SCALE);
+    expect(b.y).toBeCloseTo(MODEL_SCALE);
+  });
+
+  it('neither drags nor nudges a group of nothing but forces into an undo entry', () => {
+    const { component, active, mechanism, link } = setUpSelection();
+    const f1 = new Force('F1', link, new Coord(0, 0), new Coord(0, MODEL_SCALE));
+    const f2 = new Force(
+      'F2',
+      link,
+      new Coord(MODEL_SCALE, 0),
+      new Coord(MODEL_SCALE, MODEL_SCALE)
+    );
+    mechanism.forces = [f1, f2];
+    active.replacePartSelection(f1);
+    active.togglePartSelection(f2);
+    const save = vi.spyOn(mechanism, 'save').mockImplementation(() => {});
+
+    component.setLastLeftClick(f1, new MouseEvent('pointerdown'));
+    component.mouseDown(new MouseEvent('mousedown', { button: 0, clientX: 0, clientY: 0 }));
+    component['timeMouseDown'] = 0;
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 30, clientY: 20 }));
+    component.mouseUp(new MouseEvent('mouseup', { button: 0, clientX: 30, clientY: 20 }));
+    component['nudgeSelection'](1, 0, false);
+
+    expect([f1.startCoord.x, f1.startCoord.y]).toEqual([0, 0]);
+    expect(active.selectedPartRefs).toHaveLength(2);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('selects a force from a group across two machines away from the start, without a refusal', () => {
+    // A group of nothing but forces moves nothing, so it is not staged. Staged,
+    // a group spread over two machines was refused at the press, and the plain
+    // click that should have picked the force under it did nothing.
+    const { component, active, mechanism, link } = setUpSelection();
+    const f1 = new Force('F1', link, new Coord(0, 0), new Coord(0, MODEL_SCALE));
+    const f2 = new Force(
+      'F2',
+      link,
+      new Coord(MODEL_SCALE, 0),
+      new Coord(MODEL_SCALE, MODEL_SCALE)
+    );
+    mechanism.forces = [f1, f2];
+    active.replacePartSelection(f1);
+    active.togglePartSelection(f2);
+    vi.spyOn(mechanism, 'isAtStartPose').mockReturnValue(false);
+    vi.spyOn(mechanism, 'indexOfMechanismContaining').mockImplementation((part) =>
+      part === f1 ? 0 : 1
+    );
+    const refusal = vi.spyOn(component['notify'], 'refusal');
+
+    component.setLastLeftClick(f1, new MouseEvent('pointerdown'));
+    component.mouseDown(new MouseEvent('mousedown', { button: 0 }));
+    component.mouseUp(new MouseEvent('mouseup', { button: 0 }));
+
+    expect(refusal.mock.calls.map(([id]) => id)).not.toContain('selection.spans-machines');
+    expect(active.selectedPartRefs).toEqual([{ kind: 'force', id: 'F1' }]);
+  });
+
+  it('refuses the whole transform when one canonical member is locked', () => {
+    const { component, active, mechanism, a, b } = setUpSelection();
+    active.replacePartSelection(a);
+    active.togglePartSelection(b);
+    b.locked = true;
+    mechanism.updateMechanism(false);
+    const save = vi.spyOn(mechanism, 'save').mockImplementation(() => {});
+
+    component.setLastLeftClick(a, new MouseEvent('pointerdown'));
+    component.mouseDown(new MouseEvent('mousedown', { button: 0 }));
+    component['timeMouseDown'] = 0;
+    component.mouseMove(new MouseEvent('mousemove', { clientX: 30, clientY: 20 }));
+    component.mouseUp(new MouseEvent('mouseup', { clientX: 30, clientY: 20 }));
+
+    expect([a.x, a.y, b.x, b.y]).toEqual([0, 0, 2 * MODEL_SCALE, 0]);
+    expect(active.selectedPartRefs).toHaveLength(2);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('collapses to one item when a selected group member is plainly clicked without dragging', () => {
+    const { component, active, a, b } = setUpSelection();
+    active.replacePartSelection(a);
+    active.togglePartSelection(b);
+
+    component.setLastLeftClick(a, new MouseEvent('pointerdown'));
+    component.mouseDown(new MouseEvent('mousedown', { button: 0 }));
+    component.mouseUp(new MouseEvent('mouseup', { button: 0 }));
+
+    expect(active.selectedPartRefs).toEqual([{ kind: 'joint', id: 'A' }]);
+  });
+
+  it('clears on Escape and an unmodified blank-canvas click', () => {
+    const { component, active, a, b } = setUpSelection();
+    active.replacePartSelection(a);
+    active.togglePartSelection(b);
+    component['onShortcut']('edit.deselect');
+    expect(active.selectedPartRefs).toEqual([]);
+
+    active.replacePartSelection(a);
+    active.togglePartSelection(b);
+    component.setLastLeftClick('grid', new MouseEvent('pointerdown'));
+    expect(active.selectedPartRefs).toEqual([]);
+  });
+});
+
+describe('NewGridComponent keyboard shortcuts', () => {
+  beforeEach(configureGridTestBed);
+
+  function setUp() {
+    const fixture = TestBed.createComponent(NewGridComponent);
+    fixture.detectChanges();
+    return fixture.componentInstance;
+  }
+
+  // Everything selectable that has a Delete of its own has to answer this key.
+  // Left out, it cleared the selection and left the object standing, which
+  // reads as a delete that did not take.
+  it('takes away the background image it has selected', () => {
+    const component = setUp();
+    const bgImage = TestBed.inject(BackgroundImageService);
+    bgImage.image.set({
+      src: 'data:image/png;base64,',
+      naturalWidth: 100,
+      naturalHeight: 50,
+      centerX: 0,
+      centerY: 0,
+      width: 10,
+      rotationRad: 0,
+      opacity: 0.5,
+      fileName: 'trace.png',
+    });
+    TestBed.inject(ActiveObjService).selectBackgroundImage();
+
+    component['onShortcut']('edit.delete');
+
+    expect(bgImage.image()).toBeNull();
+  });
+
+  it('takes away the synthesis position it has selected', () => {
+    const component = setUp();
+    const builder = TestBed.inject(SynthesisBuilderService);
+    vi.spyOn(TestBed.inject(MechanismService), 'save').mockImplementation(() => {});
+    builder.placePose(new Coord(1, 1));
+    TestBed.inject(ActiveObjService).updateSelectedObj(builder.getPose(1));
+
+    component['onShortcut']('edit.delete');
+
+    expect(builder.getAllPoses().length).toBe(0);
+  });
+
+  // A position is a note beside the mechanism, so its menu row clears it in
+  // every mode. The key used to ask the structure question instead, which
+  // Synthesis always refuses -- the one mode a position is placed in.
+  it('takes away a synthesis position in Synthesis, as its menu row does', () => {
+    const component = setUp();
+    const builder = TestBed.inject(SynthesisBuilderService);
+    vi.spyOn(TestBed.inject(MechanismService), 'save').mockImplementation(() => {});
+    builder.placePose(new Coord(1, 1));
+    TestBed.inject(SelectedTabService).setTab(TabID.SYNTHESIZE);
+    TestBed.inject(ActiveObjService).updateSelectedObj(builder.getPose(1));
+
+    component['onShortcut']('edit.delete');
+
+    expect(builder.getAllPoses().length).toBe(0);
+  });
+
+  // Playing or parked mid-cycle, the key used to do nothing and say nothing,
+  // while the same refusal in an analysis mode was announced.
+  it('says why Delete is refused while playing, with the way back to the start', () => {
+    const component = setUp();
+    const refusal = vi.spyOn(TestBed.inject(NotificationService), 'refusal');
+    const deleting = vi.spyOn(component as never, 'deleteSelection' as never);
+    vi.spyOn(TestBed.inject(EditPermissionService), 'deleteSelectionRefusal').mockReturnValue({
+      short: 'animation running',
+      long: 'Pause the animation to change the mechanism.',
+      lead: 'Pause the animation to change the mechanism.',
+      glyph: 'play_circle',
+      backToStartHelps: true,
+    });
+
+    component['onShortcut']('edit.delete');
+
+    expect(deleting).not.toHaveBeenCalled();
+    expect(refusal).toHaveBeenCalledWith(
+      'delete.pose',
+      'Pause the animation to change the mechanism.',
+      { actions: [expect.objectContaining({ label: 'Return to start' })] }
+    );
+  });
+
+  // `getSelectedObj` throws for everything it has no case for, so asking it
+  // before checking the type turned "there is nothing to lock" into an uncaught
+  // error on a fresh grid.
+  it('refuses the lock key on an empty grid instead of throwing', () => {
+    const component = setUp();
+    const refusal = vi.spyOn(TestBed.inject(NotificationService), 'refusal');
+    TestBed.inject(ActiveObjService).objType = 'Nothing';
+
+    expect(() => component['onShortcut']('edit.lock')).not.toThrow();
+    expect(refusal).toHaveBeenCalled();
+  });
+});
+
+/**
+ * A vector trace is a picture of something a graph can only tabulate: which
+ * way the quantity points, at each place the part passes through. Everything
+ * here is about the two halves agreeing -- the pale arrows along the cycle and
+ * the heavy one at the pose share a scale, or the live one reads as a spike.
+ */
+describe('NewGridComponent vector traces', () => {
+  beforeEach(configureGridTestBed);
+
+  function analyzing() {
+    const mechanism = TestBed.inject(MechanismService);
+    const scene = twoBars(mechanism);
+    TestBed.inject(SelectedTabService).setTab(TabID.ANALYZE);
+    return { mechanism, ...scene };
+  }
+
+  it('draws nothing until a part is switched on', () => {
+    const { mechanism } = analyzing();
+    expect(mechanism.anyVectorTrace).toBe(false);
+    expect(mechanism.vectorTracePaths()).toEqual([]);
+  });
+
+  it('spaces arrows along the whole cycle, and puts one at the pose', () => {
+    const { mechanism, b } = analyzing();
+    mechanism.toggleVectorTrace(b, 'velocity');
+
+    const [trace] = mechanism.vectorTracePaths();
+    expect(trace.key).toBe('velocity:B');
+    // A shaft and two barbs per arrow, and two dozen arrows for the cycle --
+    // not one per solved sample, which is 361 of them.
+    const count = (trace.d.split('M').length - 1) / 3;
+    expect(count).toBeGreaterThan(10);
+    expect(count).toBeLessThan(mechanism.mechanisms[0].joints.length / 2);
+
+    const [live] = mechanism.liveVectorArrows();
+    // Attached to the part: the tail is where the joint is drawn right now.
+    expect([live.x, live.y]).toEqual([b.x, b.y]);
+    expect(live.d.split('M').length - 1).toBe(3);
+  });
+
+  it('retains sampled paths during dragging, updates the live arrow, and refreshes on release', () => {
+    const { mechanism, b } = analyzing();
+    const drag = TestBed.inject(DragStateService);
+    mechanism.toggleVectorTrace(b, 'velocity');
+    const before = mechanism.vectorTracePaths();
+    drag.press();
+    drag.beginDraggingJoint();
+    b.x += 1;
+    mechanism.updateMechanism();
+    expect(mechanism.vectorTracePaths()).toBe(before);
+    expect(mechanism.liveVectorArrows()[0].x).toBe(b.x);
+    drag.cancel();
+    expect(mechanism.vectorTracePaths()).not.toBe(before);
+    expect(mechanism.vectorTracePaths()[0].d).not.toBe(before[0].d);
+  });
+
+  it('scales the biggest arrow of a cycle against the size of the machine', () => {
+    const { mechanism, b } = analyzing();
+    mechanism.toggleVectorTrace(b, 'velocity');
+    const longest = Math.max(...shaftLengths(mechanism.vectorTracePaths()[0].d));
+    // The crank sweeps a circle of radius sqrt(50) about the origin, so its
+    // swept box has a diagonal of 4 * sqrt(50) / sqrt(2) -- and the longest
+    // arrow is the agreed fraction of that.
+    const span = Math.hypot(2 * Math.hypot(5, 5), 2 * Math.hypot(5, 5));
+    expect(longest).toBeCloseTo(span * LONGEST_ARROW_FRACTION, 3);
+  });
+
+  it('carries a rate across Edit and both analysis modes', () => {
+    const { mechanism, b } = analyzing();
+    mechanism.toggleVectorTrace(b, 'velocity');
+    expect(mechanism.vectorTracePaths().length).toBe(1);
+    // Motion is the same in either analysis mode, so crossing into Force keeps
+    // the arrows. Losing them there was exactly when a reader wanted to see a
+    // reaction and the acceleration behind it at once.
+    TestBed.inject(SelectedTabService).setTab(TabID.FORCE);
+    expect(mechanism.vectorTracePaths().length).toBe(1);
+    TestBed.inject(SelectedTabService).setTab(TabID.EDIT);
+    expect(mechanism.vectorTracePaths().length).toBe(1);
+  });
+
+  it('keeps force vectors visible across all three drawing modes', () => {
+    const { mechanism, a } = analyzing();
+    mechanism.links.forEach((link) => mechanism.assignBodyMass(link as RealLink, 1));
+    TestBed.inject(SettingsService).isGravity.next(true);
+    mechanism.updateMechanism(false);
+    mechanism.toggleVectorTrace(a, 'force');
+    TestBed.inject(SelectedTabService).setTab(TabID.FORCE);
+    const force = mechanism.vectorTracePaths();
+    expect(force.map((one) => one.quantity)).toEqual(['force']);
+    for (const mode of [TabID.ANALYZE, TabID.EDIT]) {
+      TestBed.inject(SelectedTabService).setTab(mode);
+      expect(mechanism.vectorTracePaths()).toEqual(force);
+    }
+  });
+
+  /**
+   * The regression the owner reported as "does not update when toggled, works
+   * inconsistently".
+   *
+   * The drawn list is cached, and switching a trace on moves nothing else --
+   * same pose, same solve, same mode, same tab -- so the cache answered with
+   * the list from before the switch was touched. Every read here happens with
+   * nothing but the switch having changed, which is exactly the case that used
+   * to be served stale.
+   */
+  it('answers a switch the moment it is flipped, and nothing else has to change', () => {
+    const { mechanism, b, c } = analyzing();
+
+    mechanism.toggleVectorTrace(b, 'velocity');
+    expect(mechanism.vectorTracePaths().length).toBe(1);
+
+    mechanism.toggleVectorTrace(b, 'velocity');
+    expect(mechanism.vectorTracePaths()).toEqual([]);
+
+    mechanism.toggleVectorTrace(b, 'velocity');
+    expect(mechanism.vectorTracePaths().length).toBe(1);
+
+    // A second quantity on the same part, read between every flip.
+    mechanism.toggleVectorTrace(b, 'acceleration');
+    expect(mechanism.vectorTracePaths().length).toBe(2);
+    mechanism.toggleVectorTrace(b, 'acceleration');
+    expect(mechanism.vectorTracePaths().length).toBe(1);
+
+    // The live arrows are cached against the path list's identity, so they have
+    // to follow it out rather than answering from their own stale copy.
+    expect(mechanism.liveVectorArrows().length).toBe(1);
+    mechanism.toggleVectorTrace(b, 'velocity');
+    expect(mechanism.liveVectorArrows()).toEqual([]);
+  });
+
+  it('forgets a switch whose part has been deleted', () => {
+    const { mechanism, b } = analyzing();
+    mechanism.toggleVectorTrace(b, 'velocity');
+    mechanism.joints = mechanism.joints.filter((joint) => joint.id !== 'B');
+    expect(mechanism.vectorTracePaths()).toEqual([]);
+    expect(mechanism.anyVectorTrace).toBe(false);
+  });
+});
+
+/** The shaft of every arrow in a path: each one is the first leg of a triple. */
+function shaftLengths(d: string): number[] {
+  const legs = d.split('M').filter((piece) => piece.trim() !== '');
+  return legs
+    .filter((_, index) => index % 3 === 0)
+    .map((leg) => {
+      const [x1, y1, x2, y2] = leg
+        .split('L')
+        .flatMap((half) => half.trim().split(/\s+/).map(Number));
+      return Math.hypot(x2 - x1, y2 - y1);
+    });
+}
+
+describe('NewGridComponent force names', () => {
+  beforeEach(configureGridTestBed);
+
+  /** The two bars, each carrying one force, drawn by a fresh canvas. */
+  function twoForces() {
+    const mechanism = TestBed.inject(MechanismService);
+    const scene = twoBars(mechanism);
+    const f1 = new Force('F1', scene.ab, new Coord(2, 2), new Coord(2, 4));
+    const f2 = new Force('F2', scene.cd, new Coord(25, 20), new Coord(25, 22));
+    scene.ab.forces.push(f1);
+    scene.cd.forces.push(f2);
+    mechanism.forces = [f1, f2];
+    const fixture = TestBed.createComponent(NewGridComponent);
+    const names = () => {
+      fixture.detectChanges();
+      return [...fixture.nativeElement.querySelectorAll('#forceTagHolder .forceLabel')].map(
+        (text: Element) => text.textContent?.trim()
+      );
+    };
+    return { mechanism, settings: TestBed.inject(SettingsService), f1, names };
+  }
+
+  it('names every force while names are shown, with nothing pointed at (#330)', () => {
+    const { settings, names } = twoForces();
+    settings.isShowID.next(true);
+    expect(names()).toEqual(['F1', 'F2']);
+  });
+
+  it('keeps every name on while the machine plays, as the joints keep theirs', () => {
+    const { mechanism, settings, names } = twoForces();
+    settings.isShowID.next(true);
+    mechanism.isPlaying = true;
+    expect(names()).toEqual(['F1', 'F2']);
+  });
+
+  it('names only the force pointed at while names are hidden, and none during playback', () => {
+    const { mechanism, settings, f1, names } = twoForces();
+    settings.isShowID.next(false);
+    expect(names()).toEqual([]);
+    f1.showHighlight = true;
+    expect(names()).toEqual(['F1']);
+    mechanism.isPlaying = true;
+    expect(names()).toEqual([]);
+  });
+});
+
+/**
+ * A center of mass dragged at a paused pose, and the two ways a gesture can
+ * end other than by its own release. Both used to write a point measured in
+ * the displayed frame, which the next rebuild read at the start pose.
+ */
+describe('NewGridComponent center of mass drag at a paused pose', () => {
+  beforeEach(configureGridTestBed);
+
+  function pausedFourBar() {
+    const mechanism = TestBed.inject(MechanismService);
+    const decoder = new StringTranscoder();
+    decoder.decodeURL(fixturePayload(fourBarDrivenAtFixture('A')));
+    new MechanismBuilder(
+      mechanism,
+      decoder,
+      TestBed.inject(SettingsService),
+      TestBed.inject(ActiveObjService)
+    ).build();
+    const link = mechanism.links.find((one) => one.id === 'ACT') as RealLink;
+    // An automatic center, anchored to the grid: the case a re-placed start
+    // point turned custom and measured in the displayed frame.
+    link.comIsCustom = false;
+    link.comAnchor = 'grid';
+    mechanism.updateMechanism();
+    const fixture = TestBed.createComponent(NewGridComponent);
+    fixture.detectChanges();
+    const startCoM = new Coord(link.CoM.x, link.CoM.y);
+    mechanism.seekMechanism(0, mechanism.mechanisms[0].cyclePeriod * 0.217);
+    TestBed.inject(ActiveObjService).updateSelectedObj(link);
+    return { mechanism, link, startCoM, component: fixture.componentInstance };
+  }
+
+  function grabAndMove(component: NewGridComponent, link: RealLink): void {
+    component.startComDrag(link, new PointerEvent('pointerdown', { button: 0 }));
+    expect(component.draggingCoMLink, 'the drag began').toBe(link);
+    window.dispatchEvent(
+      new PointerEvent('pointermove', {
+        clientX: link.CoM.x + 30,
+        clientY: link.CoM.y - 20,
+        altKey: true,
+      })
+    );
+  }
+
+  it('puts back an automatic center as automatic when the gesture is cancelled', () => {
+    const { mechanism, link, startCoM, component } = pausedFourBar();
+    expect(link.comIsCustom).toBe(false);
+    const saved = vi.spyOn(mechanism, 'save');
+
+    grabAndMove(component, link);
+    component['endComDrag']!(true);
+
+    expect(link.comIsCustom).toBe(false);
+    mechanism.seekMechanism(0, 0);
+    mechanism.updateMechanism();
+    expect(link.CoM.x).toBeCloseTo(startCoM.x, 6);
+    expect(link.CoM.y).toBeCloseTo(startCoM.y, 6);
+    expect(saved).not.toHaveBeenCalled();
+  });
+
+  it('commits a center of mass mid-drag before the lock key locks its link', () => {
+    const { mechanism, link, component } = pausedFourBar();
+    const commit = vi.spyOn(TestBed.inject(GridUtilsService), 'commitCenterOfMass');
+    const lock = vi.spyOn(
+      component as unknown as { toggleLockOnSelection(): void },
+      'toggleLockOnSelection'
+    );
+
+    grabAndMove(component, link);
+    component['onShortcut']('edit.lock');
+
+    expect(commit).toHaveBeenCalledWith(link, true);
+    expect(commit.mock.invocationCallOrder[0]).toBeLessThan(lock.mock.invocationCallOrder[0]);
+    expect(component.draggingCoMLink).toBeUndefined();
+    expect(mechanism.isLockedTarget(link)).toBe(true);
   });
 });

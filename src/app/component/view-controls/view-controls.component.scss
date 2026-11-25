@@ -1,34 +1,87 @@
 @use '../BLOCKS/blocks.common' as blocks;
+@use 'src/app/component/left-tabs/left-tabs.vars' as nav;
 
 @mixin css($theme) {
+  // A floating card at the bottom right, beside the transport rather than
+  // stacked in a rail: these say what you can see, the transport says what is
+  // moving, and both belong at the edge nearest the grid they act on.
   .viewControls {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: center;
     gap: 6px;
-    padding: 8px;
+    padding: 0 12px;
+    height: 60px;
+    pointer-events: auto;
 
-    // Same button look as the edit panel; the container prefix keeps its
-    // border-color winning over Material's default outline.
-    @include blocks.mini-buttons($theme);
-
-    .mini-buttons {
-      justify-content: flex-start;
+    // One place, in every mode. It used to carry an extra 16px in Edit that it
+    // gave up in analysis, so the card slid sideways on the way into a mode
+    // whose controls have nothing to do with it.
+    @media (max-width: nav.$lower-line-tightens) {
+      padding: 0 6px;
+      gap: 2px;
     }
 
-    .zoomRow {
-      display: flex;
-      gap: 6px;
+    // On a phone this shares one row with the transport, and the two together
+    // want about seventy pixels more than the window has.
+    @media (max-width: nav.$phone-max-width) {
+      height: 52px;
+      padding: 0 4px;
+      gap: 0;
+      // The card fills its half of the row on a phone (playback-bar.scss), so
+      // its buttons spread across the width they are given rather than sitting
+      // in a clump at the left of it.
+      flex: 1 1 auto;
+      justify-content: space-evenly;
+    }
+    background: var(--card-surface);
+    border-radius: var(--card-radius);
+    z-index: 8;
+    box-sizing: border-box;
+    box-shadow: var(--card-shadow);
+  }
 
-      .zoomButton {
-        flex: 1 1 0;
-        min-width: 0;
-        padding: 0;
-        justify-content: center;
+  // Between the switches and the actions. Shorter than the buttons, so it
+  // reads as a seam in the row rather than as a wall across the card, and it
+  // takes the row's own gap on each side rather than adding one of its own.
+  .viewDivider {
+    flex: 0 0 auto;
+    width: 1px;
+    height: 24px;
+    background: rgba(0, 0, 0, 0.12);
 
-        .mat-icon {
-          margin: 0;
-        }
-      }
+    @media (max-width: nav.$lower-line-tightens) {
+      height: 20px;
+    }
+  }
+
+  // The one button the six collapse to on a phone. It lives on the transport
+  // card's own line, so it wears that line's metrics rather than the view
+  // cluster's -- there is no view cluster there any more.
+  .viewSheetButton {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+
+    mat-icon {
+      width: 22px;
+      height: 22px;
+      font-size: 22px;
+      line-height: 22px;
+    }
+
+    &.on {
+      background: var(--selection);
+      color: var(--brand-dark);
     }
   }
 }

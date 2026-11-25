@@ -1,0 +1,161 @@
+{
+ "schema": "pmks-oracle-problem/1",
+ "id": "template.cylinder-boom.m1",
+ "title": "Template Cylinder_Boom, M1",
+ "source": {
+  "kind": "published",
+  "case": "template.cylinder-boom",
+  "machine": "M1"
+ },
+ "gravity": 9.80665,
+ "bodies": [
+  {
+   "id": "OC",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0,
+    2
+   ]
+  },
+  {
+   "id": "GN",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    2.1361999999999997,
+    1.1517333333333335
+   ]
+  },
+  {
+   "id": "PC",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.8637999999999999,
+    2.8482666666666665
+   ]
+  }
+ ],
+ "joints": [
+  {
+   "id": "O",
+   "kind": "pin",
+   "at": [
+    0,
+    0
+   ],
+   "bodies": [
+    "OC"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "C",
+   "kind": "pin",
+   "at": [
+    0,
+    4
+   ],
+   "bodies": [
+    "OC",
+    "PC"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "G",
+   "kind": "pin",
+   "at": [
+    3,
+    0
+   ],
+   "bodies": [
+    "GN"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "P",
+   "kind": "slider",
+   "at": [
+    1.7275999999999998,
+    1.696533333333333
+   ],
+   "guide": "GN",
+   "linePoint": [
+    3,
+    0
+   ],
+   "axis": [
+    -0.6,
+    0.8
+   ],
+   "riders": [
+    "PC"
+   ],
+   "rotates": false,
+   "blockMass": 0,
+   "limits": [
+    0.550195,
+    3.282538333333334
+   ]
+  }
+ ],
+ "driver": {
+  "joint": "P",
+  "kind": "translation",
+  "speed": -1
+ },
+ "loads": [],
+ "points": [
+  {
+   "id": "O",
+   "body": "ground",
+   "at": [
+    0,
+    0
+   ]
+  },
+  {
+   "id": "C",
+   "body": "OC",
+   "at": [
+    0,
+    4
+   ]
+  },
+  {
+   "id": "G",
+   "body": "ground",
+   "at": [
+    3,
+    0
+   ]
+  },
+  {
+   "id": "N",
+   "body": "GN",
+   "at": [
+    1.2723999999999998,
+    2.303466666666667
+   ]
+  },
+  {
+   "id": "P",
+   "body": "PC",
+   "at": [
+    1.7275999999999998,
+    1.696533333333333
+   ]
+  }
+ ],
+ "sweep": {
+  "step": 0.015179629629629633,
+  "maxSamples": 2000
+ },
+ "unsupported": []
+}

@@ -21,7 +21,6 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-    margin: 10px;
 
     //For child components, set border to dotted for debugging
     //> * > * > * {
@@ -29,8 +28,81 @@
     //}
   }
 
+  // The sections used to be the wrapper's own children, so they inherit its
+  // column and its gap rather than being restacked by the freeze.
+  //
+  // And its *sizing*, which is the part that is easy to miss: `#editWrapper` is
+  // a flex item that gives up its height, and the card inside caps itself at
+  // `max-height: 100%` so it can scroll its own contents. Slipping a plain div
+  // between them broke that chain -- the percentage had nothing definite to
+  // resolve against, so on a short window the card overflowed its frame instead
+  // of scrolling, and its sticky title had nothing passing under it.
+  .editBody {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: 10px;
+  }
+
+  // Dimmed enough to read as unavailable, not so far that the numbers stop
+  // being legible: watching a joint's coordinates tick while the mechanism
+  // runs is the reason the panel stays instead of vanishing.
+  // The whole panel out of reach, drawn as what it is rather than as a fainter
+  // copy of what it was.
+  //
+  // It was 55% opacity over 100%, which is a difference nobody was ever going to
+  // read as two rules -- and which made the card itself translucent, so the grid
+  // showed through the thing being edited. The two levels differ in *which*
+  // controls are dead: paused mid-cycle the coordinates are grey and the
+  // switches are plainly live; running, the switches go with them and the
+  // section titles grey with the rest, so the card reads as one refusal.
+  //
+  // Nothing moves between the two, so a 150ms fade is all the transition needs
+  // to be.
+  .editBody.frozen {
+    // The controls Angular has not disabled -- the switches, the buttons -- have
+    // to *look* the way the disabled ones already do. `inert` takes them out of
+    // reach without changing a pixel.
+    --frozen-ink: var(--text-muted);
+
+    // The section titles, which carry the panel's indigo when it is live.
+    // Only inside what is actually inert: a section the card keeps live -- the
+    // masses -- must look as live as it is.
+    [inert] .panel-header__toggle,
+    [inert] .subtitle {
+      color: var(--frozen-ink);
+      transition: color 150ms ease-out;
+    }
+
+    // And the controls Angular has not disabled itself: a switch, a color, a
+    // button. Dimmed rather than recolored, because each is a different shape
+    // of control and there is no one ink they share.
+    // A disabled title button already fades itself (`mini-buttons`); fading
+    // its row as well left it at a third of its strength.
+    [inert] editable-title-block .row .mini-buttons:not(:disabled),
+    [inert] toggle-block,
+    [inert] button-block,
+    [inert] dual-button,
+    [inert] app-color-picker,
+    [inert] .label {
+      opacity: 0.55;
+      transition: opacity 150ms ease-out;
+    }
+  }
+
   #errorMessage {
     //font-weight: 300;
+  }
+
+  // The background image has no name to rename and nothing to lock, so it takes
+  // a plain heading rather than the editable-title row every part carries -- at
+  // the same size and in the same place, so the panel does not jump when the
+  // selection moves between a part and the picture behind it.
+  .bgTitle {
+    padding: 10px 15px 0;
+    @include mat.m2-typography-level($typography-config, 'headline-6');
+    white-space: nowrap;
   }
 
   // Input Settings appears the moment a joint becomes the input, so it eases in
@@ -55,4 +127,401 @@
       animation: none;
     }
   }
+}
+
+// Which file is behind the grid. Under the heading rather than in it, because
+// a file name is as long as it is and the heading must not wrap.
+.bgFileName {
+  padding: 0 15px 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// The note and the two buttons, given the same horizontal padding and the same
+// gap a collapsible subsection gives its fields -- written out flat they ran to
+// the panel's own edges and sat flush against each other.
+.bgActions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 15px 12px;
+}
+
+// The one thing about this feature a user cannot discover by trying it: the
+// picture is not in the link they are about to share. Same quiet gray as the
+// other read-only notes in this panel.
+.bgNote {
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--surface-field);
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin: 0;
+  line-height: 17px;
+  text-wrap: pretty;
+}
+
+// A block with nowhere to slide: the one thing about a joint's type the panel
+// says in words (D4), under the choice whose chosen option has taken the same
+// ink. A glyph, a bold lead and a sentence, and no filled box, because it is a
+// note about the value above it rather than a banner over the panel. What a
+// slot is cut into, and what its angle is measured from, are drawn on the
+// canvas, so neither is said here.
+.nowhereToSlide {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: -7px 0 2px;
+  font-size: 11.5px;
+  line-height: 16px;
+  color: var(--refusal-text);
+  text-wrap: pretty;
+
+  mat-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+    font-size: 15px;
+    line-height: 16px;
+    text-align: center;
+  }
+
+  b {
+    font-weight: 500;
+  }
+}
+
+// The cylinder-skin override (§2.7). A view preference rather than mechanism
+// state, so it sits apart from the toggles that change what the linkage is.
+.skinPicker {
+  margin-bottom: 10px;
+
+  &__label {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 7px;
+  }
+
+  &__row {
+    display: flex;
+    border: 1px solid var(--brand-pale);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 8px;
+
+    button {
+      flex: 1;
+      font-family: Roboto, sans-serif;
+      font-size: 12.5px;
+      height: 30px;
+      border: 0;
+      cursor: pointer;
+      background: var(--surface);
+      color: var(--brand);
+
+      &:not(:first-child) {
+        border-left: 1px solid var(--brand-pale);
+      }
+
+      &.is-on {
+        background: var(--brand);
+        color: var(--text-on-accent);
+      }
+
+      // Offered but not available: the note under the row says what is missing.
+      &:disabled {
+        color: var(--text-muted);
+        cursor: default;
+      }
+    }
+  }
+}
+
+// Shown only when a value had to be held at the ram's minimum, in the same
+// amber the app uses everywhere for "this was adjusted for you".
+.cylinder-clamped {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: var(--accent-tint);
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--warning-text);
+}
+
+/* --- Derived-vs-typed state, worn by the app's own input fields ----------
+   The fields themselves are input-block / dual-input-block — the exact
+   component every other panel value uses — with the state dot and the clear
+   projected into their suffix slot, and gray text when the value follows the
+   shape. */
+.massArea .dotLegend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* Flush with the label column, exactly where the mock starts it, and
+     closed by the mock's hairline under Reset all. Clear air above: the mock
+     does not crowd the legend against the Mass field. */
+  margin: 8px 0 6px;
+  padding: 2px 0 8px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  font-size: 10.5px;
+  color: var(--text-secondary);
+
+  .dot {
+    margin-right: -2px;
+  }
+
+  .resetAll {
+    margin-left: auto;
+    border: none;
+    background: none;
+    color: var(--brand);
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 0;
+
+    &:disabled {
+      color: var(--text-disabled);
+      cursor: default;
+    }
+  }
+}
+
+/* A disabled button is not a hover target, so the pointer would fall through to
+   nothing and the wrapper's tooltip would never open either. Taking the button
+   out of the way explicitly lets the hover land on the wrapper, which is what
+   carries the explanation. */
+.shapeToggle:has(button:disabled) button {
+  pointer-events: none;
+}
+
+/* Sits under the two derived mass fields it qualifies, in the legend's own gray
+   so it reads as the same aside rather than as a warning about a problem. */
+.shapeNote {
+  margin: 6px 0 0;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+
+.massArea .dot {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  border: 1.5px solid var(--brand-light);
+  background: transparent;
+  flex: none;
+
+  &.filled {
+    background: var(--brand);
+    border-color: var(--brand);
+  }
+}
+
+.massArea .dotRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* No side padding: every row's label starts at the same left edge and
+     every field ends at the same right edge as the input-block rows. */
+  padding: 4px 0;
+}
+
+.massArea .dotRowLabel {
+  font-size: 13px;
+  flex: 1 1 auto;
+  color: var(--text-secondary);
+  /* One line always; the field column cedes the width this needs. */
+  white-space: nowrap;
+}
+
+/* The help mark sits right after "from", not out at the field's edge: it
+   explains the label, and the select on the next line spans the width. */
+.massArea .comFrameRow {
+  gap: 0;
+  padding-bottom: 0;
+
+  .dotRowLabel {
+    flex: 0 1 auto;
+  }
+}
+
+/* Full width, like the X and Y pair it heads, so "Shape's centroid" and
+   "Grid origin (0, 0)" are read in full. */
+.massArea .comFrameSelect {
+  font: inherit;
+  font-size: 14px;
+  border: none;
+  border-radius: 4px;
+  background: var(--surface-field);
+  height: 30px;
+  padding: 0 8px;
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+
+  &:disabled {
+    color: var(--text-muted);
+    opacity: 1;
+  }
+}
+
+.massArea .stateSuffix {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 4px;
+
+  .clearDot {
+    border: none;
+    background: none;
+    padding: 0;
+    font-size: 14px;
+    line-height: 1;
+    color: var(--text-tertiary);
+    cursor: pointer;
+
+    &:hover {
+      color: var(--text-primary);
+    }
+  }
+}
+
+/* Gray means derived; the components' own ink means typed. */
+.massArea input-block.derived .customInput,
+.massArea dual-input-block.derived .customInput {
+  color: var(--text-tertiary);
+}
+
+.massArea .massNote {
+  /* Flush with the labels' left line, like everything else in the area. */
+  margin: 8px 0 2px;
+  font-size: 11.5px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+/* Air between stacked mass rows: the cylinder's three parts read as three
+   settings, not one field with two echoes. */
+.massArea input-block {
+  display: block;
+}
+.massArea input-block + input-block {
+  margin-top: 8px;
+}
+
+.massArea .comPairRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  /* One extra bottom pixel: the row above contributes 8px of air, the row
+     below only 7, and the eye catches the difference. Measured, both 8. */
+  padding: 4px 0 5px;
+
+  state-input {
+    flex: none;
+  }
+
+  justify-content: space-between;
+
+  /* The axis letters read as small captions, not headings. */
+  .axisTag {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    flex: none;
+  }
+}
+
+/* The spacer stays hidden — the field pushes itself right with margin auto,
+   so no phantom flex gaps stack up against the fixed field column. Every
+   help mark fits now that the inertia's label is one word. */
+.massArea #input-block:not(.state-input-host) .spacer {
+  display: none;
+}
+
+/* Inertia breaks the center line: its value carries a unit and
+   needs the room, so its field expands leftward while still ending on the
+   panel's shared right edge. */
+.massArea input-block.moiBlock #input-block:not(.state-input-host) .customInputForm {
+  flex-basis: 148px;
+  min-width: 148px;
+}
+.massArea input-block.moiBlock #input-block .customInputForm .mat-mdc-text-field-wrapper {
+  width: 148px;
+}
+
+/* Gray means derived, in the pair too. */
+.massArea .comPairRow.derived .customInput {
+  color: var(--text-tertiary);
+}
+
+/* The mock's one field column: Mass and Inertia share one width, one left
+   edge and one right edge — the center line of the panel. The id out-ranks the base #input-block width. */
+.massArea #input-block .customInputForm .mat-mdc-text-field-wrapper {
+  width: 112px;
+  max-width: 100%;
+}
+
+/* The dot and its ✕ sit on the field's visible center, not the baseline.
+   Same anchoring as state-input: the 30px wrapper clips MDC's 56px flex
+   row, so top-anchor and offset instead of flex centering. */
+.massArea #input-block .mat-mdc-form-field-icon-suffix,
+.massArea #input-block .mat-mdc-form-field-text-suffix {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  /* A fixed band the height and offset of the input's own line, so the
+     content centers whether it is a lone 7px dot or a dot with a 14px ✕. */
+  margin-top: 6px;
+  height: 18px;
+}
+
+/* The projected wrapper is otherwise inline: its font-sized line box
+   baseline-shifts the dot a few pixels low. Flex collapses it to content. */
+.massArea #input-block .field-suffix {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+/* A long label wraps; the field does not shrink below its own value. The
+   base rule pins labels to one line, which squeezed the inertia's
+   field to a third of its number. Scoped off the X/Y pair, which splits its
+   row by design. */
+.massArea #input-block:not(.state-input-host) .label {
+  white-space: normal;
+  /* Natural width, shrink allowed: the label wraps only when it must, and
+     the help icon sits against its text instead of drifting to the field. */
+  flex: 0 1 auto;
+  /* One label size for the whole section — Mass, CoM measured from and
+     Inertia read as siblings, not as different ranks. */
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.massArea #input-block:not(.state-input-host) .customInputForm {
+  flex: 0 0 112px;
+  min-width: 112px;
+  margin-left: auto;
+}
+
+/* The X/Y fields copy the Length/Angle fields above them: the same 80px
+   wrapper, laid out as label–field, gap, label–field across the row. */
+.massArea #input-block.state-input-host .customInputForm .mat-mdc-text-field-wrapper {
+  width: 80px;
+}
+
+// A welded bar's row in Distance to Joints: the neighbor's name over the Link
+// panel's own Length and Angle fields, so it reads as one entry.
+.distance-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
 }

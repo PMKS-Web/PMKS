@@ -1,14 +1,19 @@
-const { chromium } = await import((process.env.PMKS_PLAYWRIGHT_DIR ?? '/tmp/pmks-playwright') + '/node_modules/playwright/index.mjs');
+const { chromium } = await import(
+  (process.env.PMKS_PLAYWRIGHT_DIR ?? '/tmp/pmks-playwright') + '/node_modules/playwright/index.mjs'
+);
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { waitForReady } from './app-ready.mjs';
 
 const screenshotDir = path.resolve('artifacts/screenshots');
 await fs.mkdir(screenshotDir, { recursive: true });
 
-const chromePath = process.env.PMKS_CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const chromePath =
+  process.env.PMKS_CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const userDataDir = `/tmp/pmks-playwright-profile-${Date.now()}`;
-const baseUrl = process.env.PMKS_URL || 'http://127.0.0.1:4200/';
-const verificationQuery = '0P.SS.K,0.101.MA,A,0wS,0bg,0.GB,B,0gW,EE,0.GC,C,Oi,6k,0.GD,D,03m,_g,0.GE,E,1FO,1I_,0.GF,F,1-C,qM,0.KG,G,1oO,0ss,0..YRAB,AB,Fe,Fe,0oU,0Bk,c5cae9,A,B,,.YRBCD,BCD,Fe,Fe,07C,Rt,303e9f,B,C,D,,.YRDE,DE,Fe,Fe,bq,18q,0d125a,D,E,,.YREF,EF,Fe,Fe,1dI,13g,B2DFDB,E,F,,.YRFCG,FCG,Fe,Fe,1Om,1Q,26A69A,F,C,G,,...JGp';
+const baseUrl = process.env.PMKS_BASE_URL || process.env.PMKS_URL || 'http://localhost:4200/';
+const verificationQuery =
+  '0P.SS.K,0.101.MA,A,0wS,0bg,0.GB,B,0gW,EE,0.GC,C,Oi,6k,0.GD,D,03m,_g,0.GE,E,1FO,1I_,0.GF,F,1-C,qM,0.KG,G,1oO,0ss,0..YRAB,AB,Fe,Fe,0oU,0Bk,c5cae9,A,B,,.YRBCD,BCD,Fe,Fe,07C,Rt,303e9f,B,C,D,,.YRDE,DE,Fe,Fe,bq,18q,0d125a,D,E,,.YREF,EF,Fe,Fe,1dI,13g,B2DFDB,E,F,,.YRFCG,FCG,Fe,Fe,1Om,1Q,26A69A,F,C,G,,...JGp';
 const runPrefix = process.env.RUN_PREFIX || 'tour';
 const issues = [];
 const events = [];
@@ -28,7 +33,12 @@ async function appSnapshot(page, label) {
     const visible = (el) => {
       const rect = el.getBoundingClientRect();
       const style = getComputedStyle(el);
-      return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+      return (
+        rect.width > 0 &&
+        rect.height > 0 &&
+        style.visibility !== 'hidden' &&
+        style.display !== 'none'
+      );
     };
     return {
       label: snapshotLabel,
@@ -48,7 +58,12 @@ async function appSnapshot(page, label) {
           className: String(el.className).slice(0, 180),
           rect: (() => {
             const r = el.getBoundingClientRect();
-            return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+            return {
+              x: Math.round(r.x),
+              y: Math.round(r.y),
+              w: Math.round(r.width),
+              h: Math.round(r.height),
+            };
           })(),
         })),
       inputs: [...document.querySelectorAll('input, textarea, select')]
@@ -66,7 +81,17 @@ async function appSnapshot(page, label) {
         })),
       svgs: [...document.querySelectorAll('svg')].slice(0, 30).map((el, i) => {
         const r = el.getBoundingClientRect();
-        return { i, id: el.id, className: String(el.className).slice(0, 120), rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } };
+        return {
+          i,
+          id: el.id,
+          className: String(el.className).slice(0, 120),
+          rect: {
+            x: Math.round(r.x),
+            y: Math.round(r.y),
+            w: Math.round(r.width),
+            h: Math.round(r.height),
+          },
+        };
       }),
     };
   }, label);
@@ -88,20 +113,6 @@ async function clickFirst(page, candidates, label) {
   return false;
 }
 
-async function dismissIntro(page) {
-  const intro = page.locator('.introjs-tooltip, .introjs-overlay').first();
-  if (await intro.isVisible().catch(() => false)) {
-    const closeButton = page.locator('.introjs-skipbutton, .introjs-tooltipbuttons [role=button]').first();
-    if (await closeButton.isVisible().catch(() => false)) {
-      await closeButton.click({ force: true });
-    } else {
-      await page.keyboard.press('Escape');
-    }
-    await page.waitForTimeout(500);
-    events.push({ action: 'dismiss-intro' });
-  }
-}
-
 async function clickByText(page, re, label) {
   const loc = page.locator('button,[role=button],a', { hasText: re }).first();
   if (await loc.isVisible().catch(() => false)) {
@@ -112,25 +123,41 @@ async function clickByText(page, re, label) {
   return false;
 }
 
-async function clickToolbar(page, labelText) {
-  return await clickFirst(page, [
-    `button:has-text("${labelText}")`,
-    `[role=button]:has-text("${labelText}")`,
-    `text="${labelText}"`,
-  ], labelText);
+/**
+ * The file actions — Mechanism Library, Save, Share, Settings, Help — left the toolbar
+ * for the hamburger menu, so each of them is now two presses.
+ */
+async function clickProjectMenu(page, labelText) {
+  await page.locator('.topStrip .iconButton').first().click();
+  const item = page.locator('.projectMenu .menuItem', { hasText: labelText }).first();
+  if (!(await item.isVisible().catch(() => false))) {
+    recordIssue(`Project menu has no "${labelText}" entry`, { severity: 'high' });
+    await page.keyboard.press('Escape');
+    return false;
+  }
+  await item.click();
+  events.push({ action: 'click', label: labelText, selector: '.projectMenu .menuItem' });
+  return true;
 }
 
 async function checkLayout(page, label) {
-  const state = await page.evaluate((snapshotLabel) => ({
-    label: snapshotLabel,
-    text: document.body.innerText,
-    scrollWidth: document.documentElement.scrollWidth,
-    clientWidth: document.documentElement.clientWidth,
-    innerWidth,
-    visibleModal: !!document.querySelector('.mat-mdc-dialog-container, .introjs-tooltip'),
-  }), label);
-  if (/Degrees of Freedom:\s*NaN/i.test(state.text)) {
-    recordIssue('Degrees of Freedom displays NaN', { severity: 'medium', label });
+  const state = await page.evaluate((snapshotLabel) => {
+    // The status strip stopped printing the mobility, so a NaN one is asked of
+    // the machines instead of read off the screen.
+    const host = document.querySelector('app-new-grid');
+    const service = host && window.ng ? window.ng.getComponent(host).mechanismSrv : null;
+    return {
+      label: snapshotLabel,
+      text: document.body.innerText,
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+      innerWidth,
+      visibleModal: !!document.querySelector('.mat-mdc-dialog-container'),
+      dofNaN: !!service && service.mechanisms.some((mechanism) => Number.isNaN(mechanism.dof)),
+    };
+  }, label);
+  if (state.dofNaN) {
+    recordIssue('Degrees of freedom came out NaN', { severity: 'medium', label });
   }
   if (state.scrollWidth > state.clientWidth + 2) {
     recordIssue('Page has horizontal overflow', {
@@ -165,28 +192,41 @@ const context = await chromium.launchPersistentContext(userDataDir, {
   args: ['--no-first-run', '--no-default-browser-check', '--disable-crash-reporter'],
 });
 
-const page = context.pages()[0] || await context.newPage();
+const page = context.pages()[0] || (await context.newPage());
 page.setDefaultTimeout(8000);
 
 page.on('console', (msg) => {
   const text = msg.text();
   events.push({ action: 'console', type: msg.type(), text });
-  if (['error', 'warning'].includes(msg.type()) && !/favicon|Angular is running in development mode/i.test(text)) {
-    recordIssue(`Console ${msg.type()}: ${text.slice(0, 180)}`, { severity: msg.type() === 'error' ? 'medium' : 'low' });
+  if (
+    ['error', 'warning'].includes(msg.type()) &&
+    !/favicon|Angular is running in development mode/i.test(text)
+  ) {
+    recordIssue(`Console ${msg.type()}: ${text.slice(0, 180)}`, {
+      severity: msg.type() === 'error' ? 'medium' : 'low',
+    });
   }
 });
-page.on('pageerror', (error) => recordIssue('Uncaught page error', { severity: 'high', error: error.stack || error.message }));
+page.on('pageerror', (error) =>
+  recordIssue('Uncaught page error', { severity: 'high', error: error.stack || error.message })
+);
 page.on('requestfailed', (request) => {
+  // Only the app's own requests. Analytics is blocked in a clean profile and
+  // aborts every run; counting that as a finding meant the count was never
+  // zero, which is a good way to stop anyone reading it.
+  if (!request.url().startsWith(baseUrl)) return;
   const failure = request.failure();
-  recordIssue(`Request failed: ${request.url()}`, { severity: 'medium', failure: failure?.errorText });
+  recordIssue(`Request failed: ${request.url()}`, {
+    severity: 'medium',
+    failure: failure?.errorText,
+  });
 });
 
 await safeStep('initial load', async () => {
-  await page.goto(baseUrl, { waitUntil: 'networkidle', timeout: 60000 });
-  await page.waitForTimeout(1000);
+  await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await waitForReady(page);
   await shot(page, '01-initial-load.png');
   await checkLayout(page, 'first load with intro');
-  await dismissIntro(page);
   await shot(page, '01b-after-intro-dismissed.png');
   await checkLayout(page, 'empty project');
 });
@@ -194,20 +234,34 @@ await safeStep('initial load', async () => {
 const snapshots = [await appSnapshot(page, 'initial')];
 
 await safeStep('open templates/library', async () => {
-  await clickToolbar(page, 'Templates');
+  await clickProjectMenu(page, 'Mechanism Library');
   await page.waitForTimeout(700);
   await shot(page, '02-template-or-library.png');
   snapshots.push(await appSnapshot(page, 'template/library'));
-  const firstTemplateOpen = page.locator('.mat-mdc-dialog-container button:has-text("Open")').first();
+  const firstTemplateOpen = page
+    .locator('.mat-mdc-dialog-container button:has-text("Open")')
+    .first();
   if (await firstTemplateOpen.isVisible().catch(() => false)) {
     await firstTemplateOpen.click();
-    events.push({ action: 'click', label: 'open first template', selector: '.mat-mdc-dialog-container button:has-text("Open")' });
+    events.push({
+      action: 'click',
+      label: 'open first template',
+      selector: '.mat-mdc-dialog-container button:has-text("Open")',
+    });
   } else {
-    recordIssue('Template library opened but no template Open button was visible', { severity: 'high' });
+    recordIssue('Template library opened but no template Open button was visible', {
+      severity: 'high',
+    });
   }
   await page.waitForTimeout(1000);
   await shot(page, '02b-template-opened.png');
-  if (await page.locator('.mat-mdc-dialog-container').first().isVisible().catch(() => false)) {
+  if (
+    await page
+      .locator('.mat-mdc-dialog-container')
+      .first()
+      .isVisible()
+      .catch(() => false)
+  ) {
     recordIssue('Template Open did not dismiss the Linkage Library modal', { severity: 'high' });
   }
   await checkLayout(page, 'template opened');
@@ -215,13 +269,13 @@ await safeStep('open templates/library', async () => {
 });
 
 await safeStep('toolbar controls and project actions', async () => {
-  await clickToolbar(page, 'Share Project');
+  await clickProjectMenu(page, 'Share Project');
   await page.waitForTimeout(500);
   await shot(page, '03-share-url.png');
   await page.keyboard.press('Escape').catch(() => {});
 
   const downloadPromise = page.waitForEvent('download', { timeout: 3000 }).catch(() => null);
-  await clickToolbar(page, 'Save');
+  await clickProjectMenu(page, 'Save');
   const download = await downloadPromise;
   if (download) {
     events.push({ action: 'download', suggestedFilename: download.suggestedFilename() });
@@ -233,22 +287,23 @@ await safeStep('toolbar controls and project actions', async () => {
 });
 
 await safeStep('load verification mechanism from shared URL', async () => {
-  await page.goto(`${baseUrl}?${verificationQuery}`, { waitUntil: 'networkidle', timeout: 60000 });
-  await page.waitForTimeout(1500);
-  await dismissIntro(page);
+  await page.goto(`${baseUrl}?${verificationQuery}`, {
+    waitUntil: 'domcontentloaded',
+    timeout: 60000,
+  });
+  await waitForReady(page);
   await shot(page, '03b-verification-mechanism.png');
   await checkLayout(page, 'verification mechanism');
   snapshots.push(await appSnapshot(page, 'verification mechanism'));
 });
 
 await safeStep('left panels edit analysis synthesis', async () => {
-  const leftButtons = page.locator('button.leftButton');
-  for (const [name, index] of [
-    ['analysis', 0],
-    ['edit', 1],
-    ['synthesis', 2],
+  for (const [name, mode] of [
+    ['analysis', 'Kinematic'],
+    ['edit', 'Edit'],
+    ['synthesis', 'Synthesis'],
   ]) {
-    await leftButtons.nth(index).click();
+    await page.locator('.tabButton', { hasText: mode }).click();
     await page.waitForTimeout(700);
     await shot(page, `04-panel-${name}.png`);
     snapshots.push(await appSnapshot(page, `panel ${name}`));
@@ -256,8 +311,8 @@ await safeStep('left panels edit analysis synthesis', async () => {
 });
 
 await safeStep('settings and equations panels', async () => {
-  for (const name of ['Settings', 'Help / Feedback']) {
-    await clickToolbar(page, name);
+  for (const name of ['Settings', 'Help and Feedback']) {
+    await clickProjectMenu(page, name);
     await page.waitForTimeout(700);
     await shot(page, `05-right-${name.toLowerCase().replace(/[^a-z]+/g, '-')}.png`);
     snapshots.push(await appSnapshot(page, `right ${name}`));
@@ -277,19 +332,23 @@ await safeStep('canvas interaction', async () => {
 });
 
 await safeStep('animation controls', async () => {
-  await clickFirst(page, [
-    'button:has-text("play_arrow")',
-    'button:has-text("pause")',
-    'button >> text=play_arrow',
-  ], 'play/pause');
+  // The transport only exists in an analysis mode now, so get into one first.
+  await page.locator('.tabButton', { hasText: 'Kinematic' }).click();
+  await page.waitForTimeout(900);
+  await clickFirst(page, ['.playButton'], 'play/pause');
   await page.waitForTimeout(1100);
   await shot(page, '07-animation-controls.png');
   snapshots.push(await appSnapshot(page, 'animation'));
 });
 
 await safeStep('mobile viewport smoke', async () => {
+  // Loaded at phone size, not resized down to it. A desktop session narrowed
+  // to 390px leaves the left panel at its desktop width and reports an overflow
+  // no phone user can reach — which is what this step used to report, run after
+  // run, into a file with no exit code behind it.
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.waitForTimeout(1000);
+  await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await waitForReady(page);
   await shot(page, '08-mobile-load.png');
   await checkLayout(page, 'mobile');
   snapshots.push(await appSnapshot(page, 'mobile'));
@@ -297,8 +356,26 @@ await safeStep('mobile viewport smoke', async () => {
 
 await fs.writeFile(
   path.resolve(`artifacts/screenshots/${runPrefix}-workflow-report.json`),
-  JSON.stringify({ baseUrl, userDataDir, issues, events, snapshots }, null, 2),
+  JSON.stringify({ baseUrl, userDataDir, issues, events, snapshots }, null, 2)
 );
 
 await context.close();
-console.log(JSON.stringify({ baseUrl, userDataDir, issueCount: issues.length, issues, screenshots: await fs.readdir(screenshotDir) }, null, 2));
+console.log(
+  JSON.stringify(
+    {
+      baseUrl,
+      userDataDir,
+      issueCount: issues.length,
+      issues,
+      screenshots: await fs.readdir(screenshotDir),
+    },
+    null,
+    2
+  )
+);
+
+// A tour that always exits 0 is a screenshot generator. This one has looked for
+// a NaN degrees-of-freedom, a page wider than its viewport, a Save that starts
+// no download and a template dialog that will not close — all worth knowing,
+// and all of it went into a JSON file that nothing read.
+process.exit(issues.length === 0 ? 0 : 1);

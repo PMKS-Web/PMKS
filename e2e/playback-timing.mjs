@@ -11,7 +11,7 @@ import path from 'node:path';
 const screenshotDir = path.resolve('artifacts/screenshots');
 await fs.mkdir(screenshotDir, { recursive: true });
 
-const baseUrl = process.env.PMKS_URL || 'http://127.0.0.1:4200/';
+const baseUrl = process.env.PMKS_BASE_URL || process.env.PMKS_URL || 'http://localhost:4200/';
 const runPrefix = process.env.RUN_PREFIX || 'playback-timing';
 const chromePath =
   process.env.PMKS_CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -37,6 +37,7 @@ page.setDefaultTimeout(15000);
 page.on('pageerror', (error) =>
   issues.push({ name: 'Uncaught page error', severity: 'high', error: error.message })
 );
+import { waitForReady } from './app-ready.mjs';
 page.on('console', (msg) => {
   if (msg.type() === 'error' && !/favicon|google-analytics/i.test(msg.text())) {
     issues.push({ name: `Console error: ${msg.text().slice(0, 160)}`, severity: 'medium' });
@@ -46,22 +47,105 @@ page.on('console', (msg) => {
 const shot = (name) =>
   page.screenshot({ path: path.join(screenshotDir, `${runPrefix}-${name}`), fullPage: false });
 
-const tab = (label) => page.locator('.leftButton', { hasText: label });
-const timeField = () => page.locator('#animationBar-input');
-const timeSeconds = async () =>
-  parseFloat((await timeField().inputValue()).replace(/[^\d.-]/g, ''));
+const tab = (label) => page.locator('.tabButton', { hasText: label });
+const timeField = () => page.locator('#playbackTime');
+const timeSeconds = async () => parseFloat((await timeField().innerText()).replace(/[^\d.-]/g, ''));
 
 const speedField = () => page.locator('input-block:has-text("Input Speed") input').first();
 
-// The rail buttons toggle their panel, so clicking blindly can close what we need.
-async function openAnalyze() {
+/**
+ * Where the joints actually are, in model units.
+ *
+ * Not the SVG markup. That carries the pan/zoom transform, and a fitted view
+ * refits itself -- with an animation -- whenever the mode panel changes width,
+ * which is exactly what switching modes does. Two snapshots taken either side
+ * of a switch then differ by whichever frame of that animation they caught: a
+ * difference about where the camera was, reported as the mechanism having
+ * moved. Settled, the zoom comes back to the same number; sampled a moment too
+ * early, it is 5% out.
+ *
+ * The claim these checks make is about the pose, so they read the pose, which
+ * no camera animation touches.
+ */
+const readPose = () =>
+  page.evaluate(() =>
+    ng
+      .getComponent(document.querySelector('app-new-grid'))
+      .mechanismSrv.joints.map((joint) => `${joint.id}:${joint.x.toFixed(6)},${joint.y.toFixed(6)}`)
+      .join(' ')
+  );
+
+/**
+ * The pose once it has stopped moving.
+ *
+ * Leaving an analysis mode winds the linkage back to its start, and that runs
+ * on the animation clock rather than finishing inside the click. Read on a
+ * fixed wait, the answer depended on whether the rewind happened to be over --
+ * which made this file fail about one run in three. Waiting for two readings to
+ * agree is what `keyboard-shortcuts` already does before aiming at a joint.
+ */
+/**
+ * How far the furthest joint stands between two poses, in model units.
+ *
+ * Compared with a tolerance rather than for equality: changing the input speed
+ * re-solves the cycle, and the same pose comes back along a slightly different
+ * path of floating-point additions. The gap that made this file fail about one
+ * run in three was 0.0034 model units -- a fifty-thousandth of a centimeter,
+ * which is the same pose by any reading of the word.
+ */
+const driftBetween = (before, after) => {
+  const at = (text) =>
+    new Map(
+      text.split(' ').map((entry) => {
+        const [id, pair] = entry.split(':');
+        return [id, pair.split(',').map(Number)];
+      })
+    );
+  const first = at(before);
+  let worst = 0;
+  for (const [id, [x, y]] of at(after)) {
+    const was = first.get(id);
+    if (was) worst = Math.max(worst, Math.hypot(x - was[0], y - was[1]));
+  }
+  return worst;
+};
+
+const pose = async () => {
+  let last = await readPose();
+  for (let tries = 0; tries < 25; tries++) {
+    await page.waitForTimeout(100);
+    const now = await readPose();
+    if (now === last) return now;
+    last = now;
+  }
+  return last;
+};
+
+/**
+ * Drag the handle to a place along the input's travel.
+ *
+ * The transport is a position now, not a clock: there is no time to type into,
+ * and the handle is how a reader moves the machine.
+ */
+const seekAlong = async (fraction) => {
+  await page.locator('#slider').evaluate((el, value) => {
+    el.value = String(Math.round(value * 1000));
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }, fraction);
+  await page.waitForTimeout(400);
+};
+
+// The transport only exists in the analysis modes, so its presence is how we
+// tell whether Kinematic is already open -- pressing the mode again is harmless
+// but the wait below would otherwise race the panel animation.
+async function openKinematic() {
   if (
     !(await page
       .locator('.playButton')
       .isVisible()
       .catch(() => false))
   ) {
-    await tab('Analyze').click();
+    await tab('Kinematic').click();
   }
   await page.locator('.playButton').waitFor({ state: 'visible' });
   await page.waitForTimeout(400);
@@ -109,7 +193,7 @@ async function setInputSpeed(rpm) {
 
 /** Play until the time readout wraps back toward zero; return real elapsed seconds. */
 async function measureRevolution() {
-  await openAnalyze();
+  await openKinematic();
   await page.locator('.playButton').click();
 
   const started = Date.now();
@@ -133,8 +217,8 @@ async function measureRevolution() {
 }
 
 try {
-  await page.goto(`${baseUrl}?${fourBar}`, { waitUntil: 'networkidle', timeout: 60000 });
-  await page.waitForTimeout(1500);
+  await page.goto(`${baseUrl}?${fourBar}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await waitForReady(page);
 
   // --- Wall-clock revolution time --------------------------------------------
   await setInputSpeed(20); // 3 s per revolution
@@ -168,71 +252,61 @@ try {
 
   // --- Cycle length reported by the time field --------------------------------
   await setInputSpeed(20);
-  await openAnalyze();
-  await timeField().click();
-  await timeField().press('ControlOrMeta+A');
-  await timeField().type('99 s');
-  await timeField().press('Enter');
-  await page.waitForTimeout(400);
+  await openKinematic();
+  // Half way along the track is half a turn of the crank, which at 20 RPM is a
+  // second and a half. The far right end is not measured from: the track is a
+  // loop for a crank that goes all the way round, so its right edge is its left
+  // edge.
+  await seekAlong(0.5);
   const maxAt20 = await timeSeconds();
-  check(
-    'clamping past the end of the cycle reports the 3 s period at 20 RPM',
-    Math.abs(maxAt20 - 3) < 0.02,
-    {
-      maxAt20,
-    }
-  );
+  check('half the track is half a turn, which is 1.5 s at 20 RPM', Math.abs(maxAt20 - 1.5) < 0.05, {
+    maxAt20,
+  });
 
   await setInputSpeed(40);
-  await openAnalyze();
-  await timeField().click();
-  await timeField().press('ControlOrMeta+A');
-  await timeField().type('99 s');
-  await timeField().press('Enter');
-  await page.waitForTimeout(400);
+  await openKinematic();
+  await seekAlong(0.5);
   const maxAt40 = await timeSeconds();
-  check('the reported period halves at double the input speed', Math.abs(maxAt40 - 1.5) < 0.02, {
+  check('and takes half as long at double the input speed', Math.abs(maxAt40 - 0.75) < 0.05, {
     maxAt40,
   });
   await shot('02-period-at-40rpm.png');
 
-  // --- Leaving Analyze rewinds, and time zero survives the round trip ---------
+  // --- Leaving Kinematic rewinds, and time zero survives the round trip -------
   // Input speed lives with the input joint now, so changing it means entering Edit
   // mode, which deliberately rewinds to t = 0 (it replaced the stop button). The
   // model-level "hold the time across a rebuild" guarantee is covered by the unit
   // suite; what matters here is that the round trip cannot move the start pose.
   await setInputSpeed(20);
-  await openAnalyze();
-  const zeroPose = await page.locator('svg').first().innerHTML();
+  await openKinematic();
+  const zeroPose = await pose();
 
-  await timeField().click();
-  await timeField().press('ControlOrMeta+A');
-  await timeField().type('1.5 s');
-  await timeField().press('Enter');
-  await page.waitForTimeout(400);
+  await seekAlong(0.5);
   const seekedTime = await timeSeconds();
-  const seekedPose = await page.locator('svg').first().innerHTML();
+  const seekedPose = await pose();
 
   check(
     'seeking to a non-zero time moves the mechanism',
-    seekedTime > 1 && seekedPose !== zeroPose,
-    {
-      seekedTime,
-    }
+    seekedTime > 1 && driftBetween(zeroPose, seekedPose) > 1,
+    { seekedTime, moved: driftBetween(zeroPose, seekedPose) }
   );
 
   // Round trip through Edit at a non-zero time, twice, then come back to t = 0.
   await setInputSpeed(40);
-  await openAnalyze();
+  await openKinematic();
   await setInputSpeed(20);
-  await openAnalyze();
+  await openKinematic();
   const rewoundTime = await timeSeconds();
-  const rewoundPose = await page.locator('svg').first().innerHTML();
+  const rewoundPose = await pose();
 
-  check('leaving Analyze rewinds to time zero', Math.abs(rewoundTime) < 0.02, { rewoundTime });
+  check('leaving Kinematic rewinds to time zero', Math.abs(rewoundTime) < 0.02, { rewoundTime });
+  // A fiftieth of a model unit: four orders of magnitude below the movement the
+  // check above insists a real seek produces, and far below anything drawn.
+  const rewoundDrift = driftBetween(zeroPose, rewoundPose);
   check(
     'time zero still means the same pose after switching modes at a non-zero time',
-    rewoundPose === zeroPose
+    rewoundDrift < 0.02,
+    { rewoundDrift }
   );
   await shot('03-held-time.png');
 } catch (error) {
@@ -246,4 +320,6 @@ try {
 }
 
 const failed = checks.filter((c) => !c.ok);
+for (const c of checks) console.log(`${c.ok ? 'PASS' : 'FAIL'}  ${c.name}`);
 console.log(JSON.stringify({ passed: checks.length - failed.length, failed, issues }, null, 2));
+process.exit(failed.length ? 1 : 0);

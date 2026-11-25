@@ -1,0 +1,232 @@
+import '../../app/model/joint';
+import { PrisJoint, RealJoint } from '../../app/model/joint';
+import { RealLink } from '../../app/model/link';
+import { ForceAnalysisMode } from '../../app/model/mechanism/force-solver';
+import { KinematicsSolver } from '../../app/model/mechanism/kinematic-solver';
+import { siUnitFactors } from '../../app/model/unit-conversions';
+import { MODEL_SCALE } from '../../app/model/render-scale';
+import {
+  buildMechanismAtScale,
+  inModelUnits,
+  MechanismFixture,
+} from '../../test-utils/verification/fixture';
+import {
+  offsetLoadFourBarFixture,
+  punchPressFixture,
+} from '../../test-utils/verification/force-fixtures';
+import {
+  cylinderBoomFixture,
+  loadedInvertedSliderCrankFixture,
+  scotchYokeFixture,
+  SLOT_RISE,
+  YOKE_CRANK,
+} from '../../test-utils/verification/slot-fixtures';
+
+// Virtual work, as an independent audit of the whole force analysis.
+//
+// The equilibrium solve and this check share no arithmetic: one balances
+// forces and moments body by body, the other multiplies the same answers by
+// velocities — which are the kinematics the MATLAB suites verify — and asks
+// for energy accounting. In statics the input's power must exactly cancel the
+// applied loads'; in dynamics the difference must be the rate of change of
+// kinetic energy. A sign error, a wrong moment arm, or a misplaced unit factor
+// in any reaction path breaks this on nearly every frame of every mechanism,
+// which is what makes it worth running across one specimen of each topology
+// class rather than on a single blessed example.
+
+const GRAVITY = 9.80665;
+
+interface Audit {
+  name: string;
+  fixture: () => MechanismFixture;
+}
+
+const loadedScotchYoke = (): MechanismFixture => {
+  const fixture = scotchYokeFixture();
+  fixture.load = { onLink: 'CD', at: [YOKE_CRANK, SLOT_RISE], vector: [40, 0] };
+  return fixture;
+};
+
+// The cylinder's geometry has to be drawn at the solving objectScale, or the
+// ram has no travel and the mechanism never runs (see driven-cylinder.spec.ts).
+const loadedCylinderBoom = (): MechanismFixture => {
+  const fixture = cylinderBoomFixture(MODEL_SCALE);
+  fixture.load = { onLink: 'OC', at: [0, 4 * MODEL_SCALE], vector: [0, -300] };
+  return fixture;
+};
+
+// Every specimen is drawn in model units, as the app draws it. The cylinder
+// boom already is; the rest are written in meters and lifted.
+const AUDITS: Audit[] = [
+  {
+    name: 'pin-jointed four-bar with an offset load',
+    fixture: () => inModelUnits(offsetLoadFourBarFixture()),
+  },
+  { name: 'slider-crank punch press', fixture: () => inModelUnits(punchPressFixture()) },
+  {
+    name: 'inverted slider-crank with a floating slot',
+    fixture: () => inModelUnits(loadedInvertedSliderCrankFixture()),
+  },
+  { name: 'welded Scotch yoke', fixture: () => inModelUnits(loadedScotchYoke()) },
+  { name: 'sealed cylinder boom', fixture: loadedCylinderBoom },
+];
+
+/**
+ * Worst relative power imbalance across the cycle, and how many frames could
+ * be audited at all (a frame the solver refused, or whose analytic kinematics
+ * are incomplete, proves nothing either way and is not counted).
+ */
+function audit(fixture: MechanismFixture, mode: ForceAnalysisMode) {
+  const { mechanism } = buildMechanismAtScale(fixture, 1 * MODEL_SCALE);
+  const series = mechanism.getForceAnalysis(mode);
+  // Meters per model unit, not per user unit: the rates below are read
+  // straight off the kinematic solver, which works in model units. Measured
+  // this way the audit is no longer blind to the length unit -- a force
+  // solver that took model units for meters would supply MODEL_SCALE times
+  // the power its loads draw.
+  const siUnits = siUnitFactors(mechanism.unit);
+  const units = { ...siUnits, distanceToM: siUnits.distanceToM / MODEL_SCALE };
+  KinematicsSolver.resetVariables();
+  KinematicsSolver.requiredLoops = mechanism.requiredLoops;
+
+  let audited = 0;
+  let worst = 0;
+  for (let t = 0; t < series.frames.length; t++) {
+    const frame = series.frames[t];
+    if (frame.status !== 'ok' || !frame.inputEffort) continue;
+    KinematicsSolver.determineKinematics(
+      mechanism.joints[t],
+      mechanism.links[t],
+      mechanism.inputAngularVelocities[t]
+    );
+
+    const terms: number[] = [];
+    let complete = true;
+    const need = (value: number | undefined): number => {
+      if (value === undefined || !Number.isFinite(value)) {
+        complete = false;
+        return 0;
+      }
+      return value;
+    };
+
+    // What the input feeds in. A force drive is an internal pair — it pushes
+    // the block and its carrier apart — so its power is the force times the
+    // *extension* rate, the block's velocity relative to the material point of
+    // the carrier it is passing. Against the world a grounded guide's carrier
+    // term is simply zero.
+    if (frame.inputEffort.kind === 'torque') {
+      terms.push(frame.inputEffort.valueSI * mechanism.inputAngularVelocities[t]);
+    } else {
+      const slider = mechanism.joints[t].find(
+        (joint): joint is PrisJoint => joint instanceof PrisJoint && joint.input
+      )!;
+      // The block and the pin it carried are the sliding joint itself, so the
+      // velocity the drive does work along is read straight off it.
+      const pin = slider;
+      const velocity = KinematicsSolver.jointVelMap.get(pin.id);
+      let relative = [need(velocity?.[0]), need(velocity?.[1])];
+      const carrier = slider.isFloating
+        ? mechanism.links[t].find((link) => link.id === slider.carrier?.id)
+        : undefined;
+      if (carrier instanceof RealLink) {
+        const carrierVelocity = KinematicsSolver.linkVelMap.get(carrier.id);
+        const omega = need(KinematicsSolver.linkAngVelMap.get(carrier.id));
+        relative = [
+          relative[0] - (need(carrierVelocity?.[0]) - omega * (pin.y - carrier.CoM.y)),
+          relative[1] - (need(carrierVelocity?.[1]) + omega * (pin.x - carrier.CoM.x)),
+        ];
+      }
+      const rate =
+        relative[0] * Math.cos(slider.slotAngle) + relative[1] * Math.sin(slider.slotAngle);
+      terms.push(frame.inputEffort.valueSI * rate * units.distanceToM);
+    }
+
+    // What the loads and gravity feed in, through the moving material points.
+    for (const link of mechanism.links[t]) {
+      if (link instanceof RealLink) {
+        const comVelocity = KinematicsSolver.linkVelMap.get(link.id);
+        const omega = need(KinematicsSolver.linkAngVelMap.get(link.id));
+        for (const force of link.forces) {
+          const fx = force.mag * Math.cos(force.angleRad) * units.forceToN;
+          const fy = force.mag * Math.sin(force.angleRad) * units.forceToN;
+          const vx = need(comVelocity?.[0]) - omega * (force.startCoord.y - link.CoM.y);
+          const vy = need(comVelocity?.[1]) + omega * (force.startCoord.x - link.CoM.x);
+          terms.push((fx * vx + fy * vy) * units.distanceToM);
+        }
+        if (mechanism.gravity) {
+          terms.push(
+            -link.mass * units.massToKg * GRAVITY * need(comVelocity?.[1]) * units.distanceToM
+          );
+        }
+      }
+    }
+
+    // A block's weight, which is a joint's now. The mass a `SliderBlock` link
+    // carried moved onto the joint that slides when a slider became one joint,
+    // so the bodies to account for are no longer all in `links`.
+    if (mechanism.gravity) {
+      for (const joint of mechanism.joints[t]) {
+        if (!(joint instanceof PrisJoint) || joint.mass === 0) continue;
+        const velocity = KinematicsSolver.jointVelMap.get(joint.id);
+        terms.push(
+          -joint.mass * units.massToKg * GRAVITY * need(velocity?.[1]) * units.distanceToM
+        );
+      }
+    }
+
+    // What motion soaks up: the rate of change of kinetic energy.
+    let kineticRate = 0;
+    if (mode === 'dynamic') {
+      for (const link of mechanism.links[t]) {
+        if (link instanceof RealLink) {
+          const velocity = KinematicsSolver.linkVelMap.get(link.id);
+          const acceleration = KinematicsSolver.linkAccMap.get(link.id);
+          kineticRate +=
+            link.mass *
+            units.massToKg *
+            (need(velocity?.[0]) * need(acceleration?.[0]) +
+              need(velocity?.[1]) * need(acceleration?.[1])) *
+            units.distanceToM ** 2;
+          kineticRate +=
+            link.massMoI *
+            units.inertiaToKgM2 *
+            need(KinematicsSolver.linkAngVelMap.get(link.id)) *
+            need(KinematicsSolver.linkAngAccMap.get(link.id));
+        }
+      }
+      // And the same for the mass a block used to carry, now the joint's: a
+      // point body with no inertia term, because a point has no moment of one.
+      for (const joint of mechanism.joints[t]) {
+        if (!(joint instanceof PrisJoint) || joint.mass === 0) continue;
+        const velocity = KinematicsSolver.jointVelMap.get(joint.id);
+        const acceleration = KinematicsSolver.jointAccMap.get(joint.id);
+        kineticRate +=
+          joint.mass *
+          units.massToKg *
+          (need(velocity?.[0]) * need(acceleration?.[0]) +
+            need(velocity?.[1]) * need(acceleration?.[1])) *
+          units.distanceToM ** 2;
+      }
+    }
+
+    if (!complete) continue;
+    audited++;
+    const supplied = terms.reduce((sum, term) => sum + term, 0);
+    const scale = Math.max(1e-9, ...terms.map(Math.abs), Math.abs(kineticRate));
+    worst = Math.max(worst, Math.abs(supplied - kineticRate) / scale);
+  }
+  return { audited, total: series.frames.length, worst };
+}
+
+describe('power balance across every topology class', () => {
+  for (const { name, fixture } of AUDITS) {
+    for (const mode of ['static', 'dynamic'] as ForceAnalysisMode[]) {
+      it(`${name}: ${mode} analysis conserves power`, () => {
+        const result = audit(fixture(), mode);
+        expect(result.audited).toBeGreaterThan(result.total * 0.9);
+        expect(result.worst).toBeLessThan(1e-6);
+      });
+    }
+  }
+});

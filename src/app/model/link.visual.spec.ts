@@ -1,5 +1,6 @@
 import { Mechanism } from './mechanism/mechanism';
 import { RealLink } from './link';
+import { RevJoint } from './joint';
 import { SettingsService } from '../services/settings.service';
 import {
   buildMechanismFixture,
@@ -30,14 +31,14 @@ function expectStableCompoundPath(link: RealLink): void {
   expect(link.initialExternalLines.length).toBe(link.externalLines.length);
   expect(link.CoM).toEqual(centerBefore);
 
-  const compoundMinX = Math.min(...link.joints.map((joint) => joint.x)) -
-    SettingsService.objectScale / 2;
-  const compoundMaxX = Math.max(...link.joints.map((joint) => joint.x)) +
-    SettingsService.objectScale / 2;
-  const compoundMinY = Math.min(...link.joints.map((joint) => joint.y)) -
-    SettingsService.objectScale / 2;
-  const compoundMaxY = Math.max(...link.joints.map((joint) => joint.y)) +
-    SettingsService.objectScale / 2;
+  const compoundMinX =
+    Math.min(...link.joints.map((joint) => joint.x)) - SettingsService.objectScale / 2;
+  const compoundMaxX =
+    Math.max(...link.joints.map((joint) => joint.x)) + SettingsService.objectScale / 2;
+  const compoundMinY =
+    Math.min(...link.joints.map((joint) => joint.y)) - SettingsService.objectScale / 2;
+  const compoundMaxY =
+    Math.max(...link.joints.map((joint) => joint.y)) + SettingsService.objectScale / 2;
   for (const line of link.externalLines) {
     expectFiniteCoord(line.startPosition.x);
     expectFiniteCoord(line.startPosition.y);
@@ -57,14 +58,10 @@ function expectStableCompoundPath(link: RealLink): void {
     expect(leaf.d).toMatch(/^M /);
     expect(leaf.d).toMatch(/Z\s*$/);
     expect(leaf.d).not.toMatch(/NaN|Infinity/);
-    const minX = Math.min(...leaf.joints.map((joint) => joint.x)) -
-      SettingsService.objectScale / 2;
-    const maxX = Math.max(...leaf.joints.map((joint) => joint.x)) +
-      SettingsService.objectScale / 2;
-    const minY = Math.min(...leaf.joints.map((joint) => joint.y)) -
-      SettingsService.objectScale / 2;
-    const maxY = Math.max(...leaf.joints.map((joint) => joint.y)) +
-      SettingsService.objectScale / 2;
+    const minX = Math.min(...leaf.joints.map((joint) => joint.x)) - SettingsService.objectScale / 2;
+    const maxX = Math.max(...leaf.joints.map((joint) => joint.x)) + SettingsService.objectScale / 2;
+    const minY = Math.min(...leaf.joints.map((joint) => joint.y)) - SettingsService.objectScale / 2;
+    const maxY = Math.max(...leaf.joints.map((joint) => joint.y)) + SettingsService.objectScale / 2;
     for (const line of [...leaf.externalLines, ...leaf.initialExternalLines]) {
       expectFiniteCoord(line.startPosition.x);
       expectFiniteCoord(line.startPosition.y);
@@ -89,12 +86,14 @@ function expectStableCompoundPath(link: RealLink): void {
   ]);
   link.reComputeDPath();
   expect(link.d).toBe(firstPath);
-  expect(link.externalLines.map((line) => [
-    line.startPosition.x,
-    line.startPosition.y,
-    line.endPosition.x,
-    line.endPosition.y,
-  ])).toEqual(rootLineSnapshot);
+  expect(
+    link.externalLines.map((line) => [
+      line.startPosition.x,
+      line.startPosition.y,
+      line.endPosition.x,
+      line.endPosition.y,
+    ])
+  ).toEqual(rootLineSnapshot);
   expect(link.CoM).toEqual(centerBefore);
 }
 
@@ -132,11 +131,18 @@ function expectEverySimulatedCompoundPathStable(mechanism: Mechanism): void {
   });
 }
 
-describe('welded link SVG geometry', () => {
-  beforeEach(() => {
-    SettingsService._objectScale.next(1);
-  });
+// The object scale is process-wide static state shared with every other spec
+// file in the worker, so pin it for the file and put it back.
+let previousObjectScale: number;
+beforeEach(() => {
+  previousObjectScale = SettingsService.objectScale;
+  SettingsService._objectScale.next(1);
+});
+afterEach(() => {
+  SettingsService._objectScale.next(previousObjectScale);
+});
 
+describe('welded link SVG geometry', () => {
   it('keeps every frame of the Safari regression mechanism deterministic and finite', () => {
     const { mechanism } = buildMechanismFixture(LOOPLESS_WELDED_MECHANISM);
     expectEverySimulatedCompoundPathStable(mechanism);
@@ -155,5 +161,29 @@ describe('welded link SVG geometry', () => {
     expect(mechanism.links.length).toBeGreaterThan(100);
     expect(compoundBuild).toHaveBeenCalledTimes(1);
     compoundBuild.mockRestore();
+  });
+});
+
+describe('a bar whose joints have all landed on one point', () => {
+  it('draws its end cap instead of a path full of NaN', () => {
+    // Reachable: drop a joint exactly onto another joint of its own link and the
+    // merge is correctly refused, leaving the two coincident. Every edge of the
+    // bar is then zero length, its offset slope is 0/0, and the path came out
+    // `M NaN NaN` — which the browser rejects on every frame, and which the
+    // solved timesteps then copy from. A cylinder mount drag is what reaches
+    // this in practice, because the ram re-poses to follow the cursor all the
+    // way in.
+    const a = new RevJoint('A', 4, 7);
+    const b = new RevJoint('B', 4, 7);
+    const link = new RealLink('AB', [a, b]);
+
+    expect(link.d).not.toMatch(/NaN|Infinity/);
+    expect(link.d).toMatch(/^M /);
+    // Centered on the point the joints collapsed onto, at the bar's own width.
+    const numbers = (link.d.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
+    expect(Math.max(...numbers.filter((_, index) => index % 2 === 0))).toBeGreaterThan(4);
+    // Nothing to hover: an outline with no length has no edges to offer.
+    expect(link.externalLines).toEqual([]);
+    expect(link.initialExternalLines).toEqual([]);
   });
 });

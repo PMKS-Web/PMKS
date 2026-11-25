@@ -1,0 +1,295 @@
+{
+ "schema": "pmks-oracle-problem/1",
+ "id": "template.scissor-lift.m1",
+ "title": "Template Scissor_Lift, M1",
+ "source": {
+  "kind": "published",
+  "case": "template.scissor-lift",
+  "machine": "M1"
+ },
+ "gravity": 9.80665,
+ "bodies": [
+  {
+   "id": "AB",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    1.2575284365737363,
+    0.17305559711571292
+   ]
+  },
+  {
+   "id": "CD",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.9319115622333441,
+    0.40545325160217244
+   ]
+  },
+  {
+   "id": "GDMK",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.8617999985088504,
+    0.7231360608973566
+   ]
+  },
+  {
+   "id": "SMT",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.9192533317427736,
+    0.7713451316238471
+   ]
+  },
+  {
+   "id": "TU",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    1.2192533317427734,
+    1.5426902632476942
+   ]
+  }
+ ],
+ "joints": [
+  {
+   "id": "A",
+   "kind": "pin",
+   "at": [
+    1.5,
+    0
+   ],
+   "bodies": [
+    "AB"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "C",
+   "kind": "slider",
+   "at": [
+    1.1743831256596082,
+    0.23239765448645947
+   ],
+   "guide": "AB",
+   "linePoint": [
+    1.5,
+    0
+   ],
+   "axis": [
+    -0.8139531171231322,
+    0.5809305665271339
+   ],
+   "riders": [
+    "CD"
+   ],
+   "rotates": false,
+   "blockMass": 0,
+   "limits": [
+    0.082525,
+    0.6562725418752985
+   ]
+  },
+  {
+   "id": "D",
+   "kind": "pin",
+   "at": [
+    0.6894399988070802,
+    0.5785088487178853
+   ],
+   "bodies": [
+    "CD",
+    "GDMK"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "G",
+   "kind": "pin",
+   "at": [
+    0,
+    0
+   ],
+   "bodies": [
+    "GDMK"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "M",
+   "kind": "pin",
+   "at": [
+    0.9192533317427736,
+    0.7713451316238471
+   ],
+   "bodies": [
+    "GDMK",
+    "SMT"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "K",
+   "kind": "slider",
+   "at": [
+    1.8385066634855471,
+    1.5426902632476942
+   ],
+   "guide": "TU",
+   "linePoint": [
+    0,
+    1.5426902632476942
+   ],
+   "axis": [
+    1,
+    0
+   ],
+   "riders": [
+    "GDMK"
+   ],
+   "rotates": true,
+   "blockMass": 0,
+   "limits": [
+    0.03922298667302883,
+    2.399283676812518
+   ]
+  },
+  {
+   "id": "S",
+   "kind": "slider",
+   "at": [
+    1.8385066634855471,
+    0
+   ],
+   "guide": "ground",
+   "linePoint": [
+    1.8385066634855471,
+    0
+   ],
+   "axis": [
+    1,
+    0
+   ],
+   "riders": [
+    "SMT"
+   ],
+   "rotates": true,
+   "blockMass": 0
+  },
+  {
+   "id": "T",
+   "kind": "pin",
+   "at": [
+    0,
+    1.5426902632476942
+   ],
+   "bodies": [
+    "SMT",
+    "TU"
+   ],
+   "grounded": false,
+   "welded": false
+  }
+ ],
+ "driver": {
+  "joint": "C",
+  "kind": "translation",
+  "speed": -0.15
+ },
+ "loads": [],
+ "points": [
+  {
+   "id": "A",
+   "body": "ground",
+   "at": [
+    1.5,
+    0
+   ]
+  },
+  {
+   "id": "B",
+   "body": "AB",
+   "at": [
+    1.015056873147472,
+    0.34611119423142567
+   ]
+  },
+  {
+   "id": "C",
+   "body": "CD",
+   "at": [
+    1.1743831256596082,
+    0.23239765448645947
+   ]
+  },
+  {
+   "id": "D",
+   "body": "CD",
+   "at": [
+    0.6894399988070802,
+    0.5785088487178853
+   ]
+  },
+  {
+   "id": "G",
+   "body": "ground",
+   "at": [
+    0,
+    0
+   ]
+  },
+  {
+   "id": "M",
+   "body": "GDMK",
+   "at": [
+    0.9192533317427736,
+    0.7713451316238471
+   ]
+  },
+  {
+   "id": "K",
+   "body": "GDMK",
+   "at": [
+    1.8385066634855471,
+    1.5426902632476942
+   ]
+  },
+  {
+   "id": "S",
+   "body": "SMT",
+   "at": [
+    1.8385066634855471,
+    0
+   ]
+  },
+  {
+   "id": "T",
+   "body": "SMT",
+   "at": [
+    0,
+    1.5426902632476942
+   ]
+  },
+  {
+   "id": "U",
+   "body": "TU",
+   "at": [
+    2.438506663485547,
+    1.5426902632476942
+   ]
+  }
+ ],
+ "sweep": {
+  "step": 0.0031874307881961023,
+  "maxSamples": 2000
+ },
+ "unsupported": []
+}

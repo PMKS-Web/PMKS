@@ -3,7 +3,7 @@
 Reference kinematics and force traces for five mechanism configurations from
 the reviewed `reference-data/v1` contract in
 [PMKS-Web/PMKS_Verification](https://github.com/PMKS-Web/PMKS_Verification).
-The specs in `src/tests/verification/` rebuild each mechanism with the PMKS+
+The specs in `src/tests/verification/` rebuild each mechanism with the PMKS
 model classes (fixtures in `src/test-utils/verification/fixtures.ts`) and
 compare every trusted solver output against these series. Joint and angular
 kinematics are covered in all five cases. CoM kinematics are covered for the
@@ -42,5 +42,5 @@ Teaching-case CoMs are `diagnostic-only`; teaching dynamics are
 The E/G/H teaching accelerations, teaching-slider CoM transport, and
 slider-tracer sign defects were fixed before v1 promotion, so their old
 expected-failure exclusions are gone. Stephenson III Example 1 remains deferred
-until PMKS+'s LoopSolver finds its second loop without a test override. OTIS is
+until PMKS's LoopSolver finds its second loop without a test override. OTIS is
 outside this PR's five-case scope.

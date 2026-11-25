@@ -1,0 +1,192 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideAnimations } from '@angular/platform-browser/animations';
+import { RevJoint } from '../../model/joint';
+import { MechanismService } from '../../services/mechanism.service';
+import { SelectedTabService, TabID } from '../../selected-tab.service';
+import { RightPanelComponent } from '../right-panel/right-panel.component';
+import { TopBarComponent } from './top-bar.component';
+import { MatDialog } from '@angular/material/dialog';
+import { DrawingExportComponent } from '../MODALS/drawing-export/drawing-export.component';
+
+/**
+ * One button per mode, and one press meaning three different things.
+ *
+ * The strip is the only place these rules live -- the keyboard goes through the
+ * same `select` -- so this is where they are pinned down.
+ */
+describe('top bar modes', () => {
+  let fixture: ComponentFixture<TopBarComponent>;
+  let bar: TopBarComponent;
+  let mechanism: MechanismService;
+  let tabs: SelectedTabService;
+
+  const KINEMATIC = RightPanelComponent.KINEMATIC_SETUP_TAB;
+  const FORCE = RightPanelComponent.FORCE_SETUP_TAB;
+
+  /** What the strip asks about readiness, answered without a real mechanism. */
+  function ready(kinematic: boolean, force = kinematic): void {
+    vi.spyOn(mechanism, 'oneValidMechanismExists').mockReturnValue(kinematic);
+    vi.spyOn(mechanism, 'forceAnalysisReady').mockReturnValue(force);
+    vi.spyOn(mechanism, 'blockerCount').mockReturnValue(kinematic ? 0 : 2);
+  }
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [TopBarComponent],
+      providers: [provideAnimations()],
+    }).compileComponents();
+
+    RightPanelComponent.isOpen = false;
+    RightPanelComponent.openTab = 0;
+    mechanism = TestBed.inject(MechanismService);
+    tabs = TestBed.inject(SelectedTabService);
+    tabs.setTab(TabID.EDIT);
+    fixture = TestBed.createComponent(TopBarComponent);
+    bar = fixture.componentInstance;
+  });
+
+  it('opens the setup and stays put when the mode is not ready', () => {
+    ready(false);
+    bar.select(TabID.ANALYZE);
+    expect(tabs.getCurrentTab()).toBe(TabID.EDIT);
+    expect(RightPanelComponent.isOpen).toBe(true);
+    expect(RightPanelComponent.openTab).toBe(KINEMATIC);
+
+    // A second refusal insists rather than toggling: the reader who pressed
+    // again is asking the same question, and an empty drawer is no answer.
+    const attention = RightPanelComponent.attentionCount;
+    bar.select(TabID.ANALYZE);
+    expect(RightPanelComponent.isOpen).toBe(true);
+    expect(RightPanelComponent.attentionCount).toBe(attention + 1);
+  });
+
+  it('just switches when the mode is ready and not the current one', () => {
+    ready(true);
+    bar.select(TabID.ANALYZE);
+    expect(tabs.getCurrentTab()).toBe(TabID.ANALYZE);
+    expect(RightPanelComponent.isOpen).toBe(false);
+  });
+
+  it('toggles the setup when the mode is ready and already current', () => {
+    ready(true);
+    bar.select(TabID.FORCE);
+    expect(tabs.getCurrentTab()).toBe(TabID.FORCE);
+
+    bar.select(TabID.FORCE);
+    expect(RightPanelComponent.isOpen).toBe(true);
+    expect(RightPanelComponent.openTab).toBe(FORCE);
+
+    bar.select(TabID.FORCE);
+    expect(RightPanelComponent.isOpen).toBe(false);
+    expect(tabs.getCurrentTab()).toBe(TabID.FORCE);
+  });
+
+  it('shuts Force Analysis until a mechanism runs, and says why', () => {
+    ready(false);
+    mechanism.joints = [new RevJoint('A', 0, 0)];
+    fixture.detectChanges();
+
+    const force = fixture.nativeElement.querySelectorAll('.tabButton')[3] as HTMLElement;
+    expect(force.classList).toContain('locked');
+    expect(force.getAttribute('aria-disabled')).toBe('true');
+    expect(bar.tipFor(TabID.FORCE, 'Force Analysis')).toBe(
+      'Force Analysis opens once a mechanism runs.'
+    );
+    // Nothing happens: no mode, and no drawer asking for masses.
+    bar.select(TabID.FORCE);
+    expect(tabs.getCurrentTab()).toBe(TabID.EDIT);
+    expect(RightPanelComponent.isOpen).toBe(false);
+  });
+
+  it('says Kinematic Analysis is ready the first time Play is pressed in Edit, once', async () => {
+    localStorage.removeItem('analysisInviteSeen');
+    fixture = TestBed.createComponent(TopBarComponent);
+    bar = fixture.componentInstance;
+    ready(true);
+    mechanism.joints = [new RevJoint('A', 0, 0)];
+    fixture.detectChanges();
+    expect(bar.inviteOpen).toBe(false);
+
+    mechanism.isPlaying = true;
+    fixture.detectChanges();
+    await Promise.resolve();
+    fixture.detectChanges();
+    expect(bar.inviteOpen).toBe(true);
+    expect(document.querySelector('.analysisInvite')?.textContent).toContain('Your mechanism runs');
+
+    // The action it steers toward, and then it is gone for good.
+    bar.acceptInvite();
+    expect(tabs.getCurrentTab()).toBe(TabID.ANALYZE);
+    expect(bar.inviteOpen).toBe(false);
+    expect(localStorage.getItem('analysisInviteSeen')).toBe('true');
+
+    bar.select(TabID.EDIT);
+    mechanism.isPlaying = false;
+    fixture.detectChanges();
+    mechanism.isPlaying = true;
+    fixture.detectChanges();
+    await Promise.resolve();
+    expect(bar.inviteOpen).toBe(false);
+    localStorage.removeItem('analysisInviteSeen');
+  });
+
+  it('sends the mode keys through the same three-way gate', () => {
+    ready(false);
+    // Through the service's own subject, so what runs is the component's
+    // subscription rather than a copy of the rule written here.
+    const keys = bar.shortcuts as unknown as {
+      presses: { next(press: { id: string; event?: KeyboardEvent }): void };
+    };
+    // The press carries the keystroke as well as the id now, because a nudge
+    // is the same shortcut held coarse rather than a second one.
+    keys.presses.next({ id: 'mode.kinematic' });
+    expect(tabs.getCurrentTab()).toBe(TabID.EDIT);
+    expect(RightPanelComponent.openTab).toBe(KINEMATIC);
+  });
+
+  it('shows readiness as a label rather than a second control', () => {
+    ready(false);
+    mechanism.joints = [new RevJoint('A', 0, 0)];
+    fixture.detectChanges();
+
+    // One chip: Force Analysis is shut while nothing runs, and a shut mode
+    // has nothing to count.
+    const chips = fixture.nativeElement.querySelectorAll('chip-block');
+    expect(chips.length).toBe(1);
+    for (const chip of chips) {
+      // `chip-block` draws itself on its own host, so what is asserted here is
+      // that the host is inert: not a button, given no role of its own, and
+      // not in the tab order.
+      expect(chip.tagName).toBe('CHIP-BLOCK');
+      expect(chip.querySelector('button')).toBeNull();
+      expect(chip.getAttribute('role')).toBeNull();
+      expect(chip.hasAttribute('tabindex')).toBe(false);
+      // Inside the mode button, so the whole tab is one target.
+      expect(chip.closest('.tabButton')).not.toBeNull();
+    }
+
+    // The chip's text is spoken, since a button with a label of its own does
+    // not read its contents.
+    const kinematic = fixture.nativeElement.querySelectorAll('.tabButton')[2];
+    expect(kinematic.getAttribute('aria-label')).toContain('2 fixes');
+
+    // Every mode is still one tab stop, and none of them is taken out of it.
+    const buttons = [...fixture.nativeElement.querySelectorAll('.tabButton')];
+    expect(buttons.length).toBe(4);
+    expect(buttons.every((one: HTMLElement) => one.getAttribute('tabindex') === null)).toBe(true);
+  });
+
+  it('opens a separate semantic drawing export flow from the project menu', () => {
+    const dialog = TestBed.inject(MatDialog);
+    const open = vi.spyOn(dialog, 'open').mockReturnValue({} as never);
+    bar.menuOpen = true;
+
+    bar.exportDrawing();
+
+    expect(bar.menuOpen).toBe(false);
+    expect(open).toHaveBeenCalledWith(
+      DrawingExportComponent,
+      expect.objectContaining({ autoFocus: 'dialog' })
+    );
+  });
+});

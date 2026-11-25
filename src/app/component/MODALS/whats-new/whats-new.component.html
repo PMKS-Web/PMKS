@@ -1,0 +1,104 @@
+<div class="whatsNew" id="whatsNew">
+  <!-- Head and foot stay put; only the notes between them move. The list is
+       longer than a phone is tall and a reader has to be able to reach the way
+       out without going through all of it. -->
+  <!-- A miniature of today's screen, so the biggest change -- the modes moved
+       from a rail down the left to tabs along the top -- is seen before it is
+       read. Same icons as the top bar; the ring is the accent the app uses
+       for a guide. -->
+  <div
+    class="wnMap"
+    role="img"
+    aria-label="The new layout: the four modes are tabs along the top of the screen"
+  >
+    <div class="wnScreen">
+      <div class="wnCard wnMenu">
+        <mat-icon>menu</mat-icon>
+        <img class="wnLogo" src="assets/brand/pmks-logo.svg" alt="" />
+      </div>
+      <div class="wnCard wnModes">
+        <span class="wnTab"><mat-icon svgIcon="synthesis"></mat-icon>Synthesis</span>
+        <span class="wnTab wnOn"><mat-icon svgIcon="edit_outline"></mat-icon>Edit</span>
+        <span class="wnDivider"></span>
+        <span class="wnTab"><mat-icon>query_stats</mat-icon>Kinematic Analysis</span>
+        <span class="wnTab"><mat-icon>balance</mat-icon>Force Analysis</span>
+      </div>
+      <div class="wnCard wnUndo">
+        <span class="wnTab"><mat-icon>undo</mat-icon>Undo</span>
+        <span class="wnTab"><mat-icon>redo</mat-icon>Redo</span>
+      </div>
+      <div class="wnTag"><mat-icon>arrow_upward</mat-icon>The four modes are up here now</div>
+
+      <div class="wnCard wnPanel">
+        <span class="wnLine wnLineTitle"></span>
+        <span class="wnLine"></span>
+        <span class="wnLine wnLineShort"></span>
+        <span class="wnLine"></span>
+      </div>
+
+      <svg class="wnLinkage" viewBox="0 0 120 70">
+        <line class="wnBar wnCrank" x1="20" y1="58" x2="30" y2="34" />
+        <polygon class="wnCoupler" points="30,34 86,24 60,8" />
+        <line class="wnBar wnRocker" x1="86" y1="24" x2="96" y2="58" />
+        <path class="wnGround" d="M20 58 l-6 8 h12 Z M96 58 l-6 8 h12 Z" />
+        <circle class="wnPin" cx="20" cy="58" r="3" />
+        <circle class="wnPin" cx="30" cy="34" r="3" />
+        <circle class="wnPin" cx="86" cy="24" r="3" />
+        <circle class="wnPin" cx="96" cy="58" r="3" />
+        <circle class="wnTracer" cx="60" cy="8" r="3" />
+      </svg>
+
+      <div class="wnCard wnTransport"><mat-icon>play_arrow</mat-icon></div>
+      <div class="wnCard wnPlay"><span class="wnScrub"></span></div>
+      <div class="wnCard wnView"><mat-icon>zoom_out</mat-icon><mat-icon>zoom_in</mat-icon></div>
+    </div>
+  </div>
+
+  <div class="wnHead">
+    <h1 class="wnTitle">Welcome back</h1>
+    <p class="wnLead">PMKS (formerly PMKS+) has been rebuilt. Here’s what’s new:</p>
+  </div>
+
+  <!-- In the card's own corner, over the picture, where a reader looks for it. -->
+  <close-button class="wnClose" (pressed)="close()"></close-button>
+
+  <!-- The first note across the top, the other four in a two-by-two grid
+       under it: all five in view at once on a desktop. -->
+  <div class="wnBody">
+    @for (note of notes; track note.title) {
+      <div class="wnNote">
+        <mat-icon class="wnIcon">{{ note.icon }}</mat-icon>
+        <div class="wnText">
+          <div class="wnNoteTitle">{{ note.title }}</div>
+          <p class="wnNoteBody">{{ note.body }}</p>
+        </div>
+      </div>
+    }
+
+    <!-- Only when there is one. A release whose whole story is the five notes
+         above should end at the fifth rather than under an empty heading. -->
+    @if (also.length > 0) {
+      <div class="wnAlsoTitle">Also</div>
+      <ul class="wnAlso">
+        @for (line of also; track line) {
+          <li>{{ line }}</li>
+        }
+      </ul>
+    }
+  </div>
+
+  <!-- The note on the left is for the few who still need the old app; the
+       button on the right is for everybody else. In the foot rather than the
+       body so the five notes still fit without a scroll. -->
+  <div class="wnFoot">
+    <p class="wnLegacy">
+      Need the previous version? Email
+      <a
+        class="wnLegacyLink"
+        href="mailto:help@pmksplus.com?subject=Access%20to%20previous%20PMKS%20version"
+        >help&#64;pmksplus.com</a
+      >.
+    </p>
+    <button class="wnGo" type="button" (click)="close()">Start Using PMKS</button>
+  </div>
+</div>

@@ -2,12 +2,13 @@
 // initializes cleanly when entered here (see test-utils/verification/fixture.ts).
 import '../../app/model/joint';
 import { PrisJoint, RevJoint } from '../../app/model/joint';
-import { Piston, RealLink } from '../../app/model/link';
+import { RealLink } from '../../app/model/link';
 import { Link } from '../../app/model/link';
 import { StringTranscoder } from '../../app/services/transcoding/string-transcoder';
 import { ForceSolver } from '../../app/model/mechanism/force-solver';
 import { KinematicsSolver } from '../../app/model/mechanism/kinematic-solver';
 import { PositionSolver } from '../../app/model/mechanism/position-solver';
+import { Loop } from '../../app/model/mechanism/loop-solver';
 import { circleCircleIntersection } from '../../app/model/utils';
 import {
   ForceData,
@@ -38,16 +39,21 @@ const FIXTURES = [
   ['Watt I', wattIFixture()],
 ] as const;
 
-/** Real-link ids covered by pairs of consecutive loop letters. */
-function linkIdsCoveredByLoops(loops: string[], links: Link[]): Set<string> {
+/**
+ * Link ids the loops traverse.
+ *
+ * Read straight off the edges. The letter-string format could only infer this
+ * by searching for a link whose id contained both of two adjacent characters,
+ * which was a guess that happened to be right for single-letter joint ids.
+ */
+function linkIdsCoveredByLoops(loops: Loop[], links: Link[]): Set<string> {
   const covered = new Set<string>();
   loops.forEach((loop) => {
-    for (let i = 1; i < loop.length - 1; i++) {
-      const link = links.find((l) => l.id.includes(loop[i]) && l.id.includes(loop[i - 1]));
-      if (link !== undefined) {
-        covered.add(link.id);
+    loop.edges.forEach((edge) => {
+      if (edge.kind === 'link') {
+        covered.add(edge.linkId);
       }
-    }
+    });
   });
   return covered;
 }
@@ -111,10 +117,19 @@ describe('mechanism structure', () => {
 
     const slider = buildMechanism(teachingLabSliderCrankFixture()).mechanism;
     for (let t = 0; t < slider.joints.length; t++) {
-      const pris = slider.joints[t].find((joint) => joint.id === 'D');
+      // C is the joint that slides, and it is the only one: a slider was a pin,
+      // a prismatic twin beside it and a zero-length block joining the two
+      // until Stage 1 of `docs/joint-type-and-cylinder-plan.md`. The letter the
+      // canvas drew was always the pin's, so that is the letter it kept, and
+      // the mass the block carried is the joint's own now.
+      const pris = slider.joints[t].find((joint) => joint.id === 'C');
       expect(pris, `t=${t} prismatic joint`).toBeInstanceOf(PrisJoint);
       expect((pris as PrisJoint).angle_rad).toBe(0);
-      expect(slider.links[t].find((link) => link instanceof Piston)?.mass).toBe(1.31788);
+      expect((pris as PrisJoint).mass, `t=${t} slider mass`).toBe(1.31788);
+      expect(
+        slider.links[t].every((link) => link instanceof RealLink),
+        `t=${t} every body on the slider is a bar`
+      ).toBe(true);
     }
   });
 
@@ -236,8 +251,8 @@ describe('focused solver regressions', () => {
   it('orders the slider before its tracer through both toggle positions', () => {
     const { mechanism } = buildMechanism(sliderCrankTracerFixture());
     const solveOrder = [...PositionSolver.jointNumOrderSolverMap.entries()];
-    const sliderOrder = solveOrder.find(([, jointId]) => jointId === 'C')?.[0];
-    const tracerOrder = solveOrder.find(([, jointId]) => jointId === 'D')?.[0];
+    const sliderOrder = solveOrder.find(([, jointIds]) => jointIds.includes('C'))?.[0];
+    const tracerOrder = solveOrder.find(([, jointIds]) => jointIds.includes('D'))?.[0];
     expect(sliderOrder).toBeDefined();
     expect(tracerOrder).toBeDefined();
     expect(tracerOrder!).toBeGreaterThan(sliderOrder!);
@@ -269,7 +284,7 @@ describe('focused solver regressions', () => {
 
 describe('URL transcoder round-trip', () => {
   const expectCodecDecimal = (actual: number, original: number, label: string) => {
-    expect(actual, label).toBe(Math.round(original * 1000) / 1000);
+    expect(actual, label).toBe(original);
   };
   function encode(built: BuiltMechanism): string {
     const encoder = new StringTranscoder();
@@ -284,9 +299,21 @@ describe('URL transcoder round-trip', () => {
             joint.y,
             joint.ground,
             joint.input,
-            joint.isWelded,
+            // The weld bit of a prismatic record is the Slide: the rider held
+            // rigid against the slot rather than free to turn in it. It used to
+            // ride the coincident pin, which is the object a slider no longer
+            // has, so `isWelded` on a slider means nothing and this is what the
+            // encoder writes in its place.
+            !joint.rotates,
             joint.angle_rad,
-            joint.showCurve
+            joint.showCurve,
+            '',
+            '',
+            '',
+            false,
+            joint.driveSpeed,
+            // The block's mass, which the joint carries now.
+            joint.mass
           )
         );
       } else if (joint instanceof RevJoint) {
@@ -306,6 +333,9 @@ describe('URL transcoder round-trip', () => {
         );
       }
     });
+    // Only real bodies. Nothing writes a piston record any more -- the block
+    // that was one is gone -- so a fixture that reaches this loop with a
+    // `SliderBlock` in it would be a fixture built the old way.
     built.links.forEach((link) => {
       if (link instanceof RealLink) {
         encoder.addLink(
@@ -319,22 +349,6 @@ describe('URL transcoder round-trip', () => {
             link.CoM.x,
             link.CoM.y,
             link.fill,
-            link.joints.map((j) => j.id),
-            []
-          )
-        );
-      } else if (link instanceof Piston) {
-        encoder.addLink(
-          new LinkData(
-            true,
-            LINK_TYPE.PISTON,
-            link.id,
-            link.name,
-            link.mass,
-            0,
-            0,
-            0,
-            '',
             link.joints.map((j) => j.id),
             []
           )
@@ -385,6 +399,11 @@ describe('URL transcoder round-trip', () => {
             joint.angle_rad,
             `${name} joint ${joint.id} angle`
           );
+          // The two things a slider gained when it stopped being three objects:
+          // the Slide, in the bit its coincident pin used to carry, and the
+          // mass, which was the block's.
+          expect(decoded.isWelded, `${name} joint ${joint.id} slide`).toBe(!joint.rotates);
+          expectCodecDecimal(decoded.mass, joint.mass, `${name} joint ${joint.id} mass`);
         }
       });
 
@@ -396,15 +415,14 @@ describe('URL transcoder round-trip', () => {
         expect(decoded.jointIDs, `${name} link ${link.id} joints`).toEqual(
           link.joints.map((j) => j.id)
         );
+        // Every link is a real body: a slider-crank writes two bars and no
+        // piston, where it used to write two bars and a block.
+        expect(decoded.type, `${name} link ${link.id} type`).toBe(LINK_TYPE.REAL);
         if (link instanceof RealLink) {
-          expect(decoded.type).toBe(LINK_TYPE.REAL);
           expectCodecDecimal(decoded.mass, link.mass, `${name} link ${link.id} mass`);
           expectCodecDecimal(decoded.massMoI, link.massMoI, `${name} link ${link.id} massMoI`);
           expectCodecDecimal(decoded.xCoM, link.CoM.x, `${name} link ${link.id} CoM x`);
           expectCodecDecimal(decoded.yCoM, link.CoM.y, `${name} link ${link.id} CoM y`);
-        } else {
-          expect(decoded.type).toBe(LINK_TYPE.PISTON);
-          expectCodecDecimal(decoded.mass, link.mass, `${name} piston ${link.id} mass`);
         }
       });
 

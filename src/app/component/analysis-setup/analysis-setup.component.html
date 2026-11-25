@@ -1,0 +1,198 @@
+<div class="setup" appScrollShadow>
+  <div class="setupHead">
+    <div class="setupTitle">{{ title }}</div>
+    @if (emptyLine) {
+      <p class="setupSummary">{{ emptyLine }}</p>
+    }
+  </div>
+
+  @if (mode() === 'kinematic') {
+    @for (item of readiness; track item.id) {
+      <div class="mechBlock">
+        <!-- The whole band folds the section, but only a section with
+             something behind it: a ready mechanism is its name and a chip, and
+             an arrow that opens onto nothing is a promise it cannot keep. -->
+        <button
+          class="sectionHeader"
+          [class.fixed]="item.checks.length === 0"
+          [class.picked]="pickedIndex() === $index"
+          [attr.aria-expanded]="item.checks.length > 0 ? isOpen(item, $index) : null"
+          (click)="toggle(item, $index)"
+        >
+          <span class="sectionName">
+            <!-- The machine's name picks it, here as in its panel's list: the
+                 panel on the left shows it and the grid fades the others. -->
+            <span
+              class="mechLink"
+              (click)="select($index, $event)"
+              (pointerenter)="point($index)"
+              (pointerleave)="point(-1)"
+              >{{ labelOf(item, $index) }}</span
+            >
+            <chip-block [kind]="chipFor(item).kind">{{ chipFor(item).text }}</chip-block>
+          </span>
+          @if (item.checks.length > 0) {
+            <mat-icon>{{ isOpen(item, $index) ? 'expand_less' : 'expand_more' }}</mat-icon>
+          }
+        </button>
+
+        @if (isOpen(item, $index)) {
+          <div class="issueList">
+            @for (issue of item.checks; track issue.title) {
+              <issue-block [issue]="issue" [startOpen]="item.checks.length === 1" />
+            }
+          </div>
+        }
+      </div>
+    }
+  }
+
+  @if (mode() === 'force') {
+    @if (massRows().length > 0) {
+      <div class="mechBlock">
+        <!-- The header keeps its whole width as the fold's target. It used to
+             carry an Edit Masses button to the Edit panel; the table is typed
+             into here now whenever the machine stands still. -->
+        <div class="sectionHeader sectionHeaderRow">
+          <button class="sectionToggle" (click)="massesOpen = !massesOpen">
+            <span class="sectionName">Masses</span>
+          </button>
+          <button class="sectionToggle chevron" (click)="massesOpen = !massesOpen">
+            <mat-icon>{{ massesOpen ? 'expand_less' : 'expand_more' }}</mat-icon>
+          </button>
+        </div>
+        @if (massesOpen) {
+          <div class="massTable" massPartLinks [class.readonly]="!massEditable()">
+            <div class="massRow head">
+              <span>Body</span>
+              <span>Mass</span>
+              <span>Mass Moment of Inertia</span>
+            </div>
+            @for (group of massGroups(); track $index) {
+              @if (group.label) {
+                <div class="massGroup">{{ group.label }}</div>
+              }
+              @for (row of group.rows; track row.body.id) {
+                <div class="massRow" [class.weightless]="!(row.body.mass > 0)">
+                  <!-- Pointing at the name lights the body on the grid, and
+                       pressing it selects the body in Edit at its mass
+                       fields (`massPartLinks`). The column
+                       ellipses, and on a phone it is narrow enough that "Link
+                       Drag crank" and "Link Drag coupler" both read as "Link
+                       D…", so the full name stays reachable. -->
+                  <span class="massName" [attr.title]="row.label"
+                    ><part-link cell [part]="row.body">{{ row.label }}</part-link></span
+                  >
+                  <input-block
+                    class="cellField"
+                    cell
+                    [formGroup]="tableForm"
+                    [_formControl]="massControlName(row)"
+                  />
+                  @if (row.isBlock) {
+                    <span
+                      class="pointMass"
+                      role="note"
+                      [attr.title]="pointMassNote"
+                      [attr.aria-label]="pointMassNote"
+                    ></span>
+                  } @else {
+                    <input-block
+                      class="cellField"
+                      cell
+                      [formGroup]="tableForm"
+                      [_formControl]="moiControlName(row)"
+                      [class.derived]="moiIsAuto(row)"
+                    >
+                      @if (massEditable() && row.body.mass > 0) {
+                        <span fieldSuffix class="stateSuffix">
+                          <span class="dot" [class.filled]="!moiIsAuto(row)"></span>
+                        </span>
+                      }
+                    </input-block>
+                  }
+                </div>
+              }
+            }
+            @if (massEditable()) {
+              <div class="dotLegend">
+                <span class="dot"></span> from shape <span class="dot filled"></span> set by you
+                <button
+                  class="resetAll"
+                  [disabled]="!anyInertiaIsCustom()"
+                  (click)="resetAllInertia()"
+                >
+                  Reset All
+                </button>
+              </div>
+              <p class="note">
+                Gravity and inertia skip links with zero mass. Select a link to adjust its center of
+                mass.
+              </p>
+            }
+          </div>
+        }
+      </div>
+    }
+
+    <div class="mechBlock">
+      <button
+        class="sectionHeader"
+        [class.fixed]="forceIssues.length === 0"
+        [attr.aria-expanded]="forceIssues.length > 0 ? forceOpen : null"
+        (click)="forceOpen = forceIssues.length > 0 ? !forceOpen : forceOpen"
+      >
+        <span class="sectionName">
+          Force Analysis
+          <chip-block [kind]="forceChip.kind">{{ forceChip.text }}</chip-block>
+        </span>
+        @if (forceIssues.length > 0) {
+          <mat-icon>{{ forceOpen ? 'expand_less' : 'expand_more' }}</mat-icon>
+        }
+      </button>
+
+      @if (forceOpen && forceIssues.length > 0) {
+        <div class="issueList">
+          @for (issue of forceIssues; track issue.title) {
+            <issue-block [issue]="issue" [startOpen]="forceIssues.length === 1" />
+          }
+        </div>
+      }
+    </div>
+  }
+
+  @if (mode() === 'kinematic' && unassigned.length > 0) {
+    <div class="mechBlock">
+      <button
+        class="sectionHeader muted"
+        [attr.aria-expanded]="unassignedOpen"
+        (click)="unassignedOpen = !unassignedOpen"
+      >
+        <span class="sectionName">
+          Not in a Mechanism
+          <!-- Amber: the machines that do exist still analyze, but part of
+               what has been drawn is not among them. -->
+          <chip-block kind="warning">{{ unassigned.length }}</chip-block>
+        </span>
+        <mat-icon>{{ unassignedOpen ? 'expand_less' : 'expand_more' }}</mat-icon>
+      </button>
+
+      @if (unassignedOpen) {
+        <p class="sectionNote">Drawn dashed on the grid. Analysis skips these.</p>
+        <div class="issueList">
+          @for (issue of unassigned; track issue.title) {
+            <issue-block [issue]="issue" [startOpen]="unassigned.length === 1" />
+          }
+        </div>
+      }
+    </div>
+  }
+
+  <!-- Nothing left in the way, so the drawer ends in the thing to do next
+       rather than in a list of headings that open onto nothing. -->
+  @if (canEnterMode()) {
+    <div class="enterRow">
+      <button class="enterButton" (click)="enterMode()">{{ enterModeLabel }}</button>
+    </div>
+  }
+</div>

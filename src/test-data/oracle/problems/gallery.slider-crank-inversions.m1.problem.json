@@ -1,0 +1,158 @@
+{
+ "schema": "pmks-oracle-problem/1",
+ "id": "gallery.slider-crank-inversions.m1",
+ "title": "Slider-crank inversions, M1",
+ "source": {
+  "kind": "published",
+  "case": "gallery.slider-crank-inversions",
+  "machine": "M1"
+ },
+ "gravity": 9.80665,
+ "bodies": [
+  {
+   "id": "AB",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.0030000000000000005,
+    0.09519615242270664
+   ]
+  },
+  {
+   "id": "BC",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.017916375287812984,
+    0.09519615242270664
+   ]
+  },
+  {
+   "id": "AD",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.022,
+    0.09
+   ]
+  }
+ ],
+ "joints": [
+  {
+   "id": "A",
+   "kind": "pin",
+   "at": [
+    0,
+    0.09
+   ],
+   "bodies": [
+    "AB",
+    "AD"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "B",
+   "kind": "pin",
+   "at": [
+    0.006000000000000001,
+    0.10039230484541327
+   ],
+   "bodies": [
+    "AB",
+    "BC"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "C",
+   "kind": "slider",
+   "at": [
+    0.029832750575625972,
+    0.09
+   ],
+   "guide": "AD",
+   "linePoint": [
+    0,
+    0.09
+   ],
+   "axis": [
+    1,
+    0
+   ],
+   "riders": [
+    "BC"
+   ],
+   "rotates": true,
+   "blockMass": 0,
+   "limits": [
+    0.0028520000000000012,
+    0.04114799999999999
+   ]
+  },
+  {
+   "id": "D",
+   "kind": "pin",
+   "at": [
+    0.044,
+    0.09
+   ],
+   "bodies": [
+    "AD"
+   ],
+   "grounded": true,
+   "welded": false
+  }
+ ],
+ "driver": {
+  "joint": "A",
+  "kind": "rotation",
+  "speed": 1.0471975511965976,
+  "bodies": [
+   "ground",
+   "AB"
+  ]
+ },
+ "loads": [],
+ "points": [
+  {
+   "id": "A",
+   "body": "ground",
+   "at": [
+    0,
+    0.09
+   ]
+  },
+  {
+   "id": "B",
+   "body": "AB",
+   "at": [
+    0.006000000000000001,
+    0.10039230484541327
+   ]
+  },
+  {
+   "id": "C",
+   "body": "BC",
+   "at": [
+    0.029832750575625972,
+    0.09
+   ]
+  },
+  {
+   "id": "D",
+   "body": "ground",
+   "at": [
+    0.044,
+    0.09
+   ]
+  }
+ ],
+ "sweep": {
+  "step": 0.017453292519943295,
+  "maxSamples": 2000
+ },
+ "unsupported": []
+}

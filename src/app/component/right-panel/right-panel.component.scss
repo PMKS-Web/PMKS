@@ -1,6 +1,8 @@
 @use 'sass:map';
 @use '@angular/material' as mat;
 
+@use '../left-tabs/left-tabs.vars' as nav;
+
 @mixin css($theme) {
   // Get the color config from the theme.
   $color-config: mat.m2-get-color-config($theme);
@@ -10,62 +12,263 @@
   $background: map.get($theme, background);
   $foreground: map.get($theme, foreground);
 
-  #rightPanel {
-    //pointer-events: none;
+  // A floating card like the strip above it, clear of both: the drawer used to
+  // start under a toolbar that ran the width of the window and could sit flush
+  // against the edge. Nothing is flush any more.
+  // Inside the card and level with its title, not hard against the drawer's
+  // outer corner where it overhung the rounded edge and the accent bar. Every
+  // panel in here was written before the drawer could be closed from inside
+  // it, so none of them leaves room for this -- these are the drawer's own
+  // 10px inset plus the card's 8px gutter, and the title row's center line.
+  // The same air on all three sides the button has a free edge on: above it to
+  // the accent bar, right of it to the card's edge, below it to the rule under
+  // the title. Centering it on the title's text instead got the middle one right
+  // and left the other two at ten and five, which read as a button sitting low.
+  //
+  // The button is 32px, so the band it sits in has to be 32 + 2 x 8; the drawer
+  // is the only place a title shares its line with a button, so the band is set
+  // here rather than on the title block every panel in the app uses.
+  $close-air: 8px;
+
+  // Only where it goes; what it looks like is `close-button`'s business now.
+  .closeDrawer {
     position: absolute;
-    top: 30px;
-    right: 0px;
-    // width: 300px;
-    overflow-x: hidden;
-    overflow-y: auto;
-    max-height: calc(100% - 128px);
+    // Measured from the page box rather than from the frame, because the frame
+    // may be holding the tutorial's card above this one -- and a button placed
+    // against the frame then lands in the tutorial's corner rather than this
+    // page's. The page box starts at the frame's own origin when it is alone,
+    // so the numbers are unchanged: one shadow-room in, 5px of accent bar, and
+    // one card-inset off the right edge.
+    top: nav.$shadow-room + 5px + $close-air;
+    right: nav.$card-inset + $close-air;
+    // Above the sticky heads it shares a line with, which are also 2. A tie
+    // leaves the winner to document order, and document order is the weakest
+    // thing to rest on: the heads are the ones that get promoted to a layer of
+    // their own the moment a card is scrolled.
+    z-index: 3;
+  }
+
+  // The band the close button sits in, on the drawers whose title is a plain
+  // title block. Elsewhere a title block keeps less space below it than above,
+  // because what follows a title belongs to it; here what follows is a rule,
+  // and the button between them wants the same air on both sides.
+  #rightPanel #title-block {
+    padding-top: $close-air;
+    padding-bottom: $close-air;
+  }
+
+  // Asked for while already open. A deliberate pull rather than a wobble: it
+  // steps out and back twice, at a size a reader reads as "look here" instead
+  // of as a drawer having trouble closing.
+  .insisting {
+    animation: drawerNudge 0.62s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  @keyframes drawerNudge {
+    0% {
+      transform: translateX(0);
+    }
+    14% {
+      transform: translateX(-26px);
+    }
+    34% {
+      transform: translateX(0);
+    }
+    54% {
+      transform: translateX(-26px);
+    }
+    76% {
+      transform: translateX(0);
+    }
+    100% {
+      transform: translateX(0);
+    }
+  }
+
+  #rightPanel {
+    position: absolute;
+    top: nav.$panel-top;
+    // Flush with the window; the card is set in from there by the gap, and the
+    // frame's own padding is what leaves the shadow room on the other three
+    // sides. Four pixels of frame hanging off the right of the window is four
+    // pixels the page can be scrolled sideways.
+    right: 0;
+    box-sizing: border-box;
+    // Clips, and never scrolls. A box that scrolls clips at its padding edge,
+    // and the padding is where the card's shadow falls: so a frame that
+    // scrolled either cut the shadow off square when the page fit, or -- with
+    // the shadow room kept -- showed the page running $shadow-room past the
+    // card line when it did not, which put the export card's bottom four
+    // pixels under the view controls. What overflows is scrolled inside the
+    // cards instead, and the frame's bottom edge is never the visible one.
+    overflow: hidden;
+    // Down to one gap above the view controls, and no further -- measured off
+    // that card, which the view controls publish.
+    //
+    // The transport is deliberately not part of this. It stands to the left of
+    // the drawer and grows a row per machine while unsynced, and taking its
+    // height into account walked the drawer up the window as machines were
+    // unsynced, away from controls that had not moved. Where the two do meet,
+    // the drawer is in front.
+    //
+    // Plus the shadow room, because that clearance is measured to where the
+    // *card* stops and this frame holds the card that much inside it.
+    // Measured against the window rather than against the page. They are the
+    // same number until something else makes the document taller than the
+    // viewport, at which point `100%` grows with it and the drawer is free to
+    // run off the bottom of the screen.
+    max-height: calc(
+      100dvh -
+        #{nav.$top-strip-height} - var(--view-controls-clearance, #{nav.$view-controls-clearance}) +
+        #{nav.$shadow-room}
+    );
+
+    // Except once the cluster has wrapped. The scrub card then takes a
+    // full-width line above the view controls rather than a place beside them,
+    // so it runs under this drawer -- and stopping above the view controls
+    // alone puts the drawer over the row a reader is scrubbing. The whole
+    // cluster's height, which the playback bar measures.
+    @media (max-width: nav.$cluster-wraps) {
+      max-height: calc(
+        100dvh - #{nav.$top-strip-height} - var(--playback-clearance, #{nav.$playback-clearance}) +
+          #{nav.$shadow-room}
+      );
+    }
+    // A column, because the tutorial's card stacks above whichever page is
+    // open rather than replacing it. With one child this is what a row did
+    // anyway; with two, a row put them side by side in a drawer one card wide.
     display: flex;
-    border-radius: var(--border-radius);
+    flex-direction: column;
+    z-index: var(--layer-drawer);
 
-    animation-duration: 4s;
+    // As wide as the view controls it stands over, which the view controls
+    // measure and publish -- so the two edges line up however many buttons that
+    // card ends up carrying. The frame is that plus the room its card needs on
+    // either side. Two pages hold a table rather than a panel and say so.
+    // The fallback is what six buttons and the divider between them measure to,
+    // and is only used for the first paint before the real measurement lands.
+    width: calc(var(--view-controls-width, 301px) + #{nav.$shadow-room} + #{nav.$card-inset});
+    transition: width 0.1s ease-in-out;
 
-    //Check here for 2nd parameter options: node_modules/@angular/material/core/theming/_palette.scss: Line 674
-    // background-color: mat.get-color-from-palette($background, 'background');
-    // background-color: mat.get-color-from-palette($primary-palette, 50);
-
-    .page1 {
-      width: 300px;
-      //height: 100%;
-      // border-radius: var(--border-radius);
+    &.wide {
+      width: calc(500px + #{nav.$shadow-room} + #{nav.$card-inset});
     }
+  }
 
-    .page2 {
-      //position: absolute;
-      //top: 0;
-      //right: 0;
-      width: 500px;
-      //overflow-y: visible;
-      ////Be careful, there are multiple places to change this value
-      //height: 1000px;
-      // border-radius: var(--border-radius);
-    }
+  // One inset and one gap for every drawer page. The two setup drawers had
+  // neither, so their card came out 20px wider than the Settings card and sat
+  // 10px closer to the window edge -- the drawer visibly changed shape when you
+  // switched between them.
+  // The inset lives on the page rather than on the drawer around it: a closed
+  // drawer has no page, and padding on the drawer itself gives the closed one a
+  // box of exactly that width, which its parked transform then carries off the
+  // right of the window.
+  // The page fills the frame, which is what decides the width; it used to be
+  // the other way round, and a page and a frame that each named a width came
+  // out 28px apart -- a drawer that says 300 holding a card of 272.
+  #rightPanel > div {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: nav.$shadow-room;
+    padding-right: nav.$card-inset;
+    min-height: 0;
+  }
 
-    .page3 {
-      width: 300px;
-    }
+  // The page box is what the close button is measured against.
+  #rightPanel > .drawerPage {
+    position: relative;
+  }
 
-    .page4 {
-      width: 500px;
-    }
+  // The tutorial keeps its own height and the page below gives way when the two
+  // together are taller than the drawer.
+  //
+  // Between them, one $card-inset -- the same gap the drawer keeps from the top
+  // strip above it and from the view controls below it, so the column reads as
+  // evenly spaced rather than as two cards that happen to be near each other.
+  // Both need the id, or `#rightPanel > div` outweighs them and each card keeps
+  // a full $shadow-room, which is more than twice the gap.
+  // Both cards give way, each scrolling inside itself, rather than the frame
+  // scrolling the pair: the drawer's bottom edge is the card line, and a card
+  // that runs past it runs under the view controls. The page keeps enough to
+  // work in and the tutorial keeps enough to read; on a window shorter than
+  // both floors together the frame clips, which is the one case left.
+  #rightPanel > .tutorialSlot {
+    display: flex;
+    flex-direction: column;
+    flex: 0 1 auto;
+    min-height: 200px;
+  }
+
+  #rightPanel > .tutorialSlot > app-tutorial-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  #rightPanel > .tutorialSlot + div {
+    // Both cards keep the shadow room every card in this frame gets, and the
+    // overlap is taken back here, so what shows between them is one
+    // $card-inset -- the gap the drawer already keeps from the strip above and
+    // the view controls below.
+    //
+    // A margin rather than less padding. Taking the room away instead leaves
+    // the tutorial's bottom shadow nowhere to fall, and when the tutorial is
+    // the only card in the drawer its bottom edge lands exactly on the frame's,
+    // which scrolls -- so the shadow is clipped off square.
+    margin-top: nav.$card-inset - nav.$shadow-room * 2;
+
+    // Whatever is left over, down to a floor. As a plain shrinking item it
+    // gave way to the tutorial above it until there was nothing left: on a
+    // short window the export page collapsed to its title and its first line,
+    // with the parts list and Next unreachable. The floor keeps it a page,
+    // and the tutorial is what shrinks past that.
+    flex: 1 1 auto;
+    min-height: 260px;
+  }
+
+  // Hand the drawer's height down to the card, which is what scrolls -- the
+  // same chain the left-hand panels use to keep their own title in place. Each
+  // step needs `min-height: 0`, or a flex item refuses to shrink below its
+  // content and the cap never reaches the card.
+  //
+  // The frame must not be the one that scrolls. The close button is positioned
+  // against the frame, so a frame that scrolls carries the button up off its
+  // own top edge: on a short window the Settings drawer overflowed, and the
+  // button went with the content -- gone from the corner while the half of it
+  // still showing went on taking the click.
+  app-analysis-setup,
+  app-export-panel,
+  app-settings-panel,
+  app-help-panel {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  // This page holds several cards rather than one, so there is no single card
+  // to hand the height to and the page itself has to scroll. It takes the
+  // inset over from the page around it: an overflow box drawn at the cards'
+  // own edge would clip their shadows, and an inset outside the scrolling box
+  // is an inset that scrolls away.
+  #rightPanel > .page4 {
+    padding: 0;
+    overflow: hidden;
   }
 
   #debugWrapper {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: 10px;
-  }
-
-  #helpWrapper {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 10px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: nav.$shadow-room;
+    padding-right: nav.$card-inset;
   }
 
   .max-width {

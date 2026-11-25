@@ -10,15 +10,15 @@ import {
   expectSeriesToMatch,
   Tolerance,
 } from './compare';
-import { BuiltMechanism } from './fixture';
+import { BuiltMechanism, buildMechanism, inModelUnits, MechanismFixture } from './fixture';
 import { DynamicsTrace, KinematicsTrace, solveDynamics, solveKinematics } from './solve';
 
 export interface KinematicsSuiteOptions {
   inputJointId?: string;
   crankTipId?: string;
-  /** Maps dataset point keys to PMKS+ joint ids (e.g. coincident sensor E -> B). */
+  /** Maps dataset point keys to PMKS joint ids (e.g. coincident sensor E -> B). */
   jointIdOf?: Record<string, string>;
-  /** Maps dataset link keys to PMKS+ link ids when they differ (e.g. BCE -> BC). */
+  /** Maps dataset link keys to PMKS link ids when they differ (e.g. BCE -> BC). */
   linkIdOf?: Record<string, string>;
   tolerances?: Partial<Record<KinematicsQuantity, Tolerance>>;
   /** MATLAB rows explicitly omitted because the solvers reverse at different toggle samples. */
@@ -27,7 +27,7 @@ export interface KinematicsSuiteOptions {
 
 /**
  * Registers one `it` per kinematic quantity, comparing every joint/link
- * series in the dataset against the PMKS+ solvers over all aligned timesteps.
+ * series in the dataset against the PMKS solvers over all aligned timesteps.
  */
 export function registerKinematicsSuite(
   dataset: VerificationDataset,
@@ -69,9 +69,7 @@ export function registerKinematicsSuite(
       upstreamRepository: 'https://github.com/DesignEngrLab/PMKS',
       upstreamCommit: '2a0a6fca957dd19844567702af663f607dc15dfe',
     });
-    expect(['matlab-pmks-fork', 'matlab-pmks-fork-motiongen']).toContain(
-      dataset.trust.kinematics
-    );
+    expect(['matlab-pmks-fork', 'matlab-pmks-fork-motiongen']).toContain(dataset.trust.kinematics);
     expect(dataset.trust.kinematics).not.toBe('matlab-pmks');
     expect(dataset.trust.kinematics).not.toBe('matlab-pmks-motiongen');
     expect(dataset.samples.every((sample) => sample.eligibility === 'eligible')).toBe(true);
@@ -179,13 +177,18 @@ export interface DynamicsSuiteOptions {
 
 /**
  * Registers force-analysis tests against a MATLAB Newton (dynamic) scenario.
- * The fixture must be built with the matching gravity flag.
+ * The fixture must carry the matching gravity flag.
+ *
+ * Built in model units, as the app builds it, rather than at the fixture's raw
+ * coordinates: the force solver reads lengths as model units, and every
+ * inertia term depends on getting that right. Rows still align, because they
+ * align on the crank's angle, which no scale changes.
  */
 export function registerDynamicsSuite(
   name: string,
   expected: DynamicsData,
   jointPosForAlignment: VerificationDataset,
-  build: () => BuiltMechanism,
+  fixture: () => MechanismFixture,
   options: DynamicsSuiteOptions = {}
 ) {
   const inputJointId = options.inputJointId ?? 'A';
@@ -197,7 +200,7 @@ export function registerDynamicsSuite(
   let kinematics: KinematicsTrace;
   let alignment: AlignmentReport;
   beforeAll(() => {
-    const built = build();
+    const built = buildMechanism(inModelUnits(fixture()));
     kinematics = solveKinematics(built);
     alignment = alignToDataset(
       kinematics,

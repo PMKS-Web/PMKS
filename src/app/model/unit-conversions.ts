@@ -1,5 +1,6 @@
 import {
   AngularVelocityUnit,
+  ForceUnit,
   InertiaUnit,
   LengthUnit,
   MassUnit,
@@ -18,6 +19,8 @@ import {
 export const METERS_PER_INCH = 0.0254;
 export const KG_PER_LBM = 0.45359237;
 export const NEWTONS_PER_LBF = 4.4482216152605;
+/** Standard gravity, which is what one kilogram-force weighs. */
+export const NEWTONS_PER_KGF = 9.80665;
 
 // Display conversions from the solver's SI results back to English readouts,
 // derived from the atomic constants so they can't drift. (The codebase
@@ -62,6 +65,19 @@ export function siUnitFactorsForLength(unit: LengthUnit): SiUnitFactors {
   return siUnitFactors('cm');
 }
 
+/**
+ * Newtons per one of each force unit.
+ *
+ * The one table every force conversion goes through, so a magnitude typed in
+ * the panel, an axis label and an exported column cannot disagree about what
+ * a kilogram-force is.
+ */
+export const FORCE_TO_N: Record<number, number> = {
+  [ForceUnit.LBF]: NEWTONS_PER_LBF,
+  [ForceUnit.NEWTON]: 1,
+  [ForceUnit.KGF]: NEWTONS_PER_KGF,
+};
+
 /** Kilograms per one of each mass unit. */
 export const MASS_TO_KG: Record<number, number> = {
   [MassUnit.GRAM]: 0.001,
@@ -74,6 +90,8 @@ export const INERTIA_TO_KG_M2: Record<number, number> = {
   [InertiaUnit.KG_CM2]: 0.0001,
   [InertiaUnit.KG_M2]: 1,
   [InertiaUnit.LBM_IN2]: KG_PER_LBM * METERS_PER_INCH * METERS_PER_INCH,
+  [InertiaUnit.G_CM2]: 0.0000001,
+  [InertiaUnit.G_M2]: 0.001,
 };
 
 /** Seconds per one of each time unit. */

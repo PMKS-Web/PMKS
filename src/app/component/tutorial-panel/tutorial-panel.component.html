@@ -1,0 +1,196 @@
+<!-- Two faces of one page: the step being worked on, and the result. They are
+     never both true, so the drawer holds one card either way. -->
+@if (!tutorial.done) {
+  <div class="tutorialCard" [class.settling]="tutorial.settling">
+    <close-button
+      class="closeCard"
+      label="Close tutorial"
+      tooltip="Close"
+      (pressed)="close()"
+    ></close-button>
+    <div class="cardTitle">Tutorial</div>
+    <p class="cardLead">{{ lead }}</p>
+
+    <!-- The measure, and the way back through it. Each segment is the step it
+         stands for, so a student who wants to re-read step two presses step
+         two rather than the back arrow twice. -->
+    <div class="stepBars">
+      <button
+        class="stepArrow"
+        (click)="tutorial.goBack()"
+        [disabled]="!tutorial.canGoBack()"
+        aria-label="Previous step"
+        title="Previous step"
+      >
+        <mat-icon>chevron_left</mat-icon>
+      </button>
+      @for (bar of bars; track $index) {
+        <button
+          class="stepBar"
+          [class.done]="bar.done"
+          [class.here]="bar.here"
+          [disabled]="!bar.reachable"
+          (click)="tutorial.goToStep($index + 1)"
+          [attr.aria-label]="'Step ' + ($index + 1)"
+        ></button>
+      }
+      <button
+        class="stepArrow"
+        (click)="tutorial.goForward()"
+        [disabled]="!tutorial.canGoForward()"
+        aria-label="Next step"
+        title="Next step"
+      >
+        <mat-icon>chevron_right</mat-icon>
+      </button>
+    </div>
+
+    <!-- Keyed on the step, so moving between them is a movement rather than a
+         repaint, and the direction of travel is the direction it slides. -->
+    <div class="stepBody" [@stepSwap]="tutorial.viewedStep">
+      @if (tutorial.viewedProgress().achieved; as achieved) {
+        <div class="achieved">
+          <mat-icon>check_circle</mat-icon>
+          <span>{{ achieved }}</span>
+        </div>
+      }
+
+      <div class="stepTitle">
+        <span>{{ tutorial.copy().title }}</span>
+        @if (tutorial.viewingCompleted()) {
+          <mat-icon class="stepTick" [class.justNow]="tutorial.settling">check_circle</mat-icon>
+        }
+      </div>
+      <p class="stepText">{{ tutorial.copy().body }}</p>
+
+      @if (tutorial.copy().hint; as hint) {
+        <div class="hint">
+          <mat-icon>{{ tutorial.copy().hintGlyph }}</mat-icon>
+          <span>{{ hint }}</span>
+        </div>
+      }
+
+      <!-- Off the script: the drawing still moves the steps on, but this is
+           what will stop it later, said now rather than at Play. -->
+      @if (tutorial.wrongMode()) {
+        <div class="hint warnHint">
+          <mat-icon>swap_horiz</mat-icon>
+          <span>This step is made in Edit, the second mode in the strip along the top.</span>
+        </div>
+      }
+      @if (!tutorial.viewingCompleted() && tutorial.viewedProgress().offScript; as offScript) {
+        <div class="hint warnHint">
+          <mat-icon>warning</mat-icon>
+          <span>{{ offScript }}</span>
+        </div>
+      }
+      @if (tutorial.viewedStep === 5 && tutorial.stuckReason(); as stuck) {
+        <div class="hint warnHint">
+          <mat-icon>warning</mat-icon>
+          <span>It can’t run yet: {{ stuck }}. Show What’s Missing lists the fix.</span>
+        </div>
+      }
+
+      <!-- The one lesson about the app rather than about linkages, and it is a
+           quotation: the chip says this whether or not the tutorial is running,
+           so from here on it answers "why can't I?" on its own. -->
+      @if (showsChipHint) {
+        <div class="hint chipHint">
+          <chip-block [kind]="chipKind">{{ chipText }}</chip-block>
+          <span>
+            The Kinematic Analysis chip tracks remaining setup steps. Click it whenever the
+            mechanism won’t run to see what’s missing.
+          </span>
+        </div>
+      }
+    </div>
+
+    <div class="cardRule"></div>
+    <div class="cardActions">
+      <!-- Offered only where there is something outstanding to offer. On a step
+           already behind the student it would be a button to do something that
+           is done. -->
+      @if (!tutorial.viewingCompleted()) {
+        <button class="doItButton" (click)="doStepForMe()">
+          {{
+            tutorial.viewedStep === 5 && tutorial.stuckReason()
+              ? 'Show What’s Missing'
+              : 'Do This Step For Me'
+          }}
+        </button>
+      } @else {
+        <span class="doneNote">{{ tutorial.settling ? 'Done' : 'Already done' }}</span>
+      }
+      @if (tutorial.canGoForward()) {
+        <button class="nextButton" (click)="tutorial.goForward()">
+          Next step<mat-icon>chevron_right</mat-icon>
+        </button>
+      } @else if (tutorial.step() > 1) {
+        <!-- The way back from a drawing that has gone wrong. Do This Step For
+             Me cannot untangle somebody's branch or triangle, and without this
+             the only route to a clean start was the done card's own button,
+             which a stuck student never reaches. -->
+        <button class="quietButton startOver" (click)="restart()">Start Over</button>
+      }
+    </div>
+  </div>
+} @else {
+  <div class="tutorialCard doneCard">
+    <div class="doneHead">
+      <mat-icon class="doneMark">check_circle</mat-icon>
+      <span class="doneTitle">Tutorial complete</span>
+    </div>
+
+    @if (tutorial.reading; as reading) {
+      <p class="doneLine">
+        You built a four-bar and read joint {{ reading.joint }} at
+        <strong>{{ reading.magnitude }} {{ reading.unit }}</strong
+        >, {{ reading.time }} into the cycle.
+      </p>
+    }
+
+    <div class="cardRule"></div>
+    <div class="doorsHeading">What’s Next</div>
+
+    <!-- The library is the natural continuation of a first build, so it gets
+         the decision-sized control. Export and Share stay available as the
+         smaller utility choices they are at this point in the journey. -->
+    <div class="doors">
+      <button class="door libraryDoor" (click)="openTemplates()">
+        <mat-icon>apps</mat-icon>
+        <span class="doorText">
+          <span class="doorName">Open the Mechanism Library</span>
+          <span class="doorWhy">
+            Explore worked mechanisms, including a Watt six-bar, Scotch yoke, Jansen leg, and
+            pumpjack.
+          </span>
+        </span>
+        <mat-icon class="doorGo">arrow_forward</mat-icon>
+      </button>
+      <div class="secondaryDoors">
+        <button class="door secondaryDoor" (click)="openExport()">
+          <mat-icon>download</mat-icon>
+          <span class="doorText">
+            <span class="doorName">Export Data</span>
+            <span class="doorWhy">Save the motion for a report.</span>
+          </span>
+        </button>
+        <button class="door secondaryDoor" (click)="shareProject()">
+          <mat-icon>link</mat-icon>
+          <span class="doorText">
+            <span class="doorName">Share Project</span>
+            <span class="doorWhy">Copy a shareable link to this project.</span>
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <!-- One way out of a finished tutorial, not two. The card used to carry an
+         × of its own here as well as this button, which put two of them in the
+         same corner: this one and the drawer's. -->
+    <div class="cardActions doneActions">
+      <button class="primaryButton" (click)="close()">Close</button>
+      <button class="quietButton" (click)="restart()">Run Tutorial Again</button>
+    </div>
+  </div>
+}

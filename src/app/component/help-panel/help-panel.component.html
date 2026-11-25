@@ -1,0 +1,118 @@
+<div id="helpWrapper">
+  <panel-section>
+    <title-block>Help</title-block>
+
+    <collapsible-subsection titleLabel="Glossary" [expanded]="false">
+      <dl class="glossaryList">
+        @for (entry of glossary; track entry.term) {
+          <div class="glossaryEntry">
+            <dt>{{ entry.term }}</dt>
+            <dd>{{ entry.meaning }}</dd>
+          </div>
+        }
+      </dl>
+    </collapsible-subsection>
+
+    <!-- Where the keys are written down. Every hint in the app is drawn from
+         the same table this list is, so a key that moves moves in both. -->
+    <collapsible-subsection titleLabel="Keyboard Shortcuts" [expanded]="false">
+      @for (group of shortcuts.bySection(); track group.section) {
+        <div class="keyGroup">
+          <h4 class="keyHeading">{{ group.section }}</h4>
+          @for (one of group.shortcuts; track one.id) {
+            <div class="keyRow">
+              <span class="keyName">{{ one.label }}</span>
+              <kbd class="keyCap">{{ one.keys }}</kbd>
+            </div>
+          }
+        </div>
+      }
+      <!-- Keys that change a gesture while held. Read off the pointer event
+           by whatever handles the gesture, so they are listed, not dispatched. -->
+      <div class="keyGroup">
+        <h4 class="keyHeading">Modifier Keys</h4>
+        @for (one of shortcuts.modifiers; track one.id) {
+          <div class="keyRow">
+            <span class="keyName">{{ one.label }}</span>
+            <kbd class="keyCap">{{ one.keys }}</kbd>
+          </div>
+        }
+      </div>
+    </collapsible-subsection>
+
+    <collapsible-subsection titleLabel="Send Feedback" [expanded]="true">
+      <p class="sectionNote">Found a bug? See whether someone has already reported it.</p>
+      <button-block customIcon="github" [click]="gotoIssues">Reported Issues</button-block>
+      <p class="sectionNote">
+        Do you want to attach a file? Send us an email at help&#64;pmksplus.com
+      </p>
+      <form [formGroup]="commentForm">
+        <mat-form-field class="max-width" subscriptSizing="dynamic">
+          <mat-label>Leave a message</mat-label>
+          <textarea
+            type="text"
+            matInput
+            class="feedbackMessage"
+            rows="8"
+            formControlName="comment"
+          ></textarea>
+          @if (commentForm.controls['comment'].hasError('required')) {
+            <mat-error> Type a message before sending it. </mat-error>
+          }
+        </mat-form-field>
+        <mat-checkbox color="primary" formControlName="response">
+          I would like a response
+        </mat-checkbox>
+        @if (commentForm.value.response) {
+          <mat-form-field class="max-width" subscriptSizing="dynamic">
+            <mat-label>Email</mat-label>
+            <input
+              type="email"
+              matInput
+              formControlName="email"
+              [errorStateMatcher]="matcher"
+              placeholder="Ex. pat@example.com"
+            />
+            @if (
+              commentForm.controls['email'].hasError('email') &&
+              !commentForm.controls['email'].hasError('required')
+            ) {
+              <mat-error> That is not an email address. </mat-error>
+            }
+          </mat-form-field>
+        }
+        <mat-checkbox color="primary" checked formControlName="diagnostics">
+          Send browser and version data
+        </mat-checkbox>
+        <mat-checkbox color="primary" checked formControlName="project">
+          Send a copy of the open project
+        </mat-checkbox>
+        <button-block [disabled]="sendingEmail" icon="send" [click]="sendCommentEmail">
+          Send Message
+        </button-block>
+      </form>
+    </collapsible-subsection>
+
+    <!-- Has to stay true: model/analytics-events.ts is the list of what is sent. -->
+    <collapsible-subsection titleLabel="Privacy" [expanded]="false">
+      <p class="sectionNote">
+        PMKS uses Google Analytics to count which features are used, such as opening a template or a
+        graph, so we know what to improve. It never sends your mechanisms, their names, or anything
+        you type.
+      </p>
+    </collapsible-subsection>
+
+    <!-- Kept last and quiet on purpose: a link someone can find, never a
+         prompt. Nothing else in the app mentions it. -->
+    <collapsible-subsection titleLabel="Donate" [expanded]="true">
+      <p class="sectionNote">
+        PMKS is free and stays free. If it has helped you, a small donation helps pay for hosting.
+      </p>
+      <button-block icon="coffee" [click]="gotoDonate">Donate on Ko-fi</button-block>
+      <p class="sectionNote">
+        Donations go to the maintainer (not WPI), are not tax-deductible, and do not unlock extra
+        features.
+      </p>
+    </collapsible-subsection>
+  </panel-section>
+</div>

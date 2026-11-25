@@ -1,0 +1,79 @@
+<div id="hold-field-block" [formGroup]="formGroup()" [class.disabled]="disabled()">
+  <!-- A row per value: its word and its help, then the field with the padlock
+       inside it at the right. The words share one column, so the two fields
+       line up. -->
+  @for (which of rows(); track which) {
+    <div class="row field">
+      <span class="caption">
+        <span class="label" [class.dim]="disabled()" [numberDrag]="field">{{
+          labelFor(which)
+        }}</span>
+        <mat-icon
+          class="label-help"
+          [matTooltip]="helpFor(which)"
+          matTooltipShowDelay="400"
+          [class.inert]="disabled()"
+          [matTooltipDisabled]="disabled()"
+          >help_outline</mat-icon
+        >
+      </span>
+      <!-- Hover or focus draws this value's dimension on the canvas, the same
+           signal the pair of fields used to send. The padlock is laid over the
+           field's right end rather than given to Material as a suffix: the
+           panel's fields are thirty pixels tall, and a suffix sits on the text
+           baseline, which in a field this short is the underline. -->
+      <div
+        class="well"
+        [class.locked]="held(which)"
+        (mouseenter)="enter(which)"
+        (mouseleave)="leave(which)"
+      >
+        <mat-form-field class="customInputForm" (click)="selectAll(field)">
+          <input
+            class="customInput"
+            spellcheck="false"
+            matInput
+            type="text"
+            #field
+            [attr.data-hold-field]="which"
+            [attr.aria-label]="labelFor(which)"
+            (keyup.enter)="field.blur()"
+            (focusin)="focus(which, field)"
+            (focusout)="blur(which)"
+            [formControlName]="which"
+          />
+        </mat-form-field>
+        @if (holdable()) {
+          <!-- The icon states, the word confirms: a held value says Fixed
+               beside the closed padlock; an open one is just the padlock, as
+               the way to fix it. Typing into a fixed field is allowed: the
+               number typed becomes the number fixed. The word is "fixed" and
+               never "locked" -- a Lock is the mark that pins a joint where it
+               is, and one word for two rules was the confusion this had. -->
+          <button
+            type="button"
+            class="padlock"
+            [class.on]="held(which)"
+            [attr.data-hold-toggle]="which"
+            [attr.aria-label]="(held(which) ? 'Release fixed ' : 'Fix ') + which"
+            [attr.aria-pressed]="held(which)"
+            [matTooltip]="padlockTitle(which)"
+            matTooltipShowDelay="400"
+            (click)="toggle(which, $event)"
+          >
+            @if (held(which)) {
+              <span class="word">Fixed</span>
+            }
+            <svg width="15" height="15" viewBox="0 0 24 24">
+              <path
+                fill="currentColor"
+                fill-rule="evenodd"
+                [attr.d]="held(which) ? lockPath : unlockPath"
+              ></path>
+            </svg>
+          </button>
+        }
+      </div>
+    </div>
+  }
+</div>

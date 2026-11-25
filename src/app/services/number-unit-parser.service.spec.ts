@@ -1,4 +1,4 @@
-import { AngularVelocityUnit, InertiaUnit, MassUnit } from '../model/utils';
+import { AngularVelocityUnit, ForceUnit, InertiaUnit, LengthUnit, MassUnit } from '../model/utils';
 import { NumberUnitParserService } from './number-unit-parser.service';
 
 describe('NumberUnitParserService mass and inertia', () => {
@@ -61,10 +61,101 @@ describe('NumberUnitParserService mass and inertia', () => {
     expect(nup.formatValueAndUnit(20, rpm)).toBe('20.00 RPM');
   });
 
+  it('shows a stored mass in the mass unit the reader picked', () => {
+    // Stored in grams under centimeters; a reader who weighs in kilograms
+    // sees kilograms, and the number underneath does not change.
+    expect(nup.formatStoredMass(500, LengthUnit.CM, MassUnit.GRAM)).toBe('500.00 g');
+    expect(nup.formatStoredMass(500, LengthUnit.CM, MassUnit.KG)).toBe('0.50 kg');
+    expect(nup.formatStoredMass(2, LengthUnit.METER, MassUnit.GRAM)).toBe('2000.00 g');
+    expect(nup.formatStoredMass(3, LengthUnit.INCH, MassUnit.KG)).toBe('3.00 lbm');
+  });
+
+  it('stores a typed mass in the length system’s own unit', () => {
+    const [ok, grams] = nup.parseStoredMass('2', LengthUnit.CM, MassUnit.KG);
+    expect(ok).toBe(true);
+    expect(grams).toBeCloseTo(2000, 9);
+    // A unit typed with the number still wins over the pick.
+    expect(nup.parseStoredMass('250 g', LengthUnit.CM, MassUnit.KG)).toEqual([true, 250]);
+    const [okM, kg] = nup.parseStoredMass('750', LengthUnit.METER, MassUnit.GRAM);
+    expect(okM).toBe(true);
+    expect(kg).toBeCloseTo(0.75, 12);
+    expect(nup.parseStoredMass('banana', LengthUnit.CM, MassUnit.KG)[0]).toBe(false);
+  });
+
+  it('shows and takes inertia in the reader’s mass times length squared', () => {
+    // Stored kg·cm² under centimeters, whichever mass the reader picked.
+    expect(nup.formatStoredInertia(2, LengthUnit.CM, MassUnit.KG)).toBe('2.00 kg·cm²');
+    expect(nup.formatStoredInertia(2, LengthUnit.CM, MassUnit.GRAM)).toBe('2000.00 g·cm²');
+    expect(nup.formatStoredInertia(0.5, LengthUnit.METER, MassUnit.GRAM)).toBe('500.00 g·m²');
+
+    const [ok, stored] = nup.parseStoredInertia('300', LengthUnit.METER, MassUnit.GRAM);
+    expect(ok).toBe(true);
+    expect(stored).toBeCloseTo(0.3, 12);
+    const [okTyped, fromTyped] = nup.parseStoredInertia('1 g·m²', LengthUnit.CM, MassUnit.KG);
+    expect(okTyped).toBe(true);
+    expect(fromTyped).toBeCloseTo(10, 9);
+  });
+
   it('round-trips the formatted value back through the parser', () => {
     const formatted = nup.formatValueAndUnit(453.59237, MassUnit.GRAM);
     expect(formatted).toBe('453.59 g');
     expect(nup.parseMassString(formatted, MassUnit.GRAM)).toEqual([true, 453.59]);
     expect(nup.formatValueAndUnit(1, InertiaUnit.LBM_IN2)).toBe('1.00 lbm·in²');
+  });
+});
+
+describe('NumberUnitParserService force', () => {
+  const nup = new NumberUnitParserService();
+
+  it('does not give rounded zero a direction, while preserving negative components', () => {
+    expect(nup.formatValueAndUnit(-1e-12, ForceUnit.NEWTON)).toBe('0.00 N');
+    expect(nup.formatValueAndUnit(-0.01, ForceUnit.NEWTON)).toBe('-0.01 N');
+  });
+
+  it('names the unit a force is stored in, which is not the one it is shown in', () => {
+    // Kilograms-force is a way of reading a magnitude, not a way of keeping
+    // one: the solver's unit factors and every circulating URL are written in
+    // newtons, so storage stays there and the panel converts at its own edge.
+    expect(nup.storedForceUnit(LengthUnit.CM)).toBe(ForceUnit.NEWTON);
+    expect(nup.storedForceUnit(LengthUnit.METER)).toBe(ForceUnit.NEWTON);
+    expect(nup.storedForceUnit(LengthUnit.INCH)).toBe(ForceUnit.LBF);
+  });
+
+  it('shows a stored force in whichever unit the reader picked', () => {
+    expect(nup.formatStoredForce(9.80665, LengthUnit.CM, ForceUnit.KGF)).toBe('1.00 kgf');
+    expect(nup.formatStoredForce(9.80665, LengthUnit.CM, ForceUnit.NEWTON)).toBe('9.81 N');
+    // English never offers kgf, and its storage unit is the one it shows.
+    expect(nup.formatStoredForce(2, LengthUnit.INCH, ForceUnit.LBF)).toBe('2.00 lbf');
+  });
+
+  it('takes a typed force back to the unit storage uses', () => {
+    const [ok, stored] = nup.parseStoredForce('2', LengthUnit.CM, ForceUnit.KGF);
+    expect(ok).toBe(true);
+    expect(stored).toBeCloseTo(2 * 9.80665, 9);
+
+    // A suffix overrides the field's own unit, as it does everywhere else.
+    const [okN, asTyped] = nup.parseStoredForce('5 N', LengthUnit.CM, ForceUnit.KGF);
+    expect(okN).toBe(true);
+    expect(asTyped).toBeCloseTo(5, 9);
+
+    // And a bad number leaves the field's value alone rather than storing NaN.
+    expect(nup.parseStoredForce('kgf', LengthUnit.CM, ForceUnit.KGF)[0]).toBe(false);
+  });
+
+  it('writes a torque as its force unit times the drawing\u2019s own length unit', () => {
+    // Centimeters used to be the one system whose torque did not follow it:
+    // a reader measuring in cm was shown a moment in meters, with a silent
+    // hundredth in the middle of it. A reader who wants N·m picks SI.
+    expect(nup.torqueLabel(ForceUnit.LBF, LengthUnit.INCH)).toBe('lbf·in');
+    expect(nup.torqueLabel(ForceUnit.NEWTON, LengthUnit.CM)).toBe('N·cm');
+    expect(nup.torqueLabel(ForceUnit.NEWTON, LengthUnit.METER)).toBe('N·m');
+    expect(nup.torqueLabel(ForceUnit.KGF, LengthUnit.CM)).toBe('kgf·cm');
+    expect(nup.torqueLabel(ForceUnit.KGF, LengthUnit.METER)).toBe('kgf·m');
+  });
+
+  it('converts between all three, exactly rather than through a rounded reciprocal', () => {
+    expect(nup.convertForce(1, ForceUnit.LBF, ForceUnit.NEWTON)).toBeCloseTo(4.4482216152605, 12);
+    expect(nup.convertForce(1, ForceUnit.KGF, ForceUnit.NEWTON)).toBeCloseTo(9.80665, 12);
+    expect(nup.convertForce(9.80665, ForceUnit.NEWTON, ForceUnit.KGF)).toBeCloseTo(1, 12);
   });
 });

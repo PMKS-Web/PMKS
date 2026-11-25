@@ -1,18 +1,202 @@
-import { Injectable } from '@angular/core';
+import { afterNextRender, DestroyRef, Injectable, Injector, NgZone, inject } from '@angular/core';
 // TS 6 no longer allows calling/constructing `import * as` namespaces of
 // CommonJS (export =) modules - use default imports for these two.
 import svgPanZoom from 'svg-pan-zoom';
 import { Coord } from '../model/coord';
-import { NewGridComponent } from '../component/new-grid/new-grid.component';
-import { forceStates, jointStates } from '../model/utils';
+import { canvasHandle } from './canvas-handle';
 import { SettingsService } from './settings.service';
+import { DragStateService } from './drag-state.service';
+import { MechanismService } from './mechanism.service';
+import { SaveHistoryService } from './save-history.service';
 import Hammer from 'hammerjs';
+import { MODEL_SCALE } from '../model/render-scale';
+import {
+  Rect,
+  centerOf,
+  drawingScreenBox,
+  fitsInside,
+  freeCanvasRect,
+  sameRect,
+} from './view-framing';
+import { SelectedTabService } from '../selected-tab.service';
+import { CHROME_MOVED } from '../model/chrome-motion';
+
+/**
+ * Minor lines to a major cell, decided by the major cell.
+ *
+ * The rule is that the minor step has to be a round number too. The major
+ * steps climb the one-two-five ladder, and dividing every one of them by five
+ * only lands on a round number for the fives:
+ *
+ *   major 1  ->  0.2   no half, no whole anything
+ *   major 2  ->  0.4   0.4, 0.8, 1.2, 1.6 -- the reader never sees 1
+ *   major 5  ->  1     1, 2, 3, 4, the one that always worked
+ *   major 10 ->  2     2, 4, 6, 8 -- never sees 5
+ *
+ * A reader zoomed to a major of 2 is looking at a line labeled 2 with four
+ * lines under it and no way to find 1, which is the number they are actually
+ * trying to place something on.
+ *
+ * So the count comes from the major's own mantissa, chosen so that the minor
+ * step is itself a one, a two or a five:
+ *
+ *   major 1  -> 10 divisions -> 0.1   0.5 is a line, and so is every tenth
+ *   major 2  ->  4 divisions -> 0.5   0.5, 1, 1.5
+ *   major 5  ->  5 divisions -> 1     1, 2, 3, 4
+ *   major 10 -> 10 divisions -> 1     1..9, with 5 halfway
+ *
+ * Exported because it is the whole rule, and a rule stated in one place is one
+ * the snapping and the drawing cannot disagree about.
+ */
+export function minorDivisionsFor(majorModelUnits: number): number {
+  const units = majorModelUnits / MODEL_SCALE;
+  if (!(units > 0) || !Number.isFinite(units)) return 5;
+  // The ladder only ever produces 1, 2 and 5, so the mantissa is snapped to
+  // one of them rather than trusted: `cellSizeFor` multiplies its way there
+  // through a power of ten, and 0.30000000000000004 is what that arithmetic
+  // hands back at some decades.
+  const decade = 10 ** Math.floor(Math.log10(units) + 1e-9);
+  const mantissa = units / decade;
+  const step = [1, 2, 5, 10].reduce((best, candidate) =>
+    Math.abs(candidate - mantissa) < Math.abs(best - mantissa) ? candidate : best
+  );
+  // 10 is 1 of the next decade up; both are a round decade and subdivide the
+  // same way.
+  return step === 2 ? 4 : step === 5 ? 5 : 10;
+}
+import { LengthUnit } from '../model/unit-enums';
+
+/** One of each unit, in centimeters. The only ratio this file needs. */
+const LENGTH_IN_CM: Record<LengthUnit, number> = {
+  [LengthUnit.CM]: 1,
+  [LengthUnit.METER]: 100,
+  [LengthUnit.INCH]: 2.54,
+  [LengthUnit.NULL]: 1,
+};
+
+/**
+ * How much of the free canvas a fit fills.
+ *
+ * A margin all round, rather than the flat 30% shrink that a `fit()` followed
+ * by a `zoomOut()` used to leave: that number was chosen to clear a toolbar
+ * that has not existed for two layouts, and it was measured against the window
+ * rather than against the part of it the drawing can be seen in.
+ */
+const FIT_FILL = 0.86;
+
+/**
+ * The layers a fit is about.
+ *
+ * The grid ruling and the axes are drawn to the viewport, so they are always
+ * exactly as big as the window: a bounding box that includes them cannot be
+ * fitted to anything. Ordered as they are drawn, which is only for reading.
+ */
+const DRAWING_LAYERS = [
+  'railHolder',
+  'jointBGHolder',
+  'motorHolder',
+  'linkHolder',
+  'sliderHolder',
+  'jointHolder',
+  'jointTagHolder',
+  'linkTagHolder',
+  'pathsHolder',
+  'forcesHolder',
+  // Synthesis is drawing too: in that mode the positions being designed for are
+  // often the only thing on the canvas, and a fit that could not see them
+  // framed an empty grid and left them off the side of it.
+  'synthesis',
+] as const;
+
+/** How many pixels a mark is drawn at when only the view is being fitted to. */
+const MARK_TARGET_PX = 60;
+
+/** How far a drawing may hang out of the free canvas before it counts as lost. */
+const OVERHANG_SLACK = 8;
+
+/**
+ * How far inside the free canvas a point has to be to count as on screen.
+ *
+ * A position exactly on the edge is a position half of which is not there, and
+ * the mark drawn at one is bigger than the point it stands for.
+ */
+const REVEAL_MARGIN = 48;
+
+/**
+ * How long to watch the chrome before framing around where it ended up.
+ *
+ * A panel takes about a third of a second to glide, and the mode says it has
+ * changed before Angular has started moving it -- so a rect that looks settled
+ * in the first few frames is only one that has not begun to move.
+ */
+const SETTLE_STABLE_FRAMES = 3;
+const SETTLE_MIN_MS = 360;
+const SETTLE_MAX_MS = 900;
 
 @Injectable({
   providedIn: 'root',
 })
 export class SvgGridService {
-  public panZoomObject: any;
+  private settingsService = inject(SettingsService);
+  private dragState = inject(DragStateService);
+  private injector = inject(Injector);
+  private destroyRef = inject(DestroyRef);
+  /** Absent under `createMechanismHarness`, which builds this service with no app around it. */
+  private zone = inject(NgZone, { optional: true });
+
+  /**
+   * Where the cursor last was, in model units.
+   *
+   * Kept here rather than on the grid component so the status strip can read it
+   * without reaching into a component to do so -- and so it survives the strip
+   * and the grid being rebuilt independently.
+   */
+  public cursorAt: { x: number; y: number } | null = null;
+
+  constructor() {
+    // A reading from before a unit change is no longer in the current model
+    // coordinates. Wait for a new pointer position instead of relabeling it.
+    const units = this.settingsService.lengthUnit.subscribe(() => (this.cursorAt = null));
+    this.destroyRef.onDestroy(() => units.unsubscribe());
+  }
+
+  /**
+   * Settles once the canvas has first been framed, and the frame showing it
+   * has been drawn.
+   *
+   * What the boot splash waits for. Until the first fit lands the view is the
+   * one svg-pan-zoom gives itself, fitted to the whole SVG, which put a drawing
+   * at hundreds of times its size; the splash lifting on Angular's first render
+   * showed that for a few frames on a small drawing and for over a second on a
+   * large one, before the fit snapped it out.
+   */
+  readonly firstFramed = new Promise<void>((resolve) => (this.resolveFirstFramed = resolve));
+  private resolveFirstFramed!: () => void;
+
+  /**
+   * Settles once the next fit has landed and been drawn: what the loading
+   * cover waits for after a new drawing is decoded behind it, for the same
+   * reason the splash waits for the first. Taken down with the decode, the
+   * cover showed the new drawing at the old drawing's zoom for a frame.
+   */
+  nextFramed(): Promise<void> {
+    return new Promise<void>((resolve) => this.awaitingFrame.push(resolve));
+  }
+  private awaitingFrame: (() => void)[] = [];
+
+  /**
+   * The library applies a new matrix on the next animation frame, from a
+   * callback registered before this one: by the time this runs, the matrix is
+   * on the canvas and the frame about to paint is the framed one.
+   */
+  private framed(): void {
+    const waiting = this.awaitingFrame.splice(0);
+    requestAnimationFrame(() => {
+      this.resolveFirstFramed();
+      for (const resolve of waiting) resolve();
+    });
+  }
+  public panZoomObject!: SvgPanZoom.Instance;
   public CTM!: SVGMatrix;
   public viewBoxMinX: number = 0;
   public viewBoxMaxX: number = 0;
@@ -22,23 +206,29 @@ export class SvgGridService {
   verticalLinesMinor: number[] = [];
   horizontalLines: number[] = [];
   horizontalLinesMinor: number[] = [];
-  private defualtCellSize: number = 10000;
+  private defualtCellSize: number = 10000 * MODEL_SCALE;
 
   private cellSize: number = this.defualtCellSize;
 
   private panLockOut: boolean = false;
 
-  private MAX_ZOOM: number = 3300;
-  private MIN_ZOOM: number = 0.04;
-
-  constructor(private settingsService: SettingsService) {}
+  // Unit conversion changes model coordinates, so it must change the allowed
+  // zoom by the reciprocal factor too. Otherwise Fit clamps an SI drawing to
+  // one hundredth of its intended screen size.
+  private get MAX_ZOOM(): number {
+    return 16.5 * LENGTH_IN_CM[this.settingsService.lengthUnit.value];
+  }
+  private get MIN_ZOOM(): number {
+    return 0.0002 * LENGTH_IN_CM[this.settingsService.lengthUnit.value];
+  }
 
   setNewElement(root: HTMLElement) {
     var eventsHandler;
+    const dragState = this.dragState;
 
     eventsHandler = {
       haltEventListeners: ['touchstart', 'touchend', 'touchmove', 'touchleave', 'touchcancel'],
-      init: function (options: any) {
+      init: function (options: SvgPanZoom.CustomEventOptions) {
         var instance = options.instance,
           initialScale = 1,
           pannedX = 0,
@@ -54,17 +244,29 @@ export class SvgGridService {
         this.hammer.get('pinch').set({ enable: true });
 
         // Handle double tap
-        this.hammer.on('doubletap', function (ev: any) {
+        this.hammer.on('doubletap', function (ev: HammerInput) {
           // instance.zoomIn();
         });
 
         // Handle tap (click) and no drag.
-        this.hammer.on('tap', function (ev: any) {
-          NewGridComponent.instance.handleTap();
+        this.hammer.on('tap', function (ev: HammerInput) {
+          canvasHandle()?.handleTap();
         });
 
         // Handle pan
-        this.hammer.on('panstart panmove', function (ev: any) {
+        this.hammer.on('panstart panmove', function (ev: HammerInput) {
+          // The canvas may only pan while a pointer is genuinely down. Hammer
+          // tracks that from events on the element it is bound to, and a
+          // gesture whose target is destroyed mid-drag — a joint merged into
+          // another, say — can leave it believing the press never ended, so it
+          // would pan on every later move with no button held. The pointerup on
+          // the root svg always lands, so the state machine is the authority.
+          if (!dragState.isPointerDown) {
+            pannedX = 0;
+            pannedY = 0;
+            return;
+          }
+
           // On pan start reset panned variables
           if (ev.type === 'panstart') {
             pannedX = 0;
@@ -78,7 +280,7 @@ export class SvgGridService {
         });
 
         // Handle pinch
-        this.hammer.on('pinchstart pinchmove', function (ev: any) {
+        this.hammer.on('pinchstart pinchmove', function (ev: HammerInput) {
           // On pinch start remember initial zoom
           if (ev.type === 'pinchstart') {
             initialScale = instance.getZoom();
@@ -87,10 +289,6 @@ export class SvgGridService {
 
           instance.zoomAtPoint(initialScale * ev.scale, { x: ev.center.x, y: ev.center.y });
         });
-
-        // this.hammer.on('press', function (ev: any) {
-        //   NewGridComponent.onContextMenu(ev.center.x, ev.center.y);
-        // });
 
         // Prevent moving the page on some devices when panning over SVG
         options.svgElement.addEventListener('touchmove', function (e: TouchEvent) {
@@ -119,34 +317,170 @@ export class SvgGridService {
       onUpdatedCTM: this.handleUpdatedCTM.bind(this),
       customEventsHandler: eventsHandler,
     });
-    this.scaleToFitLinkage();
+    this.guardAgainstStuckPan(root);
+    this.restoreMissingPointerDown(root);
+    this.releaseGesturesOnLostPointer(root);
+    this.watchTheChrome();
+    this.scaleToFitLinkage(false);
   }
 
-  screenToSVG(screenPos: Coord): Coord {
-    const CTM: SVGMatrix = this.CTM;
-    //Temporary solution. Maybe okay to have...
+  /**
+   * End a canvas gesture the canvas never saw end.
+   *
+   * A press that goes down on the drawing can come up anywhere -- over a panel,
+   * outside the window, or not at all if the browser cancels it. The canvas
+   * hears `pointerup` only on itself, so those releases went unheard and the
+   * gesture stayed live: the pan guard kept refusing to pan and the search
+   * stayed frozen mid-drag until something else was clicked.
+   *
+   * On the window, and in the capture phase, so it runs wherever the release
+   * lands and whatever else claims it.
+   */
+  private releaseGesturesOnLostPointer(root: HTMLElement): void {
+    const release = (event: Event) => {
+      // A release the canvas hears for itself is already handled by its own
+      // `pointerup`. This listener is in the capture phase, so it runs *first*:
+      // doing the work here as well would take the gesture out from under that
+      // handler rather than adding to it. A held pointer retargets its release
+      // to the element that captured it, which is inside the canvas, so a
+      // captured gesture still counts as heard.
+      const heardByCanvas = event.target instanceof Node && root.contains(event.target);
+      if (event.type === 'pointerup' && heardByCanvas) {
+        return;
+      }
+      canvasHandle()?.releaseCanvasGestures(event as PointerEvent);
+    };
+    window.addEventListener('pointerup', release, true);
+    window.addEventListener('pointercancel', release, true);
+    // And the releases that never arrive at all. A pointer let go in another
+    // tab, or while the window is hidden, sends nothing here -- so the canvas
+    // went on believing a finger was down, and the guard that closes a stale
+    // posed edit reads exactly that flag: it refused to close, and the next
+    // ambient rebuild made the displaced pose the design.
+    //
+    // Treated as a cancel rather than a release, because that is what it is:
+    // nobody finished the gesture, and there is no position to finish it at.
+    const lost = () => canvasHandle()?.releaseCanvasGestures();
+    window.addEventListener('blur', lost);
+    window.addEventListener('pagehide', lost);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) lost();
+    });
+  }
+
+  /**
+   * Hand the wheel to whatever gesture wants it, or give it back to the zoom.
+   *
+   * Synthesis turns the position it is about to drop with the wheel, and the
+   * library binds its own wheel listener to the same element -- so asking it to
+   * stand down is the only way to stop the canvas zooming under the gesture.
+   * Through the library's own API rather than by swallowing the event, because
+   * a swallowed event depends on which listener was registered first.
+   */
+  setWheelZoomEnabled(enabled: boolean): void {
+    if (!this.panZoomObject) return;
+    if (enabled === this.panZoomObject.isMouseWheelZoomEnabled()) return;
+    if (enabled) this.panZoomObject.enableMouseWheelZoom();
+    else this.panZoomObject.disableMouseWheelZoom();
+  }
+
+  /**
+   * A client pixel, said in the drawing's coordinates.
+   *
+   * Both halves of this pair carry the drawing's y-flip, because the matrix
+   * they go through does not. `CTM` is the pan-zoom viewport's, and the
+   * viewport sits *outside* the layers that wear `modelFrame` -- so mapping
+   * through it alone lands in a y-down space that is nothing the rest of the
+   * app speaks. The negation here is that one missing step.
+   *
+   * These replaced a `screenToSVG` that negated y and an `SVGtoScreen` that
+   * did not, which were not each other's inverse and did not say so. Reaching
+   * for the wrong one is how a probe reports a crank turning the wrong way.
+   */
+  screenToModel(screenPos: Coord): Coord {
     if (this.CTM === undefined) {
       return new Coord(0, 0);
     }
-    const inverseCTM = CTM.inverse();
-    const svgPos = screenPos.applyMatrix(inverseCTM);
-    svgPos.y = svgPos.y * -1;
-    return svgPos;
+    const at = screenPos.applyMatrix(this.CTM.inverse());
+    return new Coord(at.x, -at.y);
   }
 
-  SVGtoScreen(svgPos: Coord): Coord {
-    const CTM: SVGMatrix = this.CTM;
-    //Temporary solution. Maybe okay to have...
+  /** The same trip the other way: a point on the drawing, in client pixels. */
+  modelToScreen(modelPos: Coord): Coord {
     if (this.CTM === undefined) {
       return new Coord(0, 0);
     }
-    const screenPos = svgPos.applyMatrix(CTM);
-    // screenPos.y = screenPos.y * -1;
-    return screenPos;
+    return new Coord(modelPos.x, -modelPos.y).applyMatrix(this.CTM);
   }
 
-  screenToSVGfromXY(screenX: number, screenY: number): Coord {
-    return this.screenToSVG(new Coord(screenX, screenY));
+  /**
+   * Keep the drawing the same size on screen across a change of length unit.
+   *
+   * A unit change rescales the stored geometry, so without this the linkage
+   * would appear to grow or shrink by the conversion factor. The settings panel
+   * does this for a change the reader made; undo and redo replay a URL that can
+   * carry the same change, and had no way to do it -- the geometry came back at
+   * its old size through a viewport still zoomed for the new one, which is the
+   * jump.
+   */
+  compensateForUnitChange(fromUnit: LengthUnit, toUnit: LengthUnit): void {
+    if (fromUnit === toUnit || !this.panZoomObject) return;
+    const origin = this.modelToScreen(new Coord(0, 0));
+    // Through `ourOwnMove`, because this is the app holding a view still across
+    // a change of units rather than the reader choosing a new one: read as a
+    // choice it would throw away a fit that is still perfectly fitted.
+    this.ourOwnMove(() =>
+      this.panZoomObject.zoomAtPointBy(LENGTH_IN_CM[toUnit] / LENGTH_IN_CM[fromUnit], {
+        x: origin.x,
+        y: origin.y,
+      })
+    );
+  }
+
+  /**
+   * Carry the remembered view across a change in the size of the window.
+   *
+   * A view somebody drove to keeps the share of the canvas it had, so it scales
+   * with the window. Nothing to do for a view a fit put there: that one is
+   * framed afresh instead, and there is nothing written down to scale.
+   */
+  private growChosenView(growth: number): void {
+    const held = this.chosenView;
+    if (growth === 1 || !held) return;
+    this.chosenView = {
+      zoom: this.clampZoom(held.zoom * growth),
+      offset: { x: held.offset.x * growth, y: held.offset.y * growth },
+    };
+  }
+
+  /** Whatever the view was is now whatever the reader just made it. */
+  private forgetChosenView(): void {
+    this.viewIsFitted = false;
+    this.viewIsFittedToMotion = false;
+    this.chosenView = null;
+  }
+
+  /**
+   * Run a view change the app is making on the reader's behalf.
+   *
+   * The library calls back into handlePan and handleZoom while these run, and
+   * those are also how a wheel or a drag arrives. Flagged so the two can be
+   * told apart: a view the app moved is still a view nobody chose. Public,
+   * because the settings panel compensates for a unit change from its own side.
+   */
+  ourOwnMove(change: () => void): void {
+    const was = this.movingTheViewOurselves;
+    this.movingTheViewOurselves = true;
+    try {
+      change();
+    } finally {
+      this.movingTheViewOurselves = was;
+    }
+  }
+
+  /** `screenToModel` for a pointer event, which arrives as two numbers. */
+  screenToModelFromXY(screenX: number, screenY: number): Coord {
+    return this.screenToModel(new Coord(screenX, screenY));
   }
 
   updateVisibleCoords() {
@@ -162,29 +496,172 @@ export class SvgGridService {
     this.viewBoxMinY = visibleY;
     this.viewBoxMaxY = visibleY + visibleHeight;
     // this.panZoomObject.updateBBox(); // Update viewport bounding box
-    // console.log(viewBox);
-    // console.log(this.viewBoxMinX, this.viewBoxMaxX);
-    // console.log(this.viewBoxMinY, this.viewBoxMaxY);
   }
 
-  handleBeforePan(oldPan: any, newPan: any) {
+  /**
+   * Stop svg-pan-zoom panning a canvas nobody is holding.
+   *
+   * Its mouse listeners live on the root svg: `mousedown` puts it into a "pan"
+   * state that only `mouseup` or `mouseleave` leaves, and every `mousemove`
+   * until then drags the viewport. A release that never reaches this element
+   * therefore leaves the canvas following the bare cursor. Chrome does re-aim a
+   * release whose target was deleted mid-gesture at the nearest surviving
+   * ancestor, so a joint merge alone does not lose one, but anything stacked
+   * over the canvas that swallows the release would.
+   *
+   * Rather than chase the ways a release can go missing, hold the invariant it
+   * exists to protect: a move carrying no held button cannot belong to a pan.
+   * The button state on each move is the authority, so end the gesture at its
+   * source before the library gets to act on it.
+   *
+   * `handleBeforePan` cannot host this test: by then a pan with no button held
+   * is indistinguishable from `fit`, `center` and wheel zoom, which are all
+   * legitimate.
+   */
+  private guardAgainstStuckPan(root: HTMLElement) {
+    let gestureLive = false;
+    // The release is watched on the root rather than on the window, because the
+    // flag has to stay set for exactly the releases the library missed.
+    root.addEventListener('mousedown', () => (gestureLive = true), true);
+    root.addEventListener('mouseup', () => (gestureLive = false), true);
+    // On the window, so this runs before the library's listener whatever the
+    // move is aimed at: on the root itself the two would race by registration
+    // order, and the library registered first.
+    window.addEventListener(
+      'mousemove',
+      (event) => {
+        if (!gestureLive || event.buttons !== 0) return;
+        gestureLive = false;
+        // Non-bubbling, so only the listeners on the root see it.
+        root.dispatchEvent(new MouseEvent('mouseup', { bubbles: false }));
+      },
+      true
+    );
+  }
+
+  /**
+   * Give back the `pointerdown` Safari owes us after a native menu closes.
+   *
+   * The canvas is driven entirely by pointer events -- the root's own handler
+   * and every joint, link and force binding are `(pointerdown)` -- while
+   * svg-pan-zoom listens for `mousedown`. Normally the pair arrive together and
+   * in that order, so whichever one the gesture belongs to claims it.
+   *
+   * Safari breaks the pair exactly once after dismissing a native `<select>`
+   * popup: the next press arrives as a bare `mousedown` with no `pointerdown`
+   * before it. Traced from the failing gesture, the whole of it:
+   *
+   *     pointerdown SELECT, mousedown SELECT      (popup opens; no release)
+   *     mousedown path#AB                         (no pointerdown!)
+   *     pointerup path#AB, mouseup path#AB
+   *
+   * So the library saw a press the app never did: nothing armed a drag, and the
+   * canvas panned under a cursor that was holding a link. The press after that
+   * is paired again, which is why a click "wakes it up" and hides the cause.
+   *
+   * Rather than teach every binding to accept either event -- and then dedupe
+   * the pair on the browsers that send both -- put the missing event back at
+   * its source. Dispatched during capture, before the mousedown reaches
+   * anything, so handlers still see pointerdown first and in the right order;
+   * every existing binding then works as written.
+   */
+  private restoreMissingPointerDown(root: HTMLElement) {
+    let pressOpened = false;
+    /**
+     * When a finger last touched the canvas.
+     *
+     * Every touch is followed by a compatibility `mousedown`, `mouseup` and
+     * `click` for the benefit of pages written before touch existed. That
+     * mousedown arrives *after* the real pointerup has cleared the flag below,
+     * so this shim read it as a press with no pointerdown and helpfully
+     * supplied one -- opening a gesture that nothing would ever close, because
+     * the compatibility mouseup is not a pointerup either. A tap on a joint
+     * left the canvas believing that joint was still being dragged.
+     *
+     * The shim is for a mouse press that arrives without its pointerdown. A
+     * mousedown moments after a touch is not that; it is the same press told
+     * twice.
+     */
+    let lastTouchAt = 0;
+    const opened = (event: Event) => {
+      pressOpened = true;
+      if (event instanceof PointerEvent && event.pointerType !== 'mouse') {
+        lastTouchAt = Date.now();
+      }
+    };
+    const closed = (event: Event) => {
+      pressOpened = false;
+      if (event instanceof PointerEvent && event.pointerType !== 'mouse') {
+        lastTouchAt = Date.now();
+      }
+    };
+    root.addEventListener('pointerdown', opened, true);
+    root.addEventListener('pointerup', closed, true);
+    root.addEventListener('pointercancel', closed, true);
+    // Not every gesture ends in a pointerup -- a release outside the canvas
+    // ends one without it -- so the mouse release clears the flag too.
+    root.addEventListener('mouseup', closed, true);
+    root.addEventListener(
+      'mousedown',
+      (event: MouseEvent) => {
+        if (pressOpened) return;
+        // The compatibility mouse events a browser sends after a touch follow
+        // it within a few hundred milliseconds. Half a second is generous and
+        // costs nothing: the only thing skipped is a synthetic pointerdown for
+        // a press the canvas has already been told about.
+        if (Date.now() - lastTouchAt < 500) return;
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        target.dispatchEvent(
+          new PointerEvent('pointerdown', {
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+            clientX: event.clientX,
+            clientY: event.clientY,
+            screenX: event.screenX,
+            screenY: event.screenY,
+            button: event.button,
+            buttons: event.buttons,
+            ctrlKey: event.ctrlKey,
+            shiftKey: event.shiftKey,
+            altKey: event.altKey,
+            metaKey: event.metaKey,
+            pointerId: 1,
+            pointerType: 'mouse',
+            isPrimary: true,
+          })
+        );
+      },
+      true
+    );
+  }
+
+  handleBeforePan(oldPan: SvgPanZoom.Point, newPan: SvgPanZoom.Point) {
     if (this.panLockOut) {
       this.panLockOut = false;
       return oldPan;
     }
 
-    if (
-      NewGridComponent.debugGetJointState() == jointStates.dragging ||
-      NewGridComponent.debugGetForceState() == forceStates.draggingStart ||
-      NewGridComponent.debugGetForceState() == forceStates.draggingEnd ||
-      NewGridComponent.getLastLeftClickType() === 'SynthesisPose'
-    ) {
+    // Any drag in flight owns the pointer. Asking the state machine rather than
+    // enumerating the drag states is what keeps this correct as gestures are
+    // added: link dragging panned the canvas underneath itself for exactly as
+    // long as this list did not mention it, which made the drag look inert
+    // because the content moved with the cursor.
+    // Synthesis runs its gestures outside the state machine -- a position is a
+    // question about a machine, not part of one -- so it is asked separately.
+    // It used to be recognized by what was last clicked, which never stopped
+    // being a pose: the canvas could not be panned again until something else
+    // was selected.
+    if (this.dragState.isDragging || canvasHandle()?.isGestureLive()) {
       return oldPan;
     }
     return newPan;
   }
 
   handlePan() {
+    if (!this.movingTheViewOurselves) this.forgetChosenView();
+    const minorStep = this.minorCellSize;
     this.updateVisibleCoords();
     this.verticalLines = [];
     let currentLine = Math.floor(this.viewBoxMinX / this.cellSize) * this.cellSize;
@@ -198,10 +675,10 @@ export class SvgGridService {
     }
 
     this.verticalLinesMinor = [];
-    currentLine = Math.floor(this.viewBoxMinX / (this.cellSize / 4)) * (this.cellSize / 4);
+    currentLine = Math.floor(this.viewBoxMinX / minorStep) * minorStep;
     while (currentLine < this.viewBoxMaxX) {
       this.verticalLinesMinor.push(currentLine);
-      currentLine += this.cellSize / 4;
+      currentLine += minorStep;
     }
 
     this.horizontalLines = [];
@@ -216,10 +693,10 @@ export class SvgGridService {
     }
 
     this.horizontalLinesMinor = [];
-    currentLine = Math.floor(this.viewBoxMinY / (this.cellSize / 4)) * (this.cellSize / 4);
+    currentLine = Math.floor(this.viewBoxMinY / minorStep) * minorStep;
     while (currentLine < this.viewBoxMaxY) {
       this.horizontalLinesMinor.push(currentLine);
-      currentLine += this.cellSize / 4;
+      currentLine += minorStep;
     }
 
     //Clean up the lines by rounding them to 2 decimal places
@@ -235,16 +712,10 @@ export class SvgGridService {
     this.horizontalLinesMinor = this.horizontalLinesMinor.map((line) => {
       return Math.round(line * 10000) / 10000;
     });
-
-    // console.log(this.verticalLines);
-    // console.log(this.verticalLinesMinor);
   }
 
-  handleBeforeZoom(oldZoom: any, newZoom: any) {
+  handleBeforeZoom(oldZoom: number, newZoom: number) {
     let isZoomingIn = newZoom > oldZoom;
-    // console.log('handleBeforeZoom');
-    // console.log(oldZoom, newZoom);
-    // console.log(this.getZoom());
     if (isZoomingIn && this.getZoom() > this.MAX_ZOOM) {
       this.panLockOut = true;
       return false;
@@ -253,49 +724,97 @@ export class SvgGridService {
       return false;
     }
     return;
-    // if (this.getZoom() < 0.4 || this.getZoom() > 330) {
-    //   // this.panLockOut = true;
-    //   return false;
-    // } else {
-    //   return true;
-    // }
   }
 
   handleZoom(zoomLevel: number) {
-    // console.log(this.getZoom());
-    this.cellSize = this.defualtCellSize;
-    const divisionSequnece: number[] = [2.5, 2, 2];
-    let i = 0;
-    while (this.cellSize * this.getZoom() > 200) {
-      //This number is the maximum size of the cell, if it's any larger it will get sub-divided
-      this.cellSize = this.cellSize / divisionSequnece[i % divisionSequnece.length];
-      i++;
-    }
+    if (!this.movingTheViewOurselves) this.forgetChosenView();
+    this.settingsService.drawingZoom = this.getZoom();
+    this.cellSize = this.cellSizeFor(this.getZoom());
     this.handlePan();
-    if (this.getZoom() * this.settingsService.objectScale < 5) {
-      NewGridComponent.sendNotification(
-        'The visual size of the links might be too small. Try using the "Update Object Scale" button in the settings menu or use the "Reset View" button on the bottom right.',
-        20000
-      );
+  }
+
+  /**
+   * The spacing of the smallest square drawn on the grid.
+   *
+   * What "snap to grid" snaps to: the lines a reader can actually see, so a
+   * joint lands where they are aiming rather than on a lattice the app knows
+   * about and they do not.
+   */
+  get minorCellSize(): number {
+    return this.cellSize / minorDivisionsFor(this.cellSize);
+  }
+
+  /** The spacing of the labeled lines -- a whole number of the smallest squares. */
+  get majorCellSize(): number {
+    return this.cellSize;
+  }
+
+  /**
+   * The nearest corner of the drawn grid, if snapping is on.
+   *
+   * Off, suspended, or with no grid to snap to, the point is returned as it
+   * came -- callers can use this unconditionally.
+   *
+   * `suspended` is the Option key, which already means "no help from the app"
+   * while dragging: it is what turns off capturing a joint you drop on, and it
+   * turns off the grid for the same gesture and the same reason.
+   */
+  snapToGrid(coord: Coord, suspended = false): Coord {
+    const cell = this.minorCellSize;
+    if (suspended || !this.settingsService.isSnapToGrid.value || !(cell > 0)) {
+      return coord;
     }
-    if (this.getZoom() * this.settingsService.objectScale > 200) {
-      NewGridComponent.sendNotification(
-        'The visual size of the links might be too large. Try using the "Update Object Scale" button in the settings menu.',
-        20000
-      );
+    return new Coord(Math.round(coord.x / cell) * cell, Math.round(coord.y / cell) * cell);
+  }
+
+  /**
+   * How far apart the labeled lines go at this zoom.
+   *
+   * One, two or five of whatever decade fits, which is the ladder every graph
+   * paper and plotting library climbs: 0.5, 1, 2, 5, 10, 20, 50. Five minor
+   * lines to a major, so the labeled lines land on round numbers and the
+   * grid subdivides at a steady rate rather than in jumps.
+   *
+   * It used to halve and quarter its way down from a fixed starting size,
+   * which is a one-two-four ladder: the labels came out on multiples of four
+   * and the lines between them on quarters of whatever the label said.
+   */
+  private cellSizeFor(zoom: number): number {
+    const MAX_MAJOR_PX = 200;
+    const unitsPerMajor = MAX_MAJOR_PX / (zoom * MODEL_SCALE);
+    if (!(unitsPerMajor > 0) || !Number.isFinite(unitsPerMajor)) {
+      return this.defualtCellSize;
     }
+    // The largest one, two or five of this decade that still fits the budget.
+    const decade = 10 ** Math.floor(Math.log10(unitsPerMajor));
+    const majorUnits = [5, 2, 1].find((step) => decade * step <= unitsPerMajor) ?? 1;
+    return decade * majorUnits * MODEL_SCALE;
   }
 
   handleUpdatedCTM(newCTM: SVGMatrix) {
     this.CTM = newCTM;
   }
 
+  /**
+   * The buttons zoom about the middle of the free canvas rather than the middle
+   * of the window, which is where the library puts it. Zooming about a point
+   * behind the panel walked a centered drawing sideways under it, a little
+   * further with every press.
+   */
   zoomIn() {
-    this.panZoomObject.zoomBy(1.3);
+    this.panZoomObject.zoomAtPointBy(1.3, this.zoomAnchor());
   }
 
   zoomOut() {
-    this.panZoomObject.zoomBy(0.7);
+    this.panZoomObject.zoomAtPointBy(0.7, this.zoomAnchor());
+  }
+
+  private zoomAnchor(): SvgPanZoom.Point {
+    const canvas = this.canvasBounds();
+    const free = this.freeRect();
+    if (!canvas || !free) return { x: 0, y: 0 };
+    const middle = centerOf(free);
+    return { x: middle.x - canvas.x, y: middle.y - canvas.y };
   }
 
   getZoom() {
@@ -314,19 +833,658 @@ export class SvgGridService {
     return value / this.getZoom();
   }
 
-  scaleToFitLinkage() {
+  /**
+   * Frame the drawing in the part of the canvas it can actually be seen in.
+   *
+   * Deferred to after the next render, because whatever asked for a fit is
+   * usually the thing that just changed what there is to fit, and the bounding
+   * box this measures does not exist until Angular has drawn it. That is a
+   * thing Angular can be asked directly; it used to be guessed at with a timer,
+   * and guessed generously, because a shared URL is decoded in
+   * UrlProcessorService's own constructor — before there is any grid at all.
+   *
+   * `animate` is for a fit the user asked for by pressing the button: the
+   * canvas glides so they can see what moved. A fit that merely follows a
+   * mechanism arriving passes false, because there is nothing to show them yet
+   * — animating that is a zoom-in on every single load.
+   *
+   * Either way it is also where the drawn marks get a size to suit the result:
+   * a Jansen leg is nearly two meters across, and joints drawn at the size a
+   * new project starts with come out as specks. Only when the author never
+   * chose a size of their own -- a drawing that carries one means it.
+   */
+  scaleToFitLinkage(animate = true) {
     this.settingsService.tempGridDisable = true;
-    setTimeout(() => {
-      this.panZoomObject.updateBBox(); // Update viewport bounding box
-      this.settingsService.tempGridDisable = false;
-      NewGridComponent.instance.enableGridAnimationForThisAction();
-      this.panZoomObject.fit();
-      this.panZoomObject.center();
-      this.zoomOut();
-    }, 1);
+    // Rendered first, then fitted a task later. Fitting changes the zoom, and
+    // the zoom is read by bindings that the render being waited on has already
+    // checked — done inside it, Angular rightly calls that a value that changed
+    // after it was checked. A zero-delay timer is a fresh change-detection
+    // cycle, which is all that was ever wanted from the old one-second wait.
+    this.afterRenderInZone(() => this.fitToLinkage(animate));
   }
 
-  updateObjectScale() {
-    SettingsService._objectScale.next(Number((60 / this.getZoom()).toFixed(2)));
+  /** Frame every solved pose, including paths that leave the start-pose view. */
+  scaleToFitFullMotion(animate = true): void {
+    this.settingsService.tempGridDisable = true;
+    this.afterRenderInZone(() => this.fitToFullMotion(animate));
+  }
+
+  /**
+   * Run a fit a task after the next render, back inside Angular.
+   *
+   * Angular runs afterNextRender callbacks outside its zone, so a timer started
+   * there is one change detection never hears end. The fit's first act is to
+   * show the grid again, and over a drawing the view's own move happened to
+   * redraw it; over an empty grid nothing moves, and the canvas stayed blank
+   * until the pointer next stirred.
+   */
+  private afterRenderInZone(fit: () => void): void {
+    const run = () => (this.zone ? this.zone.run(fit) : fit());
+    afterNextRender(() => setTimeout(run, 0), { injector: this.injector });
+  }
+
+  /**
+   * Wait out whatever the canvas is already doing, then frame it.
+   *
+   * Anything that measures the drawing has to let a glide finish first: mid
+   * transition the transform attribute already reads as the destination while
+   * the picture is still on its way there, and a measurement taken between the
+   * two lands the drawing where neither of them meant.
+   */
+  private fitToLinkage(animate: boolean) {
+    // Nothing to fit if the canvas has gone. Left unguarded this throws where
+    // nothing is waiting to catch it, and the flag below stays stuck on — which
+    // disables the grid for the rest of the session.
+    const canvas = canvasHandle();
+    if (!this.panZoomObject || !canvas) {
+      this.settingsService.tempGridDisable = false;
+      return;
+    }
+    this.settingsService.tempGridDisable = false;
+    if (this.settlePending) {
+      // Framed against a panel that is still sliding, this would land in the
+      // wrong place and be corrected a moment later.
+      this.queuedFit = { animate, target: 'drawing' };
+      return;
+    }
+    canvas.afterGlide(() => this.frameDrawing(animate));
+  }
+
+  private fitToFullMotion(animate: boolean): void {
+    const canvas = canvasHandle();
+    if (!this.panZoomObject || !canvas) {
+      this.settingsService.tempGridDisable = false;
+      return;
+    }
+    this.settingsService.tempGridDisable = false;
+    if (this.settlePending) {
+      this.queuedFit = { animate, target: 'motion' };
+      return;
+    }
+    canvas.afterGlide(() => this.frameFullMotion(animate));
+  }
+
+  /**
+   * Put the drawing in the middle of the free canvas at the size that fills it.
+   *
+   * Nothing happens when there is nothing drawn, which is not a failure -- an
+   * empty grid has no frame to find, and the view it already has is as good as
+   * any other.
+   */
+  private frameDrawing(animate: boolean): void {
+    const free = this.freeRect();
+    const drawn = this.measureDrawing();
+    if (!free) return;
+    if (!drawn || !(drawn.width > 0) || !(drawn.height > 0)) {
+      // Nothing drawn is still a view worth resetting: somebody who has panned
+      // an empty grid off into the corner pressed this to come back.
+      this.moveViewTo(
+        { x: 0, y: 0, width: 0, height: 0 },
+        centerOf(free),
+        this.clampZoom(MARK_TARGET_PX / this.settingsService.objectScale),
+        animate
+      );
+      this.viewIsFitted = true;
+      this.viewIsFittedToMotion = false;
+      this.chosenView = null;
+      this.framed();
+      return;
+    }
+    this.settledFree = free;
+    const target = this.clampZoom(
+      Math.min((free.width * FIT_FILL) / drawn.width, (free.height * FIT_FILL) / drawn.height)
+    );
+    this.moveViewTo(drawn, centerOf(free), target, animate);
+    this.viewIsFitted = true;
+    this.viewIsFittedToMotion = false;
+    // A fit supersedes whatever the reader had driven to: they have just asked
+    // for something else. Holding the old view would let a later squeeze hand
+    // it back as though it were still theirs. `rescueFrame` puts it back where
+    // the fit was the app's idea rather than a request.
+    this.chosenView = null;
+    this.framed();
+  }
+
+  /** The box swept by every joint over every valid solved cycle. */
+  private fullMotionBox(): Rect | null {
+    const mechanism = this.injector.get(MechanismService);
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const solved of mechanism.mechanisms) {
+      if (!solved.isMechanismValid()) continue;
+      for (const frame of solved.joints) {
+        for (const point of frame) {
+          minX = Math.min(minX, point.x);
+          maxX = Math.max(maxX, point.x);
+          // Drawing layers wear modelFrame, so their coordinates are y-up
+          // inside a y-down viewport. Framing uses the viewport's space.
+          minY = Math.min(minY, -point.y);
+          maxY = Math.max(maxY, -point.y);
+        }
+      }
+    }
+    if (!Number.isFinite(minX)) return null;
+    const pad = Math.max(this.settingsService.objectScale * 0.65, 1);
+    return {
+      x: minX - pad,
+      y: minY - pad,
+      width: Math.max(maxX - minX + 2 * pad, 2 * pad),
+      height: Math.max(maxY - minY + 2 * pad, 2 * pad),
+    };
+  }
+
+  /** Put the complete solved motion in the visible canvas. */
+  private frameFullMotion(animate: boolean): void {
+    const free = this.freeRect();
+    const drawn = this.fullMotionBox();
+    if (!free || !drawn) {
+      this.frameDrawing(animate);
+      return;
+    }
+    this.settledFree = free;
+    const target = this.clampZoom(
+      Math.min((free.width * FIT_FILL) / drawn.width, (free.height * FIT_FILL) / drawn.height)
+    );
+    this.moveViewTo(drawn, centerOf(free), target, animate);
+    this.viewIsFitted = true;
+    this.viewIsFittedToMotion = true;
+    this.chosenView = null;
+    this.framed();
+  }
+
+  /**
+   * Send the view to a zoom, with a given model box landing on a given point.
+   *
+   * `drawn` is in model units and `at` in client pixels, which is the one
+   * conversion this file has to do. The library applies a new matrix on the
+   * next animation frame rather than on the call, so nothing here reads the
+   * canvas back after moving it -- a second fit in the same frame would
+   * otherwise measure a picture that had not moved yet and correct for a move
+   * it had already asked for. That is the whole reason the box comes in as a
+   * parameter instead of being measured again.
+   */
+  private moveViewTo(
+    drawn: Rect,
+    at: { x: number; y: number },
+    targetZoom: number,
+    animate: boolean
+  ): void {
+    const canvas = this.canvasBounds();
+    if (!canvas) return;
+    const center = centerOf(drawn);
+
+    if (animate) canvasHandle()?.enableGridAnimationForThisAction();
+    this.ourOwnMove(() => {
+      this.setZoom(targetZoom);
+      // A refused zoom locks the next pan out, and the pan is the half of this
+      // that must not be dropped.
+      this.panLockOut = false;
+      this.panZoomObject.pan({
+        x: at.x - canvas.x - targetZoom * center.x,
+        y: at.y - canvas.y - targetZoom * center.y,
+      });
+    });
+  }
+
+  /**
+   * Whether the view is where a fit put it, rather than where somebody drove it.
+   *
+   * The difference between a drawing that is *being shown whole* and one that
+   * happens to fit: the first should go on being shown whole when the chrome
+   * around it changes shape, growing back when a drawer closes as readily as it
+   * shrank when the drawer opened; the second is a zoom somebody chose and must
+   * be left alone. Asking whether the drawing fits cannot tell them apart -- a
+   * reader zoomed out to look at the space around a linkage fits too.
+   */
+  private viewIsFitted = false;
+  /** Which fitted box to preserve when surrounding panels move. */
+  private viewIsFittedToMotion = false;
+  private movingTheViewOurselves = false;
+
+  /**
+   * The view somebody drove the canvas to, held on to while the chrome is
+   * standing in front of it.
+   *
+   * A drawer opening over a drawing that was zoomed in on one joint has to move
+   * it out of the way, and sometimes draw it smaller to do so -- but that is
+   * the chrome's doing, not a new choice, so it is given back the moment there
+   * is room for it again. Cleared by the next pan or zoom the reader makes,
+   * which is a new choice and supersedes it.
+   */
+  private chosenView: { zoom: number; offset: { x: number; y: number } } | null = null;
+
+  /** The canvas's own top-left in client pixels, which `pan` is measured from. */
+  private canvasBounds(): Rect | null {
+    const canvas = document.getElementById('canvas');
+    if (!canvas) return null;
+    const box = canvas.getBoundingClientRect();
+    return { x: box.left, y: box.top, width: box.width, height: box.height };
+  }
+
+  private freeRect(): Rect | null {
+    const canvas = document.getElementById('canvas');
+    return canvas ? freeCanvasRect(canvas) : null;
+  }
+
+  /**
+   * The drawing's box in model units, with the scenery this fit is not about
+   * hidden.
+   *
+   * Measured on screen and divided back by the matrix that drew it, rather than
+   * asked for as a `getBBox`: a joint is a nested `<svg>` that overflows its
+   * own 20x20 box, so the bounding box the browser reports for the layers is
+   * not the ink the reader sees. The matrix is read off the canvas, not off the
+   * library, so it is the one those client rects were measured under even when
+   * the library has a newer one waiting for the next frame.
+   */
+  private measureDrawing(): Rect | null {
+    const restoreScenery = this.hideSceneryWhileMeasuring();
+    const box = drawingScreenBox(DRAWING_LAYERS);
+    restoreScenery();
+    const canvas = this.canvasBounds();
+    const drawnUnder = (document.querySelector('svg#canvas > g') as SVGGElement | null)?.getCTM();
+    if (!box || !canvas || !drawnUnder || !(drawnUnder.a > 0) || !(drawnUnder.d > 0)) return null;
+    return {
+      x: (box.x - canvas.x - drawnUnder.e) / drawnUnder.a,
+      y: (box.y - canvas.y - drawnUnder.f) / drawnUnder.d,
+      width: box.width / drawnUnder.a,
+      height: box.height / drawnUnder.d,
+    };
+  }
+
+  private clampZoom(zoom: number): number {
+    return Math.min(this.MAX_ZOOM, Math.max(this.MIN_ZOOM, zoom));
+  }
+
+  /** svg-pan-zoom counts zoom from the viewBox; everything here counts pixels. */
+  private setZoom(realZoom: number): void {
+    const sizes = this.panZoomObject.getSizes();
+    const perUnit = sizes.realZoom / this.panZoomObject.getZoom();
+    if (!(perUnit > 0)) return;
+    this.panZoomObject.zoom(realZoom / perUnit);
+  }
+
+  /**
+   * Keep the drawing framed when the chrome around it moves.
+   *
+   * Called for everything that changes the shape of the free canvas without
+   * anybody touching the view: the window being resized, a mode change -- which
+   * both widens the panel and brings the transport in or out -- and the drawer
+   * over the right of the canvas.
+   *
+   * What it does is the least it can. A view somebody drove to keeps its size
+   * and its place relative to the space it is being seen in; the zoom changes
+   * only where holding it would take the drawing out of sight, and is given
+   * back the moment there is room for it again. A view a fit put there stays
+   * fitted, which is what makes a drawer opening and closing symmetrical.
+   */
+  notifyChromeChanged(alreadyMoved = false, growth = 1): void {
+    if (this.settlePending) {
+      // A resize heard while the last one is still settling still counts. The
+      // window size it was measured against has already been written down, so
+      // a ratio dropped here can never be recovered -- and a run of resize
+      // events at frame rate is the ordinary way a window gets dragged, so this
+      // is the common case rather than the corner. The settle already running
+      // reads the remembered view afresh on every frame and will follow it.
+      this.growChosenView(growth);
+      return;
+    }
+    if (!this.panZoomObject || !canvasHandle()) return;
+    this.settlePending = true;
+
+    const startedAt = performance.now();
+    const drawn = this.viewIsFittedToMotion
+      ? (this.fullMotionBox() ?? this.measureDrawing())
+      : this.measureDrawing();
+    const shown = drawn && this.screenBoxOf(drawn);
+    const matrix = this.drawnMatrix();
+    // A resize is heard once the window has already changed, so sampling from
+    // where the chrome is now would find it settled on the first frame and the
+    // view would never be moved at all. Started from where it was when the view
+    // was last put somewhere, so an instantaneous change is followed exactly
+    // like a panel gliding into place.
+    let previous = alreadyMoved ? (this.settledFree ?? this.freeRect()) : this.freeRect();
+    // Where the drawing sits relative to the space it is being seen in. Held,
+    // not corrected: somebody who has panned to look at one corner keeps that
+    // corner, and the view merely follows the chrome that moved.
+    const offset =
+      shown && previous
+        ? {
+            x: centerOf(shown).x - centerOf(previous).x,
+            y: centerOf(shown).y - centerOf(previous).y,
+          }
+        : null;
+    // Judged against where the chrome was when the view was last settled, not
+    // against where it is now: a resize is only heard once the window has
+    // already changed, so asking whether the drawing fits the rect it is about
+    // to be fitted to always answers no.
+    const before = this.settledFree ?? previous;
+    const wasFramed = !!(shown && before && fitsInside(shown, before, OVERHANG_SLACK));
+    const stayFramed = this.viewIsFitted;
+    // The view to hold on to while the chrome moves. Whatever the reader last
+    // drove the canvas to, which may be from before an earlier squeeze -- so a
+    // drawer opening over a drawer does not lose the view under both of them.
+    if (!stayFramed && !this.chosenView && matrix && offset) {
+      this.chosenView = { zoom: matrix.a, offset };
+    }
+    // Grown *after* the view is taken down, never before: on the way into a
+    // resize the canvas has not moved yet, so what is captured is the view for
+    // the window that has just gone and growth is what expresses it for the
+    // window that has arrived. Applied before the capture instead, a shrink
+    // that had nothing remembered yet scaled nothing while the matching grow
+    // scaled what the shrink had since written down -- and the round trip came
+    // back a size out.
+    this.growChosenView(growth);
+    let stable = 0;
+    // A window resize is heard once the window has already changed, so the
+    // chrome has moved before this is called and there is nothing to wait for.
+    // Only a mode change needs the floor below, because Angular has not begun
+    // animating the panel by the time the mode says it changed.
+    let everMoved = alreadyMoved;
+
+    const step = () => {
+      const now = this.freeRect();
+      const held = sameRect(previous, now);
+      stable = held ? stable + 1 : 0;
+      everMoved = everMoved || !held;
+      // Followed frame by frame rather than waited out: the panel takes about a
+      // third of a second to glide, and a view that holds still for all of it
+      // and then glides itself reads as two separate movements with a pause in
+      // between. Moved straight, with no transition of its own, the drawing
+      // travels with the panel.
+      if (!sameRect(previous, now) && now && drawn && matrix) {
+        // A drawing that is being shown whole goes on being shown whole, which
+        // is what makes the drawer symmetrical: it draws smaller as the drawer
+        // takes the canvas from the right and grows back as the drawer leaves.
+        const held = stayFramed ? null : this.chosenView;
+        const at = held && {
+          x: centerOf(now).x + held.offset.x,
+          y: centerOf(now).y + held.offset.y,
+        };
+        const landing = held &&
+          at && {
+            x: at.x - (drawn.width * held.zoom) / 2,
+            y: at.y - (drawn.height * held.zoom) / 2,
+            width: drawn.width * held.zoom,
+            height: drawn.height * held.zoom,
+          };
+        // A view somebody drove to is put back exactly whenever there is room
+        // for it, and only stood aside from while there is not -- so a drawer
+        // that pushed a zoomed-in reader out of the way gives their view back
+        // on the way out, rather than leaving them at whatever it squeezed
+        // them down to.
+        if (held && at && landing && (!wasFramed || fitsInside(landing, now, OVERHANG_SLACK))) {
+          this.moveViewTo(drawn, at, held.zoom, false);
+        } else {
+          const target = this.clampZoom(
+            Math.min((now.width * FIT_FILL) / drawn.width, (now.height * FIT_FILL) / drawn.height)
+          );
+          this.moveViewTo(drawn, centerOf(now), target, false);
+        }
+      }
+      previous = now;
+      // Once the chrome has been seen to move, it stopping is the whole answer.
+      // The floor is only there for the wait before it starts: a mode says it
+      // has changed before Angular has begun animating the panel, and a rect
+      // that looks settled in those first frames is one that has not begun.
+      const waited = performance.now() - startedAt;
+      const done = everMoved ? stable >= SETTLE_STABLE_FRAMES : waited > SETTLE_MIN_MS;
+      if (done || waited > SETTLE_MAX_MS) {
+        this.settlePending = false;
+        this.settledFree = now;
+        this.finishSettle({ free: now, drawn, wasFramed });
+        return;
+      }
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  private settlePending = false;
+  private lastWindowSize = { width: 0, height: 0 };
+  /** Where the chrome stood the last time the view was put somewhere. */
+  private settledFree: Rect | null = null;
+  /** A fit asked for while the chrome was still moving, run once it stops. */
+  private queuedFit: { animate: boolean; target: 'drawing' | 'motion' } | null = null;
+
+  /**
+   * Settle the view once the chrome has stopped moving.
+   *
+   * A fit somebody pressed for mid-transition wins outright -- it is a fresh
+   * instruction about where the view should be, and running it against a panel
+   * that was still sliding is what made Reset glide twice with a pause.
+   *
+   * Otherwise the zoom is left alone. Somebody looking closely at one joint
+   * should not be zoomed out for opening a panel. The two exceptions: a window
+   * that changed size takes the view with it, so the drawing keeps the share of
+   * the canvas it had and a resize is its own undo; and a drawing that was
+   * framed and now would not fit is framed again, because that is the one case
+   * where holding the zoom loses part of the mechanism.
+   */
+  private finishSettle(settle: {
+    free: Rect | null;
+    drawn: Rect | null;
+    wasFramed: boolean;
+  }): void {
+    const fit = this.queuedFit;
+    this.queuedFit = null;
+    if (fit !== null) {
+      if (fit.target === 'motion') this.frameFullMotion(fit.animate);
+      else this.frameDrawing(fit.animate);
+      return;
+    }
+    const { free, drawn } = settle;
+    if (!free || !drawn) return;
+
+    // The tracking above has already put the view where it belongs -- at the
+    // remembered one if there is room for it, framed if there is not. All that
+    // is left is the case it cannot see: a drawing that was whole in view and
+    // no longer is, which is the one place holding the zoom loses part of the
+    // mechanism.
+    const shown = this.screenBoxOf(drawn);
+    if (settle.wasFramed && shown && !fitsInside(shown, free, OVERHANG_SLACK)) {
+      this.rescueFrame();
+    }
+  }
+
+  /**
+   * Frame the drawing without claiming anybody asked to see the whole of it.
+   *
+   * A fit that rescues a drawing the chrome was about to squeeze out of sight
+   * is the app keeping a view usable until there is room for it again, not a
+   * request. Read as a request it would take the view away for good: the first
+   * window that got smaller would end the reader's zoom, and growing the window
+   * back would frame the drawing rather than give their zoom back.
+   */
+  private rescueFrame(): void {
+    const held = this.chosenView;
+    if (this.viewIsFittedToMotion) this.frameFullMotion(true);
+    else this.frameDrawing(true);
+    if (held) {
+      this.viewIsFitted = false;
+      this.viewIsFittedToMotion = false;
+      this.chosenView = held;
+    }
+  }
+
+  /**
+   * Bring a point on the drawing into view, if it is not already there.
+   *
+   * For something that arrives without anybody having pointed at it -- a
+   * synthesis position typed into the panel rather than dropped on the canvas,
+   * which can name any coordinate at all, including one off the side of the
+   * window. Nothing happens when the point is already on screen: somebody
+   * nudging a number for a thing right in front of them should not have the
+   * view move under the keystroke.
+   */
+  revealOnCanvas(at: Coord): void {
+    const free = this.freeRect();
+    const canvas = this.canvasBounds();
+    const matrix = this.drawnMatrix();
+    if (!free || !canvas || !matrix) return;
+    // The same flip `modelToScreen` carries, done here against the matrix the
+    // canvas is drawn under right now rather than against the one the library
+    // last announced: this runs while a view is still settling.
+    const x = canvas.x + matrix.a * at.x + matrix.e;
+    const y = canvas.y + matrix.d * -at.y + matrix.f;
+    const inView =
+      x >= free.x + REVEAL_MARGIN &&
+      x <= free.x + free.width - REVEAL_MARGIN &&
+      y >= free.y + REVEAL_MARGIN &&
+      y <= free.y + free.height - REVEAL_MARGIN;
+    if (!inView) this.scaleToFitLinkage(true);
+  }
+
+  /** The matrix the canvas is drawn under right now, which may be a frame old. */
+  private drawnMatrix(): DOMMatrix | null {
+    const viewport = document.querySelector('svg#canvas > g') as SVGGElement | null;
+    const matrix = viewport?.getCTM();
+    return matrix && matrix.a > 0 && matrix.d > 0 ? matrix : null;
+  }
+
+  /** Where a model box currently sits on screen, in client pixels. */
+  private screenBoxOf(box: Rect): Rect | null {
+    const canvas = this.canvasBounds();
+    const matrix = this.drawnMatrix();
+    if (!canvas || !matrix) return null;
+    return {
+      x: canvas.x + matrix.e + matrix.a * box.x,
+      y: canvas.y + matrix.f + matrix.d * box.y,
+      width: matrix.a * box.width,
+      height: matrix.d * box.height,
+    };
+  }
+
+  /** Follow the chrome that moves on its own: the window, and the mode. */
+  private watchingChrome = false;
+
+  private watchTheChrome(): void {
+    // The canvas can be built more than once in a session; the service it talks
+    // to is built once, and a second set of listeners would run a second settle
+    // loop against the same view.
+    if (this.watchingChrome) return;
+    this.watchingChrome = true;
+    this.lastWindowSize = { width: window.innerWidth, height: window.innerHeight };
+    const onResize = () => {
+      // The view somebody drove to goes with the window, so a drawing keeps the
+      // share of the canvas it had. Measured off the window rather than off the
+      // free rect, because by the time a resize is heard the free rect has
+      // already changed and there is nothing left to compare it against; and
+      // the geometric mean of the two sides rather than the smaller of them, so
+      // shrinking a window and pulling it back out lands on the zoom it started
+      // at -- taking the smaller each way multiplies to less than one, and every
+      // round trip left the drawing a little smaller than it was found.
+      //
+      // Applied to the remembered view rather than to what is on screen, so a
+      // shrink that had to frame the drawing to keep it in sight still gives
+      // the reader's own zoom back when the window grows again.
+      const was = this.lastWindowSize;
+      this.lastWindowSize = { width: window.innerWidth, height: window.innerHeight };
+      const growth =
+        was.width > 0 && was.height > 0
+          ? Math.sqrt(
+              (this.lastWindowSize.width / was.width) * (this.lastWindowSize.height / was.height)
+            )
+          : 1;
+      this.notifyChromeChanged(true, growth);
+    };
+    window.addEventListener('resize', onResize);
+    // Late, and through the injector: the tab service reaches the mechanism,
+    // which reaches back here.
+    const following = this.injector
+      .get(SelectedTabService)
+      .tabChanged.subscribe(() => this.notifyChromeChanged());
+    // The drawer over the right of the canvas. It used to be left alone as
+    // transient furniture, on the argument that a view which jumped away and
+    // back for it would be worse than one that let it overlap -- but a drawer
+    // that covers the mechanism is not something a reader can read around, and
+    // the move is small: the drawing slides left ahead of it, and only zooms
+    // out if sliding would take it under the panel on the other side.
+    //
+    // Inside Angular, whoever announced it. The phone sheet and the playback
+    // card announce from a ResizeObserver, which Zone.js does not patch, so the
+    // settle ran outside: the view moved and the grid lines, their weights and
+    // every symbol's size stayed drawn for the view it left. A whole-app check
+    // the top bar used to run every frame covered for it until that went.
+    const chrome = CHROME_MOVED.subscribe(() =>
+      this.zone ? this.zone.run(() => this.notifyChromeChanged()) : this.notifyChromeChanged()
+    );
+    // A root service outlives everything in an ordinary session, but not a test
+    // harness or a hot reload -- and a listener that outlives its service goes
+    // on measuring a canvas that has gone.
+    this.destroyRef.onDestroy(() => {
+      window.removeEventListener('resize', onResize);
+      following.unsubscribe();
+      chrome.unsubscribe();
+      this.watchingChrome = false;
+    });
+  }
+
+  /**
+   * Take everything that is not the linkage out of the box this fit measures.
+   *
+   * `tempGridDisable` is meant to do this in the template, but afterNextRender
+   * can land before Angular has acted on the flag -- which went unnoticed while
+   * the only thing it hid was the grid ruling, drawn to the viewport and so
+   * never bigger than the box anyway. A background image is as big as the user
+   * made it, and a hundred-centimeter photograph got framed instead of the
+   * linkage. Hidden straight on the element, so it is gone by the next
+   * statement rather than by the next render.
+   *
+   * Center-of-mass marks are in the list for the same reason. A mark is a
+   * decoration a few pixels wide, but it sits wherever its link's center of
+   * mass is, and a hand-placed one can be anywhere at all -- a URL carrying a
+   * point 90,000 units off framed that instead of the mechanism, at a zoom
+   * where the whole linkage drew as a single pixel and every joint became
+   * unclickable. What a reader wants to see is the machine, wherever its
+   * marks happen to have been put.
+   *
+   * Tracer paths deliberately stay in: a curve that runs wider than the bars
+   * is the thing being looked at.
+   *
+   * Returns the undo, to be called once the measurement is taken.
+   */
+  private hideSceneryWhileMeasuring(): () => void {
+    const layers = [
+      'backgroundImageHolder',
+      'backgroundImageHandles',
+      'backgroundImageGrips',
+      'comTagHolder',
+    ]
+      .map((id) => document.getElementById(id))
+      .filter((node): node is HTMLElement => node !== null);
+    const was = layers.map((node) => node.style.display);
+    layers.forEach((node) => (node.style.display = 'none'));
+    return () => layers.forEach((node, index) => (node.style.display = was[index]));
+  }
+
+  /** Set the legacy geometry scale once, before the first part is created. */
+  updateObjectScale(): void {
+    const mechanism = this.injector.get(MechanismService);
+    if (mechanism.joints.length || mechanism.links.length) return;
+    SettingsService._objectScale.next(MARK_TARGET_PX / this.getZoom());
+    this.injector.get(SaveHistoryService).restate();
   }
 }

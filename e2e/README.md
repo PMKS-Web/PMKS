@@ -1,62 +1,609 @@
-# PMKS+ tests
+# PMKS tests
 
 Two layers, organized by what they exercise:
 
 | Layer | Where | Runner | What it covers |
 | --- | --- | --- | --- |
-| Unit / solver | `src/**/*.spec.ts` (co-located with source, Angular convention) | Vitest — `npm test -- --watch=false` | Components; `src/app/app.component.spec.ts` is the MATLAB-verified solver regression suite |
-| E2E / UI | `e2e/*.mjs` (this folder) | Playwright via plain Node | Real-browser interaction: grid clicks/drags, context menus, panels, animation, mobile viewport |
+| Unit / solver | `src/**/*.spec.ts` (co-located with source, Angular convention) | Vitest — `npm test -- --watch=false` | Models, services, components; `src/app/app.component.spec.ts` is the MATLAB-verified solver regression suite |
+| E2E / UI | `e2e/*.mjs` (this folder) | Playwright via plain Node, one script at a time | Real-browser interaction: grid clicks and drags, context menus, panels, playback, phone layout |
 
-Unit specs stay in `src/` because `tsconfig.spec.json` discovers them via
-`src/**/*.spec.ts` and Angular component specs resolve templates relative to
-their source. Everything browser-driven lives here.
+Unit specs stay in `src/` because `tsconfig.spec.json` discovers them via `src/**/*.spec.ts` and
+Angular component specs resolve templates relative to their source. Everything browser-driven lives
+here.
 
-## E2E scripts
+## What CI runs
 
-- `full-tour.mjs` — broad tour: panels, templates, settings, share URL, help, mobile viewport
-- `deep-interactions.mjs` — deep grid interaction: add links, drag joints, right-click menus
-- `focused-interactions.mjs` — focused workflows (four-bar build, animation, analysis)
-- `force-analysis-panels.mjs` — Force Analysis rows on the joint and link analysis panels, and the shared Force Analysis Type toggle
-- `left-nav-modes.mjs` — mode-scoped left nav rail: Edit/Analyze tool sections, the absorbed view controls, and the rewind-on-leaving-Analyze behavior
-- `template-open.mjs` — the template library: loads in place on an empty grid, and shows a new-tab / replace / cancel choice (with replace undoable) when the grid already holds work
-- `playback-timing.mjs` — real-time playback: a revolution takes 60/RPM wall-clock seconds, the reported cycle period scales with input speed, and simulation time is held (not the sample index) across a speed change
-- `input-settings-and-playback.mjs` — the input joint's Input Settings section (direction, unit-free speed field, RPM / deg/s / rad/s picker), its removal from global Settings, the time field's width, and that playback interpolates between samples at a slow input speed
+`.github/workflows/verification.yml` runs `npm ci`, `npm run lint`, `npm run lint:styles`,
+`npm run lint:format`, `npm test -- --watch=false`, `npm run build`, `npm run build-storybook` and
+`git diff --check`, and a pull request cannot merge until it passes. `lint:format` covers these
+scripts too, so format an `.mjs` you edit.
+
+**Some of these suites run in CI now, in two lanes**, and `e2e/suites.mjs` says which lane each one
+is in and why anything is left out of both:
+
+| Lane | When | What | Where |
+| --- | --- | --- | --- |
+| `gate` | every pull request | the fast, steady ones, four shards, about seven minutes | `.github/workflows/e2e-gate.yml` |
+| `nightly` | 09:00 UTC against `staging`, or on demand | everything a runner can drive, eight shards, retried once | `.github/workflows/e2e-nightly.yml` |
+
+```bash
+node e2e/run-suites.mjs --lane gate            # what a pull request will run
+node e2e/run-suites.mjs --list --lane nightly  # what the nightly will run, and how long it takes
+node e2e/run-suites.mjs --only playback        # a slice of a lane, by name
+```
+
+The lanes are not a ranking. A suite is in the gate because it is quick and has been steady, not
+because it matters more: `posed-edit-audit` is a quarter of an hour of the most careful checking
+here and will never gate anything. **The nightly is where a suite earns the gate** — and where one
+that has stopped deserving it gets found out.
+
+Four things no runner can do, listed with their reasons in `suites.mjs`: drive the real system
+cursor (`real-mouse-slots`), hold a performance baseline that is per-machine (`drag-perf`), and
+serve a second build to compare against (`reuse-parity`, `gallery-parity`). Those stay by hand.
+
+## Prerequisites
+
+- **A dev server.** `npm start` serves `http://localhost:4200`. Use `localhost`: the dev server does
+  not answer on `127.0.0.1`. Most suites reach into the app through `window.ng`, which only a
+  development build exposes.
+- **Playwright.** It is a devDependency in `package.json`, so after `npm ci` the project's own copy
+  works with `PMKS_PLAYWRIGHT_DIR=..`. Suites default to a separate install in `/tmp/pmks-playwright`.
+- **Run from the repository root.** Suites read `src/` and write `artifacts/` by relative path.
+
+The install commands, the browser cache, why `..` and not `.`, and the localhost rule are in
+[environment.md: Environment](../docs/environment.md#environment). Some suites need more than
+Chromium; the catalog below says which.
 
 ## Running
 
-Prerequisites: dev server on http://127.0.0.1:4200/ (`npm start`) and a
-Playwright install at `/tmp/pmks-playwright`
-(`mkdir -p /tmp/pmks-playwright && cd /tmp/pmks-playwright && npm i playwright`).
-Playwright is deliberately **not** a devDependency — it would bloat Netlify
-deploy installs. Run these scripts directly for local validation; they are not
-part of CI (see `SKILLS.md` and `.claude/skills/ui-validate/SKILL.md`).
-
 ```bash
-node e2e/focused-interactions.mjs
+PMKS_BASE_URL=http://localhost:4200 PMKS_PLAYWRIGHT_DIR=.. node e2e/playback-bar.mjs
 ```
 
-Environment overrides:
+There is no runner. A check prints `PASS`/`FAIL` lines and exits non-zero if anything failed. The
+asset generators and `shot.mjs` are not checks.
 
-- `PMKS_URL` — app URL (default `http://127.0.0.1:4200/`)
-- `RUN_PREFIX` — prefix for screenshot/report filenames
-- `PMKS_PLAYWRIGHT_DIR` — Playwright install dir (default `/tmp/pmks-playwright`)
-- `PMKS_CHROME` — Chrome executable (default `/Applications/Google Chrome.app/...`)
-- `PMKS_HEADED=1` — show the browser window (headless by default)
+**The full batch takes about an hour.** Run the suites that cover the change, plus any you can name
+a reason to worry about.
 
-Each run launches Chrome with a disposable profile under `/tmp` (never your
-real browser session) and writes screenshots plus a `*-report.json` (console
-errors, crashes, element counts per checkpoint) to `artifacts/screenshots/`,
-which is gitignored — outputs are throwaway, scripts are tracked.
+## Outputs
 
-Interaction gotchas baked into these scripts:
+Each suite that saves anything writes it to its own directory under `artifacts/`, which is
+gitignored — for example `artifacts/link-holds/` or `artifacts/posed-edit-audit/matrix.md`. A few
+older suites share `artifacts/screenshots/`, and most of those prefix their filenames with
+`RUN_PREFIX`. Look at what
+they save: an exit code tells you a check failed, not what the page looked like.
 
-- The app places joints from tracked `mousemove`, not click coordinates — always
-  hover/move to the target before the finalizing click, and prefer the Edit
-  panel's HTML controls over the SVG context menu (its hitboxes drift at some
-  viewports).
-- The playback controls (play/pause, speed, scrubber, time field) live in the
-  left nav rail's Analyze group, so they only exist while Analyze is the open
-  mode. Open Analyze before touching them — and check first, because the rail
-  buttons toggle their own panel, so a blind click closes what you need.
-- The scrubber is a horizontal Material slider rotated 90°, so drag it down its
-  height (min at the top), not across its width.
+`run-suites.mjs --retries` copies whatever a failing attempt wrote into
+`artifacts/failed-attempts/<suite>/` before running it again. Several suites empty their own
+directory before they write — `filmstrip()` does — so without that, the only frames left after a
+flake are the frames of the attempt that worked, which is the one nobody needs to look at.
+
+**Three suites rewrite tracked files**, and running them dirties the working tree:
+
+- `readme-shots.mjs` writes `docs/images/readme/`
+- `template-thumbnails.mjs` writes the PNG stills in `src/assets/gifs/`
+- `template-animations.mjs` writes the GIF loops in `src/assets/gifs/`
+
+`drag-perf.mjs --baseline` also rewrites the tracked `e2e/drag-perf-baseline.json`, on purpose.
+
+## Environment variables
+
+- `PMKS_BASE_URL` — the app's origin, read by every suite. Default `http://localhost:4200`. Some
+  older suites also accept `PMKS_URL`; `PMKS_BASE_URL` wins when both are set.
+- `PMKS_PLAYWRIGHT_DIR` — where to import Playwright from (it appends
+  `/node_modules/playwright/index.mjs`). Default `/tmp/pmks-playwright`; `..` is the project's copy.
+- `PMKS_CHROME` — Google Chrome executable. Only some suites read it; they launch installed Chrome
+  (default under `/Applications/Google Chrome.app`) rather than Playwright's Chromium.
+- `PMKS_HEADED=1` — show the browser window. Only some suites read it; the rest are always headless.
+- `RUN_PREFIX` — prefix for screenshot and report filenames. Only some suites read it.
+- `PMKS_HEADLESS_SHELL=1` — launch Playwright's own headless shell, not Chrome in headless mode.
+  The shell can stop drawing frames for good on a large drawing (`headless-chromium.mjs` says
+  when), so this is for comparing the two, not for runs.
+  Any other value, `0` included, leaves Chrome on. `run-suites.mjs` applies the helper to every
+  suite; a suite run on its own gets it through `app-ready.mjs` or by importing it.
+
+Per-suite switches are listed with their suite: `ONLY`, `PMKS_ONLY`, `SEED`, `SHOTS`,
+`SHOT_WIDTH`/`SHOT_HEIGHT`, `PMKS_PERF_TOLERANCE`, `MOUSECTL`, `PW_CHROME`.
+
+## Shared helpers
+
+Not suites — import them from one.
+
+- `headless-chromium.mjs` — imported for its effect: headless Chromium launches as Chrome
+  (`channel: 'chromium'`) rather than as the headless shell. `app-ready.mjs` imports it and
+  `run-suites.mjs` preloads it, so a suite needs nothing of its own.
+
+- `app-ready.mjs` — `waitForReady(page)` waits until the mechanism is built, solved (if it can be)
+  and nothing on screen is still moving; `openMechanism(page, url)` loads a URL and waits the same
+  way. Use these instead of a fixed sleep: a click measured before the canvas settles lands
+  somewhere else.
+- `in-angular.mjs` — `inAngular(page, work, arg)` runs a poke inside Angular's zone, and
+  `onGrid(page, work, arg)` does the same handed the canvas component. `page.evaluate` runs outside
+  the zone, so a drawer opened, a part selected or a name changed through `ng.getComponent(...)`
+  stays unrendered until something else causes a pass. Nothing does any more: the app used to check
+  itself every animation frame, which hid this, and nine gate suites went red when that stopped.
+  Use it for pokes only. Each call is a change-detection pass, so a poll that reads through it
+  would hide app code that changes state outside the zone.
+- `quiet-start.mjs` — `startQuiet(context)` seeds `localStorage` so neither the tutorial invitation
+  nor the release notes covers the canvas. Apply it before the first page opens. `whatsNewSeen` in
+  `QUIET_START` must match `WHATS_NEW_VERSION`; `whats-new.mjs` fails if it does not.
+- `template-payloads.mjs` — every template id and URL payload, read out of
+  `template-linkages.ts` and `dev-templates.ts`: `TEMPLATE_IDS`, `TEMPLATE_LINKAGES`,
+  `ALL_LINKAGES` (with the dev drawings) and `assertTemplatesParsed()` for anything that sweeps.
+  Never re-parse the source yourself.
+- `card-frame.mjs` — `FRAMED_BY_PICTURE`, the library cards whose still and loop are cropped to
+  their backdrop picture rather than to the mechanism, and `pictureBox(page, id)`, which measures
+  that picture on the grid. `template-thumbnails.mjs` and `template-animations.mjs` both read it.
+- `filmstrip.mjs` — `filmstrip(page, dir, clip)` captures numbered frames (`shot(tag)`, or
+  `during(everyMs, count, tag, work)` across an animation); `contactSheet(pattern, out)` tiles
+  them into one image. Anything that animates or responds to a drag needs a filmstrip, not a
+  screenshot. The sheet needs Pillow under `python3`; without it the sheet is skipped with a
+  warning and the frames are still written.
+- `run-suites.mjs` — runs a lane, in shards, and reports once: `--lane`, `--shard i/N`, `--only`,
+  `--retries`, `--list`. Shards are balanced by each suite's recorded seconds, longest first, and a
+  run that overshoots its own estimate says so. It starts no browser and knows nothing about the
+  app; `suites.mjs` is the list it walks.
+- `suites.mjs` — which lane each script runs in, and for anything in no lane, why. A script it does
+  not name runs in the nightly until it does, so a suite added tomorrow is covered the night it lands
+  without failing anyone's required check.
+- `tools/serve-dist.mjs` — serves a built bundle, so eight CI shards can point at one
+  `ng build --configuration development` instead of starting eight dev servers. Development, not
+  production: `window.ng` is what most of these suites reach through, and optimization removes it.
+- `drag-perf-harness.mjs` — the drag scenarios (`SCENARIOS`) and the machinery `drag-perf.mjs`
+  and `drag-profile.mjs` share: `launch()`, `loadScenario`, `plainDrag`, `harnessFloor` (the
+  protocol's own cost, to subtract), `profiledDrag`, and call counters that need a dev build.
+
+## Suites
+
+### Broad sweeps and tours
+
+- `first-frame.mjs` — the first frame a reader sees when a cover lifts is the drawing already
+  framed. Logs every animation frame in the page (splash opacity, loading overlay, canvas matrix)
+  on arrival at an address (empty, a Watt six-bar, a Jansen leg, a phone) and on opening a card
+  from the library, and fails any uncovered frame whose matrix is not the one the canvas settles
+  on. The boot splash and the overlay each used to lift before the fit.
+- `fit-keeps-grid.mjs` — pressing Fit to view or Fit full motion, from the keyboard so no pointer
+  event follows, never leaves the canvas blank: the grid may be gone for the render the fit
+  measures in and no longer, on an empty grid and on a Watt six-bar.
+- `full-tour.mjs` — panels, templates, settings, share URL, help, and a fresh load at phone size.
+  Fails on a NaN degrees of freedom, a page wider than its viewport, a Save that starts no
+  download, or a template dialog that will not close. Needs installed Chrome (`PMKS_CHROME`).
+- `interaction-sweep.mjs` — every context-menu row on every joint, link, force and the bare grid,
+  on several mechanisms: each enabled row is clicked, read back and undone. Catches the silent
+  click. Slow; `ONLY=4-Bar,Cylinder_Boom` narrows it.
+- `gallery-sweep.mjs` — every mechanism in `docs/fixture-urls.md` opened in the app: it decodes,
+  reports the mobility its spec says, precomputes a cycle, and animates. Slow.
+- `hidden-joint-audit.mjs` — a cylinder's buried inner end is never named anywhere a reader can
+  read. Sweeps `innerText`, `aria-label`, `title`, `alt` and SVG `<text>`/`<title>` across all four
+  modes, every selection, every right-click card, the right drawer and the exported CSV, JSON and
+  DXF, and matches against the interior names read off the drawing itself. Harvests land in
+  `artifacts/hidden-joint-audit/`; `ONLY=<fixture words>` narrows it.
+- `multi-mechanism-smoke.mjs` — the app boots, and the running service finds more than one
+  machine in drawings that hold several.
+- `force-status-survey.mjs` — investigation script: prints what force analysis says for each
+  template.
+- `shot.mjs` — not a check: one screenshot of one state, `node e2e/shot.mjs <name> <template>
+  <steps...>`, into `artifacts/shots/`. `SHOT_WIDTH`/`SHOT_HEIGHT` size the window.
+
+### Editing, undo and paused poses
+
+- `constrained-link-drag.mjs` — #259: dragging BC beside a fixed length or angle on AB
+  preserves BC’s shape, does not creep at a stationary pointer, and costs one undo step.
+  Reports and drag filmstrips in `artifacts/constrained-link-drag/`.
+
+- `edit-playback.mjs` — Gate 1 of `docs/edit-mode-playback-plan.md`: the transport is chrome
+  (present and inert over an empty grid), the Edit panel stays while the mechanism moves, every
+  gate gives one answer, and the mode-switch table edge by edge.
+- `posed-editing.mjs` — Gate 2: a drag at a paused pose stages and re-anchors, the ghost warns
+  while the hand moves, the snackbar says when the start moved, and undo rewinds.
+- `posed-editing-adversarial.mjs` — gestures that are not edits must not become them: a view
+  gesture ending a center-of-mass drag, a pinch after a drag began, a synced drawing edited on the
+  machine that is not the master.
+- `posed-edit-audit.mjs` — every menu row, panel field, key and transport control at a displaced
+  pose, on three mechanisms, judged on what is left behind. Writes
+  `artifacts/posed-edit-audit/matrix.md`. Slow: about a quarter of an
+  hour.
+- `posed-drag-fuzz.mjs` — seeded random drags at random poses; the ghost, the design's sample 0
+  and the transport's "from start" must agree. `SEED=` replays, `ONLY=` picks trial numbers. Slow:
+  about ten minutes.
+- `posed-menu.mjs` — the context menu follows `docs/editing-rules.md` at a paused pose: in an
+  analysis mode tracer points and forces wait for the start and everything else is Edit's; in
+  Edit, mid-cycle, the disc, holds and lock stay live and keep the authored start pose.
+  `PMKS_ONLY=<case>` runs one case.
+- `ghost-is-the-start.mjs` — one invariant checked after every gesture: wherever a ghost is drawn,
+  it is the pose stop-to-start produces and the design the URL saves. The named scenes are the
+  shrunk reproductions of the four causes in
+  `docs/edit-mode-playback-plan.md` §7.3 — an edit made *at* the start pose, a machine parked off
+  its own start in a synced drawing, an amber ghost outliving its anchor, and a menu edit that
+  moves a start without saying so — and the seeded fuzz after them is how they were found. A
+  filmstrip lands in `artifacts/ghost-is-the-start/`.
+- `analysis-editing.mjs` — `docs/analysis-mode-editing-plan.md`: dragging and undo in an analysis
+  mode, what is still refused, click selects and drag tunes, the before/after comparison overlay,
+  and the force-mode budget.
+- `joint-type.mjs` — a joint's type as one choice of four: every press lands both of the facts it
+  is made of in one history entry, the rows each type carries (Slider Angle, Mass Settings, the
+  grounded glyph set, the block with nowhere to slide), a refused type with the model's reason on
+  hover, the same change parked mid-cycle, and a group taking a type in one press. Leaves a
+  filmstrip of the pill in `artifacts/joint-type/`.
+- `split-joint.mjs` — the panel action, exact refusal tooltip, one-step undo and redo, dragging one
+  of two overlapping pins free, and the same action from the phone sheet. Its screenshots and drag
+  filmstrip land in `artifacts/split-joint/`.
+- `edit-undo.mjs` — one committed edit is one undo step, whether it was dragged or typed.
+- `unit-undo-view.mjs` — undoing a unit change does not move the view.
+
+### Drag, snap and pointer input
+
+- `phase1-drag.mjs` — joint snap ring and merge, merging onto a slider, refusing an
+  over-constraining merge, whole-link drag, one undo entry per gesture, click without nudge. Needs
+  installed Chrome (`PMKS_CHROME`).
+- `snap-alignment.mjs` — a dragged joint squares up with its neighbors; a body dragged by its
+  middle does not; Option and the setting turn it off.
+- `snap-to-grid.mjs` — snap to grid with a real mouse: joints land on grid corners, a link lands
+  its reference joint, a capture beats the grid, off rounds nothing.
+- `pointer-pairing.mjs` — a bare `mousedown` with no `pointerdown` (Safari after a native select)
+  must not pan the canvas under a held link. Runs in Chromium and WebKit, so it needs WebKit
+  installed.
+- `real-mouse-slots.mjs` — builds every slider and cylinder variant with the real system cursor.
+  Opt-in: needs `MOUSECTL` pointing at a compiled `e2e/tools/mousectl.swift` and Accessibility
+  permission; `PW_CHROME` names the browser app it opens.
+- `multi-select-and-dxf.mjs` — Ctrl/Command and macOS Control-click selection, group
+  drag/rotate/scale with one history step and Lock refusal, atomic duplicate and delete, desktop
+  and narrow visual checks, and a downloaded semantic DXF.
+- `keyboard-shortcuts.mjs` — each key does what the control it doubles does, and nothing while a
+  field is being typed in.
+- `creation-previews.mjs` — the ghost drawn while creating a link or cylinder wears the color the
+  part gets, and a canceled gesture does not shuffle the colors after it.
+- `attach-link-same-joint.mjs` — during Attach Link, clicking the joint the gesture started from
+  keeps the gesture open, as its notice says, and never makes a link with one joint at both ends.
+- `hover-dimensions.mjs` — every dimension drawn while an Edit panel field is pointed at uses the
+  same chip, hairline weight and angle unit.
+
+### Context menu
+
+- `context-menu.mjs` — the right-click menu on every kind of part in every mode: the fixed
+  ladder, states as ticked switches, the model's reason on every grayed row, deletion cascades
+  named before the click, and analysis modes matching Edit at the start pose.
+- `context-menu-modes.mjs` — shared Edit/Kinematic/Force menus, right-click targets, start-pose
+  mutation gates, traces preserving paused geometry and t=0, bulk field explanations, and menu
+  scrolling on phones.
+- `circular-link.mjs` — Drawn as a Disc on a grounded crank: offered there, refused on a coupler
+  with its reason, drawn as a disc, and still one after a share link and while running.
+- `disabled-toggles.mjs` — a disabled toggle block looks disabled, and the Elliptical Crank card
+  traces the coupler point.
+
+### Links, holds, locks and labels
+
+- `center-of-mass.mjs` — where a link's automatic CoM is during a gesture and after it (#156): a
+  tracer dragged along a bar leaves it in the middle, the mark shown while a drag is held is the one
+  it settles on, a disc's is on its ground pin, and unwelding says when it drops a placed CoM.
+- `link-mass-fields.mjs` — a link's Mass Settings: `CoM measured from` with its help mark after
+  "from", choices that name a point, picking a joint re-describing rather than moving the point,
+  and `Inertia` on one line. CoM drags at the start and paused mid-cycle in Edit and both
+  analysis modes, through all three reference frames, preserve joint poses, survive playback,
+  and undo/redo in one step; typed CoM fields remain start-only. Writes drag filmstrips.
+- `link-holds.mjs` — holding a bar's length or angle: the menu rows, the chip, the padlocks, the
+  joint riding its arc, a joint two holds pin down refusing with a Release button, and undo
+  taking the hold off. The same for a cylinder's mounts.
+- `link-holds-angles.mjs` — a held bar's name, length chip and center-of-mass mark at eight
+  angles: none may overlap. Writes a contact sheet to `artifacts/link-holds-angles/`, which is
+  the check to look at. The sheet needs Pillow under `python3` and is skipped without it.
+- `locking.mjs` — a locked link refuses a drag with an Unlock in the message, a locked joint
+  turns a link drag into a swing, undo removes a lock, the marks stand down outside Edit.
+- `library-visual-audit.mjs` — every card in the running library, including development cards,
+  with its tracing backdrop in Standard, Fine and Schematic. Saves all views and label bounds
+  under `artifacts/library-visual-audit/` for individual inspection; `ONLY=id,id` narrows a recheck
+  and `PMKS_AUDIT_OUT` keeps before/after captures separate. Checks that style changes preserve
+  geometry and model text size, and that the rendered wheel and slider names clear their pins.
+- `library-label-motion.mjs` — six library mechanisms in all three styles: fixed label colors,
+  plain text without connecting lines, and stable body attachments over a full sampled cycle.
+  Also records actual Play filmstrips for visual inspection in `artifacts/library-label-motion/`.
+- `link-labels.mjs` — a link's name is readable against its body and lands on it, welded shapes
+  included.
+- `link-auto-names.mjs` — a link nobody has named follows its joints: the four-bar template's
+  crank `AB` becomes `ABE` when a tracer point is added, and after an undo and a redo a second
+  tracer point renames it again (#317).
+
+### Slots, slides and cylinders
+
+- `phase2-floating-slot.mjs` — an inverted slider-crank from a URL decodes, assembles, animates
+  and reports real velocities. Needs installed Chrome (`PMKS_CHROME`).
+- `phase3-slide.mjs` — a Scotch yoke from a URL reaches one degree of freedom and translates its
+  yoke without rotating it. Needs installed Chrome (`PMKS_CHROME`).
+- `phase4-marks.mjs` — slot channels, slider blocks, weld plates and rails drawn on the four
+  reference linkages, and the cream bar a slider whose riders cannot turn wears in place of the
+  weld cross: a Pin-in-slot slider keeps its circle, a welded revolute keeps its `+`, and every
+  hover, selection, ring and lock is drawn on the bar while the block's paint never moves off
+  #000. Its screenshots go to `artifacts/slide-mark/`, beside the cylinder's.
+- `phase4-animation.mjs` — the marks stay anchored to the right thing while the mechanism plays.
+- `phase4-invariants.mjs` — every slider mark sits on its joint, along its slot, centered in a
+  floating channel, with weld plates reaching their joint — at rest, after drags and after a scale
+  change.
+- `phase4-corner-arcs.mjs` — every corner arc of a link outline bulges outward, across a drag.
+- `phase4-stack-and-menu.mjs` — paint order, the block staying in its channel, and the menu
+  agreeing with the Edit panel.
+- `phase4-sticky-and-snap.mjs` — sticky slot release and axis snapping, with the mouse.
+- `phase4-gestures.mjs` — slot and slider gestures with pointer events on real coordinates: hit
+  targets, previews, one undo entry, the second attempt.
+- `phase4-build-from-scratch.mjs` — builds a linkage from an empty canvas with the mouse, then
+  adds a slot and drives it.
+- `phase4-cylinder.mjs` — the cylinder end to end: created from the menu, re-posed by a mount
+  drag, grounded, driven, sped up, deleted as one part, undone and redone.
+- `phase5-driven-cylinder.mjs` — the cylinder-driven boom opens valid, animates, and keeps its
+  cylinder straight and whole through the stroke.
+- `attach-cylinder.mjs` — Attach Cylinder from a link's menu joins the mount to the link's body,
+  in one undo step.
+- `cylinder-attach.mjs` — dragging a mount onto a linkage attaches it without deleting the
+  cylinder.
+- `cylinder-colors.mjs` — the barrel and the rod are colored independently (S15): a new cylinder
+  is one color, Rod Color moves the rod alone, Barrel Color on a rod that has chosen nothing
+  leaves it in the color it was standing in, each is one undo step, a reload from the URL keeps
+  both, and `Cylinder_Boom` still opens in the one color it always has. Screenshots to
+  `artifacts/cylinder-colors/`.
+- `cylinder-end-on-joint.mjs` — ending the cylinder gesture on a joint attaches the rod there.
+- `cylinder-drag.mjs` — dragging a mount slides the piston within its travel, then grows or
+  shrinks the ram past its stops.
+- `cylinder-frozen-body.mjs` — the maintainer's drawing from decision S25: a cylinder welded into
+  one body at both ends, on a driven grounded pin. It builds the body, reads the analysis drawer
+  before and after the input is switched on ("Nothing drives…" only while nothing does), checks
+  both chips read ready with no blocker, opens the panels for the body, the barrel, the rod, the
+  slide and an end joint and asserts each shows numbers rather than "not in a mechanism that can
+  be solved", right-clicks the seal for the grayed Add Input row and its reason, and runs the
+  machine. A filmstrip of the running body goes to `artifacts/cylinder-frozen-body/` with
+  `running-sheet.png` beside it; the head must not drift along the bore and the fused outline must
+  stay one body.
+- `cylinder-members.mjs` — a cylinder as three selectables: the square is joint S, lettered and
+  draggable along its own axis; each member selects and outlines itself; a member drag still
+  carries the whole part; an old payload's seal opens with a letter. Then the panels each piece
+  opens, the one angle stated in three places, every rung of what gives when *Starts at* is typed,
+  and an end joint as an ordinary pin — all four types live once it has a neighbor to weld to, and
+  a delete row that names the cascade. It ends on a filmstrip of a driven cylinder's full
+  out-and-back cycle, twelve frames clipped to the machine, asserting the slide goes closed, open
+  and closed again and that N is drawn in none of them (`artifacts/cylinder-members/cycle/`, with
+  `sheet-cycle.png` beside it). Also S's own mark — the cream bar on the piston head, along the
+  axis and inside the black at every cylinder size and angle, through playback, with the states on
+  the bar and never on the head. Screenshots to `artifacts/slide-mark/`.
+- `cylinder-mount.mjs` — a mount as an ordinary attachment point: menu rows and reasons, the live
+  ring under a dragged joint, slots cut at a mount, welded selection, undo across a weld, a second
+  machine left alone, filmstrips of a compound drag.
+- `cylinder-mount-render.mjs` — what welded mounts look like in every planned shape, with contact
+  sheets to inspect.
+- `cylinder-mount-slot.mjs` — the drop itself (decision S22): a cylinder's end joint dragged over a
+  bar with real mouse gestures, the channel previewing, the release cutting it, riding the slot and
+  coming off it, the carrier moved under the part, and the two machines it makes running. It ends on
+  the maintainer's own drawing loaded **cold from its URL** (decision S27), which used to reopen
+  unsolvable because the riding joint was stored a rounding off its slot line: it has to run, read
+  ready on both chips, keep that joint on its slot through the cycle, and survive an undo and a redo
+  after a drag — the path that matters most, because undo replays a URL. Filmstrips and contact
+  sheets to `artifacts/cylinder-mount-slot/`, `sheet-reopened.png` among them.
+- `cylinder-object-size.mjs` — historical coverage for the retired Object Size controls (S29).
+  It is excluded from CI after Drawing Style replaced those controls. `drawing-styles.mjs`
+  now runs in the gate and checks cylinder geometry, physical clearance, solver inputs, history,
+  and authored outlines through style, zoom, and Fit changes. `playback-direction.mjs` retains
+  the bare-slider direction checks.
+- `cylinder-panel.mjs` — the cylinder panel's past defects: a picker that moved the part, an edit
+  that could not be undone, a silent limit, a rounded position.
+- `cylinder-skin.mjs` — the head's stops are drawn by the skin itself, with no annotation on the
+  barrel.
+- `cylinder-welded-drag.mjs` — decision S21, with a real mouse: only a drag of the *body* carries a
+  welded bar, so dragging an end joint of a cylinder leaves the bracket where it is and two
+  cylinders welded into one bracket stop moving each other. Filmstrips and contact sheets to
+  `artifacts/cylinder-welded-drag/`.
+
+### Forces
+
+- `force-edit.mjs` — picking a force up by its arrow, where its anchor may land and snap, and
+  drawing a new one.
+- `force-on-joint.mjs` — a force kept off a joint where a second body meets its link (issue
+  #138): held short of a grounded pin under a drag, moved off one when a drawing opens with it
+  there, and moved off a tracer point another link's end is merged onto, each said out loud.
+- `force-analysis-panels.mjs` — the Force Analysis rows on the joint and link panels and the
+  shared Force Analysis Type toggle. Needs installed Chrome (`PMKS_CHROME`).
+- `force-labels-and-legend.mjs` — force graph titles name parts the reader can see, both cylinder
+  mounts are listed, and the legend does not shift as values change sign.
+- `force-units.mjs` — which unit a force is read in: the Force Units row, kilograms-force leaving
+  storage alone, conversion at each edge, and a grayed pill not reacting to hover.
+- `mass-units.mjs` — Settings picks length, mass and force separately (#142): the Length Units
+  and Mass Units rows, a note naming the torque and inertia units (and lbm and lbf under inches),
+  a mass pick leaving storage alone, riding the URL, and resetting with a change of length.
+
+### Analysis modes and machines
+
+- `analysis-setup.mjs` — pressing an analysis mode that cannot be entered opens a list naming the
+  mechanism at fault, the way out, and a button that goes to the part; mass-table names open Edit
+  at Mass Settings, including from the keyboard and after the section was folded.
+- `analysis-drawing-switches.mjs` — the trace and vector switches under an analysis panel's
+  graphs draw on the mechanism and gray in the menu's own words.
+- `analysis-audit.mjs` — every analysis panel on every template for every part: blank graphs,
+  holes, a turning part with zero angular velocity, absurd numbers. Slow; `ONLY=4-Bar` narrows it,
+  `SHOTS=1` screenshots every panel state.
+- `template-graphs.mjs` — every template's kinematic graphs read as numbers and cross-checked:
+  position against solved joints, velocity and acceleration against difference quotients. Slow;
+  `PMKS_ONLY=4-Bar,Slider_Crank` narrows it.
+- `panel-folds.mjs` — a joint's Edit sections and its kinematics graphs keep what the reader folded
+  across mode switches and selections.
+- `mechanism-panel.mjs` — the machines with nothing selected: the All mechanisms list, picking one
+  (from a row, the setup drawer's name), the others fading, the drawer folding to it and opening
+  on arrival when a machine cannot run, part links keeping either analysis mode and playback, with the setup drawer staying open, and a
+  rename riding the URL.
+- `tracer-line-snap.mjs` — a tracer point placed or dragged within a few pixels of a slanted bar's
+  line lands on it with the dotted guide showing (#307), and Option turns that off.
+- `scrub-to-start.mjs` — dragging a scrub handle back and letting go within a few pixels of its
+  seat lands exactly on the start pose (#304), on the shared row and on an unsynced machine's own.
+- `two-mechanisms.mjs` — two machines in one drawing: a row each in the transport, a section each
+  in the setup drawer, and a sync toggle that decouples them.
+
+### Playback
+
+- `playback-bar.mjs` — the transport over the grid: a way to press play, a transport in Edit, a
+  row per runnable mechanism, and the mode highlight landing on the chosen mode.
+- `playback-direction.mjs` — reversing a machine keeps its place and keeps it running; the master
+  and per-machine play buttons agree. It carries a **linear** drive as well as the rotary one now:
+  a driven block runs *Forward* and *Backward* along its slot rather than opening and closing, the
+  word matches the way the block is actually going at every sample of the cycle (measured here off
+  the live joints and the carrier's own direction, not asked of the thing under test), reversing
+  the drive reverses the word, and the glyph is a straight arrow while a crank's keeps its turn.
+- `playback-loop-indicator.mjs` — the transport row's two lines, the end-of-cycle reading, the
+  full-width handle, and the row's selection surface, compared across engines. Needs Firefox and
+  WebKit installed.
+- `playback-stepping.mjs` — the arrow keys step by time and wrap round the cycle, in both
+  directions, on every template.
+- `playback-timing.mjs` — a revolution takes 60/RPM seconds, doubling speed halves it, and the time
+  readout holds across a speed change. Needs installed Chrome (`PMKS_CHROME`).
+- `input-settings-and-playback.mjs` — the input joint's Input Settings (direction, speed, unit
+  picker), the time field's width, and playback interpolating between samples.
+
+### App chrome, layout and words
+
+- `left-nav-modes.mjs` — the four mode tabs, the panel following the mode, the sliding highlight,
+  readiness chips, a refused analysis mode, the transport present in Edit and absent in Synthesis,
+  and the rewind on leaving an analysis mode. Needs installed Chrome (`PMKS_CHROME`).
+- `top-strip-states.mjs` — the top strip at every width, chip load and mode, laid out or resized:
+  nothing outside the tab card, no sideways scroll, no flicker between label levels.
+- `right-drawer.mjs` — the right drawer's width, left edge and bottom gap against the view
+  controls, with the tutorial pinned and on a short window.
+- `reuse-parity.mjs` — the same panel, drawn by two servers, compared pixel for pixel. Written for
+  the reuse backlog, where every edit replaces a hand-rolled copy of a block with the block and is
+  supposed to change nothing a reader can see. Needs **two** dev servers: `PMKS_BASE_URL` serves
+  the change and `PMKS_PARITY_BASE_URL` the branch's base. A mismatch saves the two shots and a
+  red-on-grey diff mask under `artifacts/reuse-parity/`, and is re-shot once before it is believed.
+  `--only <substring>` runs a subset. Its scenes live in `reuse-parity-scenes.mjs`.
+- `reuse-parity-scenes.mjs` — the scene list `reuse-parity.mjs` photographs: which panel, which
+  mode, and the clicks that reach it. Not a check on its own.
+- `gallery-parity.mjs` — the other half of `reuse-parity.mjs`: every **story** in the component
+  gallery, drawn by two builds, compared pixel for pixel. The gallery builds its own page and
+  prepends the app's global stylesheets itself, so a change to `mytheme.scss` or a moved stylesheet
+  can leave the app untouched and still strip the background off every card in the docs — which is
+  exactly what the app suite cannot see. Needs **two Storybook servers**, `PMKS_GALLERY_URL` and
+  `PMKS_GALLERY_BASE_URL`; it reads the story list from Storybook's own `index.json`, so a story
+  added tomorrow is compared tomorrow. Docs pages are skipped: their "Show code" block is the
+  story's source, so every source edit would fail them for no visual reason.
+- `field-overlay-reassert.mjs` — pointing at a number in the Edit panel draws it on the grid, and
+  it comes back when you point at the same field again after a committed edit. That is the one rule
+  in `BLOCKS/field-overlay.ts` that is not obvious: the canvas drops its overlays when the selected
+  object announces itself, and a block that reports only its own *changes* has nothing to say while
+  the pointer has not moved. Covers `hold-field-block`; the file says why the other three are not
+  reachable from here.
+- `reduced-motion.mjs` — the app with `prefers-reduced-motion` on, which `src/styles.scss`
+  answers for every stylesheet at once: the boot splash still leaves, the phone sheet still opens
+  and shuts by its handle, and no page error.
+- `mobile.mjs` — the phone layout on an iPhone 13 profile with touch: a held finger opens the
+  menu, taps and swipes do not, the mode panel is a sheet, the playback cluster clears it, and a
+  link drawn with taps.
+- `menu-focus.mjs` — the project menu's focus ring appears for the keyboard and not for a click,
+  including on the first open after a page load.
+- `notifications.mjs` — a second, different refusal within a second is shown, and a quiet period
+  counts from the last message rather than page load.
+- `ui-copy.mjs` — the words on screen: toggle state names matching the menu, tooltip length, and
+  none of the terms `docs/ui-vocabulary.md` rules out, British spellings included.
+- `detail-fixes.mjs` — small reported fixes a unit test cannot see: cursors, warning colors, panel
+  scroll.
+- `whats-new.mjs` — which welcome a reader gets (`?library`, release notes, tutorial invitation),
+  the boot splash, and the loading cover for templates and `.pmks` files.
+- `tutorial.mjs` — the guided first build from a bare grid to a velocity, with the step read off
+  the drawing.
+- `tutorial-edge-cases.mjs` — the tutorial driven by a student who does not follow it: started
+  over somebody else's mechanism (it asks to clear the grid), undone past its start, a template
+  opened mid-way, loose bars, a chain of four, a ground in the middle, a mechanism that cannot run,
+  the wrong mode, a finished tutorial started again (#375); and from a second pass, a tracer point
+  on the coupler, two templates and one undo, a separate machine's velocity, a reload, undo past a
+  finished tutorial, a lone cylinder, a scrub instead of Play, and a 390 x 650 phone.
+- `background-image.mjs` — placing, moving, resizing, fading and deleting a background image, which
+  cannot be clicked or dragged and follows the grid's zoom.
+- `brand.mjs` — the logo, favicons and icons as a browser receives them: every icon the page head
+  and manifest name is served with an image type, `/favicon.ico` answers, the link-preview card
+  exists, and the startup screen and top bar draw the logo in its own proportions.
+  `docs/brand.md` says where the files come from.
+
+### Library, synthesis and export
+
+- `template-open.mjs` — a template loads in place on an empty grid, and offers new tab / replace /
+  cancel over existing work, with replace undoable.
+- `template-backdrops.mjs` — the Real Machines library section and the picture each card opens on.
+- `suggest-mechanism.mjs` — the library's side rail and end-of-section line, and Suggest a
+  Mechanism end to end: what Send refuses and where the focus goes, a message drawn over the
+  dialog, a failed and a good send (the key function and EmailJS are answered by the suite, so no
+  mail goes out), the pasted-link states, and the way back to the library as it was left.
+- `synthesis-redesign.mjs` — Synthesis end to end: place three positions, generate, browse and
+  compare candidates, preview, insert, undo, and survive a shared link.
+- `export-flow.mjs` — the Export Data drawer end to end, including reading the downloaded file.
+- `release-export-ui.mjs` — malformed URL recovery, semantic field names, and a phone CAD origin
+  chooser with twelve joints.
+- `dxf-sweep.mjs` — every template through the real CAD export dialog, each file parsed back and
+  left in `artifacts/dxf-sweep/`. Slow; `ONLY=Slider_Crank` narrows it.
+
+### Performance
+
+- `drag-perf.mjs` — is dragging as smooth as it was? Measures each scenario in
+  `drag-perf-harness.mjs` (that file is the list) and compares the cost per pointer move and the
+  90th-percentile frame to `drag-perf-baseline.json`. A scenario warns more than 35% above its
+  baseline (`PMKS_PERF_TOLERANCE`, default `1.35`); it fails only at ten times the baseline. Name scenario ids to run only those:
+  `node e2e/drag-perf.mjs edit-joint kin-3rows`. The baseline is per machine; `--baseline`
+  rewrites it, and the rewrite belongs in the commit that earned it.
+- `drag-profile.mjs` — where one scenario's drag time goes, from the DevTools profiler and tracer:
+  `node e2e/drag-profile.mjs kin-3rows`, or no argument to list the ids. Stage counts need the dev
+  server. Tips-and-tricks keeps the last full account under "Where a drag's time goes".
+
+### Asset generators (not checks; they rewrite tracked files)
+
+- `readme-shots.mjs` — the project README's screenshots, into `docs/images/readme/`. The labeled
+  interface map measures each region from its selector. `ONLY=hero,templates` retakes part of the
+  set; the `templates` shot must be taken against a production build (see the script's header).
+- `template-thumbnails.mjs` — the library cards' still images in `src/assets/gifs/`, clipped from
+  each template's own URL. Needs macOS `sips`. `ONLY=<template ids>` does some.
+- `template-animations.mjs` — the library cards' hover GIFs in `src/assets/gifs/`, stepped through
+  each template's solved cycle. Needs macOS `sips`, and `gif-encoder` and `pngjs` installed beside
+  Playwright in `PMKS_PLAYWRIGHT_DIR`. `ONLY=<template ids>` does some.
+
+## Interaction gotchas
+
+- **Joints are placed from tracked `mousemove`, not click coordinates.** Move to the target before
+  the click that commits it.
+- **Modes are the `.tabButton`s in the top strip:** Synthesis, Edit, Kinematic Analysis, Force
+  Analysis. The labels shorten, then disappear, as the strip runs out of room — measured, not a
+  fixed breakpoint — so give the window room before matching a tab by its text.
+- **Pressing an analysis mode is not idempotent.** A mode you cannot enter opens its setup drawer
+  and does not switch; a mode you can enter but are not in switches to it; the mode you are already
+  in toggles its setup drawer. A script that presses Kinematic twice ends with the drawer open over
+  the panel it meant to read. Press until the drawer says so rather than counting presses —
+  `mechanism-panel.mjs` has the pattern. Synthesis and Edit are plain switches.
+- **The readiness chip (`.chip`) is a label inside the mode button**, not a control. Read it; a
+  click lands on the mode.
+- **File actions are behind the menu button:** click `app-top-bar .iconButton`, then a
+  `.projectMenu .menuItem` (New project, Open, Mechanism Library, Save, Share project, Export data,
+  CAD export, Settings, Tutorial, Help and feedback). Undo and Redo are `.historyButton`s in the
+  strip's corner card in every mode; the analysis modes add Export data beside them.
+- **The transport (`app-playback-bar`) shows in Edit and both analysis modes**, over an empty grid
+  too, and is hidden only in Synthesis. It has one row per machine, each with its own
+  `input[type=range]` scrubber; `#slider`, `#playbackTime` and `#playbackPosition` are bound only
+  on the master machine's row. On a phone the transport and the scrub card merge into one card.
+- **`#bottomBar` is a read-only strip** with `pointer-events: none`. It shows the mode, a status
+  phrase, `Degrees of freedom: N` (omitted when the drawing has no mobility to report), the cursor
+  coordinates when there are any, and the units.
+- `dual-button-gallery.mjs` — every shared dual-button story: either half disabled, both disabled,
+  the single-button fallback, long-label proportions, clipping, and accessible refusal text.
+  Screenshots land in `artifacts/dual-button/`.
+
+- `editor-bug-fixes.mjs` — number-label dragging and undo, in-place force flips, compound selection, CoM traces, welded inputs, inert analysis joints, placement merge preview, and narrow-screen export gating.
+
+- `editor-followups.mjs` — shared-URL regressions for orphan deletion/attachment, stable animation labels, primitive outlines, compact delete menus and collision-aware Edit panel clearance.
+- `vector-drag-profile.mjs` — profiles a repeatable four-bar analysis drag with velocity and acceleration arrows, reporting cycle rebuilds, sample reads and frame timing.
+
+`force-frame.mjs` checks panel/menu attachment refusal parity, stationary force anchors during tracer reshaping, force transport through held whole-body drags, compound-primitive tracer ownership and primitive deletion (keyboard/panel) through undo/redo, the force-panel Flip Force action, fixed application marks, local frame angle editing and hover guides, playback suppression, and locked force behavior. It writes tracer, flip, and playback filmstrips to `artifacts/force-frame/`.
+
+`force-precision.mjs` compares the actual rendered force against the designer’s selected and entering SVGs, checks resting/hover/selected/entering states for all six force colors, and records a real hover/selection filmstrip. Comparison images and the palette matrix go to `artifacts/force-precision/`; original reference drawings live in `e2e/reference/force/`.
+
+- `drawing-styles.mjs` — whole-drawing styles, bounded zoom symbols, geometry/CAD invariants, cylinder playback filmstrips, and responsive Settings.
+- `bug-fixes-2.mjs` — audit regressions, synthesis units/Undo, and display-size cylinder invariants.
+- `pr33-followups.mjs` — pointer-specific help, compact synthesis actions, meter-scaled pose chips,
+  responsive analysis switches, and context-aware export copy. Writes screenshots and a unit-change
+  filmstrip to `artifacts/pr33-followups/`.
+
+`template-animations.mjs` also refreshes each selected card's still from its first frame, keeping hover framing identical. Use `ONLY` to regenerate just the intended examples.
+
+- `analysis-tabs.mjs` — Rotation/Center of mass and Static/In-motion navigation, keyboard focus
+  without canvas nudges, independent expansion choices, session tab memory, CoM preview, shared
+  gutters and typography, sticky headers and narrow layouts. Screenshots and a tab-switching
+  filmstrip in `artifacts/analysis-tabs/`.
+
+- `mechanism-audit.mjs` — retained audit controls for immobile welded geometry, clockwise six-second cycle with filmstrip, tiny degree-acceleration graph and disconnected Jansen negative control.

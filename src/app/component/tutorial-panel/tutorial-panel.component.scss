@@ -1,0 +1,512 @@
+@use 'sass:map';
+@use '@angular/material' as mat;
+@use 'src/app/component/left-tabs/left-tabs.vars' as nav;
+
+@mixin css($theme) {
+  $color-config: mat.m2-get-color-config($theme);
+  $primary-palette: map.get($color-config, 'primary');
+  $indigo: mat.m2-get-color-from-palette($primary-palette, 500);
+
+  // One card, like every other drawer page. It shrinks to its content rather
+  // than filling the drawer: the tutorial is a paragraph and two buttons, and
+  // a card stretched to the window height reads as a page that failed to load.
+  .tutorialCard {
+    position: relative;
+    box-sizing: border-box;
+    width: 100%;
+    // Pinned above a drawer page it has to share the height with, so when
+    // the two do not fit it scrolls inside itself rather than pushing the
+    // page under the view controls. Its own shadow is outside its box and is
+    // not clipped by this.
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 15px 14px;
+    background: var(--card-surface);
+    border-top: 5px solid $indigo;
+    border-radius: var(--border-radius);
+    box-shadow: var(--card-shadow);
+  }
+
+  // On a phone the card floats over the canvas across its whole width, and at
+  // full height it left no clear grid at all: on a 390 x 650 window it ran to
+  // within sixty pixels of the controls, and the four-bar it built for the
+  // student -- the one whose joints it then names -- went underneath it. So
+  // the card stops short of half the window, and only the step's words
+  // scroll: the title, the progress and the buttons stay put.
+  @media (max-width: nav.$phone-max-width) {
+    .tutorialCard:not(.doneCard) {
+      display: flex;
+      flex-direction: column;
+      max-height: 42vh;
+      overflow: hidden;
+
+      > * {
+        flex-shrink: 0;
+      }
+
+      .stepBody {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+      }
+    }
+  }
+
+  // Material sizes every icon box at 24px and hides what overflows it, from a
+  // bare `.mat-icon` -- which a bare class in here cannot outrank, whatever the
+  // source order says, because those styles are injected at runtime. So each
+  // icon below sets its font-size and got a 24px box anyway, and a 16px glyph
+  // drawn at the top of a 24px box reads as sitting high off its own line.
+  //
+  // Naming the element as well as the class is enough to take the box back, and
+  // 1em ties it to whatever size each icon was actually asked for.
+  .tutorialCard mat-icon {
+    width: 1em;
+    height: 1em;
+    line-height: 1;
+    overflow: visible;
+  }
+
+  // Only where it goes; what it looks like is `close-button`'s business now.
+  // The `.flush` variant that used to live here -- static, 28px, for the
+  // completion card -- had no call site left and went with the rest.
+  .closeCard {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+  }
+
+  .cardTitle {
+    padding-right: 40px;
+    font-size: 20px;
+    font-weight: 500;
+    line-height: 32px;
+    color: var(--text-strong);
+  }
+
+  .cardLead {
+    margin: 0;
+    font-size: 14px;
+    line-height: 18px;
+    color: var(--text-secondary);
+  }
+
+  // The measure and the way back through it on one line: an arrow at each end
+  // and a segment per step between them.
+  .stepBars {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 10px 0 14px;
+  }
+
+  .stepArrow {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    &:disabled {
+      color: rgba(0, 0, 0, 0.18);
+      cursor: default;
+    }
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      line-height: 18px;
+    }
+  }
+
+  // Behind, here, ahead — three weights of the one color rather than three
+  // colors, because they are one measure being read left to right. Each is
+  // also the way to that step, so the bar is a control and has the hit height
+  // to be one without the line itself getting any thicker.
+  .stepBar {
+    flex: 1 1 0;
+    height: 14px;
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: pointer;
+
+    &::after {
+      content: '';
+      display: block;
+      height: 3px;
+      border-radius: 2px;
+      background: var(--border-rule);
+      transition: background 0.18s ease-in-out;
+    }
+
+    &.done::after {
+      background: var(--brand-pale);
+    }
+
+    &.here::after {
+      background: $indigo;
+    }
+
+    &:disabled {
+      cursor: default;
+    }
+
+    &:hover:not(:disabled):not(.here)::after {
+      background: var(--brand-light);
+    }
+  }
+
+  .achieved {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 12px;
+
+    mat-icon {
+      flex: 0 0 auto;
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      line-height: 19px;
+      color: var(--success-text);
+    }
+
+    span {
+      font-size: 13px;
+      line-height: 19px;
+      color: var(--text-tertiary);
+    }
+  }
+
+  // A row rather than an inline run, so the tick sits on the title's own center
+  // line whatever the two are sized at. Baseline-aligning a 16px glyph against
+  // 14px text put it a third of a line high.
+  .stepTitle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+    color: var(--text-strong);
+  }
+
+  .stepText {
+    margin: 4px 0 0;
+    font-size: 13px;
+    line-height: 19px;
+    color: var(--text-secondary);
+    text-wrap: pretty;
+  }
+
+  // The tick beside a step that is behind the student. On the step they have
+  // just this second finished it arrives with a beat of its own, which is the
+  // whole point of holding the card there before moving on.
+  .stepTick {
+    flex: 0 0 auto;
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+    color: var(--success-text);
+
+    &.justNow {
+      animation: tutorialTick 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+  }
+
+  @keyframes tutorialTick {
+    0% {
+      opacity: 0;
+      transform: scale(0.4);
+    }
+    60% {
+      opacity: 1;
+      transform: scale(1.18);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  // While a finished step is being held up to be read. A tint rather than a
+  // banner: the words have not changed, and the card is about to move on by
+  // itself, so this says "that one is done" without taking a line to say it.
+  .settling .stepTitle {
+    color: var(--success-text);
+  }
+
+  .doneNote {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--success-text);
+  }
+
+  .nextButton {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0 2px;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: $indigo;
+    cursor: pointer;
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      line-height: 18px;
+    }
+  }
+
+  .quietButton {
+    padding: 0 2px;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--text-tertiary);
+    cursor: pointer;
+  }
+
+  .hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 9px 11px;
+    border-radius: 4px;
+    background: var(--surface-sunken);
+
+    mat-icon {
+      flex: 0 0 auto;
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      line-height: 18px;
+      color: var(--text-secondary);
+    }
+
+    span {
+      font-size: 12px;
+      line-height: 17px;
+      color: var(--text-secondary);
+    }
+  }
+
+  // A word about the drawing rather than about the step, in the warning colors
+  // the setup drawer uses for the same kind of news.
+  .warnHint {
+    align-items: flex-start;
+    background: var(--warning-bg);
+
+    mat-icon,
+    span {
+      color: var(--warning-text);
+    }
+  }
+
+  // The quoted chip sits above its sentence's first line rather than centered
+  // against a paragraph it is two lines shorter than.
+  .chipHint {
+    align-items: flex-start;
+    gap: 9px;
+    padding: 10px 11px;
+  }
+
+  .cardRule {
+    height: 1px;
+    margin: 14px 0 10px;
+    background: var(--border-rule);
+  }
+
+  .cardActions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .doItButton,
+  .exitButton,
+  .primaryButton {
+    padding: 0 2px;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .doItButton {
+    font-weight: 500;
+    color: $indigo;
+  }
+
+  .exitButton {
+    color: var(--text-tertiary);
+  }
+
+  // ---------- the completion card ----------
+
+  .doneCard {
+    border-top-color: var(--success-text);
+  }
+
+  .doneHead {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+
+  .doneMark {
+    flex: 0 0 auto;
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+    line-height: 20px;
+    color: var(--success-text);
+  }
+
+  .doneTitle {
+    flex: 1 1 auto;
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--text-strong);
+  }
+
+  .doneLine {
+    margin: 9px 0 0;
+    font-size: 13px;
+    line-height: 19px;
+    color: var(--text-secondary);
+    text-wrap: pretty;
+  }
+
+  .doorsHeading {
+    margin-bottom: 10px;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+
+  .doors {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .secondaryDoors {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .door {
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border-divider);
+    border-radius: 4px;
+    background: var(--card-surface);
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--surface-sunken);
+    }
+
+    mat-icon {
+      flex: 0 0 auto;
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+      line-height: 20px;
+      color: $indigo;
+    }
+  }
+
+  .libraryDoor {
+    align-items: center;
+    padding: 13px 14px;
+    border-color: rgba(63, 81, 181, 0.35);
+    background: var(--brand-wash);
+
+    .doorName {
+      color: $indigo;
+      font-size: 14px;
+    }
+
+    .doorGo {
+      margin-left: auto;
+      font-size: 19px;
+    }
+  }
+
+  .secondaryDoor {
+    gap: 8px;
+    padding: 8px 9px;
+
+    mat-icon {
+      font-size: 17px;
+    }
+  }
+
+  .doorText {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .doorName {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-strong);
+  }
+
+  .doorWhy {
+    display: block;
+    margin-top: 2px;
+    font-size: 12px;
+    line-height: 17px;
+    color: var(--text-secondary);
+  }
+
+  .doneActions {
+    justify-content: flex-start;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .primaryButton {
+    height: 32px;
+    padding: 0 14px;
+    border-radius: 4px;
+    background: $indigo;
+    color: var(--text-on-accent);
+    font-weight: 500;
+  }
+}

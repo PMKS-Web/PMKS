@@ -1,0 +1,630 @@
+import '../model/joint';
+import { runInInjectionContext } from '@angular/core';
+import { Coord } from '../model/coord';
+import { cylindersIn } from '../model/cylinder';
+import { paintCylinderMember, rodFillOf } from '../model/cylinder-skin';
+import { Force } from '../model/force';
+import { Joint, PrisJoint, RevJoint } from '../model/joint';
+import { RealLink } from '../model/link';
+import { createMechanismHarness, wireGraph } from '../../test-utils/mechanism-harness';
+import { SelectionBatchService } from './selection-batch.service';
+
+function chain(count = 4) {
+  const harness = createMechanismHarness();
+  const joints = Array.from(
+    { length: count },
+    (_, index) => new RevJoint(String.fromCharCode(65 + index), index * 100, 0)
+  );
+  const links = joints.slice(0, -1).map((joint, index) => {
+    const other = joints[index + 1];
+    return new RealLink(joint.id + other.id, [joint, other]);
+  });
+  harness.service.joints = joints;
+  harness.service.links = links;
+  wireGraph(harness.service);
+  return {
+    ...harness,
+    batch: runInInjectionContext(harness.injector, () => new SelectionBatchService()),
+    joints,
+    links,
+  };
+}
+
+describe('SelectionBatchService duplication', () => {
+  for (const hold of ['length', 'angle'] as const) {
+    for (const batch of [false, true]) {
+      it(`preserves a fixed ${hold} while releasing position locks (${batch ? 'batch' : 'single'})`, () => {
+        const h = chain(2);
+        h.links[0].hold = hold;
+        h.joints.forEach((joint) => (joint.locked = true));
+        if (batch) h.batch.duplicateSelected([{ kind: 'link', id: 'AB' }], { x: 0, y: 100 });
+        else h.service.duplicateLink(h.links[0]);
+        const copy = h.service.links.find((link) => link !== h.links[0]) as RealLink;
+        expect(copy.hold).toBe(hold);
+        expect(copy.joints.every((joint) => !(joint as RevJoint).locked)).toBe(true);
+        expect(copy.length).toBeCloseTo(h.links[0].length, 8);
+        expect(copy.angleRad).toBeCloseTo(h.links[0].angleRad, 8);
+      });
+    }
+  }
+
+  it('copies shared topology once, excludes outside links, offsets parts, and saves once', () => {
+    const h = chain();
+    h.joints[0].name = 'Pivot';
+    h.links[0].name = 'Crank';
+    h.joints[1].locked = true;
+    h.joints[2].locked = true;
+    const force = new Force('F1', h.links[0], new Coord(25, 0), new Coord(25, 50), true, true, 12);
+    force.name = 'Load';
+    force.color = '#123456';
+    force.locked = true;
+    h.links[0].forces.push(force);
+    h.service.forces.push(force);
+
+    const originalJoints = new Set<Joint>(h.joints);
+    const beforeJoints = h.service.joints.length;
+    const beforeLinks = h.service.links.length;
+    const result = h.batch.duplicateSelected(
+      [
+        { kind: 'link', id: 'AB' },
+        { kind: 'link', id: 'BC' },
+        { kind: 'link', id: 'AB' },
+      ],
+      { x: 10, y: -20 }
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.selection).toHaveLength(2);
+    expect(new Set(result.selection.map((ref) => `${ref.kind}:${ref.id}`)).size).toBe(2);
+    expect(h.service.joints.length - beforeJoints).toBe(3);
+    expect(h.service.links.length - beforeLinks).toBe(2);
+    expect(h.saveCount()).toBe(1);
+
+    const copies = result.selection.map((ref) =>
+      h.service.links.find((link) => link.id === ref.id)!
+    );
+    const copiedJoints = [...new Set(copies.flatMap((link) => link.joints))];
+    expect(copiedJoints).toHaveLength(3);
+    expect(copiedJoints.every((joint) => !originalJoints.has(joint))).toBe(true);
+    expect(copiedJoints.every((joint) => !(joint as RevJoint).locked)).toBe(true);
+    expect(copiedJoints.map((joint) => joint.id)).not.toEqual(
+      expect.arrayContaining(h.joints.map((joint) => joint.id))
+    );
+    const copiedA = copiedJoints.find((joint) => joint.name === 'Pivot Copy')!;
+    expect(copiedA.x).toBe(h.joints[0].x + 10);
+    expect(copiedA.y).toBe(h.joints[0].y - 20);
+    expect(copies.map((link) => link.name)).toContain('Crank Copy');
+    expect(copies.some((link) => link.joints.some((joint) => joint.x === h.joints[3].x + 10))).toBe(
+      false
+    );
+
+    expect(h.service.forces).toHaveLength(2);
+    const copiedForce = h.service.forces.find((candidate) => candidate !== force)!;
+    expect(copiedForce.link).toBe(copies.find((link) => link.name === 'Crank Copy'));
+    expect(copiedForce.startCoord).toEqual(new Coord(35, -20));
+    expect(copiedForce.name).toBe('Load Copy');
+    expect(copiedForce.color).toBe('#123456');
+    expect(copiedForce.locked).toBe(false);
+  });
+
+  function withForces(h: ReturnType<typeof chain>) {
+    const onAB = new Force('F1', h.links[0], new Coord(25, 0), new Coord(25, 50), true, false, 7);
+    onAB.name = 'Load';
+    onAB.color = '#654321';
+    onAB.anchoredTo = 'AB';
+    const onCD = new Force('F2', h.links[2], new Coord(250, 0), new Coord(250, -40));
+    for (const force of [onAB, onCD]) {
+      force.link.forces.push(force);
+      h.service.forces.push(force);
+    }
+    return { onAB, onCD };
+  }
+
+  it('copies a group of forces onto the links they act on and selects the copies', () => {
+    const h = chain();
+    const { onAB, onCD } = withForces(h);
+    const linksBefore = h.service.links.length;
+    const jointsBefore = h.service.joints.length;
+
+    expect(
+      h.batch.duplicateRefusal([
+        { kind: 'force', id: 'F1' },
+        { kind: 'force', id: 'F2' },
+      ])
+    ).toBeUndefined();
+    const result = h.batch.duplicateSelected(
+      [
+        { kind: 'force', id: 'F1' },
+        { kind: 'force', id: 'F2' },
+      ],
+      { x: 10, y: 5 }
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(h.service.links).toHaveLength(linksBefore);
+    expect(h.service.joints).toHaveLength(jointsBefore);
+    expect(h.service.forces).toHaveLength(4);
+    const copyOf = (source: Force) => source.link.forces.find((force) => force !== source)!;
+    const abCopy = copyOf(onAB);
+    const cdCopy = copyOf(onCD);
+    // Kept on the bar: the step's part along AB is what moves it.
+    expect(abCopy.startCoord).toEqual(new Coord(35, 0));
+    expect(abCopy.endCoord).toEqual(new Coord(35, 50));
+    expect(cdCopy.startCoord).toEqual(new Coord(260, 0));
+    expect(abCopy.local).toBe(true);
+    expect(abCopy.arrowOutward).toBe(false);
+    expect(abCopy.mag).toBe(7);
+    expect(abCopy.color).toBe('#654321');
+    expect(abCopy.name).toBe('Load Copy');
+    expect(abCopy.anchoredTo).toBe('AB');
+    expect(h.links[0].forces).toContain(abCopy);
+    expect(h.links[2].forces).toContain(cdCopy);
+    expect(result.selection).toEqual([
+      { kind: 'force', id: abCopy.id },
+      { kind: 'force', id: cdCopy.id },
+    ]);
+    expect(h.saveCount()).toBe(1);
+  });
+
+  it('steps a copied force back along its bar when the step would run off the end', () => {
+    const h = chain(2);
+    const atEnd = new Force('F1', h.links[0], new Coord(100, 0), new Coord(100, 30));
+    h.links[0].forces.push(atEnd);
+    h.service.forces.push(atEnd);
+
+    const result = h.batch.duplicateSelected([{ kind: 'force', id: 'F1' }], { x: 10, y: 10 });
+
+    expect(result.ok).toBe(true);
+    const copy = h.links[0].forces.find((force) => force !== atEnd)!;
+    expect(copy.startCoord).toEqual(new Coord(90, 0));
+    expect(copy.endCoord).toEqual(new Coord(90, 30));
+  });
+
+  it('copies a force whose direction handle sits on its anchor with its stored direction', () => {
+    const h = chain(2);
+    const collapsed = new Force(
+      'F1',
+      h.links[0],
+      new Coord(50, 0),
+      new Coord(50, 30),
+      false,
+      true,
+      4
+    );
+    // Straight down, then the handle dragged back onto the anchor: the stored
+    // direction is kept, and the two ends no longer say what it is.
+    collapsed.angleRad = -Math.PI / 2;
+    collapsed.moveDirectionHandle(new Coord(50, 0));
+    h.links[0].forces.push(collapsed);
+    h.service.forces.push(collapsed);
+
+    const result = h.batch.duplicateSelected([{ kind: 'force', id: 'F1' }], { x: 10, y: 10 });
+
+    expect(result.ok).toBe(true);
+    const copy = h.links[0].forces.find((force) => force !== collapsed)!;
+    expect(copy.mag).toBe(4);
+    expect(copy.yComp).toBeCloseTo(collapsed.yComp, 9);
+    expect(copy.yComp).toBeLessThan(0);
+    expect(copy.endCoord.x - copy.startCoord.x).toBe(0);
+    expect(copy.endCoord.y - copy.startCoord.y).toBe(0);
+  });
+
+  it('copies a force with its selected link once, and a force on an unselected link onto that link', () => {
+    const h = chain();
+    const { onCD } = withForces(h);
+
+    const result = h.batch.duplicateSelected(
+      [
+        { kind: 'link', id: 'AB' },
+        { kind: 'force', id: 'F1' },
+        { kind: 'force', id: 'F2' },
+      ],
+      { x: 0, y: 100 }
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // F1 rides with the copy of AB, F2 is copied onto CD: one copy each.
+    expect(h.service.forces).toHaveLength(4);
+    const abCopy = h.service.links.find((link) =>
+      link.joints.every((joint) => joint.y === 100)
+    ) as RealLink;
+    expect(abCopy.forces).toHaveLength(1);
+    expect(h.links[0].forces).toHaveLength(1);
+    expect(h.links[2].forces).toHaveLength(2);
+    const cdCopy = h.links[2].forces.find((force) => force !== onCD)!;
+    expect(result.selection).toEqual([
+      { kind: 'link', id: abCopy.id },
+      { kind: 'force', id: cdCopy.id },
+    ]);
+  });
+
+  it('uses typed references when a joint and link have the same id', () => {
+    const h = createMechanismHarness();
+    const same = new RevJoint('AB', 5, 7);
+    const a = new RevJoint('A', 0, 0);
+    const b = new RevJoint('B', 10, 0);
+    const link = new RealLink('AB', [a, b]);
+    h.service.joints = [same, a, b];
+    h.service.links = [link];
+    wireGraph(h.service);
+    const batch = runInInjectionContext(h.injector, () => new SelectionBatchService());
+
+    const result = batch.duplicateSelected([{ kind: 'joint', id: 'AB' }], { x: 3, y: 4 });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.selection).toHaveLength(1);
+    expect(result.selection[0].kind).toBe('joint');
+    expect(h.service.links).toEqual([link]);
+    expect(h.service.joints).toHaveLength(4);
+    expect(h.service.joints.at(-1)).toEqual(expect.objectContaining({ x: 8, y: 11 }));
+  });
+
+  it('preserves a floating slider and its carrier without copying unrelated topology', () => {
+    const h = createMechanismHarness();
+    const a = new RevJoint('A', 0, 0);
+    // B *is* the slider: a pin with a coincident prismatic joint and a
+    // zero-length block joining them until Stage 1 of
+    // `docs/joint-type-and-cylinder-plan.md`.
+    const b = new PrisJoint('B', 100, 0);
+    const c = new RevJoint('C', 0, 200);
+    const d = new RevJoint('D', 200, 200);
+    const outsider = new RevJoint('E', 300, 0);
+    const rider = new RealLink('AB', [a, b]);
+    const carrier = new RealLink('CD', [c, d]);
+    const outside = new RealLink('BE', [b, outsider]);
+    b.slideOn(carrier, c, d);
+    h.service.joints = [a, b, c, d, outsider];
+    h.service.links = [rider, carrier, outside];
+    wireGraph(h.service);
+    const batch = runInInjectionContext(h.injector, () => new SelectionBatchService());
+
+    const result = batch.duplicateSelected([{ kind: 'link', id: rider.id }], { x: 20, y: 30 });
+
+    expect(result.ok).toBe(true);
+    const copiedSlots = h.service.joints.filter(
+      (joint): joint is PrisJoint => joint instanceof PrisJoint && joint !== b
+    );
+    expect(copiedSlots).toHaveLength(1);
+    expect(copiedSlots[0].isFloating).toBe(true);
+    expect(copiedSlots[0].isSlotWellFormed).toBe(true);
+    expect(copiedSlots[0].carrier).not.toBe(carrier);
+    // Three links, plus copies of the rider and the carrier the slot needs.
+    // It was four and three while the block was a link of its own.
+    expect(h.service.links.length).toBe(5);
+    expect(h.service.joints.filter((joint) => joint.x === outsider.x + 20)).toHaveLength(0);
+    expect(h.saveCount()).toBe(1);
+  });
+
+  it('preserves body properties and a grid-anchored custom center of mass at the offset', () => {
+    const h = chain(2);
+    const source = h.links[0];
+    source.mass = 7;
+    source.massMoI = 123.5;
+    source.moiIsCustom = true;
+    source.comIsCustom = true;
+    source.placeCustomCoM({ x: 30, y: 40 });
+    source.comAnchor = 'grid';
+    source.captureComOffset();
+    source.fill = '#abcdef';
+
+    const result = h.batch.duplicateSelected([{ kind: 'link', id: source.id }], { x: 10, y: 20 });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const copy = h.service.links.find((link) => link.id === result.selection[0].id) as RealLink;
+    expect(copy.mass).toBe(7);
+    expect(copy.massMoI).toBe(123.5);
+    expect(copy.moiIsCustom).toBe(true);
+    expect(copy.comIsCustom).toBe(true);
+    expect(copy.comAnchor).toBe('grid');
+    expect(copy.CoM.x).toBeCloseTo(40, 9);
+    expect(copy.CoM.y).toBeCloseTo(60, 9);
+    expect(copy.fill).toBe('#abcdef');
+  });
+
+  it('preserves a welded compound and deduplicates its shared joint', () => {
+    const h = chain(3);
+    h.active.updateSelectedObj(h.joints[1]);
+    h.service.weldJoint();
+    const compound = h.service.links[0] as RealLink;
+    const savesBefore = h.saveCount();
+
+    const result = h.batch.duplicateSelected(
+      [
+        { kind: 'link', id: compound.id },
+        { kind: 'link', id: compound.subset[0].id },
+      ],
+      { x: 5, y: 5 }
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.selection).toHaveLength(1);
+    const copy = h.service.links.find((link) => link.id === result.selection[0].id) as RealLink;
+    expect(copy).toBeDefined();
+    expect(copy.subset).toHaveLength(2);
+    expect(copy.joints).toHaveLength(3);
+    expect(new Set(copy.subset.flatMap((link) => link.joints)).size).toBe(3);
+    const shared = copy.subset[0].joints.filter((joint) => copy.subset[1].joints.includes(joint));
+    expect(shared).toHaveLength(1);
+    expect((shared[0] as RevJoint).isWelded).toBe(true);
+    expect(h.saveCount() - savesBefore).toBe(1);
+  });
+
+  it('duplicates a sealed cylinder as one complete unlocked part', () => {
+    const h = createMechanismHarness();
+    h.service.createCylinderFrom(new Coord(0, 0), new Coord(600, 0));
+    const original = cylindersIn(h.service.joints)[0];
+    original.seal.locked = true;
+    const beforeSaves = h.saveCount();
+    const batch = runInInjectionContext(h.injector, () => new SelectionBatchService());
+
+    const result = batch.duplicateSelected(
+      [
+        { kind: 'link', id: original.barrel.id },
+        { kind: 'link', id: original.rod.id },
+      ],
+      { x: 0, y: 100 }
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.selection).toHaveLength(1);
+    const cylinders = cylindersIn(h.service.joints);
+    expect(cylinders).toHaveLength(2);
+    const copy = cylinders.find((candidate) => candidate.seal !== original.seal)!;
+    expect(copy.seal.isSealed).toBe(true);
+    // The seal is `rotates` on the sliding joint now: it was the weld on the
+    // coincident pin the block paired it with.
+    expect(copy.seal.rotates).toBe(false);
+    expect(copy.seal.locked).toBe(false);
+    expect(copy.mountA.y).toBeCloseTo(original.mountA.y + 100, 6);
+    expect(copy.mountB.y).toBeCloseTo(original.mountB.y + 100, 6);
+    // Four joints and two links per ram, where it was five and three.
+    expect(h.service.joints).toHaveLength(8);
+    expect(h.service.links).toHaveLength(4);
+    expect(h.saveCount() - beforeSaves).toBe(1);
+
+    // And the copy is named the way a freshly drawn one is (decision S9): the
+    // two ends and the seal take letters, the buried barrel end an interior
+    // name hung off its own mount. Every joint used to take a letter here, so
+    // a duplicated cylinder came out with a hidden joint wearing one no marker
+    // on the grid did -- and pushed every later joint down the alphabet.
+    const lettered = /^[A-Za-z]+$/;
+    expect(copy.mountA.id).toMatch(lettered);
+    expect(copy.mountB.id).toMatch(lettered);
+    expect(copy.seal.id).toMatch(lettered);
+    expect(copy.inner.id).toBe(`${copy.mountA.id}1`);
+    expect(h.service.determineNextLetter()).toBe('G');
+    // Along the part, like a new one: the barrel's mount, the slide, the far
+    // end. The closure is built from whatever was clicked, so before S9 was
+    // amended a copy taken by its seal lettered the seal first.
+    expect([copy.mountA.id, copy.seal.id, copy.mountB.id]).toEqual(['D', 'E', 'F']);
+  });
+
+  it('letters a copy along the part whichever of its joints was clicked', () => {
+    const h = createMechanismHarness();
+    h.service.createCylinderFrom(new Coord(0, 0), new Coord(600, 0));
+    const original = cylindersIn(h.service.joints)[0];
+    const batch = runInInjectionContext(h.injector, () => new SelectionBatchService());
+
+    // Taken by the square in the middle of the part rather than by a member.
+    const result = batch.duplicateSelected([{ kind: 'joint', id: original.seal.id }], {
+      x: 0,
+      y: 100,
+    });
+
+    expect(result.ok).toBe(true);
+    const copy = cylindersIn(h.service.joints).find(
+      (candidate) => candidate.seal !== original.seal
+    )!;
+    expect([copy.mountA.id, copy.seal.id, copy.mountB.id]).toEqual(['D', 'E', 'F']);
+    expect(copy.inner.id).toBe('D1');
+  });
+
+  for (const recolored of [false, true]) {
+    it(`copies a cylinder whose rod ${recolored ? 'was' : 'was not'} recolored, as it is drawn`, () => {
+      // Whether the rod's fill is a choice or a number nobody has drawn is
+      // carried by a flag, not by the color (decision S15), so a copy that
+      // took only the color would come back in the wrong one either way.
+      const h = createMechanismHarness();
+      h.service.createCylinderFrom(new Coord(0, 0), new Coord(600, 0));
+      const original = cylindersIn(h.service.joints)[0];
+      paintCylinderMember(original.rod, '#b2dfdb', recolored ? original : undefined);
+      const batch = runInInjectionContext(h.injector, () => new SelectionBatchService());
+
+      batch.duplicateSelected(
+        [
+          { kind: 'link', id: original.barrel.id },
+          { kind: 'link', id: original.rod.id },
+        ],
+        { x: 0, y: 100 }
+      );
+
+      const copy = cylindersIn(h.service.joints).find(
+        (candidate) => candidate.seal !== original.seal
+      )!;
+      expect(copy.rod.ownColor).toBe(recolored);
+      expect(rodFillOf(copy)).toBe(rodFillOf(original));
+    });
+  }
+});
+
+describe('SelectionBatchService deletion', () => {
+  it('deletes a locked selection, cascade and all', () => {
+    // A Lock holds a part where it is. It used to hold it against deletion
+    // too -- both directly and, once, through the cascade: a locked joint the
+    // selection would orphan refused the whole batch. Two rules on one mark,
+    // and the reader had only been told about the first.
+    const h = chain();
+    h.joints[1].locked = true;
+
+    expect(
+      h.batch.deleteRefusal([
+        { kind: 'link', id: 'AB' },
+        { kind: 'link', id: 'BC' },
+      ])
+    ).toBeUndefined();
+    const result = h.batch.deleteSelected([
+      { kind: 'link', id: 'AB' },
+      { kind: 'link', id: 'BC' },
+    ]);
+
+    expect(result.ok).toBe(true);
+    expect(h.service.links.some((one) => one.id === 'AB' || one.id === 'BC')).toBe(false);
+    expect(h.service.joints.some((one) => one.id === h.joints[1].id)).toBe(false);
+    expect(h.saveCount()).toBe(1);
+  });
+
+  it('deletes deduplicated links and their orphans with one structural save', () => {
+    const h = chain();
+
+    const result = h.batch.deleteSelected([
+      { kind: 'link', id: 'AB' },
+      { kind: 'link', id: 'BC' },
+      { kind: 'link', id: 'AB' },
+    ]);
+
+    expect(result).toEqual({ ok: true, selection: [] });
+    expect(h.service.links.map((link) => link.id)).toEqual(['CD']);
+    expect(h.service.joints.map((joint) => joint.id)).toEqual(['C', 'D']);
+    expect(h.saveCount()).toBe(1);
+  });
+
+  it('deletes a selected joint and its incident bars without sweeping unrelated orphans', () => {
+    const h = chain(3);
+
+    const result = h.batch.deleteSelected([{ kind: 'joint', id: 'B' }]);
+
+    expect(result.ok).toBe(true);
+    expect(h.service.links).toHaveLength(0);
+    expect(h.service.joints.map((joint) => joint.id)).toEqual(['A', 'C']);
+    expect(h.saveCount()).toBe(1);
+  });
+
+  it('reconciles a floating slot after its selected carrier is deleted', () => {
+    const h = createMechanismHarness();
+    const a = new RevJoint('A', 0, 0);
+    const b = new RevJoint('B', 100, 0);
+    const c = new RevJoint('C', 0, 200);
+    const d = new RevJoint('D', 200, 200);
+    const rider = new RealLink('AB', [a, b]);
+    const carrier = new RealLink('CD', [c, d]);
+    const slot = new PrisJoint('P', b.x, b.y);
+    slot.slideOn(carrier, c, d);
+    const riderOnSlot = new RealLink('BP', [b, slot]);
+    h.service.joints = [a, b, c, d, slot];
+    h.service.links = [rider, carrier, riderOnSlot];
+    wireGraph(h.service);
+    const batch = runInInjectionContext(h.injector, () => new SelectionBatchService());
+
+    const result = batch.deleteSelected([{ kind: 'link', id: carrier.id }]);
+
+    expect(result.ok).toBe(true);
+    expect(slot.isFloating).toBe(false);
+    expect(slot.isDangling).toBe(true);
+    expect(slot.carrier).toBeUndefined();
+    expect(h.service.links.map((link) => link.id).sort()).toEqual(['AB', 'BP']);
+    expect(h.saveCount()).toBe(1);
+  });
+
+  it('deletes a compound as one canonical body with one save', () => {
+    const h = chain(3);
+    h.active.updateSelectedObj(h.joints[1]);
+    h.service.weldJoint();
+    const compound = h.service.links[0];
+    const savesBefore = h.saveCount();
+
+    const result = h.batch.deleteSelected([
+      { kind: 'link', id: compound.id },
+      { kind: 'link', id: (compound as RealLink).subset[0].id },
+    ]);
+
+    expect(result.ok).toBe(true);
+    expect(h.service.links).toHaveLength(0);
+    expect(h.service.joints).toHaveLength(0);
+    expect(h.saveCount() - savesBefore).toBe(1);
+  });
+
+  for (const batch of [false, true]) {
+    it(`splits disconnected welded survivors and removes deleted mass (${batch ? 'batch' : 'single'})`, () => {
+      const h = chain(5);
+      h.links.forEach((link) => h.service.assignBodyMass(link, 10));
+      for (const joint of h.joints.slice(1, -1)) h.service.weldJoint(joint);
+      expect(h.service.links).toHaveLength(1);
+      expect(h.service.links[0].mass).toBe(40);
+      const compound = h.service.links[0] as RealLink;
+      const load = new Force('F1', compound, new Coord(350, 0), new Coord(350, 40));
+      compound.forces.push(load);
+      h.service.forces.push(load);
+      const before = h.saveCount();
+      if (batch) h.batch.deleteSelected([{ kind: 'joint', id: 'C' }]);
+      else {
+        h.active.updateSelectedObj(h.joints[2]);
+        h.service.deleteJoint();
+      }
+      expect(h.service.links.map((link) => link.id).sort()).toEqual(['AB', 'DE']);
+      expect(h.service.links.every((link) => link.mass === 10)).toBe(true);
+      expect(h.service.links.every((link) => (link as RealLink).subset.length === 0)).toBe(true);
+      expect(h.service.joints.every((joint) => !(joint as RevJoint).isWelded)).toBe(true);
+      expect(h.joints[0].connectedJoints.map((joint) => joint.id)).toEqual(['B']);
+      expect(load.link.id).toBe('DE');
+      expect(load.link.forces).toContain(load);
+      expect(h.saveCount() - before).toBe(1);
+    });
+  }
+
+  it('retains connected surviving welds with their own aggregate mass', () => {
+    const h = chain(7);
+    h.links.forEach((link) => h.service.assignBodyMass(link, 10));
+    for (const joint of h.joints.slice(1, -1)) h.service.weldJoint(joint);
+    h.batch.deleteSelected([{ kind: 'joint', id: 'D' }]);
+    expect(h.service.links.map((link) => link.id).sort()).toEqual(['ABC', 'EFG']);
+    expect(h.service.links.every((link) => link.mass === 20)).toBe(true);
+    expect(h.service.links.every((link) => (link as RealLink).subset.length === 2)).toBe(true);
+    expect(h.joints[1].isWelded).toBe(true);
+    expect(h.joints[5].isWelded).toBe(true);
+    expect(h.joints[2].isWelded).toBe(false);
+    expect(h.joints[4].isWelded).toBe(false);
+    expect(h.joints[0].connectedJoints.map((joint) => joint.id).sort()).toEqual(['B', 'C']);
+  });
+
+  it('deletes a sealed cylinder without leaving its hidden implementation parts', () => {
+    const h = createMechanismHarness();
+    h.service.createCylinderFrom(new Coord(0, 0), new Coord(600, 0));
+    const cylinder = cylindersIn(h.service.joints)[0];
+    const beforeSaves = h.saveCount();
+    const batch = runInInjectionContext(h.injector, () => new SelectionBatchService());
+
+    const result = batch.deleteSelected([{ kind: 'link', id: cylinder.rod.id }]);
+
+    expect(result.ok).toBe(true);
+    expect(cylindersIn(h.service.joints)).toHaveLength(0);
+    expect(h.service.joints).toHaveLength(0);
+    expect(h.service.links).toHaveLength(0);
+    expect(h.saveCount() - beforeSaves).toBe(1);
+  });
+
+  it('deletes a locked cylinder and its whole closure', () => {
+    const h = createMechanismHarness();
+    h.service.createCylinderFrom(new Coord(0, 0), new Coord(600, 0));
+    const cylinder = cylindersIn(h.service.joints)[0];
+    cylinder.seal.locked = true;
+    const beforeSaves = h.saveCount();
+    const batch = runInInjectionContext(h.injector, () => new SelectionBatchService());
+
+    const result = batch.deleteSelected([{ kind: 'link', id: cylinder.rod.id }]);
+
+    // All of it, or none: the assembly is one part, and a mark on its slider
+    // says where it sits rather than whether it stays.
+    expect(result.ok).toBe(true);
+    expect(cylindersIn(h.service.joints)).toHaveLength(0);
+    expect(h.service.joints).toHaveLength(0);
+    expect(h.service.links).toHaveLength(0);
+    expect(h.saveCount() - beforeSaves).toBe(1);
+  });
+});

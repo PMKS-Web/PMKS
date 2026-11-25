@@ -11,10 +11,71 @@
   $background: map.get($theme, background);
   $foreground: map.get($theme, foreground);
 
+  // The drawer hands its height down to here, and this hands it to the card,
+  // which is what scrolls. Without the chain the card grew as tall as its
+  // settings and the drawer frame scrolled instead -- taking the close button,
+  // which is positioned against that frame, off the top of it.
   #settingsWrapper {
+    // The reason the controls below are gray is the Edit panel's own strip
+    // now (`app-edit-banner`), which brings its own indigo, its own glyph and
+    // the underlined way out. What it needs from here is the room it cannot
+    // take for itself.
+    //
+    // Full-bleed sideways, because the section insets its children by fifteen
+    // pixels and a strip that speaks for the whole panel wants its edges. Flush
+    // upward, because the section also puts four pixels above its first child
+    // and a band of color hanging four pixels under the heading reads as a
+    // misaligned box rather than as the heading's own second line.
+    .settingsBanner {
+      margin: -4px -15px 0;
+    }
+
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: 10px;
+    flex: 1 1 auto;
+    min-height: 0;
+
+    panel-section {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+  }
+
+  // The panel stretches its children to its own width, which is a content-box
+  // width -- so a row with side padding came out wider than the drawer and the
+  // version ran off the edge.
+  // What the unit choices above it come to: torque and inertia, and under
+  // inches the mass and force whose rows are hidden for having one option.
+  // Secondary text under the rows it explains, on the rows' own gutter.
+  .unitsNote {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text-secondary);
+  }
+
+  .versionRow {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    // The same 40px row on a 15px gutter every section header in the app uses,
+    // rather than 10px of air above it and 14px below.
+    height: 40px;
+    padding: 0 15px;
+    border-top: 1px solid var(--border-rule);
+    font-size: 13px;
+  }
+
+  .versionLabel {
+    color: var(--text-tertiary);
+  }
+
+  .versionValue {
+    margin-left: auto;
+    color: var(--text-secondary);
   }
 }

@@ -1,0 +1,244 @@
+{
+ "schema": "pmks-oracle-problem/1",
+ "id": "template.windshield-wiper.m1",
+ "title": "Template Windshield_Wiper, M1",
+ "source": {
+  "kind": "published",
+  "case": "template.windshield-wiper",
+  "machine": "M1"
+ },
+ "gravity": 9.80665,
+ "bodies": [
+  {
+   "id": "OA",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    -0.3497873379867596,
+    -0.20784301397610425
+   ]
+  },
+  {
+   "id": "AB",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    -0.1308221536686833,
+    -0.15623848560461048
+   ]
+  },
+  {
+   "id": "BCPT",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    -0.016486944119278597,
+    0.0336813104496809
+   ]
+  },
+  {
+   "id": "CD",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.3659477764771144,
+    -0.13472524179872367
+   ]
+  },
+  {
+   "id": "DQU",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.5487072849622443,
+    0.10478629917678506
+   ]
+  }
+ ],
+ "joints": [
+  {
+   "id": "O",
+   "kind": "pin",
+   "at": [
+    -0.35,
+    -0.282842712474619
+   ],
+   "bodies": [
+    "OA"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "A",
+   "kind": "pin",
+   "at": [
+    -0.3495746759735192,
+    -0.13284331547758946
+   ],
+   "bodies": [
+    "OA",
+    "AB"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "B",
+   "kind": "pin",
+   "at": [
+    0.08793036863615258,
+    -0.1796336557316315
+   ],
+   "bodies": [
+    "AB",
+    "BCPT"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "C",
+   "kind": "pin",
+   "at": [
+    0.06594777647711444,
+    -0.13472524179872367
+   ],
+   "bodies": [
+    "BCPT",
+    "CD"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "P",
+   "kind": "pin",
+   "at": [
+    0,
+    0
+   ],
+   "bodies": [
+    "BCPT"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "D",
+   "kind": "pin",
+   "at": [
+    0.6659477764771143,
+    -0.13472524179872367
+   ],
+   "bodies": [
+    "CD",
+    "DQU"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "Q",
+   "kind": "pin",
+   "at": [
+    0.6,
+    0
+   ],
+   "bodies": [
+    "DQU"
+   ],
+   "grounded": true,
+   "welded": false
+  }
+ ],
+ "driver": {
+  "joint": "O",
+  "kind": "rotation",
+  "speed": -1.0471975511965976,
+  "bodies": [
+   "ground",
+   "OA"
+  ]
+ },
+ "loads": [],
+ "points": [
+  {
+   "id": "O",
+   "body": "ground",
+   "at": [
+    -0.35,
+    -0.282842712474619
+   ]
+  },
+  {
+   "id": "A",
+   "body": "OA",
+   "at": [
+    -0.3495746759735192,
+    -0.13284331547758946
+   ]
+  },
+  {
+   "id": "B",
+   "body": "AB",
+   "at": [
+    0.08793036863615258,
+    -0.1796336557316315
+   ]
+  },
+  {
+   "id": "C",
+   "body": "BCPT",
+   "at": [
+    0.06594777647711444,
+    -0.13472524179872367
+   ]
+  },
+  {
+   "id": "P",
+   "body": "ground",
+   "at": [
+    0,
+    0
+   ]
+  },
+  {
+   "id": "T",
+   "body": "BCPT",
+   "at": [
+    -0.21982592159038142,
+    0.44908413932907876
+   ]
+  },
+  {
+   "id": "D",
+   "body": "CD",
+   "at": [
+    0.6659477764771143,
+    -0.13472524179872367
+   ]
+  },
+  {
+   "id": "Q",
+   "body": "ground",
+   "at": [
+    0.6,
+    0
+   ]
+  },
+  {
+   "id": "U",
+   "body": "DQU",
+   "at": [
+    0.3801740784096186,
+    0.44908413932907876
+   ]
+  }
+ ],
+ "sweep": {
+  "step": 0.017453292519943295,
+  "maxSamples": 2000
+ },
+ "unsupported": []
+}

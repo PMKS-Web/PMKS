@@ -1,0 +1,376 @@
+@use 'sass:map';
+@use '@angular/material' as mat;
+@use '../segmented/segmented.look' as look;
+
+@mixin css($theme) {
+  $color-config: mat.m2-get-color-config($theme);
+  $typography-config: mat.m2-get-typography-config($theme);
+  $primary-palette: map.get($color-config, 'primary');
+  $primary: mat.m2-get-color-from-palette($primary-palette, 500);
+
+  .fade-in-out {
+    opacity: 0;
+    transition: 0.15s ease-in-out;
+    scale: 0.5;
+    // Overwritten from the component once the card has been placed, so the
+    // grow reads right in whichever corner the pointer put it.
+    transform-origin: top left;
+  }
+
+  .fade-in-out.show {
+    opacity: 1;
+    scale: 1;
+  }
+
+  #contextMenu.cm-empty {
+    display: none;
+  }
+
+  #contextMenu {
+    pointer-events: all !important;
+    // Raised from 5: this card stands over a mechanism that may be running,
+    // and it is opaque white rather than translucent for the same reason.
+    @include mat.elevation(16);
+    display: inline-flex;
+    flex-direction: column;
+    min-width: 224px;
+    max-width: min(320px, calc(100vw - 16px));
+    max-height: calc(100dvh - 16px);
+    // The cap is the card's outer edge: with every joint row permanent the
+    // menu reaches it on a short phone, and content-box put the bottom padding
+    // outside it -- one pixel past the room `context-menu-modes` leaves.
+    box-sizing: border-box;
+    overflow-y: auto;
+    > * {
+      flex-shrink: 0;
+    }
+    padding: 0 0 4px;
+    background-color: var(--surface);
+    border-radius: var(--border-radius);
+    user-select: none;
+
+    // Who the menu is about. Named, because "Delete Joint" on a canvas of nine
+    // of them says which one only if the card does.
+    .cm-header {
+      display: flex;
+      // Centered against the whole two-line block rather than hung off the
+      // title: the icon is about the part, not about its name.
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px 10px 14px;
+    }
+
+    .cm-header__names {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .cm-header__title {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-strong);
+      line-height: 18px;
+    }
+
+    .cm-header__subtitle {
+      font-size: 11.5px;
+      color: var(--text-secondary);
+      line-height: 15px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .cm-cross {
+      flex: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      margin-right: -2px;
+      padding: 0;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+
+      &:hover {
+        background-color: var(--surface-hover);
+      }
+
+      mat-icon {
+        width: 19px;
+        height: 19px;
+        font-size: 19px;
+        line-height: 19px;
+      }
+    }
+
+    // The readiness refusal rides the icon rather than costing a row.
+    .cm-cross--off {
+      color: var(--text-disabled);
+      cursor: default;
+
+      &:hover {
+        background-color: transparent;
+      }
+    }
+
+    // What the part can be, drawn the way the app's pick-one control draws it:
+    // the same track, cells, pill surface and inks, from the mixins
+    // `segmented-block` uses, because two copies of one look drift apart.
+    .cm-choice {
+      @include look.track;
+      @include look.wrapped;
+      margin: 0 12px 10px;
+      // Wide enough for the longest of the four labels.
+      //
+      // The card's own 224px minimum was set when the top of it was rows, and
+      // a row has the whole width for its label. Two columns give a label a
+      // quarter of it, which came to 52px -- so the card's narrowest form, the
+      // one with no wide row in it, ellipsized "Pin-in-slot" and "Prismatic",
+      // including on the chosen value. Asked for here rather than on the card,
+      // so only the cards that carry a choice pay for it.
+      min-width: 212px;
+
+      .cm-choice__cell {
+        @include look.cell;
+        flex: 1 1 calc(50% - var(--gap) / 2);
+        min-width: 0;
+        height: 32px;
+        cursor: pointer;
+
+        mat-icon {
+          @include look.glyph;
+        }
+
+        // Drawn under `.byKeyboard` below, not here: the CDK focuses this cell
+        // as the card opens, and `:focus-visible` calls that keyboard work.
+        &:focus {
+          outline: none;
+        }
+      }
+
+      .cm-choice__cell:not(.cm-choice__cell--chosen):not(.cm-choice__cell--off):hover {
+        color: var(--text-primary);
+      }
+
+      .cm-choice__cell--chosen {
+        @include look.chosen-surface;
+        @include look.chosen-ink($theme);
+
+        mat-icon {
+          @include look.chosen-glyph($theme);
+        }
+      }
+
+      // Grayed, with its reason on hover: nothing is printed under the grid.
+      // The chosen value when nothing else may be chosen: still the pill, but
+      // no longer something to press.
+      .cm-choice__cell--settled {
+        cursor: default;
+      }
+
+      .cm-choice__cell--off {
+        color: var(--text-disabled);
+        cursor: default;
+
+        mat-icon {
+          color: var(--text-disabled);
+        }
+      }
+
+      // Chosen, and not valid as it stands.
+      .cm-choice__cell--fault {
+        color: var(--refusal-text);
+
+        mat-icon {
+          color: var(--refusal-text);
+        }
+      }
+
+      .cm-choice__label {
+        @include look.label-text;
+      }
+    }
+
+    // A ring for the reader who reached for the keys, and none for the one who
+    // right-clicked. Opening the card moves focus into its first item, which is
+    // what lets the arrows walk it at all; `:focus-visible` would be the
+    // obvious way to draw that only for the keyboard and is the one that went
+    // wrong, because the browser reads a script moving focus as keyboard work
+    // unless the reader's last act was a pointer that moved focus itself. So a
+    // right-clicked card came up ringing its first value -- the chosen one,
+    // where a ring reads as a second kind of "selected" -- and the next card
+    // did not, which reads as a bug in whichever value sits first.
+    //
+    // `byKeyboard` is the component's own answer, from the event that opened
+    // the card. `TopBarComponent` says the same thing about the project menu.
+    &.byKeyboard {
+      .cm-choice__cell:focus,
+      .cm-row:focus {
+        outline: 2px solid var(--brand);
+        outline-offset: -2px;
+      }
+
+      // A row is a full-width rung with nothing but the ring to mark it, so it
+      // takes the hover wash as well -- the same mark the pointer leaves.
+      .cm-row:focus {
+        background-color: var(--surface-hover);
+      }
+    }
+
+    // One rung of the ladder. They never reorder, so Delete is always last.
+    .cm-group {
+      display: flex;
+      flex-direction: column;
+      border-top: 1px solid rgba(0, 0, 0, 0.08);
+      padding-top: 2px;
+    }
+
+    .cm-group__label {
+      padding: 6px 14px 3px;
+      font-size: 10.5px;
+      font-weight: 500;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .cm-row {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      min-height: 30px;
+      padding: 3px 14px;
+      box-sizing: border-box;
+      cursor: pointer;
+      color: var(--text-strong);
+      @include mat.m2-typography-level($typography-config, 'subtitle-2');
+      font-size: 13.5px;
+      font-weight: 400;
+
+      &:focus {
+        outline: none;
+      }
+
+      &:hover {
+        background-color: var(--surface-hover);
+      }
+
+      // Ink is solid black and the *group* is 60%, rather than a 60% ink:
+      // the app's own glyphs are built from strokes that cross -- a shaft
+      // through a joint's ring, two heads on one shaft -- and translucent
+      // ink shows every crossing as a darker patch. Opacity on the element
+      // composites the whole glyph once, so it reads as one shape.
+      mat-icon {
+        flex: none;
+        width: 18px;
+        height: 18px;
+        font-size: 18px;
+        line-height: 18px;
+        color: var(--text-black);
+        opacity: 0.6;
+      }
+    }
+
+    .cm-row__text {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .cm-row__label,
+    .cm-row__detail {
+      display: block;
+      overflow-wrap: anywhere;
+      line-height: 18px;
+    }
+
+    .cm-row__detail {
+      font-size: 11.5px;
+      color: var(--text-secondary);
+      line-height: 15px;
+    }
+
+    // The state a switch names, on: tinted, and ticked in the same slot the
+    // reason and the key use, so the right edge always says one thing.
+    .cm-row--on {
+      background-color: rgba(63, 81, 181, 0.08);
+
+      mat-icon {
+        color: $primary;
+        opacity: 1;
+      }
+    }
+
+    .cm-row__check {
+      flex: none;
+      color: $primary;
+    }
+
+    .cm-row__hint,
+    .cm-row__key,
+    .cm-row__reason {
+      flex: none;
+      padding-left: 10px;
+      font-size: 11.5px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    // A shortcut is a key, and is drawn as one: the same cap the project
+    // menu's rows wear (`.menuKeys` in the top bar), so the letter reads as a
+    // thing to press rather than as a second, shorter reason.
+    .cm-row__key {
+      padding: 1px 5px;
+      margin-left: 10px;
+      border: 1px solid var(--border-keycap);
+      border-bottom-width: 2px;
+      border-radius: 4px;
+      background: rgba(0, 0, 0, 0.03);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      line-height: 15px;
+      color: var(--text-secondary);
+    }
+
+    // Grayed, with the reason beside it. Never clickable-and-then-refused.
+    .cm-row--off {
+      color: var(--text-disabled);
+      cursor: default;
+
+      &:hover {
+        background-color: transparent;
+      }
+
+      mat-icon {
+        opacity: 0.24;
+      }
+
+      .cm-row__reason {
+        color: var(--text-muted);
+      }
+    }
+
+    // The footer. Alone under a rule, and always the last row.
+    .cm-row--destructive {
+      color: var(--danger);
+
+      mat-icon {
+        color: var(--danger);
+        opacity: 1;
+      }
+    }
+
+    .cm-row--destructive.cm-row--off {
+      color: var(--text-disabled);
+
+      mat-icon {
+        color: var(--text-black);
+        opacity: 0.24;
+      }
+    }
+  }
+}

@@ -1,4 +1,5 @@
-import { Component, Input, NO_ERRORS_SCHEMA } from '@angular/core';
+import { Component, NO_ERRORS_SCHEMA, input } from '@angular/core';
+import { AnalysisApexChartComponent } from './analysis-apex-chart.component';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
@@ -11,16 +12,16 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { ApexAxisChartSeries } from 'apexcharts';
 import { RealJoint } from '../../model/joint';
 import { RealLink } from '../../model/link';
-import { ForceSolver } from '../../model/mechanism/force-solver';
+import { ForceAnalysisSeries, ForceSolver } from '../../model/mechanism/force-solver';
+import { KinematicsSolver } from '../../model/mechanism/kinematic-solver';
 import { ForceUnit, LengthUnit } from '../../model/unit-enums';
 import { NumberUnitParserService } from '../../services/number-unit-parser.service';
 import { ActiveObjService } from '../../services/active-obj.service';
+import { AnalysisSampleService } from '../../services/analysis-sample.service';
 import { MechanismService } from '../../services/mechanism.service';
+import { AnalysisCompareService } from '../../services/analysis-compare.service';
 import { SettingsService } from '../../services/settings.service';
-import {
-  BUILT_IN_TEMPLATE_IDS,
-  TEMPLATE_LINKAGES,
-} from '../MODALS/templates/template-linkages';
+import { BUILT_IN_TEMPLATE_IDS, TEMPLATE_LINKAGES } from '../MODALS/templates/template-linkages';
 import {
   buildMechanismFixture,
   COMPLEX_WELDED_MECHANISM,
@@ -31,30 +32,59 @@ import {
 import {
   ANALYSIS_SERIES_COLORS,
   AnalysisGraphComponent,
+  formatAxisTick,
   formatTimeLabel,
+  niceAxisScale,
 } from './analysis-graph.component';
+import { formatAnalysisValue } from '../../model/analysis-series';
+import { withTestInjector } from '../../../test-utils/mechanism-harness';
+import { fixturePayload } from '../../../test-utils/verification/fixture-gallery';
+import { teachingLabFourBarFixture } from '../../../test-utils/verification/fixtures';
+
+/**
+ * A four-bar that is actually about force: the MATLAB-verified TeachingLab
+ * linkage, with the masses and inertias measured off the real hardware, driven
+ * at 10 RPM.
+ *
+ * Two tests below are about numbers a force analysis produces — one that the
+ * two modes disagree, one that newtons convert to pounds — and both used to
+ * read the `4-Bar` template, which is a kinematics demonstration that happened
+ * to carry a mass of 1. Neither question survives that mechanism being
+ * published massless: with no inertia the modes agree exactly, and a
+ * conversion checked against zero passes whatever it does. So the mechanism is
+ * stated here, and its speed with it.
+ */
+const LOADED_FOUR_BAR = fixturePayload(teachingLabFourBarFixture(), undefined, { rpm: 10 });
+
+/** The largest excursion of a plotted series from zero, ignoring gaps. */
+function peakOf(values: Array<number | null>): number {
+  const finite = values.filter((value): value is number => Number.isFinite(value));
+  expect(finite.length).toBeGreaterThan(values.length / 2);
+  return Math.max(...finite.map(Math.abs));
+}
 
 @Component({
   selector: 'app-analysis-apex-chart',
   template: '',
-  standalone: false,
 })
 class ApexChartStubComponent {
-  @Input() series: ApexAxisChartSeries = [];
-  @Input() annotations: unknown;
-  @Input() chart: unknown;
-  @Input() colors: unknown;
-  @Input() yaxis: unknown;
-  @Input() dataLabels: unknown;
-  @Input() markers: unknown;
-  @Input() stroke: unknown;
-  @Input() grid: unknown;
-  @Input() xaxis: unknown;
-  @Input() tooltip: unknown;
-  @Input() legend: unknown;
+  readonly series = input<ApexAxisChartSeries>([]);
+  readonly annotations = input<unknown>();
+  readonly chart = input<unknown>();
+  readonly colors = input<unknown>();
+  readonly yaxis = input<unknown>();
+  readonly dataLabels = input<unknown>();
+  readonly markers = input<unknown>();
+  readonly stroke = input<unknown>();
+  readonly grid = input<unknown>();
+  readonly xaxis = input<unknown>();
+  readonly tooltip = input<unknown>();
+  readonly legend = input<unknown>();
 
   addPointAnnotation = vi.fn();
   addXaxisAnnotation = vi.fn();
+  addYaxisAnnotation = vi.fn();
+  layerAnnotations = vi.fn();
   clearAnnotations = vi.fn();
   updateOptions = vi.fn();
 }
@@ -78,13 +108,31 @@ const PRODUCTION_FIXTURES = [
   ['legacy force URL', LEGACY_FORCE_MECHANISM] as const,
 ];
 
+/** No gesture, no record, the switch on: the state every fixture here is read in. */
+function quietComparison(): Partial<AnalysisCompareService> {
+  return {
+    live: false,
+    record: undefined,
+    compare: true,
+    register: () => undefined,
+    unregister: () => undefined,
+    sync: () => undefined,
+  };
+}
+
 function createComponent(fixture: MechanismFixture): AnalysisGraphComponent {
-  return new AnalysisGraphComponent(
-    new FormBuilder(),
-    fixture.service,
-    fixture.settings,
-    new NumberUnitParserService(),
-    fixture.active
+  return withTestInjector(
+    [
+      { provide: FormBuilder, deps: [] },
+      { provide: MechanismService, useValue: fixture.service },
+      { provide: SettingsService, useValue: fixture.settings },
+      { provide: NumberUnitParserService, deps: [] },
+      { provide: AnalysisSampleService, deps: [] },
+      // The comparison overlay asks the shared account what a gesture is
+      // doing. Nothing is dragged in these fixtures, so it answers "nothing".
+      { provide: AnalysisCompareService, useValue: quietComparison() },
+    ],
+    () => new AnalysisGraphComponent()
   );
 }
 
@@ -115,6 +163,36 @@ function expectNumericSeries(
   }
 }
 
+/**
+ * A partially failed force series is rare but real: the square-rod tangency
+ * slider-crank (fixture gallery) goes singular at the one sampled frame where
+ * the rod stands square to its guide, and a mechanism drawn exactly at a dead
+ * pose fails at frame 0 (square-rod-tangency.spec.ts pins the real case).
+ * This spec fabricates the failure instead, the way `analyzeFrame`'s
+ * `empty('singular')` fails a frame, so the rendering assertions stay
+ * deterministic and independent of solver behavior.
+ */
+function failForceFrames(
+  fixture: MechanismFixture,
+  mode: 'static' | 'dynamic',
+  indices: number[]
+): ForceAnalysisSeries {
+  const series = fixture.mechanism.getForceAnalysis(mode);
+  for (const index of indices) {
+    const frame = series.frames[index];
+    frame.status = 'singular';
+    frame.jointReactionsByLink = new Map();
+    frame.jointReactions = new Map();
+    frame.guideCouples = new Map();
+    frame.inputEffort = undefined;
+    frame.rank = 0;
+    frame.residual = Number.POSITIVE_INFINITY;
+    frame.message = ForceSolver.statusMessage('singular');
+  }
+  series.successfulFrames = series.frames.filter((frame) => frame.status === 'ok').length;
+  return series;
+}
+
 describe('AnalysisGraphComponent production fixtures', () => {
   beforeAll(() => vi.spyOn(console, 'log').mockImplementation(() => undefined));
   afterAll(() => vi.restoreAllMocks());
@@ -124,16 +202,30 @@ describe('AnalysisGraphComponent production fixtures', () => {
       const fixture = buildMechanismFixture(payload);
       const mechanism = fixture.mechanism;
       const component = createComponent(fixture);
-      const joint = mechanism.joints[0].find(
-        (candidate): candidate is RealJoint => candidate instanceof RealJoint && candidate.ground
-      )!;
+      // A grounded joint, unless every one is on a frame body -- a bar pinned to
+      // ground at two points carries no reaction of its own, and the gripper's
+      // barrel and rail are both -- and then a joint that carries one.
+      const reacting = mechanism
+        .getForceAnalysis('static')
+        .frames.find((frame) => frame.status === 'ok')?.jointReactions;
+      const joint =
+        mechanism.joints[0].find(
+          (candidate): candidate is RealJoint =>
+            candidate instanceof RealJoint && candidate.ground && !!reacting?.has(candidate.id)
+        ) ??
+        mechanism.joints[0].find(
+          (candidate): candidate is RealJoint =>
+            candidate instanceof RealJoint && !!reacting?.has(candidate.id)
+        )!;
       const compound = mechanism.links[0].find(
         (candidate): candidate is RealLink =>
           candidate instanceof RealLink && candidate.subset.length > 0
       );
-      const link = compound ?? mechanism.links[0].find(
-        (candidate): candidate is RealLink => candidate instanceof RealLink
-      )!;
+      const link =
+        compound ??
+        mechanism.links[0].find(
+          (candidate): candidate is RealLink => candidate instanceof RealLink
+        )!;
 
       for (const [property, expectedSeries] of KINEMATIC_GRAPHS) {
         const part = property.startsWith('Linear Joint') ? joint.id : link.id;
@@ -202,35 +294,28 @@ describe('AnalysisGraphComponent production fixtures', () => {
     analyze.mockRestore();
   });
 
-  it('uses mechanism timestamps identically in chart points and CSV output', () => {
-    const fixture = buildMechanismFixture(TEMPLATE_LINKAGES['4-Bar']);
-    const component = createComponent(fixture);
-    const input = fixture.mechanism.joints[0].find(
-      (joint): joint is RealJoint => joint instanceof RealJoint && joint.input
-    )!;
-    component.determineChart('force', 'dynamic', 'Input Effort', input.id);
-
-    const csvRows = component.buildCSVContent().trim().split('\n').slice(1);
-    expect(csvRows).toHaveLength(fixture.mechanism.timeNum.length);
-    csvRows.forEach((row, index) => {
-      expect(Number(row.split(',')[0])).toBeCloseTo(fixture.mechanism.timeNum[index], 12);
-    });
-  });
-
   it('produces mode-dependent dynamic input effort', () => {
-    const fixture = buildMechanismFixture(TEMPLATE_LINKAGES['4-Bar']);
+    const fixture = buildMechanismFixture(LOADED_FOUR_BAR);
     const component = createComponent(fixture);
     const input = fixture.mechanism.joints[0].find(
       (joint): joint is RealJoint => joint instanceof RealJoint && joint.input
     )!;
     component.determineChart('force', 'static', 'Input Effort', input.id);
-    const staticValues = (component.chartOptions.series![0].data as unknown as Array<{ y: number }>)
-      .map((point) => point.y);
+    const staticValues = (
+      component.chartOptions.series![0].data as unknown as Array<{ y: number | null }>
+    ).map((point) => point.y);
     component.determineChart('force', 'dynamic', 'Input Effort', input.id);
-    const dynamicValues = (component.chartOptions.series![0].data as unknown as Array<{ y: number }>)
-      .map((point) => point.y);
+    const dynamicValues = (
+      component.chartOptions.series![0].data as unknown as Array<{ y: number | null }>
+    ).map((point) => point.y);
 
     expect(dynamicValues.some((value, index) => value !== staticValues[index])).toBe(true);
+    // And not by a hair. The static effort only has to hold the linkage up;
+    // the dynamic one also has to swing these inertias round at 10 RPM, which
+    // costs far more. A mechanism with no mass in it would give one curve
+    // twice over, and would pass the line above but not this one.
+    expect(peakOf(staticValues)).toBeGreaterThan(0);
+    expect(peakOf(dynamicValues)).toBeGreaterThan(10 * peakOf(staticValues));
   });
 
   it('shows a diagnostic instead of an unexplained empty internal-weld reaction graph', () => {
@@ -238,7 +323,7 @@ describe('AnalysisGraphComponent production fixtures', () => {
     const component = createComponent(fixture);
     component.determineChart('force', 'static', 'Joint Forces', 'B');
 
-    expect(component.analysisDiagnostic).toContain('internal to one welded body');
+    expect(component.analysisDiagnostic).toContain('Only one part meets this joint');
     expect(
       component.chartOptions.series!.every((series) =>
         (series.data as unknown as Array<{ y: number | null }>).every((point) => point.y === null)
@@ -246,8 +331,96 @@ describe('AnalysisGraphComponent production fixtures', () => {
     ).toBe(true);
   });
 
-  it('uses matching Newton/lbf labels and values for graph and CSV output', () => {
+  it('counts the positions with no solution and can stand the mechanism at the first', () => {
     const fixture = buildMechanismFixture(TEMPLATE_LINKAGES['4-Bar']);
+    const component = createComponent(fixture);
+    const ground = fixture.mechanism.joints[0].find(
+      (candidate): candidate is RealJoint => candidate instanceof RealJoint && candidate.ground
+    )!;
+    const series = failForceFrames(fixture, 'static', [1, 4]);
+
+    component.determineChart('force', 'static', 'Joint Forces', ground.id);
+
+    expect(component.analysisGap).toEqual({
+      failed: 2,
+      total: series.frames.length,
+      firstSeconds: series.frames[1].timeSeconds,
+      mechIndex: 0,
+    });
+    // A hole in a good series, not a failure of the whole series.
+    expect(component.analysisDiagnostic).toBeNull();
+    const points = component.chartOptions.series![0].data as unknown as Array<{
+      y: number | null;
+    }>;
+    expect(points[1].y).toBeNull();
+    expect(points[4].y).toBeNull();
+    expect(Number.isFinite(points[0].y ?? Number.NaN)).toBe(true);
+
+    // Several holes: the button names the one it goes to, which is the first.
+    expect(component.gapShowLabel).toBe(
+      `Show First (${formatTimeLabel(series.frames[1].timeSeconds)} s)`
+    );
+
+    const seek = vi.fn();
+    const animate = vi.fn();
+    const togglePlaying = vi.fn();
+    Object.assign(fixture.service, {
+      seekMechanism: seek,
+      animate,
+      isPlaying: true,
+      isMechanismPlaying: () => true,
+      toggleMechanismPlaying: togglePlaying,
+    });
+    component.showGapPosition();
+    // Pressed mid-animation, the button pauses playback first -- a seek that
+    // kept playing would sail straight past the pose it names.
+    expect(animate).toHaveBeenCalledWith(fixture.service.mechanismTimeStep, false);
+    expect(togglePlaying).toHaveBeenCalledWith(0);
+    expect(seek).toHaveBeenCalledWith(0, series.frames[1].timeSeconds);
+
+    // A fully solved series takes the banner down...
+    component.determineChart('force', 'dynamic', 'Joint Forces', ground.id);
+    expect(component.analysisGap).toBeNull();
+
+    // ...and so does leaving force analysis for a kinematic graph.
+    component.determineChart('force', 'static', 'Joint Forces', ground.id);
+    expect(component.analysisGap).not.toBeNull();
+    component.determineChart('kinematic', 'loop', 'Linear Joint Pos', ground.id);
+    expect(component.analysisGap).toBeNull();
+  });
+
+  it('says the analysis failed rather than showing an empty series selection', () => {
+    // A solver that throws leaves chartOptions.series unassigned, and the
+    // template read that as nothing ticked -- "Please select at least one data
+    // series", above no checkboxes to tick. The user reads that as their own
+    // mistake. Two live defects presented this way before they were found.
+    const fixture = buildMechanismFixture(TEMPLATE_LINKAGES['4-Bar']);
+    const component = createComponent(fixture);
+    const joint = fixture.mechanism.joints[0].find(
+      (candidate): candidate is RealJoint => candidate instanceof RealJoint
+    )!;
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const solver = vi.spyOn(KinematicsSolver, 'determineKinematics').mockImplementation(() => {
+      throw new TypeError("Cannot read properties of undefined (reading '0')");
+    });
+
+    component.determineChart('kinematic', 'loop', 'Linear Joint Vel', joint.id);
+    component.applySeriesVisibility();
+
+    expect(component.analysisDiagnostic).toContain('could not be analyzed');
+    expect(component.numberOfSeries).toBe(0);
+    expect(component.displayedSeries).toHaveLength(0);
+    // And the failure is still recoverable in a console, not merely absorbed.
+    expect(logged).toHaveBeenCalled();
+
+    solver.mockRestore();
+    logged.mockRestore();
+  });
+
+  it('uses matching Newton/lbf labels and values for graph and CSV output', () => {
+    // A loaded mechanism, because a conversion is only worth checking on a
+    // number that is not zero: 0 N is 0 lbf whatever the factor happens to be.
+    const fixture = buildMechanismFixture(LOADED_FOUR_BAR);
     const component = createComponent(fixture);
     const input = fixture.mechanism.joints[0].find(
       (joint): joint is RealJoint => joint instanceof RealJoint && joint.input
@@ -258,20 +431,49 @@ describe('AnalysisGraphComponent production fixtures', () => {
     }>;
     const finiteIndex = newtonPoints.findIndex((point) => Number.isFinite(point.y));
     const newtonValue = newtonPoints[finiteIndex].y!;
-    expect(component.chartOptions.yaxis!.title!.text).toBe('Force (N)');
+    expect(Math.abs(newtonValue)).toBeGreaterThan(1);
+    // The words the axis used to be titled with; the summary still says them.
+    expect(component.axisTitle).toBe('Force (N)');
 
     fixture.settings.forceUnit.next(ForceUnit.LBF);
     component.determineChart('force', 'static', 'Joint Forces', input.id);
     const lbfValue = (
       component.chartOptions.series![2].data[finiteIndex] as unknown as { y: number }
     ).y;
-    expect(component.chartOptions.yaxis!.title!.text).toBe('Force (lbf)');
+    expect(component.axisTitle).toBe('Force (lbf)');
     expect(lbfValue).toBeCloseTo(newtonValue * 0.22480894387096, 3);
-    expect(component.buildCSVContent().split('\n')[0]).toContain('(lbf)');
   });
 });
 
 describe('AnalysisGraphComponent lifecycle', () => {
+  it('announces signed scalar results by their visible name, without a magnitude or solver ID', () => {
+    const component = createComponent(buildMechanismFixture(TEMPLATE_LINKAGES['4-Bar']));
+    component.displayLabel = 'Input Force';
+    component.mechProp = 'Input Effort';
+    component.mechPart = 'A3';
+    component.axisTitle = 'Force (N)';
+    component.numberOfSeries = 1;
+    component.displayedSeries = [
+      { name: 'Z', data: [-5] },
+      { name: 'Z before', data: [-2] },
+    ];
+    expect(component.graphSummary).toContain('Input Force');
+    expect(component.graphSummary).toContain('current, before drag');
+    expect(component.graphSummary).not.toContain('Magnitude');
+    expect(component.graphSummary).not.toContain('A3');
+  });
+
+  it('announces the before-drag vector magnitude without an out-of-plane Z component', () => {
+    const component = createComponent(buildMechanismFixture(TEMPLATE_LINKAGES['4-Bar']));
+    component.numberOfSeries = 3;
+    component.displayedSeries = [
+      { name: 'Z', data: [5] },
+      { name: 'Z before', data: [2] },
+    ];
+    expect(component.graphSummary).toContain('Magnitude, Magnitude before drag');
+    expect(component.graphSummary).not.toContain('Z');
+  });
+
   beforeEach(() => {
     vi.useFakeTimers();
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -288,6 +490,8 @@ describe('AnalysisGraphComponent lifecycle', () => {
     const chart = {
       addPointAnnotation: vi.fn(),
       addXaxisAnnotation: vi.fn(),
+      addYaxisAnnotation: vi.fn(),
+      layerAnnotations: vi.fn(),
       clearAnnotations: vi.fn(),
       updateOptions: vi.fn(),
     };
@@ -318,7 +522,11 @@ describe('AnalysisGraphComponent lifecycle', () => {
     expect(component.noDataSelected).toBe(true);
     component.seriesCheckboxForm.patchValue({ x: true, y: false, z: false });
 
+    // The broadcast says something moved; the graph asks its own machine where
+    // it is, because with several machines the shared index means nothing to
+    // any one of them.
     const annotationIndex = Math.min(2, fixture.mechanism.timeNum.length - 1);
+    fixture.service.mechanismTimeStep = annotationIndex;
     fixture.service.onMechPositionChange.next(annotationIndex);
     expect(chart.addXaxisAnnotation).toHaveBeenLastCalledWith(
       expect.objectContaining({ x: fixture.mechanism.timeNum[annotationIndex] }),
@@ -329,7 +537,15 @@ describe('AnalysisGraphComponent lifecycle', () => {
     fixture.service.onMechUpdateState.next(2);
     vi.advanceTimersByTime(2);
     expect(stateEvents.slice(eventsBeforeRefresh)).toEqual([2]);
-    expect(component.loading).toBe(false);
+    // A drag no longer blanks the graph. The "Graph paused while dragging"
+    // placeholder could only fire in Edit, where these graphs are not on
+    // screen -- and now that a drag in an analysis mode is an edit, it would
+    // have covered the very curve the drag is about. State 1 is now a state
+    // this component simply does not act on.
+    const drawnBefore = determineChart.mock.calls.length;
+    fixture.service.onMechUpdateState.next(1);
+    vi.advanceTimersByTime(2);
+    expect(determineChart.mock.calls.length).toBe(drawnBefore);
 
     const callsBeforeUnitChange = determineChart.mock.calls.length;
     fixture.settings.lengthUnit.next(LengthUnit.METER);
@@ -355,6 +571,8 @@ describe('AnalysisGraphComponent lifecycle', () => {
     const chart = {
       addPointAnnotation: vi.fn(),
       addXaxisAnnotation: vi.fn(),
+      addYaxisAnnotation: vi.fn(),
+      layerAnnotations: vi.fn(),
       clearAnnotations: vi.fn(),
       updateOptions: vi.fn(),
     };
@@ -412,66 +630,138 @@ describe('AnalysisGraphComponent lifecycle', () => {
 describe('AnalysisGraphComponent rendered controls', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it('updates the rendered chart series when its Material checkboxes are clicked', async () => {
-    const fixtureData = buildMechanismFixture(TEMPLATE_LINKAGES['4-Bar']);
+  async function mountGraph(
+    fixtureData: MechanismFixture,
+    inputs: { analysis: string; analysisType: string; mechProp: string; mechPart: string }
+  ): Promise<ComponentFixture<AnalysisGraphComponent>> {
     await TestBed.configureTestingModule({
-      declarations: [AnalysisGraphComponent, ApexChartStubComponent],
       imports: [
         ReactiveFormsModule,
         MatButtonModule,
         MatCheckboxModule,
         MatIconModule,
         NoopAnimationsModule,
+        AnalysisGraphComponent,
+        ApexChartStubComponent,
       ],
       providers: [
         { provide: MechanismService, useValue: fixtureData.service },
         { provide: SettingsService, useValue: fixtureData.settings },
         { provide: NumberUnitParserService, useValue: new NumberUnitParserService() },
         { provide: ActiveObjService, useValue: fixtureData.active },
+        { provide: AnalysisCompareService, useValue: quietComparison() },
       ],
       schemas: [NO_ERRORS_SCHEMA],
-    }).compileComponents();
+    })
+      // The standalone graph brings the real apex chart; these tests assert on
+      // the stub's recorded inputs, so it takes the chart's place.
+      .overrideComponent(AnalysisGraphComponent, {
+        remove: { imports: [AnalysisApexChartComponent] },
+        add: { imports: [ApexChartStubComponent] },
+      })
+      .compileComponents();
 
     const fixture: ComponentFixture<AnalysisGraphComponent> =
       TestBed.createComponent(AnalysisGraphComponent);
-    fixture.componentRef.setInput('analysis', 'kinematic');
-    fixture.componentRef.setInput('analysisType', 'loop');
-    fixture.componentRef.setInput('mechProp', 'Linear Joint Pos');
-    fixture.componentRef.setInput('mechPart', 'B');
+    fixture.componentRef.setInput('analysis', inputs.analysis);
+    fixture.componentRef.setInput('analysisType', inputs.analysisType);
+    fixture.componentRef.setInput('mechProp', inputs.mechProp);
+    fixture.componentRef.setInput('mechPart', inputs.mechPart);
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
+    return fixture;
+  }
 
-    const loader = TestbedHarnessEnvironment.loader(fixture);
-    const xCheckbox = await loader.getHarness(MatCheckboxHarness.with({ label: 'X-Comp' }));
-    const yCheckbox = await loader.getHarness(MatCheckboxHarness.with({ label: 'Y-Comp' }));
-    expect(await xCheckbox.isChecked()).toBe(true);
-    expect(await yCheckbox.isChecked()).toBe(true);
+  it('updates the rendered chart series when a series is switched off and on', async () => {
+    const fixtureData = buildMechanismFixture(TEMPLATE_LINKAGES['4-Bar']);
+    const fixture = await mountGraph(fixtureData, {
+      analysis: 'kinematic',
+      analysisType: 'loop',
+      mechProp: 'Linear Joint Pos',
+      mechPart: 'B',
+    });
 
-    await xCheckbox.uncheck();
+    // The switches live on the panel header that owns this graph now -- one row
+    // that reads the values out and turns the lines on and off -- so this drives
+    // the API that row calls rather than a checkbox that no longer exists.
+    const graph = fixture.componentInstance;
+    expect(graph.isSeriesShown('x')).toBe(true);
+    expect(graph.isSeriesShown('y')).toBe(true);
+
+    graph.toggleSeries('x');
     fixture.detectChanges();
-    expect(fixture.componentInstance.displayedSeries.map((series) => series.name)).toEqual(['Y']);
+    expect(graph.isSeriesShown('x')).toBe(false);
+    expect(graph.displayedSeries.map((series) => series.name)).toEqual(['Y']);
 
-    await yCheckbox.uncheck();
+    graph.toggleSeries('y');
     fixture.detectChanges();
-    expect(fixture.componentInstance.displayedSeries).toHaveLength(0);
-    expect(fixture.componentInstance.noDataSelected).toBe(true);
-    expect(fixture.nativeElement.textContent).toContain('Please select at least one data series.');
+    expect(graph.displayedSeries).toHaveLength(0);
+    expect(graph.noDataSelected).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('No series shown.');
 
-    await xCheckbox.check();
+    graph.toggleSeries('x');
     fixture.detectChanges();
-    expect(fixture.componentInstance.displayedSeries.map((series) => series.name)).toEqual(['X']);
-    expect(fixture.componentInstance.noDataSelected).toBe(false);
+    expect(graph.displayedSeries.map((series) => series.name)).toEqual(['X']);
+    expect(graph.noDataSelected).toBe(false);
 
     const chartStub = fixture.debugElement.query(By.directive(ApexChartStubComponent))
       .componentInstance as ApexChartStubComponent;
     const annotationIndex = Math.min(3, fixtureData.mechanism.timeNum.length - 1);
+    fixtureData.service.mechanismTimeStep = annotationIndex;
     fixtureData.service.onMechPositionChange.next(annotationIndex);
     expect(chartStub.addXaxisAnnotation).toHaveBeenLastCalledWith(
       expect.objectContaining({ x: fixtureData.mechanism.timeNum[annotationIndex] }),
       false
     );
     fixture.destroy();
+  });
+
+  it('renders the no-solution banner, and Show them drives the mechanism there', async () => {
+    const fixtureData = buildMechanismFixture(TEMPLATE_LINKAGES['4-Bar']);
+    const series = failForceFrames(fixtureData, 'static', [2]);
+    const seek = vi.fn();
+    Object.assign(fixtureData.service, {
+      seekMechanism: seek,
+      isPlaying: false,
+      isMechanismPlaying: () => false,
+    });
+    const ground = fixtureData.mechanism.joints[0].find(
+      (candidate): candidate is RealJoint => candidate instanceof RealJoint && candidate.ground
+    )!;
+
+    const fixture = await mountGraph(fixtureData, {
+      analysis: 'force',
+      analysisType: 'static',
+      mechProp: 'Joint Forces',
+      mechPart: ground.id,
+    });
+
+    const banner = fixture.nativeElement.querySelector('.analysis-gap') as HTMLElement | null;
+    expect(banner).not.toBeNull();
+    expect(banner!.textContent).toContain(`No solution at 1 of ${series.frames.length} positions`);
+
+    const showButton = banner!.querySelector('.gapShow') as HTMLButtonElement;
+    // One hole: singular wording, no time needed.
+    expect(showButton.textContent!.trim()).toBe('Show Position');
+    showButton.click();
+    expect(seek).toHaveBeenCalledWith(0, series.frames[2].timeSeconds);
+    fixture.destroy();
+  });
+});
+
+describe('graph tick precision', () => {
+  it('distinguishes small force ticks and removes rounded negative zero', () => {
+    expect([-0.03, -0.02, -0.01, 0, 0.01].map((value) => formatAxisTick(value, 0.01))).toEqual([
+      '-0.03',
+      '-0.02',
+      '-0.01',
+      '0.00',
+      '0.01',
+    ]);
+    expect(formatAxisTick(-1e-12, 0.01)).toBe('0.00');
+    expect(formatAxisTick(2.725, 0.025)).toBe('2.725');
+    expect(formatAxisTick(0.0000002, 0.0000001)).toBe('2.00e-7');
   });
 });
 
@@ -492,5 +782,59 @@ describe('formatTimeLabel', () => {
   it('renders nothing for a non-finite time', () => {
     expect(formatTimeLabel(Number.NaN)).toBe('');
     expect(formatTimeLabel(Number.POSITIVE_INFINITY)).toBe('');
+  });
+});
+
+describe('formatAnalysisValue', () => {
+  it('prints two decimals, not the seventeen the solver hands over', () => {
+    expect(formatAnalysisValue(2.6179937801901527)).toBe('2.62');
+    expect(formatAnalysisValue(-2.616398996121022)).toBe('-2.62');
+    expect(formatAnalysisValue(5)).toBe('5.00');
+    expect(formatAnalysisValue(0)).toBe('0.00');
+  });
+
+  it('keeps a small value from reading as zero', () => {
+    expect(formatAnalysisValue(0.0009136589194680075)).toBe('0.00091');
+    expect(formatAnalysisValue(-0.0012)).toBe('-0.0012');
+  });
+
+  it('renders nothing for a value that has none', () => {
+    expect(formatAnalysisValue(Number.NaN)).toBe('');
+    expect(formatAnalysisValue(Number.POSITIVE_INFINITY)).toBe('');
+  });
+});
+
+describe('niceAxisScale', () => {
+  it('puts every gridline on a round number, zero among them', () => {
+    const scale = niceAxisScale(-1.1, 2.0)!;
+    const step = (scale.max - scale.min) / scale.tickAmount;
+    // Zero is a whole number of steps from the bottom, so it is a gridline.
+    expect(Math.abs(-scale.min / step - Math.round(-scale.min / step))).toBeLessThan(1e-9);
+    expect(scale.min).toBeLessThanOrEqual(-1.1);
+    expect(scale.max).toBeGreaterThanOrEqual(2.0);
+  });
+
+  it('gives a constant series a range to be constant in', () => {
+    // The speed of a four-bar's crank pin, which never changes. Fitted to its
+    // own spread the axis was 1.5e-6 wide and the line was lost in the noise.
+    const scale = niceAxisScale(6.19888, 6.198882)!;
+    expect(scale.min).toBe(0);
+    expect(scale.max).toBeGreaterThanOrEqual(6.198882);
+    expect(scale.max - scale.min).toBeGreaterThan(1);
+  });
+
+  it('does the same for a constant below zero', () => {
+    const scale = niceAxisScale(-3.4, -3.4)!;
+    expect(scale.max).toBe(0);
+    expect(scale.min).toBeLessThanOrEqual(-3.4);
+  });
+
+  it('gives a series that is flat at zero a range of its own', () => {
+    expect(niceAxisScale(0, 0)).toEqual({ min: -1, max: 1, tickAmount: 2 });
+  });
+
+  it('declines an axis it cannot compute', () => {
+    expect(niceAxisScale(Number.NaN, 1)).toBeUndefined();
+    expect(niceAxisScale(2, 1)).toBeUndefined();
   });
 });

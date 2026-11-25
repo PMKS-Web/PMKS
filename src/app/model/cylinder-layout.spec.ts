@@ -1,0 +1,225 @@
+import './joint';
+import {
+  cylinderHeadHalf,
+  cylinderLock,
+  cylinderMinimumSpan,
+  HEAD_CLEARANCE_R,
+  MIN_STROKE_R,
+  cylinderMembers,
+  cylinderSpanLayout,
+  cylinderSpanRange,
+  cylinderStroke,
+  cylinderStrokeAlong,
+  layoutCylinder,
+} from './cylinder';
+import { CYLINDER } from './joint-marks';
+
+// The parametric drag: pose first, then size. Inside the ram's own travel only
+// the piston moves and the ram keeps the size it was given; push past a stop and
+// the ram resizes with barrel and rod staying equal. Collinearity holds by
+// construction, the anchor mount never moves.
+//
+// This replaces the flexbox rule, where the barrel absorbed a span change first
+// up to a ceiling and the rod then grew without bound. Nothing about that
+// survives — under barrel = rod there is no split left to negotiate — so those
+// tests are gone rather than adapted.
+//
+// Every case here hands the layout two *equal* members, which is what every
+// drawing made before decision S3 has, and every number is the number it was
+// before the two lengths could differ. `cylinder-members.spec.ts` is where they
+// differ.
+
+const R = 0.15;
+// barrel = stroke + CLEARANCE, span = stroke(1 + start) + LOCK, and
+// LOCK = 2 * CLEARANCE + the head's half-length.
+const BORE = HEAD_CLEARANCE_R * R;
+/** The lock at any stroke long enough for a full-size head, which all of these are. */
+const LOCK = cylinderLock(40, R);
+const HEAD_HALF = CYLINDER.headAlongHalfMax * R;
+const MIN_STROKE = MIN_STROKE_R * R;
+/** The floor ram's span. Its head has shrunk to fit, so it carries its own lock. */
+const SPAN_MIN = cylinderMinimumSpan(R);
+
+const dist = (p: { x: number; y: number }, q: { x: number; y: number }) =>
+  Math.hypot(q.x - p.x, q.y - p.y);
+
+const cross = (
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  p: { x: number; y: number }
+) => (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+
+/** The two members a cylinder of this stroke is drawn with: equal, as one is. */
+const equal = (stroke: number) => ({ barrel: stroke + BORE, rod: stroke + BORE });
+
+/** A cylinder of this stroke, laid along +x from the origin, dragged to `span`. */
+const drag = (stroke: number, span: number) =>
+  layoutCylinder({ x: 0, y: 0 }, { x: span, y: 0 }, equal(stroke), R, 'barrel')!;
+
+describe('the cylinder is one size number and one position number', () => {
+  it('makes barrel and rod equal at every size', () => {
+    for (const stroke of [MIN_STROKE, 1, 3, 40]) {
+      const members = cylinderMembers(stroke, 0.5, R);
+      expect(members.barrel).toBeCloseTo(members.rod, 12);
+      expect(members.barrel).toBeCloseTo(stroke + BORE, 12);
+    }
+  });
+
+  it('spends exactly the clearance, and nothing else, out of the barrel', () => {
+    // The head runs from a clearance off the mount to the mouth, so the barrel
+    // is the stroke plus that one gap -- the only reason the stroke is not the
+    // whole barrel.
+    expect(cylinderStroke(5 + BORE, R)).toBeCloseTo(5, 12);
+    expect(cylinderStroke(BORE, R)).toBe(0);
+    expect(cylinderStroke(BORE / 2, R)).toBe(0);
+  });
+
+  it('reads retracted and extended off the stroke alone', () => {
+    const { retracted, extended } = cylinderSpanRange(equal(4), R);
+    expect(retracted).toBeCloseTo(4 + LOCK, 12);
+    expect(extended).toBeCloseTo(8 + LOCK, 12);
+    // Extension approaches 2x for a long ram and is much less for a short one:
+    // the ceiling the equality buys, and the reason more reach means a link.
+    expect(extended / retracted).toBeLessThan(2);
+  });
+
+  it('lands the span exactly where the size and position say', () => {
+    for (const start of [0, 0.25, 1]) {
+      const members = cylinderMembers(6, start, R);
+      expect(members.span).toBeCloseTo(6 * (1 + start) + LOCK, 12);
+    }
+  });
+});
+
+describe('the stroke interval', () => {
+  it('runs the head from a clearance off the mount to clean outside the mouth', () => {
+    // Both bounds are the pin, so both carry the head's half-length: the low
+    // one is the clearance plus it, and the high one runs *past* the barrel by
+    // it, because fully open the head has left the barrel entirely.
+    const { min, max, usable } = cylinderStrokeAlong(9 + BORE, R);
+    expect(usable).toBe(true);
+    expect(min - HEAD_HALF).toBeCloseTo(BORE, 12);
+    expect(max - HEAD_HALF).toBeCloseTo(9 + BORE, 12);
+    expect(max - min).toBeCloseTo(9, 12);
+  });
+
+  it('collapses to one point rather than inverting when the barrel is under its clearance', () => {
+    // Object Scale can walk a legal barrel under the clearance at any moment,
+    // and every caller clamps or samples against this interval -- handed
+    // max < min they would each silently do something different.
+    const under = cylinderStrokeAlong(BORE / 2, R);
+    expect(under.usable).toBe(false);
+    expect(under.min).toBe(under.max);
+    expect(under.min).toBeCloseTo(BORE / 4 + cylinderHeadHalf(BORE / 2, R), 12);
+  });
+
+  it('calls a barrel with less than the floor stroke unusable too', () => {
+    expect(cylinderStrokeAlong(BORE + MIN_STROKE / 2, R).usable).toBe(false);
+    expect(cylinderStrokeAlong(BORE + MIN_STROKE * 1.01, R).usable).toBe(true);
+  });
+});
+
+describe('dragging a mount: pose first, then size', () => {
+  it('moves only the piston while the span is inside the travel', () => {
+    const stroke = 5;
+    const { retracted, extended } = cylinderSpanRange(equal(stroke), R);
+    for (const span of [retracted, (retracted + extended) / 2, extended]) {
+      const pose = drag(stroke, span);
+      // The size the ram was given, untouched.
+      expect(dist(pose.mountA, pose.inner)).toBeCloseTo(stroke + BORE, 9);
+      // And the mount exactly where the cursor put it.
+      expect(pose.mountB.x).toBeCloseTo(span, 9);
+    }
+  });
+
+  it('grows the ram past fully extended, at half the speed of the mount', () => {
+    const stroke = 5;
+    const { extended } = cylinderSpanRange(equal(stroke), R);
+    const pulled = 3;
+    const pose = drag(stroke, extended + pulled);
+
+    // Both halves grow, so the mount travels twice as far as the stroke does.
+    expect(cylinderStroke(dist(pose.mountA, pose.inner), R)).toBeCloseTo(stroke + pulled / 2, 9);
+    expect(pose.mountB.x).toBeCloseTo(extended + pulled, 9);
+  });
+
+  it('shrinks the ram past fully retracted, one for one with the mount', () => {
+    const stroke = 5;
+    const { retracted } = cylinderSpanRange(equal(stroke), R);
+    const pushed = 2;
+    const pose = drag(stroke, retracted - pushed);
+
+    expect(cylinderStroke(dist(pose.mountA, pose.inner), R)).toBeCloseTo(stroke - pushed, 9);
+    expect(pose.mountB.x).toBeCloseTo(retracted - pushed, 9);
+  });
+
+  it('stops at the floor rather than making a degenerate part', () => {
+    const pose = drag(5, 0.001);
+
+    expect(cylinderStroke(dist(pose.mountA, pose.inner), R)).toBeCloseTo(MIN_STROKE, 9);
+    expect(dist(pose.mountA, pose.mountB)).toBeCloseTo(SPAN_MIN, 9);
+  });
+
+  it('is non-destructive for any drag that stays inside the travel', () => {
+    // The whole argument for pose-before-size: a ram you sized cannot be
+    // resized by accident, only by deliberately pushing past its own stop.
+    const stroke = 7;
+    const { retracted, extended } = cylinderSpanRange(equal(stroke), R);
+    for (let i = 0; i <= 20; i++) {
+      const span = retracted + ((extended - retracted) * i) / 20;
+      expect(
+        cylinderStroke(cylinderSpanLayout(span, equal(stroke), R).lengths.barrel, R)
+      ).toBeCloseTo(stroke, 9);
+    }
+  });
+
+  it('round-trips: the span it reports is the span it was asked for', () => {
+    for (const span of [SPAN_MIN, 4, 9, 30]) {
+      expect(cylinderSpanLayout(span, equal(5), R).span).toBeCloseTo(Math.max(span, SPAN_MIN), 9);
+    }
+  });
+});
+
+describe('layoutCylinder, in the plane', () => {
+  it('puts every joint exactly on the mount-to-mount axis', () => {
+    const pose = layoutCylinder({ x: 1, y: 2 }, { x: 5.3, y: 6.1 }, equal(3), R, 'barrel')!;
+
+    for (const point of [pose.inner, pose.seal]) {
+      expect(Math.abs(cross(pose.mountA, pose.mountB, point))).toBeLessThan(1e-9);
+    }
+  });
+
+  it('holds the anchor mount exactly still', () => {
+    const barrelMount = { x: 1.25, y: -0.75 };
+    const rodMount = { x: 7, y: 3 };
+
+    expect(layoutCylinder(barrelMount, rodMount, equal(2), R, 'barrel')!.mountA).toEqual(
+      barrelMount
+    );
+    expect(layoutCylinder(barrelMount, rodMount, equal(2), R, 'rod')!.mountB).toEqual(rodMount);
+  });
+
+  it('rotates rigidly about the anchor as the dragged mount swings', () => {
+    const anchor = { x: 2, y: 1 };
+    const flat = layoutCylinder(anchor, { x: 8, y: 1 }, equal(3), R, 'barrel')!;
+    const swung = layoutCylinder(anchor, { x: 2, y: 7 }, equal(3), R, 'barrel')!;
+
+    expect(dist(swung.mountA, swung.mountB)).toBeCloseTo(dist(flat.mountA, flat.mountB), 9);
+    expect(dist(swung.inner, swung.seal)).toBeCloseTo(dist(flat.inner, flat.seal), 9);
+    expect(swung.mountA).toEqual(anchor);
+  });
+
+  it('holds the axis instead of flipping when a drag crosses the anchor', () => {
+    const pose = layoutCylinder({ x: 0, y: 0 }, { x: -5, y: 0 }, equal(3), R, 'barrel', {
+      x: 1,
+      y: 0,
+    })!;
+
+    expect(pose.mountB.x).toBeCloseTo(SPAN_MIN, 9);
+    expect(pose.mountB.x).toBeGreaterThan(0);
+  });
+
+  it('declines coincident mounts with no axis hint', () => {
+    expect(layoutCylinder({ x: 1, y: 1 }, { x: 1, y: 1 }, equal(3), R, 'barrel')).toBeUndefined();
+  });
+});

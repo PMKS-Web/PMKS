@@ -1,0 +1,206 @@
+{
+ "schema": "pmks-oracle-problem/1",
+ "id": "template.pumping-field.m3",
+ "title": "Template Pumping_Field, M3",
+ "source": {
+  "kind": "published",
+  "case": "template.pumping-field",
+  "machine": "M3"
+ },
+ "gravity": 9.80665,
+ "bodies": [
+  {
+   "id": "OP",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    23.800867084972964,
+    -3.2096445602528108
+   ]
+  },
+  {
+   "id": "PQ",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    23.900399243776846,
+    -1.60068124421539
+   ]
+  },
+  {
+   "id": "QRS",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    26.233333333333334,
+    0
+   ]
+  },
+  {
+   "id": "ST",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    29.299999999999997,
+    -1.2961481396815722
+   ]
+  }
+ ],
+ "joints": [
+  {
+   "id": "O",
+   "kind": "pin",
+   "at": [
+    23.300935682392236,
+    -3.217926632074842
+   ],
+   "bodies": [
+    "OP"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "P",
+   "kind": "pin",
+   "at": [
+    24.3007984875537,
+    -3.20136248843078
+   ],
+   "bodies": [
+    "OP",
+    "PQ"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "Q",
+   "kind": "pin",
+   "at": [
+    23.5,
+    0
+   ],
+   "bodies": [
+    "PQ",
+    "QRS"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "R",
+   "kind": "pin",
+   "at": [
+    26,
+    0
+   ],
+   "bodies": [
+    "QRS"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "S",
+   "kind": "pin",
+   "at": [
+    29.2,
+    0
+   ],
+   "bodies": [
+    "QRS",
+    "ST"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "T",
+   "kind": "slider",
+   "at": [
+    29.4,
+    -2.5922962793631443
+   ],
+   "guide": "ground",
+   "linePoint": [
+    29.4,
+    -2.5922962793631443
+   ],
+   "axis": [
+    6.123233995736766e-17,
+    1
+   ],
+   "riders": [
+    "ST"
+   ],
+   "rotates": true,
+   "blockMass": 0
+  }
+ ],
+ "driver": {
+  "joint": "O",
+  "kind": "rotation",
+  "speed": 1.2566370614359172,
+  "bodies": [
+   "ground",
+   "OP"
+  ]
+ },
+ "loads": [],
+ "points": [
+  {
+   "id": "O",
+   "body": "ground",
+   "at": [
+    23.300935682392236,
+    -3.217926632074842
+   ]
+  },
+  {
+   "id": "P",
+   "body": "OP",
+   "at": [
+    24.3007984875537,
+    -3.20136248843078
+   ]
+  },
+  {
+   "id": "Q",
+   "body": "PQ",
+   "at": [
+    23.5,
+    0
+   ]
+  },
+  {
+   "id": "R",
+   "body": "ground",
+   "at": [
+    26,
+    0
+   ]
+  },
+  {
+   "id": "S",
+   "body": "QRS",
+   "at": [
+    29.2,
+    0
+   ]
+  },
+  {
+   "id": "T",
+   "body": "ST",
+   "at": [
+    29.4,
+    -2.5922962793631443
+   ]
+  }
+ ],
+ "sweep": {
+  "step": 0.017453292519943295,
+  "maxSamples": 2000
+ },
+ "unsupported": []
+}

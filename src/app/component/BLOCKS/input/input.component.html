@@ -1,7 +1,8 @@
-<div id="input-block">
+<div id="input-block" [class.stacked]="stacked()" [class.cell]="cell()">
   <div class="row" [formGroup]="formGroup">
-    <span class="label"><ng-content></ng-content></span>
-    <mat-icon matTooltip="{{ this.tooltip }}" [matTooltipShowDelay]="1000" class="label-help">
+    <span class="label" [id]="labelId" [numberDrag]="field"><ng-content></ng-content></span>
+    <span hidden [id]="labelId + '-unit'">Unit</span>
+    <mat-icon matTooltip="{{ this.tooltip() }}" matTooltipShowDelay="400" class="label-help">
       help_outline
     </mat-icon>
     <div class="spacer"></div>
@@ -10,19 +11,33 @@
       [class.has-unit]="unit"
       [class.wide]="wide"
       [class.has-unit-select]="hasUnitSelect"
-      (click)="field.select()"
+      (click)="selectAll(field)"
+      (mouseenter)="setMouseOver(true)"
+      (mouseleave)="setMouseOver(false)"
+      (focusin)="setFocused(true)"
+      (focusout)="setFocused(false)"
     >
       <input
         matInput
         class="customInput"
+        spellcheck="false"
+        autocomplete="off"
         type="text"
         #field
         (keyup.enter)="field.blur()"
         [formControlName]="this._formControl"
+        [placeholder]="placeholder()"
+        [attr.data-field]="dataField()"
+        [attr.aria-labelledby]="labelId"
       />
       @if (unit) {
         <span matTextSuffix class="input-unit">{{ unit }}</span>
       }
+      <!-- Optional projected trailing content — the mass fields hang their
+           state dot and clear button here; everyone else projects nothing. -->
+      <span matTextSuffix class="field-suffix"
+        ><ng-content select="[fieldSuffix]"></ng-content
+      ></span>
       @if (hasUnitSelect) {
         <!-- A native select rather than mat-select: mat-select registers itself as
              a form field's control, so nesting one here would displace the input.
@@ -30,10 +45,11 @@
         <select
           matTextSuffix
           class="unit-select"
-          [formControlName]="unitFormControl!"
+          [attr.aria-labelledby]="labelId + ' ' + labelId + '-unit'"
+          [formControlName]="unitFormControl()!"
           (click)="$event.stopPropagation()"
         >
-          @for (option of unitOptions; track option.value) {
+          @for (option of unitOptions(); track option.value) {
             <option [value]="option.value">{{ option.label }}</option>
           }
         </select>

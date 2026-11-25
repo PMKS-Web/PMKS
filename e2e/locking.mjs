@@ -1,0 +1,539 @@
+/**
+ * The Lock feature, exercised the way a hand would: lock a link and watch its
+ * drag refuse with an Unlock in the message; lock one joint and watch a link
+ * drag become a swing about it; undo a lock, which proves the mark rides the
+ * URL; press play and watch the black marks stand down.
+ *
+ *   PMKS_BASE_URL=<origin> node e2e/locking.mjs
+ */
+
+const { chromium } = await import(
+  (process.env.PMKS_PLAYWRIGHT_DIR ?? '/tmp/pmks-playwright') + '/node_modules/playwright/index.mjs'
+);
+import { waitForReady } from './app-ready.mjs';
+import { inAngular } from './in-angular.mjs';
+
+const BASE = process.env.PMKS_BASE_URL ?? 'http://localhost:4200';
+
+const FOUR_BAR =
+  '0P.TY.K,0.101.MA,A,0mv,0VU,0.GB,B,0e_,E6,0.GC,C,l1,WW,0.KD,D,qD,0Pk,0..YRAB,AB,Fe,Fe,0ix,08i,c5cae9,A,B,,.YRBC,BC,Fe,Fe,32,NJ,303e9f,B,C,,.YRCD,CD,Fe,Fe,nd,3P,0d125a,C,D,,...JBq';
+
+// An inverted slider-crank: block P rides a slot cut into the grounded lever
+// CD, and pin B on the crank is the block's other half. The three trailing
+// tokens on joint P are the carrier and the two joints that cut its slot.
+const INVERTED_SLIDER_CRANK =
+  '2P.Fe.K,0.1011.MA,A,0,0,0.GB,B,0,Fe,0.KC,C,ku,0,0.GD,D,0RF,Oj,0.HP,P,0,Fe,0,CD,C,D..' +
+  'YRAB,AB,Fe,Fe,0,7q,555555,A,B,,.YRCD,CD,Fe,Fe,Fe,Fe,555555,C,D,,.YPBP,BP,Fe,0,0,0,,B,P,,...N_r';
+
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
+const errors = [];
+page.on('pageerror', (error) => errors.push(String(error)));
+
+const results = [];
+const record = (what, ok, detail) => {
+  results.push([what, ok]);
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${what}${ok ? '' : ' — ' + JSON.stringify(detail)}`);
+};
+
+const grid = () => `ng.getComponent(document.querySelector('app-new-grid'))`;
+
+const jointOnScreen = (id) =>
+  page.evaluate((jointId) => {
+    const el = document.querySelector(`#joint_${jointId}`)?.closest('svg[x]');
+    const rect = el.getBoundingClientRect();
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  }, id);
+
+const jointModel = (id) =>
+  page.evaluate((jointId) => {
+    const c = ng.getComponent(document.querySelector('app-new-grid'));
+    const joint = c.mechanismSrv.joints.find((j) => j.id === jointId);
+    return { x: joint.x, y: joint.y };
+  }, id);
+
+const dragBy = async (from, dx, dy, steps = 10) => {
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  for (let step = 1; step <= steps; step++) {
+    await page.mouse.move(from.x + (dx * step) / steps, from.y + (dy * step) / steps);
+    await page.waitForTimeout(15);
+  }
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+};
+
+await page.goto(`${BASE}/?${FOUR_BAR}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+await waitForReady(page);
+await page.waitForTimeout(400);
+
+// --- Lock a link from the service, as the menu item does -------------------
+
+await inAngular(page, () => {
+  const c = ng.getComponent(document.querySelector('app-new-grid'));
+  c.mechanismSrv.toggleLock(c.mechanismSrv.links.find((l) => l.id === 'BC'));
+});
+await page.waitForTimeout(200);
+
+record(
+  'a locked link puts a padlock badge on each of its joints',
+  await page.evaluate(() => document.querySelectorAll('#jointHolder .lockBadge').length === 2)
+);
+record(
+  'the held joints carry the state class for tooling',
+  await page.evaluate(
+    () =>
+      document.querySelector('#joint_B').classList.contains('joint-locked') &&
+      document.querySelector('#joint_C').classList.contains('joint-locked')
+  )
+);
+
+// --- A plain click is a selection, not an offense ---------------------------
+
+const bClick = await jointOnScreen('B');
+await page.mouse.click(bClick.x, bClick.y);
+await page.waitForTimeout(400);
+record(
+  'a plain click on a held joint selects it without a scolding',
+  await page.evaluate(() => {
+    const c = ng.getComponent(document.querySelector('app-new-grid'));
+    // The zoom warning may legitimately stand; what must NOT appear is a
+    // lock refusal for a gesture that never tried to move anything.
+    return (
+      c.notify.live.every((one) => !one.id.startsWith('lock.')) &&
+      c.activeObjService.getSelectedObj()?.id === 'B'
+    );
+  })
+);
+
+// --- A drag on a held joint refuses, and the message carries the way out ---
+
+const bBefore = await jointModel('B');
+await dragBy(await jointOnScreen('B'), 90, -60);
+const bAfter = await jointModel('B');
+record('dragging a held joint moves nothing', bBefore.x === bAfter.x && bBefore.y === bAfter.y, {
+  bBefore,
+  bAfter,
+});
+record(
+  'the refusal stands in the stack with an Unlock button',
+  await page.evaluate(() => {
+    const action = [...document.querySelectorAll('.notificationAction')].find(
+      (b) => b.textContent.trim() === 'Unlock'
+    );
+    return !!action;
+  })
+);
+
+// --- The Unlock button clears exactly the mark that held the gesture -------
+// One lock layer: "lock link BC" marked joints B and C, and freeing B is all
+// this refusal's Unlock does — C stays held, which is the whole point of the
+// marks living on joints.
+
+await page.locator('.notificationAction', { hasText: 'Unlock' }).first().click();
+await page.waitForTimeout(200);
+record(
+  'Unlock frees the refused joint and only it',
+  await page.evaluate(() => {
+    const c = ng.getComponent(document.querySelector('app-new-grid'));
+    const joint = (id) => c.mechanismSrv.joints.find((j) => j.id === id);
+    return !joint('B').locked && joint('C').locked;
+  })
+);
+await dragBy(await jointOnScreen('B'), 60, -40);
+const bMoved = await jointModel('B');
+record('the same drag now moves the joint', bMoved.x !== bBefore.x || bMoved.y !== bBefore.y, {
+  bBefore,
+  bMoved,
+});
+
+// --- Undo takes a lock back: the mark rides the URL ------------------------
+
+const cBeforeToggle = await page.evaluate(
+  () =>
+    ng
+      .getComponent(document.querySelector('app-new-grid'))
+      .mechanismSrv.joints.find((j) => j.id === 'C').locked
+);
+await inAngular(page, () => {
+  const c = ng.getComponent(document.querySelector('app-new-grid'));
+  c.mechanismSrv.toggleLock(c.mechanismSrv.joints.find((j) => j.id === 'C'));
+});
+await page.waitForTimeout(200);
+const cAfterToggle = await page.evaluate(
+  () =>
+    ng
+      .getComponent(document.querySelector('app-new-grid'))
+      .mechanismSrv.joints.find((j) => j.id === 'C').locked
+);
+await page.keyboard.press('Control+z');
+await page.waitForTimeout(400);
+const cAfterUndo = await page.evaluate(
+  () =>
+    ng
+      .getComponent(document.querySelector('app-new-grid'))
+      .mechanismSrv.joints.find((j) => j.id === 'C').locked
+);
+record(
+  'Ctrl+Z undoes a lock toggle, so the mark is really in the URL',
+  cAfterToggle !== cBeforeToggle && cAfterUndo === cBeforeToggle,
+  { cBeforeToggle, cAfterToggle, cAfterUndo }
+);
+
+// --- One held joint turns a link drag into a swing about it ----------------
+// From a clean slate: exactly one mark, on B.
+
+await inAngular(page, () => {
+  const c = ng.getComponent(document.querySelector('app-new-grid'));
+  c.mechanismSrv.setAllLocks(false);
+  c.mechanismSrv.toggleLock(c.mechanismSrv.joints.find((j) => j.id === 'B'));
+});
+await page.waitForTimeout(200);
+
+const before = { b: await jointModel('B'), c: await jointModel('C') };
+const lengthBefore = Math.hypot(before.c.x - before.b.x, before.c.y - before.b.y);
+// Grab the middle of the coupler BC and pull sideways.
+const bScreen = await jointOnScreen('B');
+const cScreen = await jointOnScreen('C');
+// A third of the way along, not the middle: a selected link wears its
+// center-of-mass handle at its centroid, which for a two-joint bar is exactly
+// the middle -- so a grab there takes hold of the center of mass rather than
+// the body. Anywhere else on the bar is the body.
+const grab = {
+  x: bScreen.x + (cScreen.x - bScreen.x) / 3,
+  y: bScreen.y + (cScreen.y - bScreen.y) / 3,
+};
+await inAngular(page, () => {
+  const c = ng.getComponent(document.querySelector('app-new-grid'));
+  c.activeObjService.updateSelectedObj(c.mechanismSrv.links.find((l) => l.id === 'BC'));
+});
+await dragBy(grab, 0, 120, 14);
+const after = { b: await jointModel('B'), c: await jointModel('C') };
+const lengthAfter = Math.hypot(after.c.x - after.b.x, after.c.y - after.b.y);
+
+// Still to within float noise, not to the last bit. The swing is solved from a
+// pointer path the harness samples, so the arithmetic that arrives at the held
+// joint's own coordinates varies in the last decimal place between runs -- and
+// an exact comparison failed on a difference of 3e-14 model units, which is
+// 1.5e-16 of a centimeter. The check is about a joint a Lock holds, not about
+// IEEE 754.
+record(
+  'the held joint stays exactly still through the swing',
+  Math.hypot(after.b.x - before.b.x, after.b.y - before.b.y) < 1e-9,
+  {
+    before: before.b,
+    after: after.b,
+  }
+);
+record(
+  'the free end actually swung',
+  Math.hypot(after.c.x - before.c.x, after.c.y - before.c.y) > 1,
+  {
+    before: before.c,
+    after: after.c,
+  }
+);
+record('the body kept its length through the swing', Math.abs(lengthAfter - lengthBefore) < 1e-3, {
+  lengthBefore,
+  lengthAfter,
+});
+
+// --- Two held joints leave the body nowhere to go --------------------------
+
+await inAngular(page, () => {
+  const c = ng.getComponent(document.querySelector('app-new-grid'));
+  c.mechanismSrv.toggleLock(c.mechanismSrv.joints.find((j) => j.id === 'C'));
+});
+await page.waitForTimeout(200);
+const pinned = { b: await jointModel('B'), c: await jointModel('C') };
+await dragBy(grab, 60, 60);
+const pinnedAfter = { b: await jointModel('B'), c: await jointModel('C') };
+record(
+  'two held joints refuse the whole drag',
+  pinned.b.x === pinnedAfter.b.x && pinned.c.x === pinnedAfter.c.x,
+  { pinned, pinnedAfter }
+);
+
+// --- No back door: dragJoint itself holds a held joint ---------------------
+// The canvas gate and the panel's grayed fields are UI; every route to "move
+// this joint" — a neighbor's distance field, the linkage table — lands on
+// dragJoint, so dragJoint is where the lock has to hold whoever asks.
+
+const cHeld = await jointModel('C');
+await inAngular(page, () => {
+  const c = ng.getComponent(document.querySelector('app-new-grid'));
+  c.gridUtils.dragJoint(
+    c.mechanismSrv.joints.find((j) => j.id === 'C'),
+    { x: 999, y: 999 }
+  );
+});
+const cStill = await jointModel('C');
+record(
+  'dragJoint itself refuses a held joint, whoever calls it',
+  cHeld.x === cStill.x && cHeld.y === cStill.y,
+  { cHeld, cStill }
+);
+
+// --- A lock on a slider is parametric: it holds a place on the slot --------
+// The one mark that is not about a point on the drawing. A slider has exactly
+// one freedom -- where it sits along its slot -- and that is what its mark
+// spends. The channel stays free to move and takes the slider with it.
+
+await page.goto(`${BASE}/?${INVERTED_SLIDER_CRANK}`, { waitUntil: 'domcontentloaded' });
+await waitForReady(page);
+await page.waitForTimeout(400);
+await inAngular(page, () => {
+  const c = ng.getComponent(document.querySelector('app-new-grid'));
+  c.mechanismSrv.toggleLock(c.mechanismSrv.joints.find((j) => j.id === 'B'));
+});
+await page.waitForTimeout(200);
+
+record(
+  'locking a slider holds that one joint, and nothing else',
+  await page.evaluate(() => {
+    const c = ng.getComponent(document.querySelector('app-new-grid'));
+    return [...c.gridUtils.frozenJointIds()].sort().join('') === 'B';
+  }),
+  await page.evaluate(() =>
+    [...ng.getComponent(document.querySelector('app-new-grid')).gridUtils.frozenJointIds()].sort()
+  )
+);
+
+// The slider is the one target -- it was drawn on a coincident pin and the two
+// answered as one -- and the refusal has to speak about the slot.
+const blockBefore = await jointModel('B');
+await dragBy(await jointOnScreen('B'), 70, 40);
+const blockAfter = await jointModel('B');
+record(
+  'dragging the block itself moves nothing',
+  blockBefore.x === blockAfter.x && blockBefore.y === blockAfter.y,
+  { blockBefore, blockAfter }
+);
+record(
+  'and the refusal says what is actually held: its place in the slot',
+  await page.evaluate(() =>
+    ng
+      .getComponent(document.querySelector('app-new-grid'))
+      .notify.live.some((one) => one.id === 'lock.joint' && /place in the slot/.test(one.text))
+  ),
+  await page.evaluate(() =>
+    ng.getComponent(document.querySelector('app-new-grid')).notify.live.map((one) => one.text)
+  )
+);
+
+// The joints that cut the slot are not held by the slider's mark. Dragging one
+// swings the channel, and the reseat carries the slider along it.
+const slotBefore = { c: await jointModel('C'), p: await jointModel('B') };
+await dragBy(await jointOnScreen('C'), 0, -70);
+const slotAfter = { c: await jointModel('C'), p: await jointModel('B') };
+record(
+  'a joint that cuts the slot still moves with the block locked',
+  Math.hypot(slotAfter.c.x - slotBefore.c.x, slotAfter.c.y - slotBefore.c.y) > 1,
+  { slotBefore: slotBefore.c, slotAfter: slotAfter.c }
+);
+record(
+  'and the block rides along rather than staying behind on the grid',
+  Math.hypot(slotAfter.p.x - slotBefore.p.x, slotAfter.p.y - slotBefore.p.y) > 1,
+  { slotBefore: slotBefore.p, slotAfter: slotAfter.p }
+);
+
+// A locked block is no reason to refuse a drag of the link it rides, and no
+// reason to pivot that link about it: the body translates, both ends equally.
+// Grabbed at the middle of the bar, which is the middle of the slot -- the one
+// place a hand naturally aims at and the one place a hole would swallow.
+const carrierBefore = { c: await jointModel('C'), d: await jointModel('D') };
+const cSlot = await jointOnScreen('C');
+const dSlot = await jointOnScreen('D');
+await inAngular(page, () => {
+  const c = ng.getComponent(document.querySelector('app-new-grid'));
+  c.activeObjService.updateSelectedObj(c.mechanismSrv.links.find((l) => l.id === 'CD'));
+});
+await dragBy({ x: (cSlot.x + dSlot.x) / 2, y: (cSlot.y + dSlot.y) / 2 }, 50, 0, 12);
+const carrierAfter = { c: await jointModel('C'), d: await jointModel('D') };
+const moved = {
+  c: { x: carrierAfter.c.x - carrierBefore.c.x, y: carrierAfter.c.y - carrierBefore.c.y },
+  d: { x: carrierAfter.d.x - carrierBefore.d.x, y: carrierAfter.d.y - carrierBefore.d.y },
+};
+record(
+  'the link the block rides drags by its slot, as a body rather than a swing',
+  Math.hypot(moved.c.x, moved.c.y) > 1 &&
+    Math.abs(moved.c.x - moved.d.x) < 1e-6 &&
+    Math.abs(moved.c.y - moved.d.y) < 1e-6,
+  moved
+);
+
+// --- The marks answer "is this paused", not "which mode is this" -----------
+//
+// They were an Edit affordance once, and this checked that an analysis mode
+// painted clean. Then the analysis modes were made editable at a paused pose and
+// the marks were deliberately kept: `lockVisualsOn()` is `!isPlaying`, and
+// nothing in it asks which tab is open. The check outlived the rule it was
+// written for by months, and went on passing nothing, because nothing ran it.
+// Both halves are here now, so the next reversal has to argue with one of them.
+const marks = () =>
+  page.evaluate(() => document.querySelectorAll('.lockBadge, .joint-locked, .link-locked').length);
+
+await inAngular(page, () => {
+  const c = ng.getComponent(document.querySelector('app-new-grid'));
+  c.tabService.setTab(2); // TabID.ANALYZE
+});
+await page.waitForTimeout(300);
+record(
+  'the marks stay in an analysis mode, where the pose can still be edited',
+  (await marks()) > 0
+);
+
+await page.locator('.playButton').click();
+await page.waitForTimeout(500);
+// If this drawing will not run, the next check is measuring nothing -- so say
+// which of the two failed rather than reporting a clean canvas as a pass.
+const running = await page.evaluate(
+  () => ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv.isPlaying
+);
+record('pressing play starts it', running === true, { running });
+record('and the marks stand down while it runs, in every mode', (await marks()) === 0);
+
+await page.locator('.playButton').click();
+await page.waitForTimeout(500);
+record('and come back when it is paused again', (await marks()) > 0);
+
+// ---- a lock says where one end is, not that the bar cannot change length ----
+//
+// Locking one end of a bar used to gray out its Length and Angle fields, on the
+// grounds that a length edit moves the link's joints about an anchor of its own
+// choosing. The anchor is a choice, and the lock is the reader making it: the
+// held end stays and the free one swings. Both ends held is the real refusal.
+await page.goto(`${BASE}/?${FOUR_BAR}`, { waitUntil: 'domcontentloaded' });
+await waitForReady(page);
+await page.locator('.tabButton', { hasText: 'Edit' }).click();
+await page.waitForTimeout(600);
+
+const jointAt = (id) =>
+  page.evaluate((want) => {
+    const j = window.ng
+      .getComponent(document.querySelector('app-new-grid'))
+      .mechanismSrv.joints.find((one) => one.id === want);
+    return j ? { x: Math.round(j.x * 1e4) / 1e4, y: Math.round(j.y * 1e4) / 1e4 } : null;
+  }, id);
+
+await inAngular(page, () => {
+  const grid = window.ng.getComponent(document.querySelector('app-new-grid'));
+  const b = grid.mechanismSrv.joints.find((one) => one.id === 'B');
+  grid.activeObjService.updateSelectedObj(b);
+  grid.mechanismSrv.toggleLock(b);
+  grid.activeObjService.updateSelectedObj(grid.mechanismSrv.links.find((one) => one.id === 'AB'));
+});
+await page.waitForTimeout(700);
+record(
+  'one end locked leaves the length editable',
+  await page.evaluate(
+    () =>
+      window.ng.getComponent(document.querySelector('app-edit-panel')).linkForm.get('length')
+        .enabled
+  )
+);
+
+const wasA = await jointAt('A');
+const wasB = await jointAt('B');
+await inAngular(page, () =>
+  window.ng
+    .getComponent(document.querySelector('app-edit-panel'))
+    .linkForm.get('length')
+    .setValue('4.00 cm')
+);
+await page.waitForTimeout(800);
+const nowA = await jointAt('A');
+const nowB = await jointAt('B');
+record('and the locked end does not move', Math.hypot(nowB.x - wasB.x, nowB.y - wasB.y) < 1e-6, {
+  wasB,
+  nowB,
+});
+record('while the free end does', Math.hypot(nowA.x - wasA.x, nowA.y - wasA.y) > 1, {
+  wasA,
+  nowA,
+});
+
+await inAngular(page, () => {
+  const grid = window.ng.getComponent(document.querySelector('app-new-grid'));
+  const a = grid.mechanismSrv.joints.find((one) => one.id === 'A');
+  grid.activeObjService.updateSelectedObj(a);
+  grid.mechanismSrv.toggleLock(a);
+  grid.activeObjService.updateSelectedObj(grid.mechanismSrv.links.find((one) => one.id === 'AB'));
+});
+await page.waitForTimeout(700);
+record(
+  'both ends locked is still refused, because nothing is left to move',
+  (await page.evaluate(
+    () =>
+      window.ng.getComponent(document.querySelector('app-edit-panel')).linkForm.get('length')
+        .enabled
+  )) === false
+);
+
+// ---- and a lock does not stop a new part being built onto what it holds ----
+//
+// Locking a joint used to gray Link, Cylinder and Force on its own menu, which
+// made the mark mean "nothing may touch this". Nothing a lock holds moves when
+// a bar is drawn out from it: the joint keeps its coordinate and the new joint
+// lands where the pointer does.
+await page.goto(`${BASE}/?${FOUR_BAR}`, { waitUntil: 'domcontentloaded' });
+await waitForReady(page);
+await page.locator('.tabButton', { hasText: 'Edit' }).click();
+await page.waitForTimeout(600);
+await inAngular(page, () => {
+  const grid = window.ng.getComponent(document.querySelector('app-new-grid'));
+  grid.mechanismSrv.toggleLock(grid.mechanismSrv.joints.find((one) => one.id === 'B'));
+});
+await page.waitForTimeout(700);
+const countsBefore = await page.evaluate(() => {
+  const srv = window.ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv;
+  return { joints: srv.joints.length, links: srv.links.length };
+});
+const heldBefore = await jointAt('B');
+
+await page.locator('#joint_B').first().click({ button: 'right' });
+await page.waitForTimeout(500);
+record(
+  'a locked joint offers Link rather than graying it',
+  (await page
+    .locator('.cm-row:has(.cm-row__label:text-is("Link"))')
+    .first()
+    .evaluate((row) => row.classList.contains('cm-row--off'))) === false
+);
+await page.locator('.cm-row:has(.cm-row__label:text-is("Link"))').first().click();
+await page.waitForTimeout(400);
+// The canvas places a joint from tracked movement, so move before the click.
+await page.mouse.move(1000, 420);
+await page.waitForTimeout(200);
+await page.mouse.move(1010, 430);
+await page.mouse.click(1010, 430);
+await page.waitForTimeout(900);
+
+const countsAfter = await page.evaluate(() => {
+  const srv = window.ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv;
+  return { joints: srv.joints.length, links: srv.links.length };
+});
+const heldAfter = await jointAt('B');
+record(
+  'and the bar is really drawn: a joint and a link more than before',
+  countsAfter.joints === countsBefore.joints + 1 && countsAfter.links === countsBefore.links + 1,
+  { countsBefore, countsAfter }
+);
+record(
+  'while the joint it was built onto has not moved, and is still locked',
+  Math.hypot(heldAfter.x - heldBefore.x, heldAfter.y - heldBefore.y) < 1e-6 &&
+    (await page.evaluate(
+      () =>
+        window.ng
+          .getComponent(document.querySelector('app-new-grid'))
+          .mechanismSrv.joints.find((one) => one.id === 'B').locked
+    )) === true,
+  { heldBefore, heldAfter }
+);
+
+record('no page errors the whole way through', errors.length === 0, errors);
+
+const failed = results.filter(([, ok]) => !ok);
+console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
+await browser.close();
+process.exit(failed.length ? 1 : 0);

@@ -1,0 +1,216 @@
+@use 'sass:map';
+@use 'sass:math';
+@use '@angular/material' as mat;
+@use 'src/app/component/left-tabs/left-tabs.vars' as nav;
+
+/** Width of the accent, and therefore the corner radius. See below. */
+$accent: 5px;
+
+@mixin css($theme) {
+  // Which color each kind is written in. Only the accent and the glyph are
+  // colored -- the sentence stays the app's text color, because a red
+  // sentence is harder to read and the glyph has already said which of the
+  // four this is.
+  $kinds: (
+    'success': var(--success),
+    'refusal': var(--refusal-neutral),
+    'warning': var(--warning),
+    'news': var(--brand-dark),
+    'failure': var(--danger-dark),
+  );
+
+  // Below the top strip rather than over it, and out of the way of the pointer:
+  // the canvas underneath is still being worked on while a message sits here.
+  .notificationStack {
+    position: fixed;
+    top: nav.$top-strip-bottom + nav.$card-inset;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--layer-toast);
+    // A popover brings the browser's own box: centered by its inset and
+    // margin, bordered, padded and painted. None of that is this stack's.
+    right: auto;
+    bottom: auto;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: max-content;
+    max-width: min(640px, 90vw);
+    pointer-events: none;
+  }
+
+  // Everything on one center line. The glyph, the sentence, the buttons and the
+  // close were each aligned by a different rule -- flex-start plus a 1px nudge,
+  // align-self: center, and a -2px margin -- so no two of them agreed on where
+  // the middle was. One rule for the row, and nothing overriding it.
+  .notification {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 8px 11px 13px;
+    background: var(--card-surface);
+    color: var(--text-primary);
+    box-shadow: var(--card-shadow);
+    pointer-events: auto;
+
+    // The same trick the help panel uses for its top bar: a border's *inner*
+    // edge is rounded by the radius minus the border width, so a radius equal
+    // to the bar leaves that edge straight while the card's own corners stay
+    // round. At the floating chrome's 10px against a 4px bar the accent curved
+    // away from the card on both ends and read as a separate rounded pill
+    // sitting behind it.
+    border-left: $accent solid transparent;
+    border-radius: $accent;
+
+    // On a phone the row runs out of width before the sentence does. Two
+    // actions and a close are nowrap by construction, so the sentence took
+    // whatever was left -- sixty-odd pixels for "Objects may be difficult to
+    // see at this zoom", which wrapped almost word by word into a card six
+    // lines tall that covered the top of whatever was open behind it.
+    //
+    // The sentence keeps the first line; the verbs drop to a line of their
+    // own, which is what every snackbar this narrow does.
+    @media (max-width: nav.$phone-max-width) {
+      flex-wrap: wrap;
+      row-gap: 4px;
+
+      .notificationText {
+        flex: 1 1 auto;
+      }
+
+      .notificationIcon,
+      .notificationClose {
+        flex: 0 0 auto;
+      }
+
+      // Two verbs take a second line of their own, indented to the sentence's
+      // left edge; the close goes to the far right of whatever line it lands
+      // on, which is where it sits on a desktop. One verb is left alone -- it
+      // fits beside the sentence at this width, and sending it down a line put
+      // the close mark on an empty row by itself.
+      // `:first-of-type` alone will not do it -- the close is a button too, so
+      // a lone action is never the last *button*. The card is asked whether it
+      // holds two actions instead.
+      &:has(.notificationAction + .notificationAction) .notificationAction:first-of-type {
+        flex-basis: 100%;
+        max-width: max-content;
+        margin-left: 30px;
+      }
+
+      .notificationClose {
+        margin-left: auto;
+      }
+    }
+  }
+
+  // Material gives mat-icon a 24px box whatever the glyph inside it is, so the
+  // glyph has to be centered in the box the box actually is, not left to sit at
+  // the top of it.
+  //
+  // The element is named as well as the class deliberately. `.mat-icon` sets
+  // that 24px box and `display: block`, it carries exactly the same specificity
+  // as a bare class, and it is loaded after this file -- so it won, the flex
+  // centering below never applied, and every glyph in the stack sat three pixels
+  // above the sentence it belonged to. `mat-icon.notificationIcon` is one
+  // element more specific, which is all it takes to put this rule in front.
+  mat-icon.notificationIcon {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    font-size: 20px;
+    // A Material Icons glyph is not centered on its own baseline: the ink runs
+    // from one twelfth of the font size above the baseline to eleven twelfths
+    // above it. Centering the *line box* therefore leaves the ink high by half
+    // the difference, so the box is given the ink's own height and the glyph is
+    // dropped onto it. Written as a ratio rather than a pixel nudge so it holds
+    // if the size ever changes.
+    line-height: math.div(10, 12);
+  }
+
+  .notificationText {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 14px;
+    line-height: 20px;
+    letter-spacing: 0.15px;
+  }
+
+  // A second action sits next to the first rather than a full gap away: the two
+  // are one choice, and the sentence is what they are both about.
+  .notificationAction + .notificationAction,
+  .notificationAction + .notificationClose {
+    margin-left: -6px;
+  }
+
+  // Reads as the message's own verb, so it takes the message's own color.
+  .notificationAction {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    // The same height as the close button beside it, so a row of one button and
+    // a row of two sit at the same height and their hover fills line up.
+    height: 24px;
+    padding: 0 8px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--press-wash);
+    }
+  }
+
+  // Small and gray: it is the way out of a message, not part of what the
+  // message says.
+  .notificationClose {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--press-wash);
+      color: var(--text-secondary);
+    }
+
+    .mat-icon {
+      width: 18px;
+      height: 18px;
+      font-size: 18px;
+      line-height: 1;
+    }
+  }
+
+  @each $kind, $color in $kinds {
+    .notification--#{$kind} {
+      border-left-color: $color;
+
+      .notificationIcon,
+      .notificationAction {
+        color: $color;
+      }
+    }
+  }
+}

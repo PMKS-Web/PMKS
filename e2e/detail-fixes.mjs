@@ -1,0 +1,998 @@
+/**
+ * The small things, in a browser.
+ *
+ * Each of these is a fix a reader reported by pointing at the screen, and each
+ * is invisible to a unit test: what a cursor turns into, what color a warning
+ * is in a mode that cannot act on it, whether a panel keeps its scroll.
+ *
+ *   PMKS_BASE_URL=<origin> node e2e/detail-fixes.mjs
+ */
+
+const { chromium } = await import(
+  (process.env.PMKS_PLAYWRIGHT_DIR ?? '/tmp/pmks-playwright') + '/node_modules/playwright/index.mjs'
+);
+import { waitForReady } from './app-ready.mjs';
+import { inAngular } from './in-angular.mjs';
+
+const BASE = process.env.PMKS_BASE_URL ?? 'http://localhost:4200';
+import { ALL_LINKAGES as payloads } from './template-payloads.mjs';
+
+/**
+ * Three machines in one drawing: a ram, a rocker and a crank, with the ram
+ * first. Reported by a reader whose ram had no graphs and whose combined
+ * handle ran the whole drawing backwards when dragged.
+ */
+// Pivot G used to carry both the cylinder machine and the T-U-V four-bar.
+// Machines that share a grounded pivot now solve as one, so the four-bar has
+// its own pivot, a, beside G, and its input back on V: three machines again.
+const THREE_MACHINES =
+  '2O.Ay,Fe.5,0.1011.4O,O,0,0,0.0C,C,YJ,qG,0.4G,G,ku,0,0.0N,N,aM,hl,0.hP,P,ir,8X,0,GN,G,N,,Fe.0T,T,nJ,oD,0.0U,U,1Nd,dn,0.6V,V,1ca,jH,0,,,,1E8.6W,W,J-,1GP,0.0X,X,PF,1dt,0.0Y,Y,rW,1g7,0.4Z,Z,-P,1FX,0.0%5B,%5B,1Tk,16n,0.0%5C,%5C,1ft,1bA,0.0%5E,%5E,1pZ,1Gc,0.0_,_,1_5,_W,0.1%60,%60,2AU,1OV,0,,,,,Fe.4a,a,s2,m,0..YROC,OC,Fe,Fe,HA,Q8,c5cae9,O,C,,.ARGN,GN,Fe,1,fd,Lu,303e9f,G,N,,.ARPC,PC,Fe,1,da,UO,0d125a,P,C,,.YRTa,Ta,Fe,Fe,pg,PV,c5cae9,a,T,,.YRTU,TU,Fe,Fe,14T,i-,303e9f,T,U,,.YRUV,UV,Fe,Fe,1V5,gX,0d125a,U,V,,.YRWX,WX,Fe,Fe,Md,1S8,B2DFDB,W,X,,.YRXY,XY,Fe,Fe,dN,1f0,26A69A,X,Y,,.YRYZ,YZ,Fe,Fe,wS,1Sr,00695C,Y,Z,,.YR%5B%5C,%5B%5C,Fe,Fe,1Zp,1Lz,c5cae9,%5B,%5C,,.YR_%60,_%60,Fe,Fe,24I,1BV,B2DFDB,_,%60,,...N_.PJN~0~2.32618684,PJN~1~2.799044985,PJP~0~2.86881316,PJP~1~0.544955015,PJ%5B~0~5.998000000000001,PJa~0~3.45784446,PJa~1~0.04799429499999999,PLGN~1~0.0006907230835535695,PLGN~2~2.66309342,PLGN~3~1.3995224925,PLPC~1~0.0006907230835535697,PLPC~2~2.53190658,PLPC~3~1.9444775074999998,PLTa~2~3.305855823319823,PLTa~3~1.6309204481882238,PLTU~3~2.8789999999999996P*43xuEx';
+
+/** Two joints and a bar: in no mechanism, so nothing about it can be analyzed. */
+const LONE_BAR =
+  '2P.Zz,1E8.5,0.1011.0A,A,2UW,9v,0.0B,B,3E8,1Zn,0..YRAB,AB,Fe,Fe,2sK,sr,303e9f,A,B,,...N_P';
+
+const results = [];
+const record = (what, ok, detail) => {
+  results.push([what, ok]);
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${what}${ok ? '' : ' — ' + JSON.stringify(detail)}`);
+};
+
+const browser = await chromium.launch();
+const errors = [];
+const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+page.on('pageerror', (error) => errors.push(String(error)));
+
+const load = async (payload) => {
+  await page.goto(`${BASE}/${payload ? '?' + payload : ''}`, { waitUntil: 'domcontentloaded' });
+  await waitForReady(page).catch(() => undefined);
+  await page.waitForTimeout(500);
+};
+
+// --- names run out of letters into more letters ----------------------------
+await load(payloads['4-Bar']);
+const names = await page.evaluate(() => {
+  const srv = ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv;
+  const taken = [];
+  const given = [];
+  for (let i = 0; i < 60; i++) {
+    const next = srv.determineNextLetter(taken);
+    given.push(next);
+    taken.push(next);
+  }
+  return given;
+});
+record(
+  'a drawing that outgrows the alphabet keeps being given letters',
+  names.every((name) => /^[A-Za-z]+$/.test(name)),
+  names.filter((name) => !/^[A-Za-z]+$/.test(name)).slice(0, 6)
+);
+record('and never the same name twice', new Set(names).size === names.length, names);
+
+// --- renaming is an edit, and Undo takes it back ---------------------------
+await load(payloads['4-Bar']);
+await page.locator('#joint_B').first().click({ force: true });
+await page.waitForTimeout(600);
+const renamed = await page.evaluate(() => {
+  const title = ng.getComponent(document.querySelector('editable-title-block'));
+  title.gotoEditMode();
+  title.newIDForm.patchValue({ newID: 'Elbow' });
+  title.saveNewID();
+  return ng
+    .getComponent(document.querySelector('app-new-grid'))
+    .mechanismSrv.joints.map((joint) => joint.name);
+});
+record('a joint can be renamed', renamed.includes('Elbow'), renamed);
+await page.waitForTimeout(700);
+await page.locator('.historyButton').first().click();
+await page.waitForTimeout(1000);
+const afterUndo = await page.evaluate(() =>
+  ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv.joints.map((j) => j.name)
+);
+record('and Undo takes the rename back', !afterUndo.includes('Elbow'), afterUndo);
+
+// --- a long name on a bar is written along it ------------------------------
+const tags = await page.evaluate(() => {
+  const grid = ng.getComponent(document.querySelector('app-new-grid'));
+  return grid.mechanismSrv.getLinks().map((link) => {
+    const tag = grid.linkLabelStyle(link);
+    const [a, b] = link.joints;
+    const bearing = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+    return {
+      id: link.id,
+      name: tag.name,
+      angle: tag.angle,
+      joints: link.joints.length,
+      bearing: Math.round(bearing * 10) / 10,
+    };
+  });
+});
+// Since #275 a bar's name runs along the bar whatever its length: whether two
+// letters lay flat used to depend on the drawing style's width.
+// Along it: the screen is y-down, so the label turns by minus the bar's bearing,
+// give or take a half turn to stay upright -- which keeps it in [-100, 80).
+const alongItsBar = (tag) => {
+  const off = (((tag.angle + tag.bearing) % 180) + 180) % 180;
+  return Math.min(off, 180 - off) < 0.5;
+};
+record(
+  'a two-letter name runs along its bar, the right way up',
+  tags.every((tag) => alongItsBar(tag) && tag.angle >= -100 && tag.angle < 80),
+  tags
+);
+
+await page.evaluate(() => {
+  const grid = ng.getComponent(document.querySelector('app-new-grid'));
+  const bar = grid.mechanismSrv.links.find((link) => link.joints.length === 2);
+  bar.name = 'Coupler';
+});
+await page.waitForTimeout(400);
+const named = await page.evaluate(() => {
+  const grid = ng.getComponent(document.querySelector('app-new-grid'));
+  const bar = grid.mechanismSrv.links.find((link) => link.joints.length === 2);
+  return grid.linkLabelStyle(bar);
+});
+record('a longer one runs along the bar', named.angle !== 0, named);
+record('and never upside down', Math.abs(named.angle) <= 90, named);
+
+// --- analysis mode: no move cursor, no red on scenery ----------------------
+await load(payloads['Dev_All_Mechanism_Types']);
+const inkIn = async (mode) => {
+  if (mode) await page.locator('.tabButton', { hasText: mode }).click({ force: true });
+  await page.waitForTimeout(800);
+  return page.evaluate(() => {
+    const grid = ng.getComponent(document.querySelector('app-new-grid'));
+    const joint = document.querySelector('#jointHolder svg[cursor="move"]');
+    return {
+      ink: grid.orphanMarkInk,
+      cursor: joint ? getComputedStyle(joint).cursor : null,
+      locked: grid.structureLocked,
+    };
+  });
+};
+const editing = await inkIn(null);
+record('a loose joint is marked in red while it can be fixed', editing.ink === '#F44336', editing);
+record('and the parts say they can be dragged', editing.cursor === 'move', editing);
+
+const analyzing = await inkIn('Kinematic');
+record(
+  'the same mark goes gray once the mode cannot act on it',
+  analyzing.ink !== '#F44336',
+  analyzing
+);
+// The cursor keeps offering the drag, because the drag now happens: an
+// analysis mode tunes what exists. What it still refuses is restructuring,
+// which no cursor was ever promising.
+record('and the parts can still be dragged there', analyzing.cursor === 'move', analyzing);
+record('while the mode still refuses to restructure', analyzing.locked === true, analyzing);
+
+// --- a drawing that cannot be analyzed sends you back to Edit --------------
+await load(payloads['4-Bar']);
+await page.locator('.tabButton', { hasText: 'Kinematic' }).click({ force: true });
+await page.waitForTimeout(700);
+const wasAnalysing = await page.evaluate(() =>
+  ng.getComponent(document.querySelector('app-top-bar')).tabs.isAnalysisMode()
+);
+// Through the same call the library and the Open dialog both make.
+await page.evaluate((payload) => {
+  ng.getComponent(document.querySelector('app-top-bar')).urlProcessor.updateFromURL(
+    payload,
+    true,
+    true,
+    true
+  );
+}, LONE_BAR);
+await page.waitForTimeout(2000);
+const nowEditing = await page.evaluate(() => {
+  const bar = ng.getComponent(document.querySelector('app-top-bar'));
+  return { analysis: bar.tabs.isAnalysisMode(), valid: bar.mechanism.oneValidMechanismExists() };
+});
+record(
+  'opening a drawing nothing can be analyzed in leaves the analysis modes',
+  wasAnalysing && !nowEditing.valid && !nowEditing.analysis,
+  { wasAnalysing, nowEditing }
+);
+
+// --- the legend says what the plot is drawing ------------------------------
+await load(payloads['4-Bar']);
+await page.locator('.tabButton', { hasText: 'Kinematic' }).click({ force: true });
+await page.waitForTimeout(700);
+await page.locator('#joint_B').first().click({ force: true });
+await page.waitForTimeout(700);
+await page.locator('.graphHeader', { hasText: 'Velocity' }).first().click({ force: true });
+await page.waitForTimeout(1800);
+const legend = await page.evaluate(() => {
+  const section = [...document.querySelectorAll('app-analysis-graph-section')].find((node) =>
+    node.querySelector('.graphSection.open')
+  );
+  const component = ng.getComponent(section);
+  // viewChild is a signal now: the child is behind a call.
+  const graph = typeof component.graph === 'function' ? component.graph() : component.graph;
+  return {
+    chosen: section.querySelector('.seriesSplit .chosen')?.textContent.trim(),
+    drawn: ['x', 'y', 'z'].map((key) => graph.isSeriesShown(key)),
+    plotted: graph.displayedSeries.length,
+  };
+});
+// Magnitude is one line; the components are two. Never six, never one alone.
+record(
+  'the split and the plot agree the moment a graph opens',
+  legend.plotted === (legend.chosen === 'Magnitude' ? 1 : 2),
+  legend
+);
+
+// --- toggling a series does not move the panel under the pointer -----------
+await page.locator('.graphHeader', { hasText: 'Acceleration' }).first().click({ force: true });
+await page.waitForTimeout(1500);
+const scroller = '.panel';
+await page.evaluate((selector) => {
+  const node = document.querySelector(selector);
+  node.scrollTop = node.scrollHeight;
+}, scroller);
+await page.waitForTimeout(400);
+const before = await page.evaluate((s) => document.querySelector(s).scrollTop, scroller);
+const lastSplit = page
+  .locator('app-analysis-graph-section')
+  .last()
+  .locator('.seriesSplit button')
+  .last();
+await lastSplit.click({ force: true });
+await page.waitForTimeout(900);
+const after = await page.evaluate((s) => document.querySelector(s).scrollTop, scroller);
+record('switching to the components leaves the panel where it was', Math.abs(after - before) < 12, {
+  before,
+  after,
+});
+
+// --- Export Data ------------------------------------------------------------
+// The corner card opens the export drawer rather than writing a file on the
+// spot; what the drawer then does is `e2e/export-flow.mjs`.
+await load(payloads['4-Bar']);
+await page.locator('.tabButton', { hasText: 'Kinematic' }).click({ force: true });
+await page.waitForTimeout(700);
+record(
+  'with a solved mechanism there is something to export, selection or not',
+  // By name, not by position: Undo and Redo share this card now, and the
+  // first button in it is Undo.
+  !(await page.locator('.historyCard button', { hasText: 'Export Data' }).isDisabled()),
+  {}
+);
+await page.locator('.historyCard button', { hasText: 'Export Data' }).click();
+await page.waitForTimeout(700);
+record(
+  'and the corner card opens the drawer that asks what to write',
+  (await page.locator('app-export-panel').count()) === 1
+);
+
+// --- three machines at once -------------------------------------------------
+await load(THREE_MACHINES);
+await page.locator('.tabButton', { hasText: 'Kinematic' }).click({ force: true });
+await page.waitForTimeout(900);
+
+// Every graph of the first machine, which is cylinder-driven and was solved
+// before the other two were solved over the top of its solver state.
+// Inside the zone, or the panel never renders the selection and there is no
+// graph to open.
+await inAngular(page, () => {
+  const grid = ng.getComponent(document.querySelector('app-new-grid'));
+  grid.activeObjService.updateSelectedObj(grid.mechanismSrv.joints.find((j) => j.id === 'C'));
+});
+await page.waitForTimeout(800);
+// Position opens on its own now; pressing its header would fold it away.
+await inAngular(page, () => {
+  if (!document.querySelector('app-analysis-graph'))
+    document.querySelector('app-analysis-graph-section .graphHeader')?.click();
+});
+await page.waitForTimeout(1500);
+const firstMachine = await page.evaluate(() => {
+  const graph = ng.getComponent(document.querySelector('app-analysis-graph'));
+  const plotted = (prop, part) => {
+    graph.determineChart('kinematic', 'loop', prop, part);
+    const series = graph.chartOptions?.series ?? [];
+    return series.map((s) => (s.data ?? []).filter((point) => Number.isFinite(point?.y)).length);
+  };
+  return {
+    velocity: plotted('Linear Joint Vel', 'C'),
+    acceleration: plotted('Linear Joint Acc', 'C'),
+    linkVelocity: plotted('Angular Link Vel', 'OC'),
+    // The cylinder machine is the one holding C, wherever the partition puts it.
+    frames: (() => {
+      const srv = ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv;
+      return srv.mechanismContaining(srv.joints.find((j) => j.id === 'C')).joints.length;
+    })(),
+  };
+});
+record(
+  'the first machine still has rates after the others were solved over it',
+  [firstMachine.velocity, firstMachine.acceleration, firstMachine.linkVelocity].every(
+    (series) => series.length > 0 && series.every((n) => n === firstMachine.frames)
+  ),
+  firstMachine
+);
+
+// The combined handle measures time, so dragging it never runs anything back.
+const swept = await page.evaluate(() => {
+  const bar = ng.getComponent(document.querySelector('app-playback-bar'));
+  if (!bar.synced) bar.toggleSync();
+  const srv = bar.mechanism;
+  const row = bar.rows.find((r) => r.index === -1);
+  if (!row) return null;
+  const seen = [];
+  for (let value = 0; value <= 1000; value += 5) {
+    bar.scrubRow(row, { target: { value: String(value) } });
+    seen.push(srv.mechanisms.map((_, i) => srv.secondsOf(i)));
+  }
+  const period = srv.mechanisms.map((m) => m.cyclePeriod);
+  // A shorter cycle legitimately starts again part way along the longest one.
+  // Anything else going backwards is the handle disagreeing with itself.
+  const backwards = period.map((_, machine) => {
+    let count = 0;
+    for (let i = 1; i < seen.length; i++) {
+      const step = seen[i][machine] - seen[i - 1][machine];
+      if (step < -1e-9 && seen[i - 1][machine] < period[machine] - 0.5) count++;
+    }
+    return count;
+  });
+  return { backwards, wraps: period.map((p) => Math.round((p / Math.max(...period)) * 200)) };
+});
+record(
+  'dragging the combined handle only ever moves time forwards',
+  !!swept && swept.backwards.every((n) => n === 0),
+  swept
+);
+
+// --- a graph's playhead is on its own machine's clock -----------------------
+// Inside Angular, as the clicks it stands in for would be, so the graph that is
+// read is the one this selection drew.
+const playhead = await inAngular(page, async () => {
+  const grid = ng.getComponent(document.querySelector('app-new-grid'));
+  const srv = grid.mechanismSrv;
+  const bar = ng.getComponent(document.querySelector('app-playback-bar'));
+  const wait = (ms) => new Promise((done) => setTimeout(done, ms));
+  if (bar.synced) bar.toggleSync();
+  // A joint of one machine, graphed -- asked by ownership, since the order the
+  // partition lists machines in is not this suite's to assume.
+  const traced = srv.joints.find((joint) => joint.id === 'T');
+  const parkedIndex = srv.indexOfMechanismContaining(traced);
+  const runningIndex = srv.mechanisms.findIndex((_, i) => i !== parkedIndex);
+  grid.activeObjService.updateSelectedObj(traced);
+  await wait(700);
+  // Only if nothing is open: the sections remember which quantity was
+  // expanded, so a click here would close the one already showing.
+  if (!document.querySelector('app-analysis-graph')) {
+    document.querySelector('app-analysis-graph-section .graphHeader')?.click();
+    await wait(1600);
+  }
+  const graph = document.querySelector('app-analysis-graph');
+  const graphOf = graph ? ng.getComponent(graph).mechPart : null;
+  // Where the playhead stands, as the line's own x: it carries no label now.
+  const label = () =>
+    document.querySelector('.apexcharts-xaxis-annotations line')?.getAttribute('x1') ?? '';
+  // Seeked twice, so the line is seen to follow its own machine's clock before
+  // it is asked to stay put: a line that never moved would pass the stay-put.
+  srv.seekMechanism(parkedIndex, 1);
+  await wait(500);
+  const atOne = label();
+  // Park it, and run the first machine instead -- read once the seek is drawn.
+  srv.seekMechanism(parkedIndex, 3);
+  await wait(500);
+  if (!srv.isMechanismPlaying(runningIndex)) srv.toggleMechanismPlaying(runningIndex);
+  const before = {
+    graphOf,
+    atOne,
+    at: label(),
+    running: srv.secondsOf(runningIndex),
+    parked: srv.secondsOf(parkedIndex),
+  };
+  await new Promise((done) => setTimeout(done, 1500));
+  const after = {
+    at: label(),
+    running: srv.secondsOf(runningIndex),
+    parked: srv.secondsOf(parkedIndex),
+  };
+  if (srv.isMechanismPlaying(runningIndex)) srv.toggleMechanismPlaying(runningIndex);
+  // Back to one handle for the checks that follow.
+  if (!bar.synced) bar.toggleSync();
+  return { before, after };
+});
+record(
+  'the other machine really is running',
+  playhead.after.running > playhead.before.running + 0.2,
+  playhead
+);
+record(
+  "a paused machine's graph keeps its playhead where the machine is",
+  playhead.before.graphOf === 'T' &&
+    playhead.before.atOne !== playhead.before.at &&
+    playhead.before.at === playhead.after.at &&
+    playhead.after.at !== '',
+  playhead
+);
+
+// --- the combined row's name is a label, not a control ----------------------
+// One handle again, which is the only arrangement that has a combined row.
+await page.waitForTimeout(900);
+const allChip = await page.evaluate(() => {
+  const chip = [...document.querySelectorAll('.mechChip')].find(
+    (node) => node.textContent.trim() === 'All'
+  );
+  if (!chip) return null;
+  return {
+    tag: chip.tagName,
+    selectable: getComputedStyle(chip).userSelect,
+    selected: chip.classList.contains('selected'),
+  };
+});
+record(
+  'the combined row is named by a label that cannot be pressed or selected',
+  !!allChip && allChip.tag === 'SPAN' && allChip.selectable === 'none' && !allChip.selected,
+  allChip
+);
+
+// --- one switch for every traced path ---------------------------------------
+const traces = await page.evaluate(() => {
+  const grid = ng.getComponent(document.querySelector('app-new-grid'));
+  const button = [...document.querySelectorAll('.viewControls .viewButton')].find((node) =>
+    // Case-insensitively: the label reads "Show Traced Paths", and matching
+    // the lowercase word found nothing, so the switch this section is about
+    // was never pressed and the run died on the undefined element.
+    /traced/i.test(node.getAttribute('aria-label') ?? '')
+  );
+  const drawn = () => document.querySelectorAll('#pathsHolder path').length;
+  if (!button) return null;
+  const disabledWithNone = button.disabled;
+  // Ask two joints to trace, as the Edit panel does.
+  grid.mechanismSrv.joints.slice(0, 2).forEach((joint) => (joint.showCurve = true));
+  grid.mechanismSrv.updateMechanism();
+  // From outside Angular, so nothing draws the paths without a render pass.
+  ng.applyChanges(grid);
+  return { disabledWithNone, drawn: drawn() };
+});
+await page.waitForTimeout(900);
+const tracesAfter = await page.evaluate(() => {
+  const button = [...document.querySelectorAll('.viewControls .viewButton')].find((node) =>
+    // Case-insensitively: the label reads "Show Traced Paths", and matching
+    // the lowercase word found nothing, so the switch this section is about
+    // was never pressed and the run died on the undefined element.
+    /traced/i.test(node.getAttribute('aria-label') ?? '')
+  );
+  const drawn = () => document.querySelectorAll('#pathsHolder path').length;
+  const withTraces = drawn();
+  button.click();
+  return { withTraces };
+});
+await page.waitForTimeout(500);
+const hidden = await page.evaluate(() => document.querySelectorAll('#pathsHolder path').length);
+record(
+  'with nothing tracing, the traces switch is grayed',
+  traces?.disabledWithNone === true,
+  traces
+);
+record('two joints asked to trace draw two paths', tracesAfter.withTraces === 2, tracesAfter);
+record('and the switch puts every one of them away', hidden === 0, { hidden });
+
+// --- the transport comes and goes; the view controls do not ----------------
+const controlsAt = () =>
+  page.evaluate(() => {
+    const box = document.querySelector('.viewControls').getBoundingClientRect();
+    return {
+      right: Math.round(innerWidth - box.right),
+      bottom: Math.round(innerHeight - box.bottom),
+    };
+  });
+await load(payloads['4-Bar']);
+const inEdit = await controlsAt();
+await page.locator('.tabButton', { hasText: 'Kinematic' }).click({ force: true });
+await page.waitForTimeout(900);
+const inAnalysis = await controlsAt();
+record(
+  'the view controls sit in the same place in both modes',
+  inEdit.right === inAnalysis.right && inEdit.bottom === inAnalysis.bottom,
+  { inEdit, inAnalysis }
+);
+
+// --- the three view switches say their state the same way -------------------
+const buttons = () =>
+  page.evaluate(() =>
+    [...document.querySelectorAll('.viewControls .viewButton')].map((button) => {
+      const icon = button.querySelector('mat-icon');
+      return {
+        name: button.getAttribute('aria-label'),
+        glyph: icon?.getAttribute('data-mat-icon-name') ?? icon?.textContent.trim() ?? '',
+        on: button.classList.contains('on'),
+        disabled: button.disabled,
+        tinted: getComputedStyle(button).backgroundColor !== 'rgba(0, 0, 0, 0)',
+        ink: getComputedStyle(icon).color,
+        // A glyph that names its own color ignores the button's, which is how
+        // the traced-paths switch stayed black in a row that had grayed out.
+        // Painted geometry only. A <clipPath> child is used for its shape and
+        // never drawn, and the export tool leaves a fill="white" on it that
+        // means nothing -- counting those would fail an icon that is fine.
+        selfPainted: [...(icon?.querySelectorAll('svg *') ?? [])]
+          .filter((node) => !node.closest('defs, clipPath, mask'))
+          .some((node) =>
+            ['fill', 'stroke'].some((attribute) => {
+              const value = node.getAttribute(attribute);
+              return value !== null && value !== 'none' && value !== 'currentColor';
+            })
+          ),
+      };
+    })
+  );
+const switches = async () => (await buttons()).slice(0, 3);
+
+await load(payloads['4-Bar']);
+await page.evaluate(() => {
+  // One joint tracing and one link with a weight, so all three switches have
+  // something to act on. The mass was missing: a four-bar's bars are massless
+  // as drawn, so Center of Mass stayed disabled and its glyph carried the
+  // grayed-out ink rather than the one the other two share -- which is a
+  // different sentence from the one this section is checking.
+  const grid = ng.getComponent(document.querySelector('app-new-grid'));
+  grid.mechanismSrv.joints[1].showCurve = true;
+  grid.mechanismSrv.links[0].mass = 1;
+  grid.mechanismSrv.updateMechanism();
+  // From outside Angular: without a render pass the switches stay grayed.
+  ng.applyChanges(grid);
+});
+await page.waitForTimeout(700);
+const asDrawn = await switches();
+record(
+  // Labels on as well now: a reader's first drawing already has the letters
+  // the panels and the menus call its joints by.
+  'the switches arrive with marks, labels and paths on',
+  asDrawn[0].on && asDrawn[1].on && asDrawn[2].on,
+  asDrawn.map((s) => `${s.name}=${s.on}`)
+);
+// The glyph draws what is on the grid, so the crossed-out one means hidden.
+// The two icon families spell that differently: com/com_off beside
+// show_path/hide_path.
+const crossedOut = (glyph) => glyph.endsWith('_off') || glyph.startsWith('hide');
+record(
+  'each glyph draws the state the grid is in, not the one on offer',
+  asDrawn.every((s) => s.on === !crossedOut(s.glyph)),
+  asDrawn.map((s) => `${s.glyph}:${s.on}`)
+);
+record(
+  'and the tint alone carries it -- every glyph is the same gray',
+  asDrawn.every((s) => s.tinted === s.on) && new Set(asDrawn.map((s) => s.ink)).size === 1,
+  asDrawn.map((s) => `${s.name} tint=${s.tinted} ink=${s.ink}`)
+);
+
+// Nothing left for any of them to do: no mass to mark, no path being traced,
+// and on an empty grid no joint to label either.
+await page.evaluate(() => {
+  const grid = ng.getComponent(document.querySelector('app-new-grid'));
+  grid.mechanismSrv.links.forEach((link) => (link.mass = 0));
+  grid.mechanismSrv.joints.forEach((joint) => (joint.showCurve = false));
+  grid.mechanismSrv.updateMechanism();
+});
+await page.waitForTimeout(700);
+const idle = await switches();
+// A slider carries a mass and draws no center-of-mass mark, so it must not make
+// the switch look useful. On a mechanism that actually has one: this used to
+// hunt for a `SliderBlock` on the four-bar, which has no slider at all, so it
+// passed on `!hasBlock` whatever the switch did. The mass moved onto the joint
+// in Stage 1 of `docs/joint-type-and-cylinder-plan.md`, which is exactly the
+// behavior this is here to check.
+await load(payloads['Slider_Crank']);
+const blockOnly = await page.evaluate(() => {
+  const grid = ng.getComponent(document.querySelector('app-new-grid'));
+  const srv = grid.mechanismSrv;
+  srv.links.forEach((link) => (link.mass = 0));
+  const slider = srv.joints.find((joint) => joint.constructor.name === 'PrisJoint');
+  if (slider) slider.mass = 5;
+  srv.updateMechanism(false);
+  const button = [...document.querySelectorAll('.viewControls .viewButton')][0];
+  return { hasSlider: !!slider, disabled: button.disabled };
+});
+record(
+  'a mass on a slider does not make the center-of-mass switch look useful',
+  blockOnly.hasSlider && blockOnly.disabled,
+  blockOnly
+);
+
+// The state a sighted reader gets from the tint has to reach everyone else.
+await load(payloads['4-Bar']);
+const pressedState = await page.evaluate(() =>
+  [...document.querySelectorAll('.viewControls .viewButton')].map((button) => ({
+    name: button.getAttribute('aria-label'),
+    pressed: button.getAttribute('aria-pressed'),
+    on: button.classList.contains('on'),
+  }))
+);
+record(
+  'each switch says whether it is on, and the plain actions say nothing',
+  pressedState.slice(0, 3).every((b) => b.pressed === String(b.on)) &&
+    pressedState.slice(3).every((b) => b.pressed === null),
+  pressedState
+);
+
+await load(payloads['4-Bar']);
+await page.evaluate(() => {
+  const grid = ng.getComponent(document.querySelector('app-new-grid'));
+  grid.mechanismSrv.links.forEach((link) => (link.mass = 0));
+  grid.mechanismSrv.joints.forEach((joint) => (joint.showCurve = false));
+  grid.mechanismSrv.updateMechanism();
+});
+await page.waitForTimeout(700);
+const idleAgain = await switches();
+record(
+  'a switch that would change nothing is grayed',
+  idleAgain[0].disabled && idleAgain[2].disabled && !idleAgain[1].disabled,
+  idleAgain.map((s) => `${s.name}=${s.disabled}`)
+);
+
+// The row carries two kinds of button, and says where one kind ends.
+const split = await page.evaluate(() => {
+  const kids = [...document.querySelector('.viewControls').children];
+  const divider = kids.findIndex((node) => node.classList.contains('viewDivider'));
+  return { divider, count: kids.length };
+});
+record(
+  // Four actions now: zoom out, zoom in, Fit to view and Fit full motion.
+  'a divider splits the three switches from the view actions',
+  split.divider === 3 && split.count === 8,
+  split
+);
+
+// --- an empty grid: nothing for any of the three to act on ------------------
+await load();
+const onEmpty = await buttons();
+record(
+  'with nothing drawn, all three switches are grayed and the view actions are not',
+  onEmpty.slice(0, 3).every((b) => b.disabled) && onEmpty.slice(3).every((b) => !b.disabled),
+  onEmpty.map((b) => `${b.name}=${b.disabled}`)
+);
+// The check above passes on color alone; this is the one that catches a glyph
+// painting itself, which no computed style on the button would show.
+record(
+  'and every glyph takes the button ink rather than naming its own color',
+  onEmpty.every((b) => !b.selfPainted) &&
+    new Set(onEmpty.slice(0, 3).map((b) => b.ink)).size === 1 &&
+    new Set(onEmpty.slice(3).map((b) => b.ink)).size === 1,
+  onEmpty.map((b) => `${b.glyph} ink=${b.ink} own=${b.selfPainted}`)
+);
+
+// --- the setup drawer keeps one gap all round, whatever the transport does --
+const drawerGaps = () =>
+  page.evaluate(() => {
+    const card = document.querySelector('app-analysis-setup .setup')?.getBoundingClientRect();
+    const controls = document.querySelector('.viewControls').getBoundingClientRect();
+    const strip = document.querySelector('.historyCard').getBoundingClientRect();
+    if (!card) return null;
+    return {
+      above: Math.round(card.top - strip.bottom),
+      below: Math.round(controls.top - card.bottom),
+      height: Math.round(card.height),
+      edges: [Math.round(card.left - controls.left), Math.round(card.right - controls.right)],
+    };
+  });
+
+await load(THREE_MACHINES);
+await page.locator('.tabButton', { hasText: 'Kinematic' }).click({ force: true });
+await page.waitForTimeout(900);
+await page.evaluate(() => ng.getComponent(document.querySelector('app-top-bar')).openSetup());
+await page.waitForTimeout(900);
+// A window too short for the list, so the drawer is at its full extent and the
+// gap below it is the one being kept rather than wherever the content ended.
+await page.setViewportSize({ width: 1500, height: 700 });
+// Only the folded ones, and by a real press: a section that starts open would
+// fold at one, and a click dispatched from here was never rendered.
+// Each once, and each must open: a header that took the click and stayed shut
+// would otherwise be clicked until the job timed out.
+const HEADERS = 'app-analysis-setup .sectionHeader';
+const headers = page.locator(HEADERS);
+for (let at = 0, count = await headers.count(); at < count; at++) {
+  if ((await headers.nth(at).getAttribute('aria-expanded')) !== 'false') continue;
+  await headers.nth(at).click();
+  await page
+    .waitForFunction(
+      ([selector, at]) =>
+        document.querySelectorAll(selector)[at]?.getAttribute('aria-expanded') === 'true',
+      [HEADERS, at],
+      { timeout: 3000 }
+    )
+    .catch(() => {});
+}
+const stillFolded = await page.locator(`${HEADERS}[aria-expanded="false"]`).count();
+record('every folded setup section opens at a press', stillFolded === 0, stillFolded);
+await page.waitForTimeout(800);
+const gapsSynced = await drawerGaps();
+record(
+  'the gap under the setup drawer matches the gap over it',
+  gapsSynced && gapsSynced.above === gapsSynced.below,
+  gapsSynced
+);
+// The drawer takes its width from the view-controls card it stands over, so
+// adding a button or the divider between them cannot knock the two out of line.
+record(
+  'and the drawer stands exactly over the view controls',
+  gapsSynced && gapsSynced.edges[0] === 0 && gapsSynced.edges[1] === 0,
+  gapsSynced?.edges
+);
+
+await page.evaluate(() => {
+  const bar = ng.getComponent(document.querySelector('app-playback-bar'));
+  if (typeof bar.toggleSync === 'function') bar.toggleSync();
+});
+await page.waitForTimeout(1000);
+const gapsUnsynced = await drawerGaps();
+record(
+  'and a transport that grows a row per machine does not push it up',
+  gapsUnsynced &&
+    gapsUnsynced.below === gapsSynced.below &&
+    gapsUnsynced.height === gapsSynced.height,
+  { gapsSynced, gapsUnsynced }
+);
+await page.setViewportSize({ width: 1500, height: 950 });
+
+// --- the playhead reads a number, not a float -------------------------------
+// The samples leave the solver at full precision, so the label beside the
+// playhead printed all seventeen digits of it -- "2.6179937801901527" hanging
+// off the plot beside a readout of "2.62" for the same instant.
+await load(payloads['4-Bar']);
+await page.locator('.tabButton', { hasText: 'Kinematic' }).click({ force: true });
+await page.waitForTimeout(700);
+await page.locator('#joint_B').first().click({ force: true });
+await page.waitForTimeout(700);
+for (const card of ['Position', 'Velocity']) {
+  await page.locator('.graphHeader', { hasText: card }).first().click({ force: true });
+  await page.waitForTimeout(1200);
+}
+// Off timestep 0, where there is no playhead to label.
+await page.evaluate(() => {
+  const grid = ng.getComponent(document.querySelector('app-new-grid'));
+  const mech = grid.mechanismSrv;
+  mech.animate?.(Math.floor((mech.mechanisms[0]?.joints.length ?? 100) * 0.3), false);
+});
+await page.waitForTimeout(1500);
+
+const plots = await page.evaluate(() =>
+  [...document.querySelectorAll('app-analysis-graph')].map((node) => {
+    const graph = ng.getComponent(node);
+    return {
+      prop: graph.mechProp,
+      // The playhead carries no label now; the reading is the row's own value.
+      labels: [...node.closest('app-analysis-graph-section').querySelectorAll('.graphValue')].map(
+        (label) => label.textContent.trim()
+      ),
+      // Every line the plot draws, and how wide a box each occupies. A
+      // constant series is zero high, which is the point -- but it still has
+      // to run the width of the plot.
+      lines: [...node.querySelectorAll('.apexcharts-line-series path.apexcharts-line')].map(
+        (path) => Math.round(path.getBoundingClientRect().width)
+      ),
+      axis: [graph.chartOptions.yaxis?.min, graph.chartOptions.yaxis?.max],
+    };
+  })
+);
+const overlong = plots.flatMap((plot) => plot.labels).filter((text) => /\d\.\d{3,}/.test(text));
+record('a reading stops at two decimals', plots.length > 0 && overlong.length === 0, {
+  overlong,
+  labels: plots.map((plot) => plot.labels),
+});
+
+// --- a constant series is still a line ---------------------------------------
+// The speed of a crank pin never changes, and on its own the axis was fitted
+// to what little it does change: a window 1.5e-6 wide in which every label
+// read "6.2" and the line was lost in the floating-point noise.
+const speed = plots.find((plot) => plot.prop === 'Linear Joint Vel');
+record(
+  'a graph showing only a constant still draws it',
+  speed && speed.lines.length === 1 && speed.lines[0] > 50,
+  speed
+);
+record(
+  'and its axis is not fitted to floating-point noise',
+  speed && speed.axis[1] - speed.axis[0] > 0.5,
+  speed?.axis
+);
+
+// --- a drawer's close button does not scroll away ---------------------------
+// It is positioned against the drawer frame, so a frame that scrolls carries
+// it off its own top edge -- gone from the corner while the half of it still
+// showing went on taking the click. The card inside is what scrolls.
+await page.setViewportSize({ width: 1400, height: 560 });
+await page.waitForTimeout(400);
+for (const [tab, name] of [
+  [1, 'Settings'],
+  [3, 'Help'],
+  [4, 'Debug'],
+]) {
+  await page.evaluate((tab) => {
+    const panel = ng.getComponent(document.querySelector('app-right-panel'));
+    panel.constructor.openTab = tab;
+    panel.constructor.isOpen = true;
+  }, tab);
+  await page.waitForTimeout(700);
+  const frame = await page.locator('#rightPanel').boundingBox();
+  if (frame) {
+    await page.mouse.move(frame.x + frame.width / 2, frame.y + frame.height / 2);
+    await page.mouse.wheel(0, 600);
+    await page.waitForTimeout(500);
+  }
+  const corner = await page.evaluate(() => {
+    const button = document.querySelector('.closeDrawer');
+    const panel = document.querySelector('#rightPanel');
+    if (!button || !panel) return { missing: true };
+    const b = button.getBoundingClientRect();
+    const f = panel.getBoundingClientRect();
+    return {
+      inside: b.top >= f.top - 1 && b.bottom <= f.bottom + 1,
+      takesTheClick: button.contains(
+        document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)
+      ),
+      frameScrolled: panel.scrollTop,
+    };
+  });
+  record(
+    `the ${name} drawer keeps its close button in the corner`,
+    corner.inside && corner.takesTheClick && corner.frameScrolled === 0,
+    corner
+  );
+}
+
+// --- and it is not the last one in the drawer that keeps it visible ---------
+// The button used to beat the sticky title it shares a line with on document
+// order alone -- both were z-index 2 -- and document order is the one thing a
+// compositor is free to decide differently. In Safari it did: the title's white
+// background covered the X while the click still went through. Put the button
+// at the FRONT of the drawer, which is the worst order there is, and it has to
+// stay visible on its own merits.
+await page.evaluate((tab) => {
+  const panel = ng.getComponent(document.querySelector('app-right-panel'));
+  panel.constructor.openTab = tab;
+  panel.constructor.isOpen = true;
+}, 1);
+await page.waitForTimeout(800);
+await page.evaluate(() => {
+  const frame = document.querySelector('#rightPanel');
+  frame.insertBefore(document.querySelector('.closeDrawer'), frame.firstChild);
+});
+await page.waitForTimeout(400);
+const worstOrder = await page.evaluate(() => {
+  const btn = document.querySelector('.closeDrawer');
+  const b = btn.getBoundingClientRect();
+  const top = document.elementsFromPoint(b.left + b.width / 2, b.top + b.height / 2)[0];
+  return {
+    onTop: btn.contains(top),
+    coveredBy: btn.contains(top) ? null : top?.tagName.toLowerCase(),
+  };
+});
+record('and it does not rely on being last in the drawer to be seen', worstOrder.onTop, worstOrder);
+await page.setViewportSize({ width: 1500, height: 950 });
+
+// --- a scrolled panel says there is something above it ----------------------
+// The title stays put while the card scrolls under it, so a card scrolled off
+// its own top read as a card that simply started there.
+// Short enough that a joint's card scrolls: it is 440px now, and fitted whole
+// in the 560px window this used to use.
+await load(payloads['4-Bar']);
+await page.setViewportSize({ width: 1400, height: 460 });
+await page.waitForTimeout(400);
+await page.locator('#joint_B').first().click({ force: true });
+await page.waitForTimeout(900);
+const headShadow = () =>
+  page.evaluate(() => {
+    const card = document.querySelector('app-edit-panel #normalPanel');
+    // Through the freeze wrapper, which has no box of its own: `panel-section`
+    // wraps the title so the card's contents can be made inert without taking
+    // the refusal strip beside them with it.
+    const head = card?.querySelector(
+      ':scope > .sectionBody > editable-title-block, :scope > .sectionBody > title-block'
+    );
+    if (!card || !head) return null;
+    const shadow = getComputedStyle(head).boxShadow;
+    // "rgba(0, 0, 0, 0)" is the resting state: declared, so it fades in.
+    return { cast: !/rgba\(0, 0, 0, 0\)/.test(shadow), scrollTop: card.scrollTop, shadow };
+  });
+const atTop = await headShadow();
+record('a card resting at its top casts no shadow', atTop && !atTop.cast, atTop);
+const card = await page.locator('app-edit-panel #normalPanel').boundingBox();
+if (card) {
+  await page.mouse.move(card.x + card.width / 2, card.y + card.height / 2);
+  await page.mouse.wheel(0, 350);
+  await page.waitForTimeout(700);
+}
+const scrolled = await headShadow();
+record(
+  'and once it has scrolled, its title shadows what is passing under it',
+  scrolled && scrolled.cast && scrolled.scrollTop > 0,
+  scrolled
+);
+await page.setViewportSize({ width: 1500, height: 950 });
+
+// --- one help mark, one behavior ------------------------------------------
+// The mark beside a field used to be a pale gray glyph that did not answer the
+// pointer and waited a full second before saying anything; the export drawer's
+// lit up and spoke at once. A reader who has learned what it means in one panel
+// has learned it in all of them.
+await page.evaluate(() => {
+  const grid = ng.getComponent(document.querySelector('app-new-grid'));
+  grid.activeObjService.updateSelectedObj(grid.mechanismSrv.joints.find((joint) => !joint.ground));
+});
+await page.waitForTimeout(900);
+const marks = await page.evaluate(() =>
+  [...document.querySelectorAll('.label-help')].map((mark) => {
+    const style = getComputedStyle(mark);
+    return `${style.color} ${style.cursor} ${style.transform}`;
+  })
+);
+record(
+  'every help mark on screen is drawn the same way',
+  marks.length > 0 && new Set(marks).size === 1,
+  marks.slice(0, 3)
+);
+
+const help = page.locator('.label-help').first();
+const restColor = await help.evaluate((mark) => getComputedStyle(mark).color);
+await help.hover();
+await page.waitForTimeout(650);
+record(
+  'and answers the pointer, then says what it is for',
+  (await help.evaluate((mark) => getComputedStyle(mark).color)) !== restColor &&
+    (await page.locator('.mat-mdc-tooltip').count()) === 1,
+  { restColor, hovered: await help.evaluate((mark) => getComputedStyle(mark).color) }
+);
+
+// ---- mobility, on the strip that already says what the drawing is ----------
+//
+// It is the number every refusal in this app is really about -- one input
+// drives one degree of freedom -- and the strip computed it and rendered
+// nothing. Absent where there is nothing to say: a linkage with nothing
+// grounded has no mobility, and a heading over a dash is worse than no heading.
+await load(payloads['4-Bar']);
+record(
+  'the status strip reports the mobility',
+  /Degrees of freedom:\s*1/.test(await page.locator('#bottomBar').innerText()),
+  (await page.locator('#bottomBar').innerText()).replace(/\s+/g, ' ')
+);
+
+// ---- a force sends the reader to the part that carries it ------------------
+//
+// "There are no analysis graphs for forces" was true and unhelpful: it named
+// what is missing and left the answer -- the reactions on the link this force
+// pushes -- one unmentioned click away. The way there is a control now.
+await load(payloads['4-Bar']);
+await page.locator('.tabButton', { hasText: 'Kinematic' }).click();
+await page.waitForTimeout(600);
+await page.evaluate(() => {
+  const grid = window.ng.getComponent(document.querySelector('app-new-grid'));
+  grid.activeObjService.updateSelectedObj(grid.mechanismSrv.links[0]);
+  grid.mechanismSrv.createForceAtCOM();
+  grid.activeObjService.updateSelectedObj(grid.mechanismSrv.forces[0]);
+});
+await page.waitForTimeout(700);
+// In Kinematic Analysis a force has nothing to show -- the link's kinematics
+// say nothing about a load -- so the card offers the mode that does, rather
+// than the link: "Graph BC" there showed a reader a curve with no force in it.
+const forcePanel = await page.locator('app-analysis-panel').innerText();
+record(
+  'a selected force in Kinematic Analysis offers Force Analysis instead of an apology',
+  /Switch to Force Analysis/.test(forcePanel) && !/There are no analysis graphs/.test(forcePanel),
+  forcePanel.replace(/\s+/g, ' ').slice(0, 120)
+);
+await page.locator('.forceRedirectAction').click();
+await page.waitForTimeout(700);
+record(
+  'and pressing it lands in Force Analysis, where the card offers the link that carries it',
+  (await page.evaluate(() =>
+    window.ng.getComponent(document.querySelector('app-new-grid')).tabService.getCurrentTab()
+  )) === 3 && /Graph /.test(await page.locator('app-analysis-panel').innerText())
+);
+await page.locator('.forceRedirectAction').click();
+await page.waitForTimeout(700);
+record(
+  'and pressing that graphs the link',
+  (await page.evaluate(
+    () => window.ng.getComponent(document.querySelector('app-new-grid')).activeObjService.objType
+  )) === 'Link'
+);
+
+record('nothing threw', errors.length === 0, errors.slice(0, 3));
+await browser.close();
+
+const failed = results.filter(([, ok]) => !ok);
+console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
+process.exit(failed.length ? 1 : 0);

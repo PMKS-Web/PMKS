@@ -1,0 +1,392 @@
+import { Injectable, inject } from '@angular/core';
+import { PrisJoint, RealJoint } from '../../model/joint';
+import { RealLink } from '../../model/link';
+import { MechanismService } from '../mechanism.service';
+import { SettingsService } from '../settings.service';
+import { ExportCatalogService } from './export-catalog.service';
+import {
+  ColumnTab,
+  ExportColumn,
+  ExportColumnGroup,
+  ExportPart,
+  ExportSeries,
+} from './export-model';
+
+/**
+ * What a chosen set of parts turns out to have numbers for.
+ *
+ * Split from the catalog of parts because the two questions have different
+ * shapes: what a drawing contains is fixed the moment it is drawn, and what
+ * that selection can be asked for changes with every tick.
+ */
+@Injectable({ providedIn: 'root' })
+export class ExportColumnsService {
+  private mechanism = inject(MechanismService);
+  private settings = inject(SettingsService);
+  private catalog = inject(ExportCatalogService);
+
+  /**
+   * The quantities a chosen set of parts turns out to have.
+   *
+   * Kinematics groups by kind rather than by part: every chosen joint has the
+   * same three quantities, and a list that repeated them per joint would be the
+   * same three answers asked eleven times.
+   */
+  columnGroups(parts: ExportPart[], tab: ColumnTab): ExportColumnGroup[] {
+    return tab === 'forces' ? this.forceGroups(parts) : this.kinematicGroups(parts);
+  }
+
+  private kinematicGroups(parts: ExportPart[]): ExportColumnGroup[] {
+    const groups: ExportColumnGroup[] = [];
+    const joints = parts.filter((part) => part.kind === 'joint');
+    // Bars, and the rods that stand for rams — not slider blocks. The solver
+    // leaves a block out of its angular maps and gives it no center of mass,
+    // so a block offered these four choices produced eleven columns of blanks.
+    // What a block does have is the reaction it carries, which is the other tab.
+    const links = parts.filter((part) => part.kind === 'link' && part.part instanceof RealLink);
+    const length = this.catalog.unitStr(this.settings.lengthUnit.value);
+    const angle = this.catalog.unitStr(this.settings.angleUnit.value);
+
+    if (joints.length > 0) {
+      groups.push({
+        key: 'joints',
+        title: this.titleOf('Joint', joints),
+        tab: 'kinematics',
+        columns: [
+          this.kinematic(joints, 'j:pos', 'Position', length, [
+            ['Position', 'Linear Joint Pos', length, 2],
+          ]),
+          this.kinematic(joints, 'j:vel', 'Velocity', `${length}/s`, [
+            ['Velocity', 'Linear Joint Vel', `${length}/s`, 3],
+          ]),
+          this.kinematic(joints, 'j:acc', 'Acceleration', `${length}/s²`, [
+            ['Acceleration', 'Linear Joint Acc', `${length}/s²`, 3],
+          ]),
+        ],
+      });
+    }
+
+    if (links.length > 0) {
+      groups.push({
+        key: 'links',
+        title: this.titleOf('Link', links),
+        tab: 'kinematics',
+        columns: [
+          this.kinematic(links, 'l:ang', 'Angle', angle, [['Angle', 'Angular Link Pos', angle, 1]]),
+          this.kinematic(links, 'l:angvel', 'Angular Velocity', `${angle}/s`, [
+            ['Angular Velocity', 'Angular Link Vel', `${angle}/s`, 1],
+          ]),
+          this.kinematic(links, 'l:angacc', 'Angular Acceleration', `${angle}/s²`, [
+            ['Angular Acceleration', 'Angular Link Acc', `${angle}/s²`, 1],
+          ]),
+        ],
+      });
+      // A heading of its own, and one row per quantity.
+      //
+      // These three were one row: a tick called "Center of mass" whose unit
+      // column had to say "position, velocity, acceleration", because that is
+      // what one tick wrote. The row carried a name, a components control and
+      // three words where every row beside it carries a name, a components
+      // control and a unit -- so it wrapped, stood half again as tall as its
+      // neighbors, and still could not say what it would write. Split, each row
+      // is the shape of the ones above it and reads its own unit, and a reader
+      // who wants the path of a center of mass and not its acceleration can
+      // say so.
+      groups.push({
+        key: 'link-com',
+        title: 'Center of Mass',
+        tab: 'kinematics',
+        columns: [
+          this.kinematic(links, 'l:compos', 'Position', length, [
+            ['Center of Mass Position', "Linear Link's CoM Pos", length, 2],
+          ]),
+          this.kinematic(links, 'l:comvel', 'Velocity', `${length}/s`, [
+            ['Center of Mass Velocity', "Linear Link's CoM Vel", `${length}/s`, 3],
+          ]),
+          this.kinematic(links, 'l:comacc', 'Acceleration', `${length}/s²`, [
+            ['Center of Mass Acceleration', "Linear Link's CoM Acc", `${length}/s²`, 3],
+          ]),
+        ],
+      });
+    }
+    return groups;
+  }
+
+  /** `Joints B, C` for several, `Joint B` for one — the heading names them. */
+  private titleOf(kind: string, parts: ExportPart[]): string {
+    if (parts.length === 1) return parts[0].label;
+    if (parts.length > 6) return `${parts.length} ${kind.toLowerCase()}s`;
+    if (parts.some((part) => part.label.startsWith('Cylinder '))) {
+      return parts.map((part) => part.label).join(', ');
+    }
+    const names = parts.map((part) => part.label.replace(/^(Joint|Link) /, ''));
+    return `${kind}${names.length === 1 ? '' : 's'} ${names.join(', ')}`;
+  }
+
+  private kinematic(
+    parts: ExportPart[],
+    key: string,
+    label: string,
+    unit: string,
+    series: [string, string, string, 1 | 2 | 3][]
+  ): ExportColumn {
+    return {
+      key,
+      label,
+      unit,
+      appliesTo: parts.map((part) => part.key),
+      tab: 'kinematics',
+      series: series.map(([seriesLabel, mechProp, seriesUnit, components]) => ({
+        label: seriesLabel,
+        head: '',
+        unit: seriesUnit,
+        components,
+        analysis: 'kinematic' as const,
+        mechProp,
+        mechPart: '',
+        reactionLinkId: '',
+      })),
+    };
+  }
+
+  /**
+   * Every reaction the chosen parts carry, one group per part.
+   *
+   * Per part rather than per kind, unlike kinematics: a joint's reactions are
+   * named after the links it holds, so no two joints have the same list.
+   */
+  private forceGroups(parts: ExportPart[]): ExportColumnGroup[] {
+    const mode = this.settings.forceAnalysisMode.value;
+    // A reaction at the barrel's buried inner end is a force named after a
+    // joint the drawing never shows. The seal is shown, so its own reaction --
+    // the force between the barrel and the rod -- keeps its column.
+    const hidden = this.catalog.hiddenJointIds();
+    // Which reactions a row has already claimed. Joints come before bodies in
+    // the list, so a pin owns its own force and a body offers only what is left.
+    const taken = new Set<string>();
+    const groups: ExportColumnGroup[] = [];
+    parts.forEach((part) => {
+      const solved = this.mechanism.mechanisms[part.mechanismIndex];
+      if (!solved?.isMechanismValid()) return;
+      const index = solved.getForceAnalysis(mode).reactionIndex;
+      // The body the slot reaction is written on, so it can be put last below.
+      const slotBodyId =
+        part.kind === 'joint'
+          ? this.mechanism.slotReactionOf(part.part as RealJoint)?.againstId
+          : undefined;
+      const members = part.kind === 'link' ? this.catalog.memberIdsOf(part.id) : [];
+      const columns: ExportColumn[] =
+        part.kind === 'joint'
+          ? (index.linksByJoint.get(part.id) ?? [])
+              .slice()
+              // A seal's own point body. The solver keys one by the joint's
+              // letter and writes both of the joint's reactions on it -- the
+              // normal force in the slot and the pin force on the rod -- and
+              // the slot's half is already on the row of the body the slot is
+              // cut into, so this repeated the barrel's name over a different
+              // number. The Force panel drops it for the same reason. A
+              // grounded slot has no body on the far side, so its point body
+              // keeps the only row that force has anywhere.
+              .filter((linkId) => linkId !== part.id || !this.isSeal(part.id))
+              // The bar the reader can point at first, the force in the slot
+              // after it. The solver lists a slider's own point body ahead of
+              // the bar, which opened the row with a force named after
+              // something that has no marker, no hitbox and no row -- and left
+              // the drawer disagreeing with the Force panel, which reads bar
+              // then slot. Only these two ever share a joint, so this orders a
+              // pair rather than imposing a rank on reactions generally.
+              .sort((a, b) => Number(a === slotBodyId) - Number(b === slotBodyId))
+              .flatMap((linkId) => this.jointReaction(part, linkId, index))
+          : // Every link the body is made of: a ram's two mounts sit on
+            // different ones, so asking about the rod alone gave the force at
+            // one end of it and nothing at the end it is pushing.
+            members.flatMap((memberId) =>
+              (index.jointsByLink.get(memberId) ?? [])
+                .filter((jointId) => !hidden.has(jointId))
+                // A reaction a chosen joint already carries. At a pin joining
+                // two bodies the solver holds one force and its negative, so a
+                // joint's view and a body's view of the same pin are the same
+                // column written twice under two names.
+                .filter((jointId) => !taken.has(`${jointId}@${memberId}`))
+                .map((jointId) => {
+                  // A slot is named after the slider it belongs to: it has no
+                  // marker of its own and no name a reader has ever seen.
+                  const where = this.mechanism.slotName(jointId) ?? this.jointName(jointId);
+                  // And which half of the part it presses on, where both halves
+                  // meet the same joint. A cylinder is one row in this drawer
+                  // and two bodies to the solver, and its seal reacts against
+                  // both of them -- so the drawer offered `Force at the slider
+                  // at P` twice, under one heading, over two different numbers.
+                  // The panels tell them apart by which member is selected;
+                  // here there is nothing to select, so the row says it.
+                  const on = this.sharedBy(members, jointId, index)
+                    ? ` on ${this.bodyName(memberId)}`
+                    : '';
+                  return this.force(
+                    `Force at ${where}${on}`,
+                    `${this.modeWord()} force on ${part.label} at ${where}${on}`,
+                    part,
+                    jointId,
+                    memberId,
+                    'Joint Forces'
+                  );
+                })
+            );
+
+      // The effort whatever drives this part has to supply. A joint that is an
+      // input carries its own; a cylinder is driven at its seal, and the body's
+      // row offers that number as well, for the reader who chose the cylinder
+      // rather than the joint inside it.
+      const driven =
+        part.kind === 'joint'
+          ? // The joint itself, or the slot it rides in: a slot is never on the
+            // list, so the effort driving one has to be asked for against the
+            // pin a reader can actually point at.
+            (part.part as RealJoint).input
+            ? (part.part as RealJoint)
+            : this.catalog.drivingSlotOf(part.part as RealJoint)
+          : this.catalog.drivenJointOf(part.id);
+      if (driven) {
+        const torque = !(driven instanceof PrisJoint);
+        const effort = torque ? 'Input Torque' : 'Input Force';
+        columns.push(
+          this.force(
+            effort,
+            `${this.modeWord()} ${effort.toLowerCase()} at ${part.label}`,
+            part,
+            driven.id,
+            '',
+            'Input Effort',
+            torque
+          )
+        );
+      }
+
+      columns.forEach((column) =>
+        taken.add(`${column.series[0].mechPart}@${column.series[0].reactionLinkId}`)
+      );
+      if (columns.length > 0) {
+        groups.push({ key: `force:${part.key}`, title: part.label, tab: 'forces', columns });
+      }
+    });
+    return groups;
+  }
+
+  /**
+   * What a joint reacts against, one column per body.
+   *
+   * A slider's block is not one of them. It is a zero-length link between the
+   * pin and its slot, so the force between the pin and the block is exactly the
+   * force between the pin and the bar, negated -- already on this row. What the
+   * block does have of its own is the force in the slot, which is what sizes a
+   * slide and is reachable from nowhere else.
+   */
+  private jointReaction(
+    part: ExportPart,
+    linkId: string,
+    index: { jointsByLink: Map<string, string[]> }
+  ): ExportColumn[] {
+    const slot = this.mechanism.slotReactionOf(part.part as RealJoint);
+    if (slot && slot.againstId === linkId) {
+      return [
+        this.force(
+          `Force on ${slot.on}`,
+          `${this.modeWord()} force at ${part.label} on ${slot.on}`,
+          part,
+          slot.slot.id,
+          linkId,
+          'Joint Forces'
+        ),
+      ];
+    }
+    return [
+      this.force(
+        `Force on ${this.bodyName(linkId)}`,
+        `${this.modeWord()} force at ${part.label} on ${this.bodyName(linkId)}`,
+        part,
+        part.id,
+        linkId,
+        'Joint Forces'
+      ),
+    ];
+  }
+
+  private force(
+    label: string,
+    head: string,
+    part: ExportPart,
+    mechPart: string,
+    reactionLinkId: string,
+    mechProp: string,
+    /**
+     * Whether the effort is a moment. Decided by the driving joint, not the
+     * part -- and only an input effort can be one, since a reaction is a vector
+     * whichever joint carries it. So the reaction call sites leave it alone
+     * rather than computing an answer nothing would read.
+     */
+    isTorque = false
+  ): ExportColumn {
+    const unit = isTorque ? this.catalog.torqueUnit() : this.catalog.forceUnit();
+    const series: ExportSeries = {
+      label,
+      head,
+      unit,
+      // A reaction is a vector; an input effort is one number.
+      components: mechProp === 'Input Effort' ? 1 : 3,
+      analysis: 'force',
+      mechProp,
+      mechPart,
+      reactionLinkId,
+    };
+    return {
+      // The joint is in the key as well as the link: a link's reactions are
+      // named after the joints holding it, and two of them share every other
+      // part of this — so without it, unticking one untick both.
+      key: `f:${part.key}:${mechProp}:${mechPart}:${reactionLinkId}`,
+      label,
+      unit,
+      appliesTo: [part.key],
+      tab: 'forces',
+      series: [series],
+    };
+  }
+
+  /**
+   * Which force analysis a column came from, written into its own head.
+   *
+   * A static reaction and an in-motion one are different numbers for the same
+   * joint, and a file that does not say which it holds is a file nobody can
+   * check. Carried by the head rather than by a note at the top, so it survives
+   * being pasted into a sheet, plotted, or read by a script.
+   */
+  private modeWord(): string {
+    return this.settings.forceAnalysisMode.value === 'dynamic' ? 'In-motion' : 'Static';
+  }
+
+  /** The same words the panels put on a graph, so the file agrees with them. */
+  private bodyName(linkId: string): string {
+    const body = this.mechanism.links.find((link) => link.id === linkId);
+    return body ? this.catalog.labelFor(body) : linkId;
+  }
+
+  private jointName(jointId: string): string {
+    const joint = this.mechanism.joints.find((candidate) => candidate.id === jointId) as
+      RealJoint | undefined;
+    return `Joint ${joint?.name || jointId}`;
+  }
+
+  /** Whether this joint reacts against more than one of the chosen part's bodies. */
+  private sharedBy(
+    members: string[],
+    jointId: string,
+    index: { jointsByLink: Map<string, string[]> }
+  ): boolean {
+    if (members.length < 2) return false;
+    return members.filter((id) => (index.jointsByLink.get(id) ?? []).includes(jointId)).length > 1;
+  }
+
+  /** Whether this joint is a cylinder's seal, whose point body has no row of its own. */
+  private isSeal(jointId: string): boolean {
+    return this.mechanism.sealedStructures().some((one) => one.seal.id === jointId);
+  }
+}

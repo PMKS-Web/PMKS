@@ -1,7 +1,26 @@
+import { regularRateMatrix } from './rate-conditioning';
 import { Joint, PrisJoint, RealJoint } from '../joint';
-import { Piston, Link, RealLink } from '../link';
-import { matLinearSystem } from '../utils';
-import { InstantCenter } from '../instant-center';
+import { Link, RealLink } from '../link';
+import { matLeastSquares } from '../utils';
+import { Loop, LoopEdge } from './loop-solver';
+import { hasFixedOrientation, SlideAssembly, slideAssemblies } from '../slide-assembly';
+import { PositionSolver } from './position-solver';
+import { drivenLink } from '../actuator';
+
+/** A slot edge's geometry in the frame being solved. */
+interface SlotFrame {
+  slider: PrisJoint;
+  carrier: Link;
+  anchor: Joint;
+  /** Unit vector along the slot. */
+  u: [number, number];
+  /** Unit vector normal to it, which is the direction the slot's rotation moves. */
+  uPerp: [number, number];
+  /** Travel from the anchor, signed along the slot. */
+  s: number;
+  /** +1 when the chain runs anchor to slider, -1 the other way. */
+  sign: number;
+}
 
 export class KinematicsSolver {
   static jointIndexMap = new Map<string, number>();
@@ -24,16 +43,34 @@ export class KinematicsSolver {
   static LinVelLinkEq = new Map<string, [string, string]>();
   static LinAccJointEq = new Map<string, [string, string]>();
   static LinAccLinkEq = new Map<string, [string, string]>();
-  static requiredLoops: string[];
+  static requiredLoops: Loop[];
 
   static loopIndexMap = new Map<string, number>();
   private static linkContainsInputMap = new Map<string, boolean>();
   static unknownLinkIndexMap = new Map<string, number>();
   private static groundJointIndexMap = new Map<string, number>();
-  static realJointIndexMap = new Map<string, number>();
   static desiredAngleMap = new Map<string, number>();
+  /** Travel rate along each floating slot, relative to its carrier. */
+  static slideRateMap = new Map<string, number>();
+  static slideAccelMap = new Map<string, number>();
+  private static pinnedGrounds = new Set<string>();
   private static inputJointIndex: number | undefined;
   static inputLinkIndex: number;
+  /**
+   * The id of `inputLinkIndex`'s link: the one body whose rotation the drive
+   * fixes. Registration asks this rather than "does it hold an input joint",
+   * because a drawing can flag a second input that the solve ignores (#78).
+   */
+  private static inputLinkId: string | undefined;
+  /**
+   * The Slides in the frame being solved, resolved once per call.
+   *
+   * Three separate places hand a body an angular unknown, and all three have to
+   * ask the same question of the same answer. Re-deriving "is this welded to a
+   * grounded guide?" at each of them is how one gets gated and the others do
+   * not — which does not show up as a singular matrix but as a wrong number.
+   */
+  private static slideAssemblyCache: SlideAssembly[] = [];
 
   static resetVariables() {
     // Also forget the cached input joint so the next call re-derives it (and
@@ -55,9 +92,12 @@ export class KinematicsSolver {
     this.linkContainsInputMap = new Map<string, boolean>();
     this.unknownLinkIndexMap = new Map<string, number>();
     this.groundJointIndexMap = new Map<string, number>();
-    this.realJointIndexMap = new Map<string, number>();
     this.desiredAngleMap = new Map<string, number>();
+    this.slideRateMap = new Map<string, number>();
+    this.slideAccelMap = new Map<string, number>();
+    this.slideAssemblyCache = [];
     this.inputLinkIndex = -1;
+    this.inputLinkId = undefined;
 
     this.A_matrix_AngVel = [];
     this.B_matrix_AngVel = [];
@@ -71,18 +111,317 @@ export class KinematicsSolver {
   }
 
   static determineKinematics(simJoints: Joint[], simLinks: Link[], initialAngularVelocity: number) {
+    this.pinnedGrounds = new Set(
+      simJoints
+        .filter(
+          (joint) => joint instanceof RealJoint && joint.ground && !(joint instanceof PrisJoint)
+        )
+        .map((joint) => joint.id)
+    );
     this.kinematicsInitializer(simJoints, simLinks, initialAngularVelocity);
+    if (!this.solveRates(simJoints, simLinks, initialAngularVelocity)) {
+      this.forgetRates(simJoints, simLinks);
+    }
+    for (const id of this.pinnedGrounds) {
+      this.jointVelMap.set(id, [0, 0]);
+      this.jointAccMap.set(id, [0, 0]);
+    }
+    this.settleFixedLinks(simLinks);
+  }
+
+  /**
+   * Take back everything this sample would have said about how fast it moves.
+   *
+   * These maps are written per sample and read afterwards, and nothing in them
+   * carries a sample number -- so a sample with no answer that leaves the last
+   * one's entries in place does not report *nothing*, it reports the pose
+   * before it, which is a plausible number and the wrong one. The seeds
+   * `kinematicsInitializer` laid down go too: a ground's zero is as much a
+   * claim about this sample as a solved velocity is.
+   *
+   * Only this partition's own ids, because a drawing holds several machines
+   * and the others' answers are not this one's to discard.
+   */
+  private static forgetRates(simJoints: Joint[], simLinks: Link[]): void {
+    for (const joint of simJoints) {
+      this.jointVelMap.delete(joint.id);
+      this.jointAccMap.delete(joint.id);
+      this.desiredAngleMap.delete(joint.id);
+      this.slideRateMap.delete(joint.id);
+      this.slideAccelMap.delete(joint.id);
+    }
+    for (const link of simLinks) {
+      this.linkAngVelMap.delete(link.id);
+      this.linkAngAccMap.delete(link.id);
+      this.linkVelMap.delete(link.id);
+      this.linkAccMap.delete(link.id);
+      this.linkCoMMap.delete(link.id);
+      this.slideRateMap.delete(link.id);
+      this.slideAccelMap.delete(link.id);
+    }
+  }
+
+  /**
+   * The frame, when somebody has drawn it as a link.
+   *
+   * A link pinned to ground at every one of its joints cannot move, so no route
+   * above solves for it -- and the panel went on offering it the same graphs as
+   * anything else, which came back as charts with no data in them. Four of them
+   * in `Four_Bar_Inversions` and three in `Slider_Crank_Inversions`, which draw
+   * their frames rather than leaving them implied: seventy empty series between
+   * them.
+   *
+   * Its kinematics are not missing, though. They are zero, and a flat line
+   * saying so is a truthful answer to "how fast does the frame turn" -- a
+   * better one than an empty chart, and better than refusing the question.
+   * Written here rather than in the sampler because these maps are what every
+   * reader of the solver asks, not only the graphs.
+   */
+  private static settleFixedLinks(simLinks: Link[]): void {
+    for (const link of simLinks) {
+      if (!link.joints.length) continue;
+      // Pinned down, not merely grounded. `ground` on a sliding joint says the
+      // slot line is fixed while the joint runs along it, so a bar carried on
+      // two grounded guides -- an elliptical trammel -- is not frame at all,
+      // and settling it to zero would report a moving bar as a still one.
+      const pinnedDown = (joint: Joint): boolean =>
+        joint instanceof RealJoint && joint.ground && !(joint instanceof PrisJoint);
+      if (!link.joints.every(pinnedDown)) continue;
+      const [first, second] = link.joints;
+      if (second) {
+        const angle = Math.atan2(second.y - first.y, second.x - first.x);
+        this.linkAngPosMap.set(link.id, (angle * 180) / Math.PI);
+      }
+      this.linkAngVelMap.set(link.id, 0);
+      this.linkAngAccMap.set(link.id, 0);
+      if (link instanceof RealLink) {
+        this.linkCoMMap.set(link.id, [link.CoM.x, link.CoM.y]);
+      }
+      this.linkVelMap.set(link.id, [0, 0]);
+      this.linkAccMap.set(link.id, [0, 0]);
+    }
+  }
+
+  /** Whether this sample came away with an answer. */
+  private static solveRates(
+    simJoints: Joint[],
+    simLinks: Link[],
+    initialAngularVelocity: number
+  ): boolean {
+    // A mechanism the constraint set solved gets its rates from the same
+    // constraints, differentiated (§2.7a). Loop detection cannot see through a
+    // sealed cylinder, so every cylinder-driven mechanism reached the loopless
+    // path below and came away with no velocities at all -- the graphs plotted
+    // NaN and said nothing about why.
+    if (this.applyConstraintKinematics(simJoints, simLinks, initialAngularVelocity)) {
+      return true;
+    }
+    // A coupled partition has no second opinion to fall back on. Its shape is
+    // one the loop formulation cannot express -- that is why its positions did
+    // not come from the walk either -- so handing it to the loop solver would
+    // not be a cheaper answer to the same question, it would be a confident
+    // answer to a different one. Better an empty graph than a wrong curve --
+    // and an empty graph is what the caller then has to make, which is why
+    // this reports the refusal rather than simply stopping.
+    if (PositionSolver.coupledRoute) {
+      return false;
+    }
 
     // A single welded root rotating about its input is a valid one-DOF
     // mechanism even though it has no closed kinematic loop to solve.
     if (this.requiredLoops.length === 0) {
       this.determineLooplessKinematics(simJoints, simLinks, initialAngularVelocity);
-      return;
+      return true;
     }
 
-    this.determineAng(simJoints, simLinks, 'Velocity');
-    this.determineAng(simJoints, simLinks, 'Acceleration');
+    if (!this.determineAng(simJoints, simLinks, 'Velocity')) return false;
+    if (!this.determineAng(simJoints, simLinks, 'Acceleration')) return false;
     this.determineLin(simJoints, simLinks);
+    return true;
+  }
+
+  /**
+   * A loop's ends, where an end is a joint that slides in a fixed guide.
+   *
+   * Loops are open ground-to-ground chains, so their edges sum to the velocity
+   * of the joint the chain ends on, less the one it starts from. That is zero
+   * for a pin, which is why the closing step was never represented -- and it is
+   * *not* zero for a grounded guide, whose joint runs along its line.
+   *
+   * The rate used to ride the block's own edge: the walk stepped pin -> slider
+   * across the zero-length block, and that edge carried the sliding column. One
+   * joint has no such edge, so the term belongs to the chain's end instead,
+   * which is the same equation written where it actually comes from.
+   *
+   * Signed by which end: `+` at the one the chain leaves, `-` at the one it
+   * arrives on, because the sum is arrival less departure. The old block edge
+   * was always the last step of its chain and always carried the minus, so a
+   * grounded slider at the far end reads exactly as it did.
+   */
+  private static guideEnds(simJoints: Joint[], loop: Loop): { joint: PrisJoint; sign: number }[] {
+    if (loop.edges.length === 0) return [];
+    const ends: { joint: PrisJoint; sign: number }[] = [];
+    const at = [
+      { id: loop.edges[0].fromId, sign: 1 },
+      { id: loop.edges[loop.edges.length - 1].toId, sign: -1 },
+    ];
+    for (const { id, sign } of at) {
+      const joint = simJoints.find((one) => one.id === id);
+      if (!(joint instanceof PrisJoint) || !joint.ground || joint.isFloating) continue;
+      if (ends.some((one) => one.joint.id === joint.id)) continue;
+      ends.push({ joint, sign });
+    }
+    return ends;
+  }
+
+  /**
+   * Everything a slot edge needs, read from the frame being solved.
+   *
+   * `slotAngle` re-measures from the slot's defining joints on every call, and
+   * `rebindSlot` has already pointed this copy's slider at this copy's carrier,
+   * so nothing here can leak timestep 0's geometry.
+   */
+  private static slotFrame(
+    simJoints: Joint[],
+    edge: Extract<LoopEdge, { kind: 'slot' }>
+  ): SlotFrame | undefined {
+    const slider = simJoints.find((joint) => joint.id === edge.sliderId);
+    if (!(slider instanceof PrisJoint) || !slider.carrier || !slider.slotJointA) {
+      return undefined;
+    }
+    const anchor = slider.slotJointA;
+    const theta = slider.slotAngle;
+    const u: [number, number] = [Math.cos(theta), Math.sin(theta)];
+    const uPerp: [number, number] = [-Math.sin(theta), Math.cos(theta)];
+    return {
+      slider,
+      carrier: slider.carrier,
+      anchor,
+      u,
+      uPerp,
+      s: (slider.x - anchor.x) * u[0] + (slider.y - anchor.y) * u[1],
+      sign: edge.fromId === slider.id ? -1 : 1,
+    };
+  }
+
+  /**
+   * A sliding point does not merely slide — it is carried by the link it slides
+   * in. The solved rate is relative to the carrier, so the absolute motion adds
+   * the carrier's own motion at that point: `s·ω` across the slot for velocity,
+   * and for acceleration the Coriolis and centripetal terms as well.
+   *
+   * A grounded guide has `ω = α = 0`, so every added term vanishes and the
+   * sliding point keeps exactly the motion the slide rate gives it.
+   */
+  private static applySlotCarriage(
+    simJoints: Joint[],
+    edge: Extract<LoopEdge, { kind: 'slot' }>
+  ): void {
+    const frame = this.slotFrame(simJoints, edge);
+    if (!frame) {
+      return;
+    }
+    const { slider, carrier, anchor, u, uPerp, s } = frame;
+    const anchorVel = this.jointVelMap.get(anchor.id);
+    const anchorAcc = this.jointAccMap.get(anchor.id);
+    // spreadCarrierMotion runs first and settles every carrier joint, so this
+    // only bites when the walk never reached the carrier at all. Writing zeros
+    // there would present a stationary slider as a solved one.
+    if (!anchorVel || !anchorAcc) {
+      return;
+    }
+    const omega = this.linkAngVelMap.get(carrier.id) ?? 0;
+    const alpha = this.linkAngAccMap.get(carrier.id) ?? 0;
+    const rate = this.slideRateMap.get(slider.id) ?? 0;
+    const accel = this.slideAccelMap.get(slider.id) ?? 0;
+
+    this.jointVelMap.set(slider.id, [
+      anchorVel[0] + rate * u[0] + s * omega * uPerp[0],
+      anchorVel[1] + rate * u[1] + s * omega * uPerp[1],
+    ]);
+    this.jointAccMap.set(slider.id, [
+      anchorAcc[0] +
+        accel * u[0] +
+        2 * rate * omega * uPerp[0] +
+        s * alpha * uPerp[0] -
+        s * omega * omega * u[0],
+      anchorAcc[1] +
+        accel * u[1] +
+        2 * rate * omega * uPerp[1] +
+        s * alpha * uPerp[1] -
+        s * omega * omega * u[1],
+    ]);
+  }
+
+  /**
+   * Rates for a mechanism solved by the constraint set, if it was one.
+   *
+   * Joint rates come straight from differentiating the constraints. A body's
+   * angular rate then follows from any two of its joints, and its center of
+   * mass from that -- the same relations the loop solver ends with, read off a
+   * solved motion rather than assembled into a matrix.
+   */
+  private static applyConstraintKinematics(
+    simJoints: Joint[],
+    simLinks: Link[],
+    commandRate: number
+  ): boolean {
+    const rates = PositionSolver.constraintKinematics(simJoints, simLinks, commandRate);
+    if (!rates) {
+      return false;
+    }
+
+    const zero: [number, number] = [0, 0];
+    for (const joint of simJoints) {
+      // Anything the constraint set did not solve is held by the ground.
+      this.jointVelMap.set(joint.id, rates.velocity.get(joint.id) ?? zero);
+      this.jointAccMap.set(joint.id, rates.acceleration.get(joint.id) ?? zero);
+    }
+
+    for (const link of simLinks) {
+      const [first, second] = link.joints;
+      if (!first || !second) {
+        continue;
+      }
+      const rx = second.x - first.x;
+      const ry = second.y - first.y;
+      const spanSquared = rx * rx + ry * ry;
+      const velocityOf = (joint: Joint) => this.jointVelMap.get(joint.id) ?? zero;
+      const accelerationOf = (joint: Joint) => this.jointAccMap.get(joint.id) ?? zero;
+      const [v1x, v1y] = velocityOf(first);
+      const [v2x, v2y] = velocityOf(second);
+      const [a1x, a1y] = accelerationOf(first);
+      const [a2x, a2y] = accelerationOf(second);
+      // omega = r x dv / |r|^2, and alpha the same of the relative
+      // acceleration -- the centripetal term needs no taking out, because
+      // a2 - a1 = alpha x r - omega^2 r and `r x r` is zero, so the term this
+      // was correcting for contributes nothing to begin with. Written out and
+      // subtracted with one sign wrong, it contributed `2 omega^2 rx ry/|r|^2`
+      // instead: nothing on a bar lying along an axis, and nothing at all
+      // until a body actually turning reached this path, which is why a
+      // constant-speed crank reported an angular acceleration of its own.
+      const omega = spanSquared < 1e-12 ? 0 : (rx * (v2y - v1y) - ry * (v2x - v1x)) / spanSquared;
+      const alpha = spanSquared < 1e-12 ? 0 : (rx * (a2y - a1y) - ry * (a2x - a1x)) / spanSquared;
+      this.linkAngVelMap.set(link.id, omega);
+      this.linkAngAccMap.set(link.id, alpha);
+
+      if (link instanceof RealLink) {
+        const cx = link.CoM.x - first.x;
+        const cy = link.CoM.y - first.y;
+        this.linkCoMMap.set(link.id, [link.CoM.x, link.CoM.y]);
+        this.linkVelMap.set(link.id, [v1x - omega * cy, v1y + omega * cx]);
+        this.linkAccMap.set(link.id, [
+          a1x - alpha * cy - omega * omega * cx,
+          a1y + alpha * cx - omega * omega * cy,
+        ]);
+      }
+    }
+    return true;
+  }
+
+  /** Whether `joint` is the drive the solve uses, rather than any joint flagged as one. */
+  private static isTheInput(joints: Joint[], joint: Joint): boolean {
+    return this.inputJointIndex !== undefined && joints[this.inputJointIndex]?.id === joint.id;
   }
 
   private static determineLooplessKinematics(
@@ -93,11 +432,11 @@ export class KinematicsSolver {
     const inputJoint = simJoints.find(
       (joint): joint is RealJoint => joint instanceof RealJoint && joint.input
     );
+    // The actuator's driven body, as the loop path asks: the first link at the
+    // pivot is the frame bar whenever that was drawn first (#336).
+    const driven = inputJoint && drivenLink(inputJoint);
     const inputLink = simLinks.find(
-      (link): link is RealLink =>
-        link instanceof RealLink &&
-        inputJoint !== undefined &&
-        link.joints.some((joint) => joint.id === inputJoint.id)
+      (link): link is RealLink => link instanceof RealLink && link.id === driven?.id
     );
     if (!inputJoint || !inputLink) return;
 
@@ -149,65 +488,65 @@ export class KinematicsSolver {
       if (!(inputJoint instanceof RealJoint)) {
         return;
       }
-      // this.inputLinkIndex = links.findIndex(l => l.id === inputJoint.links[0])
-      // this.inputLinkIndex = links.indexOf(inputJoint.links[0]);
-      this.inputLinkIndex = links.findIndex((l) => l.id === inputJoint.links[0].id);
+      // Only a turning drive has an input *link*. What that index marks is the
+      // one body whose rotation the command already fixes, so the loop puts its
+      // term on the known side instead of giving it a column. A driven slider
+      // commands travel along a line and says nothing about how its rider
+      // turns: a Pin-in-slot rider is free to swing, and even a Slide's zero
+      // rotation is recorded elsewhere. Marking it anyway left that body with
+      // neither a column nor an angular velocity, so every loop it appeared in
+      // summed a known term of `undefined` -- and the whole known side came out
+      // NaN, which the solve then spread to every rate in the mechanism.
+      //
+      // Which body turns is the actuator's to say, as it is for the position
+      // solve: the pivot's first link is the frame bar whenever that was drawn
+      // first, and marking the frame left the crank without a rate.
+      const driven = inputJoint instanceof PrisJoint ? undefined : drivenLink(inputJoint);
+      this.inputLinkIndex = driven ? links.findIndex((l) => l.id === driven.id) : -1;
+      this.inputLinkId = links[this.inputLinkIndex]?.id;
     }
 
     for (const entry of this.groundJointIndexMap.entries()) {
+      // A grounded *pin* holds its point still; a grounded guide holds only its
+      // line, and the joint travels along it. Seeding a slider with zero here
+      // is what used to report a block as stationary while the pin it carried
+      // visibly moved -- and with the pin gone there is no second joint left to
+      // contradict it, so the zero would simply stand.
+      if (joints[entry[1]] instanceof PrisJoint) continue;
       this.jointVelMap.set(entry[0], [0.0, 0.0]);
       this.jointAccMap.set(entry[0], [0.0, 0.0]);
     }
 
-    switch (links[this.inputLinkIndex].constructor) {
-      case RealLink:
-        this.linkAngVelMap.set(links[this.inputLinkIndex].id, initialAngularVelocity);
-        this.linkAngAccMap.set(links[this.inputLinkIndex].id, 0);
-        break;
-      case Piston:
-        if (!this.realJointIndexMap.has(links[this.inputLinkIndex].id)) {
-          const inputLink = links[this.inputLinkIndex];
-          if (!(inputLink instanceof RealLink)) {
-            return;
-          }
-          if (inputLink.joints === undefined) {
-            return;
-          }
-          const realJoint = inputLink.joints.find((j) => j instanceof RealJoint);
-          if (realJoint === undefined) {
-            return;
-          }
-          // Match by id: the per-timestep joint arrays hold copies, so an
-          // identity indexOf against the link's original joints finds nothing.
-          this.realJointIndexMap.set(
-            links[this.inputLinkIndex].id,
-            joints.findIndex((j) => j.id === realJoint.id)
-          );
-          const prisJoint = links[this.inputLinkIndex].joints.find(
-            (jt) => jt instanceof PrisJoint
-          ) as PrisJoint;
-          this.desiredAngleMap.set(links[this.inputLinkIndex].id, prisJoint.angle_rad);
-        }
-        const inputLink = links[this.inputLinkIndex].id;
-        if (inputLink === undefined) {
-          return;
-        }
-        const realJoint = joints[this.realJointIndexMap.get(inputLink)!];
-        if (!(realJoint instanceof PrisJoint)) {
-          return;
-        }
-        this.jointVelMap.set(realJoint.id, [
-          initialAngularVelocity * Math.cos(realJoint.angle_rad),
-          initialAngularVelocity * Math.sin(realJoint.angle_rad),
+    // Which kind of drive, asked of the *joint*. It used to be asked of the
+    // link the input joint holds, because a driven slider's first link was its
+    // block and the block's class said "slider". A slider's first link is its
+    // rider now -- an ordinary bar -- so the link can no longer tell the two
+    // drives apart, and reading it would seed a rider with the crank speed.
+    const drivenJoint = joints[this.inputJointIndex ?? -1];
+    if (drivenJoint instanceof PrisJoint) {
+      this.desiredAngleMap.set(drivenJoint.id, drivenJoint.slotAngle);
+      // Along the guide at the commanded speed -- true only while the guide is
+      // fixed in the world. On a slot cut into a moving link the absolute
+      // velocity is the carrier's plus the sliding rate, and writing the
+      // sliding rate alone would report a cylinder's mount as traveling through
+      // ground it is actually being carried over.
+      if (drivenJoint.ground) {
+        this.jointVelMap.set(drivenJoint.id, [
+          initialAngularVelocity * Math.cos(drivenJoint.slotAngle),
+          initialAngularVelocity * Math.sin(drivenJoint.slotAngle),
         ]);
-        this.jointAccMap.set(realJoint.id, [0.0, 0.0]);
-        break;
-      default:
-        break;
+        this.jointAccMap.set(drivenJoint.id, [0.0, 0.0]);
+      }
+    } else if (links[this.inputLinkIndex] instanceof RealLink) {
+      this.linkAngVelMap.set(links[this.inputLinkIndex].id, initialAngularVelocity);
+      this.linkAngAccMap.set(links[this.inputLinkIndex].id, 0);
     }
 
     links.forEach((l) => {
-      if (l instanceof Piston) {
+      // Two joints to take a bearing between. The block was skipped here for
+      // being zero-length; every link left has a length, but a half-built one
+      // may still be waiting for its second joint.
+      if (l.joints.length < 2) {
         return;
       }
       const angle = Math.atan2(l.joints[1].y - l.joints[0].y, l.joints[1].x - l.joints[0].x);
@@ -215,14 +554,27 @@ export class KinematicsSolver {
       this.linkAngPosMap.set(l.id, angle * RadToDeg);
     });
 
+    // A welded rider cannot turn in its block, and a block in a guide fixed to
+    // the world cannot turn at all. So the assembly's rotation is not an
+    // unknown the loop has to solve — it is zero, and saying so is what leaves
+    // the system square.
+    this.slideAssemblyCache = slideAssemblies(joints);
+    links.forEach((link) => {
+      if (!hasFixedOrientation(link, this.slideAssemblyCache)) {
+        return;
+      }
+      this.linkAngVelMap.set(link.id, 0);
+      this.linkAngAccMap.set(link.id, 0);
+    });
+
     if (this.linkIndexMap.size === 0) {
       this.requiredLoops.forEach((loop) => {
         // initialize the jointIndexMap and linkIndexMap
-        for (let i = 1; i < loop.length - 1; i++) {
-          if (!this.linkIndexMap.has(loop[i] + loop[i - 1])) {
-            this.setLinkIndexMap(loop[i], loop[i - 1], links);
+        loop.edges.forEach((edge) => {
+          if (edge.kind === 'link' && !this.linkIndexMap.has(edge.linkId)) {
+            this.setLinkIndexMap(edge.linkId, links);
           }
-        }
+        });
       });
     }
     joints.forEach((joint) => {
@@ -231,64 +583,51 @@ export class KinematicsSolver {
 
     if (this.unknownLinkIndexMap.size === 0) {
       this.requiredLoops.forEach((loop) => {
-        for (let i = 1; i < loop.length - 1; i++) {
-          const link = links[this.linkIndexMap.get(loop[i] + loop[i - 1])!];
-          switch (link.constructor) {
-            case RealLink:
-              if (!(link instanceof RealLink)) {
-                return;
-              }
-              if (!this.linkContainsInputMap.has(link.id)) {
-                this.linkContainsInputMap.set(
-                  link.id,
-                  link.joints.findIndex((j) => {
-                    if (!(j instanceof RealJoint)) {
-                      return;
-                    }
-                    return j.input;
-                  }) !== -1
-                );
-              }
-              if (
-                !this.unknownLinkIndexMap.has(link.id) &&
-                !this.linkContainsInputMap.get(link.id)
-              ) {
-                this.unknownLinkIndexMap.set(link.id, this.unknownLinkIndexMap.size);
-              }
-              break;
-            case Piston:
-              if (!this.realJointIndexMap.has(link.id)) {
-                const connectedJoint = link.joints.find((j) => j instanceof RealJoint)!;
-                // Match by id: the per-timestep joint arrays hold copies, so
-                // an identity indexOf against the link's original joints
-                // finds nothing and the index comes back -1.
-                this.realJointIndexMap.set(
-                  link.id,
-                  joints.findIndex((j) => j.id === connectedJoint.id)
-                );
-                const prisJoint = link.joints.find((jt) => jt instanceof PrisJoint) as PrisJoint;
-                this.desiredAngleMap.set(connectedJoint.id, prisJoint.angle_rad);
-              }
-
-              const desiredJoint = joints[this.realJointIndexMap.get(link.id)!];
-              if (!this.linkContainsInputMap.has(desiredJoint.id)) {
-                this.linkContainsInputMap.set(
-                  desiredJoint.id,
-                  link.joints.findIndex((j) => {
-                    if (!(j instanceof RealJoint)) {
-                      return;
-                    }
-                    return j.input;
-                  }) !== -1
-                );
-              }
-              if (
-                !this.unknownLinkIndexMap.has(desiredJoint.id) &&
-                !this.linkContainsInputMap.get(desiredJoint.id)
-              ) {
-                this.unknownLinkIndexMap.set(desiredJoint.id, this.unknownLinkIndexMap.size);
-              }
-              break;
+        for (const edge of loop.edges) {
+          if (edge.kind === 'slot') {
+            this.registerSlotUnknowns(joints, edge);
+            continue;
+          }
+          const link = links[this.linkIndexMap.get(edge.linkId)!];
+          // Registration path 2 of 3 (§3.6b). This is the one the Scotch yoke
+          // never reaches -- its yoke is met across the slot, not along a link
+          // edge -- so gating only path 1 would pass Gate 3 and still hand a
+          // spurious column to any welded rider that does sit on an edge.
+          if (hasFixedOrientation(link, this.slideAssemblyCache)) {
+            continue;
+          }
+          if (!(link instanceof RealLink)) {
+            continue;
+          }
+          if (!this.linkContainsInputMap.has(link.id)) {
+            // A driven *pin* fixes its link's rotation, so that link is known
+            // and claims no column. A driven slider does not fix its rider's:
+            // see `inputLinkIndex`. Counting it as the input body here is the
+            // other half of the same mistake, and on its own it withholds the
+            // column the rider needs.
+            //
+            // The input link, not any link holding a joint flagged as an
+            // input. `determineArrays` puts only `inputLinkIndex`'s link on the
+            // known side, so a link that a second, ignored input touches got
+            // neither a column nor a known term: its rate was never solved, and
+            // the loop around it was solved one unknown short (#78).
+            this.linkContainsInputMap.set(link.id, link.id === this.inputLinkId);
+          }
+          if (!this.unknownLinkIndexMap.has(link.id) && !this.linkContainsInputMap.get(link.id)) {
+            this.unknownLinkIndexMap.set(link.id, this.unknownLinkIndexMap.size);
+          }
+        }
+        // Registration path 4: the chain's own sliding ends. Taken after the
+        // edges so this order and `determineArrays`' agree -- a column index
+        // from this map indexes into the list that one builds.
+        for (const { joint } of this.guideEnds(joints, loop)) {
+          this.desiredAngleMap.set(joint.id, joint.slotAngle);
+          // A driven guide's rate is commanded, not solved, so it claims no
+          // column; its term goes to the known side instead. Only the drive
+          // the solve uses is commanded: a second flagged input is not seeded
+          // with a rate, so it is solved like any other guide.
+          if (!this.isTheInput(joints, joint) && !this.unknownLinkIndexMap.has(joint.id)) {
+            this.unknownLinkIndexMap.set(joint.id, this.unknownLinkIndexMap.size);
           }
         }
       });
@@ -300,20 +639,61 @@ export class KinematicsSolver {
     this.B_matrix_AngAcc = [];
   }
 
+  /**
+   * A slot crossing carries two unknowns, not one: how fast the block travels
+   * along the slot, and how fast the slot itself is turning. The carrier is
+   * reached only through this crossing in mechanisms like the inverted
+   * slider-crank — it appears in no link edge of the loop — so its angular
+   * velocity has to be claimed here or it never gets a column.
+   *
+   * Registration order is load-bearing: `determineArrays` rebuilds the same
+   * list every timestep and the two must agree, because a column index from
+   * this map indexes into that list.
+   */
+  private static registerSlotUnknowns(
+    simJoints: Joint[],
+    edge: Extract<LoopEdge, { kind: 'slot' }>
+  ): void {
+    const frame = this.slotFrame(simJoints, edge);
+    if (!frame) {
+      return;
+    }
+    const carrierId = frame.carrier.id;
+    // Registration path 1 of 3 (§3.6b). A carrier welded to a grounded guide
+    // has a known rotation of zero, so claiming a column here would leave the
+    // loop one unknown short of an equation.
+    if (hasFixedOrientation(frame.carrier, this.slideAssemblyCache)) {
+      if (!this.unknownLinkIndexMap.has(frame.slider.id)) {
+        this.unknownLinkIndexMap.set(frame.slider.id, this.unknownLinkIndexMap.size);
+      }
+      return;
+    }
+    if (!this.linkContainsInputMap.has(carrierId)) {
+      this.linkContainsInputMap.set(carrierId, carrierId === this.inputLinkId);
+    }
+    if (!this.unknownLinkIndexMap.has(carrierId) && !this.linkContainsInputMap.get(carrierId)) {
+      this.unknownLinkIndexMap.set(carrierId, this.unknownLinkIndexMap.size);
+    }
+    if (!this.unknownLinkIndexMap.has(frame.slider.id)) {
+      this.unknownLinkIndexMap.set(frame.slider.id, this.unknownLinkIndexMap.size);
+    }
+  }
+
   private static determineAng(simJoints: Joint[], simLinks: Link[], analysisType: string) {
     // 1st, determine arrays from loops and put that within their respective arrays
     const unknownLinks = this.determineArrays(simJoints, simLinks, analysisType);
+    const matrix = analysisType === 'Velocity' ? this.A_matrix_AngVel : this.A_matrix_AngAcc;
+    if (!regularRateMatrix(matrix)) return false;
     // 2nd, store determine unknown Angular Velocities
     let X: Array<Array<number>> = [];
     switch (analysisType) {
       case 'Velocity':
-        X = matLinearSystem(this.A_matrix_AngVel, this.B_matrix_AngVel);
+        X = matLeastSquares(this.A_matrix_AngVel, this.B_matrix_AngVel);
         break;
       case 'Acceleration':
-        X = matLinearSystem(this.A_matrix_AngAcc, this.B_matrix_AngAcc);
+        X = matLeastSquares(this.A_matrix_AngAcc, this.B_matrix_AngAcc);
         break;
     }
-    // const X = lusolve(this.A_matrix_AngVel, this.B_matrix_AngVel);
     // 3rd, store unknown values to respected links
     for (let i = 0; i < X.length; i++) {
       const linkOrJoint = unknownLinks[i];
@@ -325,6 +705,15 @@ export class KinematicsSolver {
             break;
           case 'Acceleration':
             this.linkAngAccMap.set(linkOrJoint.id, X[i][0]);
+        }
+      } else if (linkOrJoint instanceof PrisJoint && linkOrJoint.isFloating) {
+        // The solved value is travel relative to the carrier, so it is banked
+        // rather than written straight out as a velocity. applySlotCarriage
+        // turns it into absolute motion once the carrier's is known.
+        if (analysisType === 'Velocity') {
+          this.slideRateMap.set(linkOrJoint.id, X[i][0]);
+        } else {
+          this.slideAccelMap.set(linkOrJoint.id, X[i][0]);
         }
       } else {
         // Joint
@@ -349,27 +738,42 @@ export class KinematicsSolver {
         }
       }
     }
+    return true;
   }
 
   private static determineLin(simJoints: Joint[], simLinks: Link[]) {
-    // this.setUpLinkAndJointIndexMap(simJoints, simLinks, requiredLoops);
     const desired_links_used: Array<string> = [];
     this.requiredLoops.forEach((loop) => {
-      for (let i = 1; i < loop.length - 1; i++) {
-        // cannot find velocity of a joint on an imaginary link
-        if (simLinks[this.linkIndexMap.get(loop[i] + loop[i - 1])!] instanceof Piston) {
+      for (const edge of loop.edges) {
+        if (edge.kind === 'slot') {
+          // Both in loop order, because each depends on what came before: the
+          // carrier is reached only across the slot, and the sliding point's
+          // own motion is measured from the anchor the walk has just passed.
+          this.spreadCarrierMotion(simJoints, edge, desired_links_used);
+          this.applySlotCarriage(simJoints, edge);
           continue;
         }
-        const desiredLink = simLinks[this.linkIndexMap.get(loop[i] + loop[i - 1])!];
+        // cannot find velocity of a joint on an imaginary link
+        if (edge.kind !== 'link') {
+          continue;
+        }
+        const desiredLink = simLinks[this.linkIndexMap.get(edge.linkId)!];
         if (!(desiredLink instanceof RealLink)) {
           return;
         }
-        const firstJoint = simJoints[this.jointIndexMap.get(loop[i - 1])!];
+        const firstJoint = simJoints[this.jointIndexMap.get(edge.fromId)!];
         // determine the velocity/accel of each link's joint that is not the first joint
-        for (let index = 0; index < desiredLink.id.length; index++) {
-          const joint_id = desiredLink.id[index];
+        //
+        // Over the link's own joints, not over the characters of its id. A link
+        // id is its joints' names run together, so reading it back a character
+        // at a time asked for a joint called "A" and one called "1" where the
+        // link holds "A1" -- and then dereferenced whatever came back. Every id
+        // longer than a character reaches this: the ones inside a cylinder, and
+        // the two-letter names a drawing is given past its fifty-second joint.
+        for (const linkJoint of desiredLink.joints) {
+          const joint_id = linkJoint.id;
           const desiredJoint = simJoints[this.jointIndexMap.get(joint_id)!];
-          if (joint_id === firstJoint.id) {
+          if (joint_id === firstJoint.id || !desiredJoint) {
             continue;
           }
           // determine the distance for the left side of the equation
@@ -407,36 +811,203 @@ export class KinematicsSolver {
     // determine the velocity and acceleration of tracer joints
   }
 
+  /**
+   * Carry the carrier's solved rotation out to its own joints and center of mass.
+   *
+   * Propagation starts from whichever carrier joint already has motion, not
+   * from the slot's anchor. Which of the two slot joints becomes `slotJointA`
+   * is arbitrary — the user picks an order in the UI, and a URL may list them
+   * either way — so the anchor is the carrier's grounded pivot in some
+   * mechanisms and its free end in others. Anchoring propagation there read an
+   * unset velocity and threw whenever the free end came first.
+   *
+   * By this point the matrix solve has settled the carrier's ω and α, so any
+   * member with known motion locates every other one; a grounded member always
+   * qualifies, having been seeded before the walk began.
+   */
+  private static spreadCarrierMotion(
+    simJoints: Joint[],
+    edge: Extract<LoopEdge, { kind: 'slot' }>,
+    linksAlreadyDone: string[]
+  ): void {
+    const frame = this.slotFrame(simJoints, edge);
+    if (!frame || !(frame.carrier instanceof RealLink)) {
+      return;
+    }
+    const seed = this.knownCarrierSeed(frame);
+    if (!seed) {
+      return;
+    }
+    for (const member of frame.carrier.joints) {
+      if (member.id === seed.id) {
+        continue;
+      }
+      this.determineVelAndAccel(
+        frame.carrier.id,
+        seed.id,
+        member.x - seed.x,
+        member.y - seed.y,
+        member.id,
+        'joint'
+      );
+    }
+    if (linksAlreadyDone.includes(frame.carrier.id)) {
+      return;
+    }
+    this.linkCoMMap.set(frame.carrier.id, [frame.carrier.CoM.x, frame.carrier.CoM.y]);
+    this.determineVelAndAccel(
+      frame.carrier.id,
+      seed.id,
+      frame.carrier.CoM.x - seed.x,
+      frame.carrier.CoM.y - seed.y,
+      frame.carrier.id,
+      'link'
+    );
+    linksAlreadyDone.push(frame.carrier.id);
+  }
+
+  /**
+   * A carrier joint whose motion is settled: a grounded pin of the carrier
+   * first, then the slot's own anchor, then any other member.
+   *
+   * The maps are cleared once per mechanism rather than once per timestep, so
+   * from the second frame on every joint reads as settled, with whatever the
+   * previous frame left there. A grounded pin is exact in every frame; the
+   * anchor is exact only when something earlier in this frame's walk placed
+   * it, and when the walk reaches the carrier through the slot nothing has.
+   * Seeding from the anchor then carried last frame's velocity into this one
+   * and handed the grounded pivot a motion of its own.
+   */
+  private static knownCarrierSeed(frame: SlotFrame): Joint | undefined {
+    const settled = (id: string) => this.jointVelMap.has(id) && this.jointAccMap.has(id);
+    const grounded = frame.carrier.joints.find(
+      (member) => member instanceof RealJoint && member.ground && settled(member.id)
+    );
+    if (grounded) {
+      return grounded;
+    }
+    if (settled(frame.anchor.id)) {
+      return frame.anchor;
+    }
+    return frame.carrier.joints.find((member) => settled(member.id));
+  }
+
+  /**
+   * The slot's contribution to one loop-closure equation.
+   *
+   * The chain crosses the slot as the vector `σ·s·û`, so differentiating gives
+   *   velocity      σ·( ṡ·û + s·ω·û⊥ )
+   *   acceleration  σ·( s̈·û + 2·ṡ·ω·û⊥ + s·α·û⊥ − s·ω²·û )
+   * where ω and α belong to the carrier. The grounded case is this with
+   * ω = α = 0, which is why the old code could get away with just `ṡ·û`.
+   *
+   * Unknowns go to A with the coefficient above; anything already known moves
+   * to B, which flips its sign — the same convention the link branches use.
+   */
+  private static addSlotTerms(
+    simJoints: Joint[],
+    edge: Extract<LoopEdge, { kind: 'slot' }>,
+    loop: Loop,
+    analysisType: string
+  ): void {
+    const frame = this.slotFrame(simJoints, edge);
+    if (!frame) {
+      return;
+    }
+    const rowIndex = 2 * this.loopIndexMap.get(loop.id)!;
+    const slideColumn = this.unknownLinkIndexMap.get(frame.slider.id);
+    const carrierColumn = this.unknownLinkIndexMap.get(frame.carrier.id);
+    const omega = this.linkAngVelMap.get(frame.carrier.id) ?? 0;
+    const velocity = analysisType === 'Velocity';
+    const A = velocity ? this.A_matrix_AngVel : this.A_matrix_AngAcc;
+    const B = velocity ? this.B_matrix_AngVel : this.B_matrix_AngAcc;
+
+    if (slideColumn !== undefined) {
+      A[rowIndex][slideColumn] += frame.sign * frame.u[0];
+      A[rowIndex + 1][slideColumn] += frame.sign * frame.u[1];
+    }
+
+    // Turning of the slot: ω for the velocity pass, α for acceleration.
+    const turnCoefficient = frame.sign * frame.s;
+    if (carrierColumn !== undefined) {
+      A[rowIndex][carrierColumn] += turnCoefficient * frame.uPerp[0];
+      A[rowIndex + 1][carrierColumn] += turnCoefficient * frame.uPerp[1];
+    } else {
+      const known = velocity ? omega : (this.linkAngAccMap.get(frame.carrier.id) ?? 0);
+      B[rowIndex][0] -= turnCoefficient * known * frame.uPerp[0];
+      B[rowIndex + 1][0] -= turnCoefficient * known * frame.uPerp[1];
+    }
+
+    if (!velocity) {
+      // Coriolis and centripetal, both settled by the velocity pass.
+      const rate = this.slideRateMap.get(frame.slider.id) ?? 0;
+      const carriedX = 2 * rate * omega * frame.uPerp[0] - frame.s * omega * omega * frame.u[0];
+      const carriedY = 2 * rate * omega * frame.uPerp[1] - frame.s * omega * omega * frame.u[1];
+      B[rowIndex][0] -= frame.sign * carriedX;
+      B[rowIndex + 1][0] -= frame.sign * carriedY;
+    }
+  }
+
   // determine AX = B
   private static determineArrays(
     simJoints: Joint[],
     simLinks: Link[],
     analysisType: string
-  ): any[] {
-    const unknownLinksOrJoints: Array<any> = [];
+  ): Array<Link | Joint> {
+    const unknownLinksOrJoints: Array<Link | Joint> = [];
     // first, determine variable locations (X)
     this.requiredLoops.forEach((loop) => {
-      for (let i = 1; i < loop.length - 1; i++) {
-        const link = simLinks[this.linkIndexMap.get(loop[i] + loop[i - 1])!];
-        switch (link.constructor) {
-          case RealLink:
+      for (const edge of loop.edges) {
+        if (edge.kind === 'slot') {
+          // Same order as registerSlotUnknowns: carrier first, then slide rate.
+          const frame = this.slotFrame(simJoints, edge);
+          if (!frame) {
+            continue;
+          }
+          for (const unknown of [frame.carrier, frame.slider]) {
             if (
-              this.unknownLinkIndexMap.has(link.id) &&
-              unknownLinksOrJoints.findIndex((l) => l.id === link.id) === -1
+              this.unknownLinkIndexMap.has(unknown.id) &&
+              unknownLinksOrJoints.findIndex((l) => l.id === unknown.id) === -1
             ) {
-              unknownLinksOrJoints.push(link);
+              unknownLinksOrJoints.push(unknown);
             }
-            break;
-          case Piston:
-            const desiredJoint = simJoints[this.realJointIndexMap.get(link.id)!];
-            if (this.unknownLinkIndexMap.has(desiredJoint.id)) {
-              unknownLinksOrJoints.push(desiredJoint);
-            }
-            break;
+          }
+          continue;
+        }
+        const link = simLinks[this.linkIndexMap.get(edge.linkId)!];
+        // Registration path 3 of 3 (§3.6b). This list sizes the matrix and its
+        // order indexes the columns, so it has to agree with paths 1 and 2
+        // exactly or a column index points at the wrong unknown.
+        if (hasFixedOrientation(link, this.slideAssemblyCache)) {
+          continue;
+        }
+        if (
+          link instanceof RealLink &&
+          this.unknownLinkIndexMap.has(link.id) &&
+          unknownLinksOrJoints.findIndex((l) => l.id === link.id) === -1
+        ) {
+          unknownLinksOrJoints.push(link);
+        }
+      }
+      // And the chain's sliding ends, in the order path 4 registered them.
+      for (const { joint } of this.guideEnds(simJoints, loop)) {
+        if (
+          this.unknownLinkIndexMap.has(joint.id) &&
+          unknownLinksOrJoints.findIndex((l) => l.id === joint.id) === -1
+        ) {
+          unknownLinksOrJoints.push(joint);
         }
       }
     });
-    for (let i = 0; i < unknownLinksOrJoints.length; i++) {
+    // Two rows per loop, and never fewer rows than unknowns. A drawing whose
+    // loops are independent as topology but not as geometry -- a crosshead on
+    // two parallel slides, a parallelogram with a third crank -- has more
+    // loops than it has rates to find, and the extra rows say what the others
+    // already said. They are kept and solved by least squares below; sizing
+    // the matrix by the unknowns alone left the extra loop writing past its
+    // last row.
+    const rows = Math.max(unknownLinksOrJoints.length, 2 * this.requiredLoops.length);
+    for (let i = 0; i < rows; i++) {
       const row = [];
       for (let j = 0; j < unknownLinksOrJoints.length; j++) {
         row.push(0);
@@ -453,18 +1024,27 @@ export class KinematicsSolver {
       }
     }
 
-    if (!this.loopIndexMap.has(this.requiredLoops[0])) {
-      this.requiredLoops.forEach((loop) => {
-        this.loopIndexMap.set(loop, this.requiredLoops.indexOf(loop));
+    if (!this.loopIndexMap.has(this.requiredLoops[0].id)) {
+      this.requiredLoops.forEach((loop, index) => {
+        this.loopIndexMap.set(loop.id, index);
       });
     }
 
     // second, set up the known and unknown matrix (A and B)
     this.requiredLoops.forEach((loop) => {
-      for (let i = 1; i < loop.length - 1; i++) {
-        const link = this.getLink(simLinks, loop[i] + loop[i - 1]);
-        const firstJoint = this.getJoint(simJoints, loop[i - 1]);
-        const secondJoint = this.getJoint(simJoints, loop[i]);
+      for (const edge of loop.edges) {
+        if (edge.kind === 'slot') {
+          this.addSlotTerms(simJoints, edge, loop, analysisType);
+          continue;
+        }
+        const link = this.getLink(simLinks, edge.linkId);
+        // A body held at a fixed orientation contributes omega x r and
+        // alpha x r with both factors zero, so it adds nothing to either side.
+        if (hasFixedOrientation(link, this.slideAssemblyCache)) {
+          continue;
+        }
+        const firstJoint = this.getJoint(simJoints, edge.fromId);
+        const secondJoint = this.getJoint(simJoints, edge.toId);
         // right side of the equation (B)
         const rightXDist = firstJoint.x - secondJoint.x;
         const rightYDist = firstJoint.y - secondJoint.y;
@@ -479,56 +1059,29 @@ export class KinematicsSolver {
           case 'Velocity':
             if (link === simLinks[this.inputLinkIndex]) {
               // part of input link (B matrix)
-              switch (link.constructor) {
-                case RealLink:
-                  // v = w x r
-                  arr = this.crossProduct(this.linkAngVelMap.get(link.id)!, [
-                    rightXDist,
-                    rightYDist,
-                    0,
-                  ]);
-                  break;
-                case Piston:
-                  const realJoint = simJoints[this.realJointIndexMap.get(link.id)!];
-                  // // slider crank x, y
-                  // if (!(realJoint instanceof PrisJoint)) {
-                  //   return;
-                  // }
-                  const desiredAngle = this.desiredAngleMap.get(realJoint.id)!;
-                  arr = [Math.cos(desiredAngle), Math.sin(desiredAngle), 0];
-                  // arr = [Math.cos(realJoint.angle_rad), Math.sin(realJoint.angle_rad), 0];
-                  break;
-                default:
-                  return;
+              if (!(link instanceof RealLink)) {
+                return;
               }
+              // v = w x r
+              arr = this.crossProduct(this.linkAngVelMap.get(link.id)!, [
+                rightXDist,
+                rightYDist,
+                0,
+              ]);
               // insert value within B matrix
-              const rowIndex = 2 * this.loopIndexMap.get(loop)!;
+              const rowIndex = 2 * this.loopIndexMap.get(loop.id)!;
               this.B_matrix_AngVel[rowIndex][0] += arr[0];
               this.B_matrix_AngVel[rowIndex + 1][0] += arr[1];
             } else {
               // not an input Link (A matrix)
-              let colIndex: number;
-              switch (link.constructor) {
-                case RealLink:
-                  arr = this.crossProduct(1, [leftXDist, leftYDist, 0]);
-                  colIndex = this.unknownLinkIndexMap.get(link.id)!;
-                  break;
-                case Piston:
-                  const realJoint = simJoints[this.realJointIndexMap.get(link.id)!];
-                  // if (!(realJoint instanceof PrisJoint)) {
-                  //   return;
-                  // }
-                  const desiredAngle = this.desiredAngleMap.get(realJoint.id)!;
-                  arr = [-Math.cos(desiredAngle), -Math.sin(desiredAngle), 0];
-                  // arr = [-Math.cos(realJoint.angle_rad), -Math.sin(realJoint.angle_rad), 0];
-                  colIndex = this.unknownLinkIndexMap.get(realJoint.id)!;
-                  break;
-                default:
-                  return;
+              if (!(link instanceof RealLink)) {
+                return;
               }
+              arr = this.crossProduct(1, [leftXDist, leftYDist, 0]);
+              const colIndex: number = this.unknownLinkIndexMap.get(link.id)!;
 
               // insert value within A matrix
-              const rowIndex = 2 * this.loopIndexMap.get(loop)!;
+              const rowIndex = 2 * this.loopIndexMap.get(loop.id)!;
               this.A_matrix_AngVel[rowIndex][colIndex] += arr[0];
               this.A_matrix_AngVel[rowIndex + 1][colIndex] += arr[1];
             }
@@ -536,94 +1089,85 @@ export class KinematicsSolver {
           case 'Acceleration':
             if (link === simLinks[this.inputLinkIndex]) {
               // input link
-              const rowIndex = 2 * this.loopIndexMap.get(loop)!;
-              switch (link.constructor) {
-                case RealLink:
-                  arr = this.crossProduct(this.linkAngVelMap.get(link.id)!, [
-                    rightXDist,
-                    rightYDist,
-                    0,
-                  ]);
-                  const transAccel = this.crossProduct(this.linkAngVelMap.get(link.id)!, arr);
-                  const angularAccel = this.crossProduct(this.linkAngAccMap.get(link.id)!, [
-                    rightXDist,
-                    rightYDist,
-                    0,
-                  ]);
-                  sol = this.addTwoArrays(transAccel, angularAccel);
-                  break;
-                case Piston:
-                  const realJoint = simJoints[this.realJointIndexMap.get(link.id)!];
-                  // if (!(realJoint instanceof PrisJoint)) {
-                  //   return;
-                  // }
-                  const desiredAngle = this.desiredAngleMap.get(realJoint.id)!;
-                  // arr = [-Math.cos(desiredAngle), -Math.sin(desiredAngle), 0];
-                  sol = [Math.cos(desiredAngle), Math.sin(desiredAngle)];
-                  break;
-                default:
-                  return;
+              const rowIndex = 2 * this.loopIndexMap.get(loop.id)!;
+              if (!(link instanceof RealLink)) {
+                return;
               }
+              arr = this.crossProduct(this.linkAngVelMap.get(link.id)!, [
+                rightXDist,
+                rightYDist,
+                0,
+              ]);
+              const transAccel = this.crossProduct(this.linkAngVelMap.get(link.id)!, arr);
+              const angularAccel = this.crossProduct(this.linkAngAccMap.get(link.id)!, [
+                rightXDist,
+                rightYDist,
+                0,
+              ]);
+              sol = this.addTwoArrays(transAccel, angularAccel);
               this.B_matrix_AngAcc[rowIndex][0] += sol[0];
               this.B_matrix_AngAcc[rowIndex + 1][0] += sol[1];
             } else {
-              const rowIndex = 2 * this.loopIndexMap.get(loop)!;
-              let colIndex: number;
-              switch (link.constructor) {
-                case RealLink:
-                  const arr2 = this.crossProduct(this.linkAngVelMap.get(link.id)!, [
-                    rightXDist,
-                    rightYDist,
-                    0,
-                  ]);
-                  const transAccel = this.crossProduct(this.linkAngVelMap.get(link.id)!, [
-                    arr2[0],
-                    arr2[1],
-                    arr2[2],
-                  ]);
-                  sol = this.crossProduct(1, [leftXDist, leftYDist, 0]); // angularAccel
-                  this.B_matrix_AngAcc[rowIndex][0] += transAccel[0];
-                  this.B_matrix_AngAcc[rowIndex + 1][0] += transAccel[1];
-                  colIndex = this.unknownLinkIndexMap.get(link.id)!;
-                  break;
-                case Piston:
-                  const realJoint = simJoints[this.realJointIndexMap.get(link.id)!];
-                  // if (!(realJoint instanceof PrisJoint)) {
-                  //   return;
-                  // }
-                  const desiredAngle = this.desiredAngleMap.get(realJoint.id)!;
-                  // arr = [-Math.cos(desiredAngle), -Math.sin(desiredAngle), 0];
-                  sol = [-Math.cos(desiredAngle), -Math.sin(desiredAngle)];
-                  colIndex = this.unknownLinkIndexMap.get(realJoint.id)!;
-                  break;
-                default:
-                  return;
+              const rowIndex = 2 * this.loopIndexMap.get(loop.id)!;
+              if (!(link instanceof RealLink)) {
+                return;
               }
+              const arr2 = this.crossProduct(this.linkAngVelMap.get(link.id)!, [
+                rightXDist,
+                rightYDist,
+                0,
+              ]);
+              const transAccel2 = this.crossProduct(this.linkAngVelMap.get(link.id)!, [
+                arr2[0],
+                arr2[1],
+                arr2[2],
+              ]);
+              sol = this.crossProduct(1, [leftXDist, leftYDist, 0]); // angularAccel
+              this.B_matrix_AngAcc[rowIndex][0] += transAccel2[0];
+              this.B_matrix_AngAcc[rowIndex + 1][0] += transAccel2[1];
+              const colIndex: number = this.unknownLinkIndexMap.get(link.id)!;
               this.A_matrix_AngAcc[rowIndex][colIndex] += sol[0];
               this.A_matrix_AngAcc[rowIndex + 1][colIndex] += sol[1];
             }
             break;
         }
       }
+      // The chain's sliding ends, which is where a grounded guide's rate lives
+      // now that there is no block edge to carry it. The edges above sum to the
+      // velocity of the joint the chain ends on less the one it starts from,
+      // and a grounded guide's joint is not standing still -- it runs along its
+      // line at this rate. Signed by which end, `+` for departure and `-` for
+      // arrival; the block's edge was always the last step of its chain, so it
+      // always carried the minus, and a guide at the far end reads as before.
+      const endRow = 2 * this.loopIndexMap.get(loop.id)!;
+      const velocity = analysisType === 'Velocity';
+      for (const { joint, sign } of this.guideEnds(simJoints, loop)) {
+        const theta = this.desiredAngleMap.get(joint.id) ?? joint.slotAngle;
+        const along = [sign * Math.cos(theta), sign * Math.sin(theta)];
+        const column = this.unknownLinkIndexMap.get(joint.id);
+        if (column !== undefined) {
+          const A = velocity ? this.A_matrix_AngVel : this.A_matrix_AngAcc;
+          A[endRow][column] += along[0];
+          A[endRow + 1][column] += along[1];
+          continue;
+        }
+        // The drive itself. A commanded rate is known, so it moves to the
+        // right-hand side -- which flips its sign, the same convention every
+        // other known term here follows.
+        const seeded = velocity ? this.jointVelMap.get(joint.id) : this.jointAccMap.get(joint.id);
+        const rate = seeded ?? [0, 0];
+        const B = velocity ? this.B_matrix_AngVel : this.B_matrix_AngAcc;
+        B[endRow][0] -= sign * rate[0];
+        B[endRow + 1][0] -= sign * rate[1];
+      }
     });
     return unknownLinksOrJoints;
   }
 
-  static determineVelocitiesInstantCenters(
-    simJoints: Joint[],
-    simLinks: Link[],
-    simICS: InstantCenter[],
-    requiredLoops: string[],
-    initialAngularVelocity: number
-  ) {
-    this.kinematicsInitializer(simJoints, simLinks, initialAngularVelocity);
-    // this.kinematicsInitializer(simJoints, simLinks, requiredLoops, initialAngularVelocity);
-  }
-
-  private static setLinkIndexMap(joint_id1: string, joint_id2: string, simLinks: Link[]) {
+  private static setLinkIndexMap(linkId: string, simLinks: Link[]) {
     this.linkIndexMap.set(
-      joint_id1 + joint_id2,
-      simLinks.findIndex((l) => l.id.includes(joint_id1) && l.id.includes(joint_id2))
+      linkId,
+      simLinks.findIndex((l) => l.id === linkId)
     );
   }
 
@@ -642,7 +1186,7 @@ export class KinematicsSolver {
     return simJoints[this.jointIndexMap.get(joint_id)!];
   }
 
-  private static addTwoArrays(first_array: any, second_array: any) {
+  private static addTwoArrays(first_array: number[], second_array: number[]) {
     return first_array.map(function (num: number, idx: number) {
       // may have to caste num and second_array[idx]
       return num + second_array[idx];
@@ -657,6 +1201,7 @@ export class KinematicsSolver {
     desiredID: string,
     linkOrJoint: string
   ) {
+    if (linkOrJoint === 'joint' && this.pinnedGrounds.has(desiredID)) return;
     // Velocity calculation
     // w x r
     const arr = this.crossProduct(this.linkAngVelMap.get(desiredLinkID)!, [xDist, yDist, 0]);

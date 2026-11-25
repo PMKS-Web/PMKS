@@ -1,0 +1,366 @@
+<div class="drawingExport">
+  <div class="titleRow">
+    <h1>CAD Export</h1>
+    <close-button label="Close CAD Export" (pressed)="close()"></close-button>
+  </div>
+  <p class="subtitle">{{ formatName }} · {{ subtitleShape }}</p>
+
+  <div mat-dialog-content>
+    <!-- The two things that surprise people, said once and quietly: they are
+         the scope of the feature, not a problem with it. -->
+    <div class="scopeNote">
+      <mat-icon>architecture</mat-icon>
+      <p>
+        <strong>Built from the start pose.</strong> Choose the geometry, layers, and units below.
+        These are the shapes the canvas draws, not a toleranced fabrication drawing.
+      </p>
+    </div>
+
+    <!-- The one question most readers should answer, and the only one they
+         have to. Each preset carries nine of the ten decisions below. -->
+    <div class="presetHead">
+      <span class="presetTitle">What is this for?</span>
+      @if (isCustom) {
+        <button class="linkButton" (click)="pick('build')">Reset to Build Parts</button>
+      }
+    </div>
+
+    <div class="presetCards">
+      <button
+        class="presetCard"
+        [class.on]="preset === 'build'"
+        data-preset="build"
+        (click)="pick('build')"
+      >
+        <span class="presetName">
+          <mat-icon>precision_manufacturing</mat-icon>Build parts in CAD
+        </span>
+        <span class="presetNote"
+          >A closed outline per link, with its pin holes, at the origin.</span
+        >
+      </button>
+      <button
+        class="presetCard"
+        [class.on]="preset === 'reference'"
+        data-preset="reference"
+        (click)="pick('reference')"
+      >
+        <span class="presetName"> <mat-icon>draw</mat-icon>Reference sketch </span>
+        <span class="presetNote"
+          >Link centerlines, model coordinates, and joint marks—for reference tracing.</span
+        >
+      </button>
+      <!-- Not a third card: nobody picks Custom, they arrive in it. -->
+      @if (isCustom) {
+        <div class="customBanner" data-preset="custom">
+          <mat-icon>tune</mat-icon>
+          <span class="customName">Custom</span>
+          <span class="customNote">— your own mix of the settings below</span>
+        </div>
+      }
+    </div>
+
+    <div class="sections">
+      <!-- File ------------------------------------------------------------ -->
+      <button class="sectionHead" data-section="file" (click)="open.file = !open.file">
+        <mat-icon [class.open]="open.file">chevron_right</mat-icon>
+        <span class="sectionName">File</span>
+        <span class="sectionSummary">{{ fileSummary }}</span>
+      </button>
+      @if (open.file) {
+        <div class="sectionBody">
+          <div class="field">
+            <span class="fieldName">File name</span>
+            <input
+              class="textInput"
+              [ngModel]="options.fileName"
+              (ngModelChange)="options.fileName = $event"
+              aria-label="Export file name"
+            />
+            <span class="fieldNote">({{ unitWord }}).{{ options.fileFormat }}</span>
+          </div>
+          <div class="field">
+            <span class="fieldName">Format</span>
+            <segmented-block
+              class="segmented"
+              [fill]="false"
+              [options]="labelsOf(formatChoices)"
+              [selected]="indexIn(formatChoices, options.fileFormat)"
+              (selectedChange)="set({ fileFormat: formatChoices[$event].value })"
+            ></segmented-block>
+            <span class="fieldNote">{{ formatNote }}</span>
+          </div>
+          <div class="field">
+            <span class="fieldName">Units</span>
+            <segmented-block
+              class="segmented"
+              [fill]="false"
+              [options]="labelsOf(unitChoices)"
+              [selected]="indexIn(unitChoices, effectiveUnit)"
+              (selectedChange)="chooseUnit(unitChoices[$event].value)"
+            ></segmented-block>
+          </div>
+        </div>
+      }
+
+      <!-- Geometry -------------------------------------------------------- -->
+      <button class="sectionHead" data-section="geometry" (click)="open.geometry = !open.geometry">
+        <mat-icon [class.open]="open.geometry">chevron_right</mat-icon>
+        <span class="sectionName">Geometry</span>
+        <span class="sectionSummary">{{ geometrySummary }}</span>
+      </button>
+      @if (open.geometry) {
+        <div class="sectionBody">
+          <div class="group">
+            <span class="groupName">Links are drawn as</span>
+            @for (choice of bodyChoices; track choice.value) {
+              <button class="radioRow" (click)="touch({ linkBodies: choice.value })">
+                <span class="radio" [class.on]="options.linkBodies === choice.value"></span>
+                <span class="checkText">
+                  <span class="radioLabel">{{ choice.label }}</span>
+                  <span class="checkNote">{{ choice.note }}</span>
+                </span>
+              </button>
+            }
+            @if (options.linkBodies === 'outlines') {
+              <div class="checkRow">
+                <button (click)="toggle('includeGroundPlate')">
+                  <span class="check" [class.on]="isOn('includeGroundPlate')">
+                    <mat-icon>check</mat-icon>
+                  </span>
+                  <span class="checkText">
+                    <span class="checkName">Ground plate</span>
+                    <span class="checkNote"
+                      >A base part holding the fixed pins, to anchor the assembly.</span
+                    >
+                  </span>
+                </button>
+              </div>
+            }
+          </div>
+
+          <div class="group">
+            <span class="groupName">Origin — the point that lands on (0, 0)</span>
+            @for (choice of originChoices; track choice.value) {
+              <button class="radioRow" (click)="touch({ origin: choice.value })">
+                <span class="radio" [class.on]="options.origin === choice.value"></span>
+                <span class="radioLabel">{{ choice.label }}</span>
+              </button>
+            }
+            @if (options.origin === 'joint') {
+              <div class="subField">
+                <label class="fieldName" for="cad-origin-joint">Joint</label>
+                <select
+                  id="cad-origin-joint"
+                  class="textInput"
+                  [value]="originJointLabel"
+                  (change)="touch({ originJointId: $any($event.target).value })"
+                >
+                  @for (joint of jointChoices(); track joint.id) {
+                    <option [value]="joint.id">{{ joint.name }}</option>
+                  }
+                </select>
+              </div>
+            }
+          </div>
+
+          <div class="group">
+            <span class="groupName">Joint circles</span>
+            @for (choice of circleChoices; track choice.value) {
+              <button class="radioRow" (click)="touch({ jointCircles: choice.value })">
+                <span class="radio" [class.on]="options.jointCircles === choice.value"></span>
+                <span class="radioLabel">{{ choice.label }}</span>
+              </button>
+            }
+            @if (options.jointCircles === 'holes') {
+              <div class="subField">
+                <span class="fieldName" [numberDrag]="diameterField">Pin diameter</span>
+                <input
+                  class="textInput narrow"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  [ngModel]="effectivePinDiameter"
+                  [ngModelOptions]="{ updateOn: 'blur' }"
+                  (ngModelChange)="touch({ pinDiameter: +$event })"
+                  aria-label="Pin diameter"
+                  #diameterField
+                  [attr.aria-invalid]="!!pinDiameterError"
+                  [attr.aria-describedby]="pinDiameterError ? 'pin-diameter-error' : null"
+                />
+                <span class="fieldNote">
+                  {{ unitWord }} · every joint
+                  @if (options.pinDiameter === undefined) {
+                    · sized to fit the parts
+                  }
+                </span>
+              </div>
+            }
+          </div>
+
+          <div class="group">
+            <div class="checkRow">
+              <button (click)="toggle('includeDimensions')">
+                <span class="check" [class.on]="isOn('includeDimensions')">
+                  <mat-icon>check</mat-icon>
+                </span>
+                <span class="checkText">
+                  <span class="checkName">Link dimensions</span>
+                  <span class="checkNote"
+                    >Dimension lines showing distances between joint centers.</span
+                  >
+                </span>
+              </button>
+            </div>
+            @if (options.includeDimensions) {
+              <div class="subField">
+                <span class="fieldName">Style</span>
+                <segmented-block
+                  class="segmented"
+                  [fill]="false"
+                  [options]="['Dimension entities', 'Text table']"
+                  [selected]="options.dimensionStyle === 'table' ? 1 : 0"
+                  (selectedChange)="touch({ dimensionStyle: $event === 1 ? 'table' : 'entities' })"
+                ></segmented-block>
+              </div>
+            }
+            <!-- Grayed rows say why, and the reason hangs on the row rather
+                 than on the button: a disabled button takes no pointer events,
+                 so its own tooltip would be the one nobody could reach. -->
+            <div
+              class="checkRow"
+              [class.blocked]="blocked('includeTracedPaths')"
+              [matTooltip]="reasonFor('includeTracedPaths')"
+              [matTooltipDisabled]="!blocked('includeTracedPaths')"
+              matTooltipPosition="above"
+              matTooltipShowDelay="400"
+              [attr.title]="null"
+              data-check="tracedPaths"
+            >
+              <button
+                [disabled]="blocked('includeTracedPaths')"
+                (click)="toggle('includeTracedPaths')"
+              >
+                <span
+                  class="check"
+                  [class.on]="isOn('includeTracedPaths')"
+                  [class.off]="blocked('includeTracedPaths')"
+                >
+                  <mat-icon>check</mat-icon>
+                </span>
+                <span class="checkText">
+                  <span class="checkName">Traced paths</span>
+                  <span class="checkNote">Coupler curves as polylines.</span>
+                </span>
+              </button>
+            </div>
+            <div class="checkRow">
+              <button (click)="toggle('includeSlotTravel')">
+                <span class="check" [class.on]="isOn('includeSlotTravel')">
+                  <mat-icon>check</mat-icon>
+                </span>
+                <span class="checkText">
+                  <span class="checkName">Slot travel</span>
+                  <span class="checkNote">Slot axis with explicit start and end points.</span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- Layers ---------------------------------------------------------- -->
+      <button class="sectionHead" data-section="layers" (click)="open.layers = !open.layers">
+        <mat-icon [class.open]="open.layers">chevron_right</mat-icon>
+        <span class="sectionName">Layers</span>
+        <span class="sectionSummary">{{ layersSummary }}</span>
+      </button>
+      @if (open.layers) {
+        <div class="sectionBody tight">
+          <!-- Named as they will appear in CAD, so what is ticked here can be
+               matched to what shows up there. -->
+          @for (row of layerRows; track row.name) {
+            <div
+              class="checkRow"
+              [class.blocked]="layerBlocked(row)"
+              [matTooltip]="layerReason(row)"
+              [matTooltipDisabled]="!layerReason(row)"
+              matTooltipPosition="above"
+              matTooltipShowDelay="400"
+            >
+              <button [disabled]="layerBlocked(row)" (click)="toggleLayer(row)">
+                <span class="check" [class.on]="layerOn(row)" [class.off]="layerBlocked(row)">
+                  <mat-icon>check</mat-icon>
+                </span>
+                <span class="checkName">{{ row.name }}</span>
+                <span class="spacer"></span>
+                <span class="cadName">{{ row.cad }}</span>
+              </button>
+            </div>
+          }
+        </div>
+      }
+
+      <!-- Data ------------------------------------------------------------ -->
+      <button class="sectionHead" data-section="data" (click)="open.data = !open.data">
+        <mat-icon [class.open]="open.data">chevron_right</mat-icon>
+        <span class="sectionName">Data</span>
+        <span class="sectionSummary">{{ dataSummary }}</span>
+      </button>
+      @if (open.data) {
+        <div class="sectionBody">
+          <span class="groupName">Tables of joints, links, and any applied forces.</span>
+          @for (choice of dataChoices; track choice.value) {
+            <button class="radioRow" (click)="touch({ dataFile: choice.value })">
+              <span class="radio" [class.on]="options.dataFile === choice.value"></span>
+              <span class="checkText">
+                <span class="radioLabel">{{ choice.label }}</span>
+                <span class="checkNote">{{ choice.note }}</span>
+              </span>
+            </button>
+          }
+        </div>
+      }
+    </div>
+  </div>
+
+  <!-- What is about to come down, against the button that sends it. The
+       thumbnail is the drawing itself, so it catches the two mistakes worth
+       catching: nothing traced, or holes where marks were meant. -->
+  <div class="footerStrip">
+    <div class="preview">
+      <svg viewBox="0 0 118 88" width="118" height="88" aria-hidden="true">
+        @if (isEmpty) {
+          <path d="M20 20 H98 V68 H20 Z" class="previewEmpty" />
+        } @else {
+          <path [attr.d]="summary.shapes.strokes" class="previewStroke" />
+          @for (hole of summary.shapes.holes; track $index) {
+            <circle [attr.cx]="hole.cx" [attr.cy]="hole.cy" [attr.r]="hole.r" class="previewHole" />
+          }
+        }
+      </svg>
+    </div>
+    <div class="footerText">
+      <div class="liveSummary">{{ liveSummary }}</div>
+      <div class="deliveryLine">{{ deliveryLine }}</div>
+      @if (warning) {
+        <div class="warningLine" id="pin-diameter-error" role="status">
+          <mat-icon>warning</mat-icon>{{ warning }}
+        </div>
+      }
+    </div>
+  </div>
+
+  <div mat-dialog-actions align="end">
+    <button mat-button mat-dialog-close>Cancel</button>
+    <button
+      mat-flat-button
+      color="primary"
+      [disabled]="isEmpty || !!pinDiameterError"
+      (click)="download()"
+    >
+      <mat-icon>download</mat-icon>
+      {{ exportLabel }}
+    </button>
+  </div>
+</div>

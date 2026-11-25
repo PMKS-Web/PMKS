@@ -1,8 +1,9 @@
 import '../model/joint';
-import { Injector } from '@angular/core';
+import { NotificationService } from './notification.service';
 import { Coord } from '../model/coord';
+import { MODEL_SCALE } from '../model/render-scale';
 import { Force } from '../model/force';
-import { Piston, RealLink } from '../model/link';
+import { RealLink } from '../model/link';
 import { PrisJoint, RealJoint, RevJoint } from '../model/joint';
 import { LengthUnit } from '../model/unit-enums';
 import { ActiveObjService } from './active-obj.service';
@@ -11,32 +12,24 @@ import { GridUtilsService } from './grid-utils.service';
 import { MechanismService } from './mechanism.service';
 import { NumberUnitParserService } from './number-unit-parser.service';
 import { SettingsService } from './settings.service';
-import { SvgGridService } from './svg-grid.service';
-import { SynthesisBuilderService } from './synthesis/synthesis-builder.service';
+import { UrlGenerationService } from './url-generation.service';
+import { MechanismBuilder } from './transcoding/mechanism-builder';
+import { StringTranscoder } from './transcoding/string-transcoder';
+import { NewGridComponent } from '../component/new-grid/new-grid.component';
+import { createMechanismHarness } from '../../test-utils/mechanism-harness';
+import { encodeUrlOf } from '../../test-utils/url-encoding';
 
 interface Harness {
   service: MechanismService;
   active: ActiveObjService;
   settings: SettingsService;
+  grid: GridUtilsService;
   saveCount: () => number;
 }
 
 function createHarness(): Harness {
-  if (!ColorService.instance) new ColorService();
-  const settings = new SettingsService();
-  const parser = new NumberUnitParserService();
-  const svg = new SvgGridService(settings);
-  const synthesis = new SynthesisBuilderService(parser, settings);
-  const grid = new GridUtilsService(synthesis, svg);
-  const active = new ActiveObjService();
-  let saves = 0;
-  const injector = { get: () => ({ save: () => saves++ }) } as unknown as Injector;
-  return {
-    service: new MechanismService(grid, active, injector, settings, parser),
-    active,
-    settings,
-    saveCount: () => saves,
-  };
+  const harness = createMechanismHarness();
+  return { ...harness, grid: harness.injector.get(GridUtilsService) };
 }
 
 function createChain(jointCount = 3) {
@@ -76,6 +69,12 @@ describe('MechanismService welded links and force ownership', () => {
     harness.links[1].mass = 1;
     harness.links[1].massMoI = 4;
     harness.links[1].CoM = new Coord(1.5, 0);
+    // Chosen values on the members, which since #279 the compound ignores: it
+    // has one mass, shared by length, and its own shape decides the rest.
+    for (const link of [harness.links[0], harness.links[1]]) {
+      (link as RealLink).moiIsCustom = true;
+      (link as RealLink).comIsCustom = true;
+    }
     const force = attachForce(harness.service, harness.links[0], 'F1', 0.25);
 
     harness.service.weldJoint(harness.joints[1]);
@@ -86,11 +85,18 @@ describe('MechanismService welded links and force ownership', () => {
     expect(compound.fill).toBe('#112233');
     expect(compound.subset.map((link) => link.id).sort()).toEqual(['AB', 'BC']);
     expect(compound.mass).toBe(3);
-    expect(compound.CoM.x).toBeCloseTo(5 / 6, 12);
+    // Two bars of one length, so half the mass each: the middle of the chain.
+    expect(compound.CoM.x).toBeCloseTo(1, 12);
     expect(compound.CoM.y).toBe(0);
-    expect(compound.massMoI).toBeCloseTo(23 / 3, 12);
+    // One uniform 3 g rod two long: m·L²/12 = 1, in *stored* units. Distances
+    // here are model coordinates (MODEL_SCALE user units) and the metric store
+    // is kg·cm² against gram masses, so the term carries 0.001 / MODEL_SCALE²
+    // -- the conversion whose absence once welded two 1 g bars into tens of
+    // thousands of kg·cm².
+    const parallelAxis = 0.001 / MODEL_SCALE ** 2;
+    expect(compound.massMoI).toBeCloseTo(1 * parallelAxis, 12);
     compound.reComputeDPath();
-    expect(compound.CoM.x).toBeCloseTo(5 / 6, 12);
+    expect(compound.CoM.x).toBeCloseTo(1, 12);
     expect(force.link).toBe(compound);
     expect(compound.forces).toEqual([force]);
     expect(harness.links.every((link) => link.forces.length === 0)).toBe(true);
@@ -124,6 +130,28 @@ describe('MechanismService welded links and force ownership', () => {
     expect(harness.saveCount()).toBe(4);
   });
 
+  it('deletes a selected primitive while preserving the remaining weld and its forces', () => {
+    const h = createChain(4);
+    const doomed = attachForce(h.service, h.links[0], 'F1', 0.25);
+    const kept = attachForce(h.service, h.links[2], 'F2', 2.25);
+    doomed.anchoredTo = h.links[0].id;
+    kept.anchoredTo = h.links[2].id;
+    h.service.weldJoint(h.joints[1]);
+    h.service.weldJoint(h.joints[2]);
+    h.active.updateSelectedObj(h.links[0]);
+    expect(h.service.jointsOrphanedByDeleting(h.links[0]).map((j) => j.id)).toEqual(['A']);
+    const before = h.saveCount();
+    h.service.deleteLink();
+    expect(h.service.joints.map((j) => j.id)).toEqual(['B', 'C', 'D']);
+    const remaining = h.service.links[0] as RealLink;
+    expect(remaining.subset.map((l) => l.id).sort()).toEqual(['BC', 'CD']);
+    expect(h.joints[2].isWelded).toBe(true);
+    expect(h.service.forces).not.toContain(doomed);
+    expect(h.service.forces).toContain(kept);
+    expect(kept.link).toBe(remaining);
+    expect(h.saveCount()).toBe(before + 1);
+  });
+
   it('unwelds all joints as a single undoable edit', () => {
     const harness = createChain(4);
     harness.service.weldJoint(harness.joints[1]);
@@ -149,6 +177,16 @@ describe('MechanismService welded links and force ownership', () => {
     expect((harness.service.links.find((link) => link.id === 'BC') as RealLink).forces).toEqual([]);
   });
 
+  it('keeps unrelated orphan joints when deleting a link', () => {
+    const harness = createChain(2);
+    const orphan = new RevJoint('G', 4, 3);
+    harness.service.joints.push(orphan);
+    harness.active.updateSelectedObj(harness.links[0]);
+    harness.service.deleteLink();
+    expect(harness.service.joints).toEqual([orphan]);
+    expect(harness.service.links).toEqual([]);
+  });
+
   it('removes both force references and does not delete unrelated forces with a link', () => {
     const harness = createChain();
     const first = attachForce(harness.service, harness.links[0], 'F1', 0.25);
@@ -166,24 +204,20 @@ describe('MechanismService welded links and force ownership', () => {
     expect(secondLink.forces).toEqual([second]);
   });
 
-  it('preserves piston connectivity when rebuilding after a weld', () => {
+  it('preserves a slider’s connectivity when rebuilding after a weld', () => {
+    // The slider used to be a second joint hanging off C by a block, and the
+    // rebuild had to keep that pair in each other's lists. C *is* the slider
+    // now, so what has to survive is C's own membership of the compound the
+    // weld builds out of the bars it was on.
     const harness = createChain();
-    const slider = new PrisJoint('P', 2, 0, false, true);
-    const piston = new Piston('CP', [harness.joints[2], slider]);
-    harness.joints[2].links.push(piston);
-    harness.joints[2].connectedJoints.push(slider);
-    slider.links.push(piston);
-    slider.connectedJoints.push(harness.joints[2]);
-    harness.service.joints.push(slider);
-    harness.service.links.push(piston);
+    const slider = addSlider(harness, harness.joints[2]);
 
     harness.service.weldJoint(harness.joints[1]);
 
-    const c = harness.joints[2] as RealJoint;
-    expect(c.links.map((link) => link.id).sort()).toEqual(['ABC', 'CP']);
-    expect(c.connectedJoints).toContain(slider);
-    expect(slider.links).toEqual([piston]);
-    expect(slider.connectedJoints).toContain(c);
+    const c = harness.service.joints.find((joint) => joint.id === 'C') as RealJoint;
+    expect(c, 'the letter survived the change of kind').toBe(slider);
+    expect(c.links.map((link) => link.id).sort()).toEqual(['ABC']);
+    expect(slider.ground, 'and its guide is still grounded').toBe(true);
   });
 
   it('converts all physical properties together with one undo checkpoint', () => {
@@ -192,6 +226,8 @@ describe('MechanismService welded links and force ownership', () => {
     link.mass = 2;
     link.massMoI = 3;
     link.CoM = new Coord(0.5, 0);
+    link.moiIsCustom = true;
+    link.comIsCustom = true;
     const force = attachForce(harness.service, link, 'F1', 0.25);
 
     harness.settings.lengthUnit.next(LengthUnit.METER);
@@ -210,10 +246,7 @@ describe('MechanismService welded links and force ownership', () => {
 
     expect(harness.joints[1].x).toBeCloseTo(0.01 / 0.0254, 12);
     expect(link.mass).toBeCloseTo(0.002 / 0.45359237, 12);
-    expect(link.massMoI).toBeCloseTo(
-      0.0003 / (0.45359237 * 0.0254 * 0.0254),
-      12
-    );
+    expect(link.massMoI).toBeCloseTo(0.0003 / (0.45359237 * 0.0254 * 0.0254), 12);
     // Force converts N -> lbf as the exact reciprocal of NEWTONS_PER_LBF.
     expect(force.mag).toBeCloseTo(10 / 4.4482216152605, 12);
     expect(harness.saveCount()).toBe(2);
@@ -228,6 +261,8 @@ describe('MechanismService welded links and force ownership', () => {
     link.mass = 2;
     link.massMoI = 3;
     link.CoM = new Coord(0.5, 0);
+    link.moiIsCustom = true;
+    link.comIsCustom = true;
     const force = attachForce(harness.service, link, 'F1', 0.25);
     const original = {
       x: harness.joints[1].x,
@@ -251,6 +286,9 @@ describe('MechanismService welded links and force ownership', () => {
 
   it('converts the RPM setting once at the mechanism boundary and preserves direction', () => {
     const harness = createChain();
+    // Grounded, so the chain is a machine at all: a component that never
+    // reaches ground has no solvable position and is not built as a mechanism.
+    harness.joints[0].ground = true;
     harness.settings.inputSpeed.next(60);
     harness.settings.lengthUnit.next(LengthUnit.METER);
     harness.settings.isInputCW.next(false);
@@ -261,5 +299,671 @@ describe('MechanismService welded links and force ownership', () => {
     harness.settings.isInputCW.next(true);
     harness.service.updateMechanism();
     expect(harness.service.mechanisms[0].inputAngularVelocities[0]).toBeCloseTo(-2 * Math.PI, 12);
+  });
+});
+
+/**
+ * An open chain A-B-C plus a short stub D-E parked next to C. Dragging E onto C
+ * is the gesture that closes it into a four-bar, which is the shape Gate 1 asks
+ * a merge to produce.
+ */
+function createOpenFourBar() {
+  const harness = createHarness();
+  const a = new RevJoint('A', 0, 0, true, true);
+  const b = new RevJoint('B', 1, 2);
+  const c = new RevJoint('C', 4, 2);
+  const d = new RevJoint('D', 5, 0, false, true);
+  const e = new RevJoint('E', 4.05, 2.05);
+
+  const wire = (id: string, joints: RevJoint[]) => {
+    const link = new RealLink(id, joints);
+    joints.forEach((joint) => {
+      joint.links.push(link);
+      joints
+        .filter((other) => other !== joint)
+        .forEach((other) => joint.connectedJoints.push(other));
+    });
+    return link;
+  };
+
+  const links = [wire('AB', [a, b]), wire('BC', [b, c]), wire('DE', [d, e])];
+  harness.service.joints = [a, b, c, d, e];
+  harness.service.links = links;
+  harness.service.updateMechanism();
+  return { ...harness, a, b, c, d, e };
+}
+
+describe('MechanismService joint merging', () => {
+  it('closes an open chain into a solvable four-bar', () => {
+    const scene = createOpenFourBar();
+
+    expect(scene.service.mergeJoints(scene.e, scene.c)).toBeUndefined();
+
+    expect(scene.service.joints.map((joint) => joint.id)).toEqual(['A', 'B', 'C', 'D']);
+    expect(scene.service.links.map((link) => link.id).sort()).toEqual(['AB', 'BC', 'CD']);
+    expect(scene.service.mechanisms[0].isMechanismValid()).toBe(true);
+    expect(scene.service.mechanisms[0].dof).toBe(1);
+  });
+
+  it('rebuilds the joint graph so the survivor carries the merged connections', () => {
+    const scene = createOpenFourBar();
+
+    scene.service.mergeJoints(scene.e, scene.c);
+
+    expect(scene.c.links.map((link) => link.id).sort()).toEqual(['BC', 'CD']);
+    expect(scene.c.connectedJoints.map((joint) => joint.id).sort()).toEqual(['B', 'D']);
+    expect(scene.d.connectedJoints.map((joint) => joint.id)).toEqual(['C']);
+    expect(
+      scene.service.joints.some((joint) =>
+        (joint as RealJoint).connectedJoints.some((candidate) => candidate.id === 'E')
+      )
+    ).toBe(false);
+  });
+
+  // Ground and input are things the user set deliberately. Dropping either on
+  // the floor would quietly change what the mechanism is.
+  it('carries ground and input onto the survivor', () => {
+    const scene = createOpenFourBar();
+    scene.e.ground = true;
+
+    scene.service.mergeJoints(scene.e, scene.c);
+
+    expect(scene.c.ground).toBe(true);
+    expect(scene.c.input).toBe(false);
+  });
+
+  it('renames the link and its fixed-location entries to the surviving joint', () => {
+    const scene = createOpenFourBar();
+    const de = scene.service.links.find((link) => link.id === 'DE')!;
+    de.fixedLocation.fixedPoint = 'E';
+
+    scene.service.mergeJoints(scene.e, scene.c);
+
+    expect(de.id).toBe('CD');
+    expect(de.fixedLocations.map((location) => location.id).sort()).toEqual(['C', 'D', 'com']);
+    expect(de.fixedLocation.fixedPoint).toBe('C');
+  });
+
+  it('refuses an illegal merge and leaves the mechanism untouched', () => {
+    const scene = createOpenFourBar();
+
+    expect(scene.service.mergeJoints(scene.b, scene.c)).toBe('shares-a-link');
+
+    expect(scene.service.joints.map((joint) => joint.id)).toEqual(['A', 'B', 'C', 'D', 'E']);
+    expect(scene.service.links.map((link) => link.id).sort()).toEqual(['AB', 'BC', 'DE']);
+  });
+
+  // The merge is the tail of a drag, and the gesture owns the single undo entry
+  // it earns. Saving here as well would push two states for one drop.
+  it('does not save on its own', () => {
+    const scene = createOpenFourBar();
+
+    scene.service.mergeJoints(scene.e, scene.c);
+
+    expect(scene.saveCount()).toBe(0);
+  });
+
+  it('moves the selection to the surviving joint', () => {
+    const scene = createOpenFourBar();
+    scene.active.updateSelectedObj(scene.e);
+
+    scene.service.mergeJoints(scene.e, scene.c);
+
+    expect(scene.active.selectedJoint).toBe(scene.c);
+  });
+
+  it('round-trips the merged mechanism through the URL', () => {
+    const scene = createOpenFourBar();
+    scene.service.mergeJoints(scene.e, scene.c);
+
+    const encoded = encodeUrlOf(scene.service, scene.settings);
+    const decoder = new StringTranscoder();
+    decoder.decodeURL(encoded);
+    const restored = {
+      joints: [],
+      links: [],
+      forces: [],
+      mechanismTimeStep: 0,
+    } as unknown as MechanismService;
+    new MechanismBuilder(restored, decoder, new SettingsService(), new ActiveObjService()).build(
+      true
+    );
+
+    expect(restored.joints.map((joint) => joint.id)).toEqual(['A', 'B', 'C', 'D']);
+    expect(restored.links.map((link) => link.id).sort()).toEqual(['AB', 'BC', 'CD']);
+    expect(restored.joints.map((joint) => [joint.x, joint.y])).toEqual(
+      scene.service.joints.map((joint) => [joint.x, joint.y])
+    );
+  });
+
+  // #322: the bar is renamed after its new joints, and a force that still
+  // remembered the old name made every URL written afterwards unreadable --
+  // so the undo entries after the merge refused to open.
+  it('carries a force on the renamed bar through the merge and the URL', () => {
+    const scene = createOpenFourBar();
+    const de = scene.service.links.find((link) => link.id === 'DE') as RealLink;
+    const force = new Force('F1', de, new Coord(4.5, 1), new Coord(4.5, 2), false, true, 10);
+    force.anchoredTo = 'DE';
+    de.forces.push(force);
+    scene.service.forces = [force];
+
+    scene.service.mergeJoints(scene.e, scene.c);
+
+    expect(force.anchoredTo).toBe('CD');
+    const decoder = new StringTranscoder();
+    expect(() => decoder.decodeURL(encodeUrlOf(scene.service, scene.settings))).not.toThrow();
+    const restored = {
+      joints: [],
+      links: [],
+      forces: [],
+      mechanismTimeStep: 0,
+    } as unknown as MechanismService;
+    new MechanismBuilder(restored, decoder, new SettingsService(), new ActiveObjService()).build(
+      true
+    );
+    expect(restored.forces.map((one) => one.link.id)).toEqual(['CD']);
+  });
+});
+
+/**
+ * Make `joint` slide, on a grounded guide, and hand back the slider.
+ *
+ * Through the service's own edit rather than assembled here. A slider was a
+ * coincident `PrisJoint` and a zero-length block bolted onto the pin, which a
+ * spec could build by hand; it is the joint itself now (Stage 1 of
+ * `docs/joint-type-and-cylinder-plan.md`), so the joint is *replaced* -- and
+ * only the service can do that and leave every link, force and lock pointing at
+ * the letter the joint already had.
+ *
+ * Which is also why this returns the slider: the caller's own reference to
+ * `joint` is a dead object afterwards.
+ */
+function addSlider(harness: Harness, joint: RealJoint): PrisJoint {
+  harness.active.updateSelectedObj(joint);
+  if (!joint.ground) harness.service.toggleGround();
+  harness.service.toggleSlider();
+  const slider = harness.service.joints.find(
+    (candidate): candidate is PrisJoint =>
+      candidate instanceof PrisJoint && candidate.id === joint.id
+  );
+  expect(slider, `joint ${joint.id} became a slider`).toBeDefined();
+  return slider!;
+}
+
+describe('MechanismService merging onto sliders and welds', () => {
+  function scene() {
+    const harness = createHarness();
+    const a = new RevJoint('A', 0, 0, true, true);
+    const b = new RevJoint('B', 2, 0);
+    const c = new RevJoint('C', 3, 2);
+    const x = new RevJoint('X', 6, 6);
+    const y = new RevJoint('Y', 8, 6);
+    // A second free bar whose near end is grounded, for the case where the
+    // survivor of a merge can no longer be welded.
+    const z = new RevJoint('Z', 10, 10, false, true);
+    const w = new RevJoint('W', 12, 10);
+    const wire = (id: string, joints: RevJoint[]) => {
+      const link = new RealLink(id, joints);
+      joints.forEach((joint) => {
+        joint.links.push(link);
+        joints.filter((o) => o !== joint).forEach((o) => joint.connectedJoints.push(o));
+      });
+      return link;
+    };
+    harness.service.joints = [a, b, c, x, y, z, w];
+    harness.service.links = [
+      wire('AB', [a, b]),
+      wire('BC', [b, c]),
+      wire('XY', [x, y]),
+      wire('ZW', [z, w]),
+    ];
+    return { ...harness, a, b, c, x, y, z, w };
+  }
+
+  // Dropping a pin onto a slider is how a pin-in-slot gets built. It used to be
+  // a drop onto the slider's coincident *pin*, and no letter is spent on a
+  // second joint any more -- so the survivor's own letter is all there is.
+  it('pins a dragged joint onto a slider', () => {
+    const s = scene();
+    const slider = addSlider(s, s.c);
+
+    expect(s.service.mergeJoints(s.x, slider)).toBeUndefined();
+
+    expect(s.service.joints.map((joint) => joint.id).sort()).toEqual([
+      'A',
+      'B',
+      'C',
+      'W',
+      'Y',
+      'Z',
+    ]);
+    // The arriving bar rides the slider, and the slider keeps the bar it was on.
+    expect(slider.links.map((link) => link.id).sort()).toEqual(['BC', 'CY']);
+    expect(slider.ground).toBe(true);
+  });
+
+  it('refuses to drag a slider onto a plain pin, which would strand its slot', () => {
+    // The survivor of a merge is the target, so merging the slider away takes
+    // the slot with it. While a slider was three objects the joint a reader
+    // dragged was the *pin*, and the slider stayed behind on the survivor --
+    // there is no such spare object now.
+    const s = scene();
+    const slider = addSlider(s, s.x);
+
+    expect(s.service.mergeJoints(slider, s.c)).toBe('prismatic');
+    expect(s.service.joints.some((joint) => joint.id === 'X')).toBe(true);
+  });
+
+  it('refuses one slider merged onto another', () => {
+    // A joint slides along one slot or none, and the source rule above catches
+    // it before the pair is ever considered.
+    const s = scene();
+    const first = addSlider(s, s.x);
+    const second = addSlider(s, s.c);
+
+    expect(s.service.mergeJoints(first, second)).toBe('prismatic');
+    expect(s.service.joints.some((joint) => joint.id === 'X')).toBe(true);
+  });
+
+  // "Snap onto a welded joint" has to mean the arriving link joins the compound,
+  // not that the joint keeps a welded flag with a loose link beside it.
+  it('re-welds the survivor so the arriving link joins the compound', () => {
+    const s = scene();
+    s.service.weldJoint(s.b);
+    expect(s.service.links.map((link) => link.id).sort()).toEqual(['ABC', 'XY', 'ZW']);
+
+    expect(s.service.mergeJoints(s.x, s.b)).toBeUndefined();
+
+    expect(s.b.isWelded).toBe(true);
+    const compound = s.service.links.find(
+      (link) => (link as RealLink).subset.length > 0
+    ) as RealLink;
+    expect(compound.subset.map((link) => link.id).sort()).toEqual(['AB', 'BC', 'BY']);
+    expect(compound.joints.map((joint) => joint.id).sort()).toEqual(['A', 'B', 'C', 'Y']);
+  });
+
+  // Dropping a grounded joint onto a welded one used to take the weld away,
+  // because a weld could not form on a grounded joint at all. That rule is
+  // gone -- two bars fused at a grounded pin are a bell crank on its pivot, and
+  // the same state was reachable anyway by welding first and grounding after --
+  // so the compound now survives the merge and the user keeps the linkage they
+  // dropped.
+  it('keeps the survivor welded when a grounded joint is merged onto it', () => {
+    const s = scene();
+    s.service.weldJoint(s.b);
+    expect(s.b.isWelded).toBe(true);
+
+    expect(s.service.mergeJoints(s.z, s.b)).toBeUndefined();
+
+    expect(s.b.ground).toBe(true);
+    expect(s.b.isWelded).toBe(true);
+    const compound = s.service.links.find(
+      (link) => (link as RealLink).subset.length > 0
+    ) as RealLink;
+    expect(compound, 'the compound survives being grounded').toBeDefined();
+    expect(compound.joints.map((joint) => joint.id).sort()).toEqual(['A', 'B', 'C', 'W']);
+  });
+
+  // The defect the exact-duplicate test missed: B and C are already fixed
+  // relative to each other by the ternary body.
+  it('refuses a bar that would double a pair a ternary link already holds', () => {
+    const harness = createHarness();
+    const b = new RevJoint('B', -2.7, 0.9);
+    const c = new RevJoint('C', 2.9, 2.2);
+    const g = new RevJoint('G', 0.7, 0.8);
+    const f = new RevJoint('F', 1, 4);
+    const wire = (id: string, joints: RevJoint[]) => {
+      const link = new RealLink(id, joints);
+      joints.forEach((joint) => {
+        joint.links.push(link);
+        joints.filter((o) => o !== joint).forEach((o) => joint.connectedJoints.push(o));
+      });
+      return link;
+    };
+    harness.service.joints = [b, c, g, f];
+    harness.service.links = [wire('BCG', [b, c, g]), wire('BF', [b, f])];
+
+    expect(harness.service.mergeJoints(f, c)).toBe('over-constrained');
+    expect(harness.service.links.map((link) => link.id).sort()).toEqual(['BCG', 'BF']);
+  });
+});
+
+describe('MechanismService declining a weld that pins a pair twice', () => {
+  /** A triangle: bars A-B, B-C and A-C. Welding at B closes A and C twice. */
+  function triangle() {
+    const harness = createHarness();
+    const a = new RevJoint('A', 0, 0);
+    const b = new RevJoint('B', 4, 0);
+    const c = new RevJoint('C', 2, 3);
+    const wire = (id: string, joints: RevJoint[]) => {
+      const link = new RealLink(id, joints);
+      joints.forEach((joint) => {
+        joint.links.push(link);
+        joints.filter((o) => o !== joint).forEach((o) => joint.connectedJoints.push(o));
+      });
+      return link;
+    };
+    harness.service.joints = [a, b, c];
+    harness.service.links = [wire('AB', [a, b]), wire('BC', [b, c]), wire('AC', [a, c])];
+    return { ...harness, a, b, c };
+  }
+
+  // Welding B fuses AB and BC into ABC, which then holds A and C — the pair the
+  // existing AC bar already holds. Clicking Weld is deliberate, so the edit goes
+  // through and the user is told; only a drag onto the same geometry is refused,
+  // because a drop is far more easily done by accident.
+  it('welds anyway, because pressing the button is a deliberate act', () => {
+    const scene = triangle();
+
+    scene.service.weldJoint(scene.b);
+
+    expect(scene.b.isWelded).toBe(true);
+    expect(scene.service.links.map((link) => link.id)).toEqual(['AC', 'ABC']);
+    expect(scene.saveCount()).toBe(1);
+  });
+
+  it('names the pair it just pinned twice', () => {
+    const scene = triangle();
+    const notify = vi.spyOn(NotificationService.prototype, 'warning').mockImplementation(() => {});
+
+    scene.service.weldJoint(scene.b);
+
+    expect(notify).toHaveBeenCalledTimes(1);
+    // The id is first now, the sentence second.
+    expect(notify.mock.calls[0][1]).toMatch(/\bA and C\b/);
+    notify.mockRestore();
+  });
+
+  // A mechanism may legitimately arrive already holding a redundant pin — that
+  // is what makes those simulate — so an unrelated weld must not be blamed for
+  // it, or every later edit would warn about joints nowhere near the click.
+  it('says nothing about redundancy that was already there', () => {
+    const harness = createHarness();
+    const wire = (id: string, joints: RevJoint[]) => {
+      const link = new RealLink(id, joints);
+      joints.forEach((joint) => {
+        joint.links.push(link);
+        joints.filter((o) => o !== joint).forEach((o) => joint.connectedJoints.push(o));
+      });
+      return link;
+    };
+    // P and Q are held twice before anything is welded.
+    const [p, q, r] = [new RevJoint('P', 0, 0), new RevJoint('Q', 2, 0), new RevJoint('R', 1, 2)];
+    // An unrelated chain, where welding Y is perfectly ordinary.
+    const [x, y, z] = [new RevJoint('X', 9, 0), new RevJoint('Y', 11, 0), new RevJoint('Z', 13, 1)];
+    harness.service.joints = [p, q, r, x, y, z];
+    harness.service.links = [
+      wire('PQ', [p, q]),
+      wire('PQR', [p, q, r]),
+      wire('XY', [x, y]),
+      wire('YZ', [y, z]),
+    ];
+    const notify = vi.spyOn(NotificationService.prototype, 'warning').mockImplementation(() => {});
+
+    harness.service.weldJoint(y);
+
+    expect(y.isWelded).toBe(true);
+    expect(notify).not.toHaveBeenCalled();
+    notify.mockRestore();
+  });
+
+  // The mechanism still has to move — that is the whole reason for allowing it.
+  it('leaves the welded result mobile', () => {
+    const scene = triangle();
+    scene.a.ground = true;
+    scene.service.weldJoint(scene.b);
+    scene.service.updateMechanism();
+
+    expect(scene.service.mechanisms[0].dof).toBeGreaterThanOrEqual(0);
+  });
+
+  it('still welds where no pair would be pinned twice', () => {
+    const scene = triangle();
+    scene.service.links = scene.service.links.filter((link) => link.id !== 'AC');
+    scene.a.links = scene.a.links.filter((link) => link.id !== 'AC');
+    scene.c.links = scene.c.links.filter((link) => link.id !== 'AC');
+
+    scene.service.weldJoint(scene.b);
+
+    expect(scene.b.isWelded).toBe(true);
+    expect(scene.service.links.map((link) => link.id)).toEqual(['ABC']);
+    expect(scene.saveCount()).toBe(1);
+  });
+});
+
+describe('MechanismService un-grounding one slider among several', () => {
+  function twoSliders() {
+    const harness = createHarness();
+    const a = new RevJoint('A', 0, 0);
+    const b = new RevJoint('B', 4, 0);
+    const ab = new RealLink('AB', [a, b]);
+    [a, b].forEach((joint) => joint.links.push(ab));
+    a.connectedJoints.push(b);
+    b.connectedJoints.push(a);
+    harness.service.joints.push(a, b);
+    harness.service.links.push(ab);
+    // Both ends of the bar slide. `a` and `b` are dead objects afterwards: each
+    // was exchanged for a slider carrying its own letter.
+    const first = addSlider(harness, a);
+    const second = addSlider(harness, b);
+    return { ...harness, first, second };
+  }
+
+  it('keeps the slider it un-grounds, and leaves it dangling', () => {
+    // Ground and Slider are independent controls now (§4.1), so un-grounding
+    // takes the slot's direction away and nothing else. It used to dismantle
+    // the slider outright, which made "Ground off" a disguised "Slider off".
+    const s = twoSliders();
+    s.active.updateSelectedObj(s.second);
+
+    s.service.toggleGround();
+
+    // Two joints and one bar: a slider spends no letter of its own and builds
+    // no link, where it used to add a joint and a block apiece.
+    expect(s.service.joints.map((joint) => joint.id).sort()).toEqual(['A', 'B']);
+    expect(s.service.links.map((link) => link.id).sort()).toEqual(['AB']);
+    expect(s.second.isDangling).toBe(true);
+  });
+
+  it('leaves the untouched slider exactly as it was', () => {
+    // The bug this has always guarded: toggleGround reached for the first
+    // sliding body in the mechanism rather than the selected joint's own, so
+    // acting on the second slider changed the first one.
+    const s = twoSliders();
+    s.active.updateSelectedObj(s.second);
+
+    s.service.toggleGround();
+
+    expect(s.first.ground, 'the other slider keeps its ground').toBe(true);
+    expect(s.first.isDangling).toBe(false);
+    expect(s.first.rotates, 'and is still a Pin-in-slot').toBe(true);
+  });
+
+  it('grounds it again on the direction it was pointing', () => {
+    const s = twoSliders();
+    s.active.updateSelectedObj(s.second);
+    const wasPointing = s.second.slotAngle;
+
+    s.service.toggleGround();
+    s.service.toggleGround();
+
+    expect(s.second.ground).toBe(true);
+    expect(s.second.slotAngle).toBeCloseTo(wasPointing, 9);
+  });
+});
+
+describe('MechanismService undo entries on a drawing large enough to defer solving', () => {
+  // Past SOLVE_IN_EDIT_UP_TO joints, updateMechanism puts the solve off until
+  // an analysis mode asks for it. Deferring the solve must not defer the save:
+  // the URL encodes the editable drawing, not the solved mechanisms, so every
+  // edit routed through updateMechanism(true) — weld, ground, input, force
+  // edits — still owes its undo entry.
+  it('still saves a weld when the solve is deferred', () => {
+    const harness = createChain(26);
+
+    harness.service.weldJoint(harness.joints[1]);
+
+    expect(harness.service.solvingIsDeferred).toBe(true);
+    expect(harness.saveCount()).toBe(1);
+  });
+
+  it('still saves a ground toggle when the solve is deferred', () => {
+    const harness = createChain(26);
+    harness.active.updateSelectedObj(harness.joints[0]);
+
+    harness.service.toggleGround();
+
+    expect(harness.service.solvingIsDeferred).toBe(true);
+    expect(harness.joints[0].ground).toBe(true);
+    expect(harness.saveCount()).toBe(1);
+  });
+
+  it('can encode the URL an undo entry is made of while deferred', () => {
+    const harness = createChain(26);
+    harness.service.updateMechanism();
+
+    expect(harness.service.solvingIsDeferred).toBe(true);
+    expect(encodeUrlOf(harness.service, harness.settings).length).toBeGreaterThan(0);
+  });
+
+  it('does not defer at the threshold itself, and still saves', () => {
+    const harness = createChain(24);
+
+    harness.service.weldJoint(harness.joints[1]);
+
+    expect(harness.service.solvingIsDeferred).toBe(false);
+    expect(harness.saveCount()).toBe(1);
+  });
+});
+
+/**
+ * Issue #138: a force sits on one body, so it never stays on a joint where a
+ * second body meets its link. The edit that put it there stands, and the
+ * rebuild moves the force a short way along its link and says so.
+ */
+describe('MechanismService keeping forces off joints that refuse them', () => {
+  function forceAt(service: MechanismService, link: RealLink, x: number, y: number): Force {
+    const force = new Force('F1', link, new Coord(x, y), new Coord(x, y + 1), false, true, 10);
+    link.forces.push(force);
+    service.forces.push(force);
+    return force;
+  }
+
+  function said(service: MechanismService): string[] {
+    const notify = (service as unknown as { notify: NotificationService }).notify;
+    return notify.live
+      .filter((one) => one.id.startsWith('force.moved-off-joint'))
+      .map((one) => one.text);
+  }
+
+  it('moves a tracer point’s force off the joint the tracer is merged onto', () => {
+    const scene = createOpenFourBar();
+    const de = scene.service.links.find((link) => link.id === 'DE') as RealLink;
+    const force = forceAt(scene.service, de, scene.e.x, scene.e.y);
+    scene.service.updateMechanism();
+    // On a tracer point it may stay.
+    expect(force.startCoord.x).toBeCloseTo(4.05, 9);
+    expect(said(scene.service)).toEqual([]);
+
+    expect(scene.service.mergeJoints(scene.e, scene.c)).toBeUndefined();
+
+    const margin = 0.3 * scene.settings.objectScale;
+    const gap = Math.hypot(force.startCoord.x - scene.c.x, force.startCoord.y - scene.c.y);
+    expect(gap).toBeCloseTo(Math.min(margin, Math.hypot(1, 2) / 2), 6);
+    // Still on the bar from D to C.
+    const cross =
+      (scene.c.x - scene.d.x) * (force.startCoord.y - scene.d.y) -
+      (scene.c.y - scene.d.y) * (force.startCoord.x - scene.d.x);
+    expect(cross).toBeCloseTo(0, 9);
+    expect(said(scene.service)).toEqual([
+      `Force F1 moved off joint C onto link CD: 2 links meet here, so it’s ambiguous which link carries the force.`,
+    ]);
+  });
+
+  it('moves a force off a tracer point grounded while paused away from the start', () => {
+    const harness = createHarness();
+    const a = new RevJoint('A', 0, 0, true, true);
+    const b = new RevJoint('B', 1, 2);
+    const c = new RevJoint('C', 4, 2);
+    const d = new RevJoint('D', 5, 0, false, true);
+    const t = new RevJoint('T', 2.5, 3);
+    const wire = (id: string, joints: RevJoint[]) => {
+      const link = new RealLink(id, joints);
+      joints.forEach((joint) => {
+        joint.links.push(link);
+        joints
+          .filter((other) => other !== joint)
+          .forEach((other) => joint.connectedJoints.push(other));
+      });
+      return link;
+    };
+    const coupler = wire('BCT', [b, c, t]);
+    harness.service.joints = [a, b, c, d, t];
+    harness.service.links = [wire('AB', [a, b]), coupler, wire('CD', [c, d])];
+    a.input = true;
+    const force = forceAt(harness.service, coupler, t.x, t.y);
+    harness.service.updateMechanism();
+    harness.service.animate(60, false);
+    expect(harness.service.mechanismTimeStep).toBeGreaterThan(0);
+    harness.active.updateSelectedObj(t);
+
+    harness.service.toggleGround();
+
+    // The rebuild puts the drawing back on its start pose, the force with it,
+    // and only then is the force kept off the joint it may no longer sit on.
+    expect(t.ground).toBe(true);
+    expect(t.x).toBeCloseTo(2.5, 6);
+    expect(Math.hypot(force.startCoord.x - t.x, force.startCoord.y - t.y)).toBeGreaterThan(0.5);
+    expect(said(harness.service)[0]).toContain('this joint is grounded');
+  });
+
+  it('moves a force off a tracer point that is then grounded', () => {
+    const harness = createChain(2);
+    const [a, b] = harness.joints;
+    const force = forceAt(harness.service, harness.links[0], b.x, b.y);
+    harness.active.updateSelectedObj(b);
+
+    harness.service.toggleGround();
+
+    expect(b.ground).toBe(true);
+    expect(Math.hypot(force.startCoord.x - b.x, force.startCoord.y - b.y)).toBeGreaterThan(0);
+    expect(force.startCoord.x).toBeGreaterThan(a.x);
+    expect(force.startCoord.x).toBeLessThan(b.x);
+    expect(said(harness.service)[0]).toContain('this joint is grounded');
+  });
+
+  it('opens a drawing with a load on a grounded pin with the load moved off it', () => {
+    const harness = createChain(2);
+    const [a] = harness.joints;
+    a.ground = true;
+    const force = forceAt(harness.service, harness.links[0], a.x, a.y);
+
+    harness.service.updateMechanism();
+
+    expect(force.startCoord.x).toBeGreaterThan(0);
+    expect(force.startCoord.y).toBeCloseTo(0, 12);
+    // The arrow keeps its direction and its length: the whole arrow moves.
+    expect(force.endCoord.x - force.startCoord.x).toBeCloseTo(0, 12);
+    expect(force.endCoord.y - force.startCoord.y).toBeCloseTo(1, 12);
+  });
+
+  it('makes a new force beside a grounded pin rather than on it, without a word', () => {
+    const harness = createChain(2);
+    const [a] = harness.joints;
+    a.ground = true;
+
+    const force = harness.service.createForce(new Coord(0, 0), new Coord(0, 1), harness.links[0])!;
+
+    expect(force.startCoord.x).toBeGreaterThan(0);
+    expect(said(harness.service)).toEqual([]);
+  });
+
+  it('leaves a force on a tracer point where it is', () => {
+    const harness = createChain(2);
+    const [, b] = harness.joints;
+    const force = forceAt(harness.service, harness.links[0], b.x, b.y);
+    harness.service.updateMechanism();
+    expect(force.startCoord.x).toBe(b.x);
+    expect(said(harness.service)).toEqual([]);
   });
 });

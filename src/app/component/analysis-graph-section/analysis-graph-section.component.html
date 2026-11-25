@@ -1,0 +1,67 @@
+<!-- One row per quantity: its name, what it reads at the pose on screen, and a
+     chevron. Pressed, it opens in place -- the split above the plot, the plot,
+     and the table of what each curve reaches. A card per quantity, each with
+     its own legend of switches, was what the rows replaced. -->
+<div class="graphSection" [class.open]="expanded()" [class.closed]="!expanded()">
+  <button
+    class="graphHeader"
+    type="button"
+    (click)="toggle()"
+    [attr.aria-expanded]="expanded()"
+    [attr.aria-label]="rowLabel() ? label() + (readout ? ' ' + readout + ' ' + unit : '') : null"
+  >
+    <span class="graphTitle">
+      {{ rowLabel() || label() }}
+      <!-- A question about the quantity, on its own mark beside the name, as
+           every other block's help is. On the whole row it fired on the way
+           to the chevron and hung over whatever was above. -->
+      @if (help) {
+        <mat-icon
+          class="graphHelp"
+          [matTooltip]="help"
+          matTooltipShowDelay="400"
+          aria-hidden="true"
+          (click)="$event.stopPropagation()"
+          >help_outline</mat-icon
+        >
+      }
+    </span>
+    <span class="graphValue">
+      @if (readout) {
+        {{ readout }} <span class="graphUnit">{{ unit }}</span>
+      } @else {
+        —
+      }
+    </span>
+    <mat-icon class="graphChevron">{{ expanded() ? 'expand_less' : 'chevron_right' }}</mat-icon>
+  </button>
+
+  <div class="graphBody" [@openClose]="expanded() ? 'open' : 'closed'">
+    @if (expanded()) {
+      <!-- Two lines or four, never six, and never a lone component: a plot
+           with a magnitude offers it or the pair, and a plot with only the
+           pair (a position) or only a magnitude (an angle) offers no choice. -->
+      @if (hasSplit) {
+        <segmented-block
+          class="seriesSplit"
+          [options]="splitOptions"
+          [selected]="mode === 'mag' ? 0 : 1"
+          [compact]="true"
+          (selectedChange)="setMode($event === 0 ? 'mag' : 'xy')"
+        ></segmented-block>
+      }
+      <app-analysis-graph
+        #graph
+        [analysis]="analysis()"
+        [analysisType]="analysisType()"
+        [mechProp]="mechProp()"
+        [mechPart]="mechPart()"
+        [displayLabel]="label()"
+        [reactionLinkId]="reactionLinkId()"
+        [unit]="unit"
+        [initialSeries]="shownSeries"
+        (shownSeriesChange)="adoptSeries($event)"
+      ></app-analysis-graph>
+    }
+  </div>
+</div>

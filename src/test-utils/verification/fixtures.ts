@@ -1,4 +1,5 @@
 import { MechanismFixture } from './fixture';
+import { INPUT_SPEED } from './slot-fixtures';
 
 // Fixtures mirror the MATLAB mechanism definitions in
 // PMKS-Web/PMKS_Verification (Initializer.m / main.m of each mechanism, with
@@ -34,7 +35,7 @@ export function teachingLabFourBarFixture(gravity = false): MechanismFixture {
 
 /**
  * Crank-slider. The MATLAB link is named BCE, where E is a sensor mounted
- * exactly at joint B, so the PMKS+ link is just BC; the prismatic joint takes
+ * exactly at joint B, so the PMKS link is just BC; the prismatic joint takes
  * the next free letter D.
  */
 export function teachingLabSliderCrankFixture(gravity = false): MechanismFixture {
@@ -48,7 +49,7 @@ export function teachingLabSliderCrankFixture(gravity = false): MechanismFixture
       { joints: 'AB', mass: 1.08532, moi: 0.0004647594, com: [0, 0.1] },
       { joints: 'BC', mass: 0.50144, moi: 0.0030344427, com: [0.5, 0.7] },
     ],
-    slider: { at: 'C', prisId: 'D', angleRad: 0, pistonMass: 1.31788 },
+    slider: { at: 'C', angleRad: 0, pistonMass: 1.31788 },
     inputAngVel: rpmToRadPerSec(15.1),
     gravity,
   };
@@ -67,7 +68,7 @@ export function sliderCrankTracerFixture(): MechanismFixture {
       { joints: 'AB', mass: 5, moi: 0.1 },
       { joints: 'BCD', mass: 10, moi: 0.2 },
     ],
-    slider: { at: 'C', prisId: 'E', angleRad: 0 },
+    slider: { at: 'C', angleRad: 0 },
     inputAngVel: rpmToRadPerSec(10),
   };
 }
@@ -123,5 +124,234 @@ export function wattIFixture(gravity = false): MechanismFixture {
     },
     inputAngVel: rpmToRadPerSec(10),
     gravity,
+  };
+}
+
+/**
+ * Gate 6: one four-bar, drivable from either of two joints.
+ *
+ * `drivenAt: 'A'` is the ordinary machine — a grounded crank, solved by the
+ * walk. `drivenAt: 'C'` drives the *coupler–rocker pin*, which is a floating
+ * joint: nothing about its position is known when the walk starts, so it
+ * reaches the constraint set instead (§2.9, Phase 6).
+ *
+ * The point of having both is that they are the same mechanism. Whatever the
+ * coupler traces one way it must trace the other, which makes the reference
+ * exact and leaves no data to drift.
+ *
+ * Grashof proportions, so the crank turns fully: ground 4, crank 1.5,
+ * coupler 3.5, rocker 3. T is a tracer on the coupler, off its line, so the
+ * curve it draws is a real coupler curve rather than a circle.
+ */
+export function fourBarDrivenAtFixture(
+  drivenAt: 'A' | 'C',
+  /**
+   * Hang a second chain off the driven pin, so three bodies meet there. An
+   * input then names no particular pair of them (§2.9), and the mechanism has
+   * to say so rather than drive one of them and hope.
+   */
+  extraChainAtC: boolean = false
+): MechanismFixture {
+  return {
+    joints: [
+      { id: 'O', x: 0, y: 0, ground: true, input: drivenAt === 'A' },
+      { id: 'A', x: 0.45, y: 1.43 },
+      { id: 'C', x: 3.3, y: 2.4, input: drivenAt === 'C' },
+      { id: 'D', x: 4, y: 0, ground: true },
+      { id: 'T', x: 2.1, y: 3.3 },
+      ...(extraChainAtC
+        ? [
+            { id: 'U', x: 5.2, y: 2.9 },
+            { id: 'V', x: 6.4, y: 1.4, ground: true },
+          ]
+        : []),
+    ],
+    links: [
+      { joints: 'OA' },
+      { joints: 'ACT' },
+      { joints: 'CD' },
+      ...(extraChainAtC ? [{ joints: 'CU' }, { joints: 'UV' }] : []),
+    ],
+    inputAngVel: INPUT_SPEED,
+  };
+}
+
+/**
+ * Two crank-rockers side by side in one drawing, sharing nothing.
+ *
+ * The gallery's first two-machine mechanism. What it is for is not that a
+ * second four-bar can be drawn — it always could — but that drawing it no
+ * longer breaks the first: everything used to go into one Mechanism, so the
+ * document read as 2 degrees of freedom and *both* machines stopped solving.
+ * Opened from this URL the app should partition it into M1 and M2, each 1-DoF
+ * with its own input, its own playback row and its own clock.
+ */
+export function twoFourBarsFixture(): MechanismFixture {
+  const bar = (from: string, offset: number) => {
+    const letter = (n: number) => String.fromCharCode(from.charCodeAt(0) + n);
+    return {
+      joints: [
+        { id: letter(0), x: offset, y: 0, ground: true, input: true },
+        { id: letter(1), x: offset, y: 1 },
+        { id: letter(2), x: offset + 3, y: 2 },
+        { id: letter(3), x: offset + 4, y: 0, ground: true },
+      ],
+      links: [
+        { joints: letter(0) + letter(1) },
+        { joints: letter(1) + letter(2) },
+        { joints: letter(2) + letter(3) },
+      ],
+    };
+  };
+  const first = bar('A', 0);
+  const second = bar('E', 10);
+  return {
+    joints: [...first.joints, ...second.joints],
+    links: [...first.links, ...second.links],
+    inputAngVel: INPUT_SPEED,
+  };
+}
+
+/**
+ * A crank-rocker one edit away from being neither.
+ *
+ * Its links are 1.85, 2.75, 3.45 and 4.20: shortest plus longest is 6.05
+ * against 6.20 for the other two, so Grashof holds by 0.15 and a crank about a
+ * third longer breaks it.
+ *
+ * Grashof's condition -- whether the shortest link can turn all the way round
+ * -- is a comparison between four lengths, so it is always one drag from
+ * changing. This one sits close enough to the boundary that lengthening the
+ * crank a little crosses it, which is the mainline case for an anchor becoming
+ * unreachable (`docs/edit-mode-playback-plan.md` §6.1): the input that used to
+ * go round now rocks between limits, and the value the cycle started at is
+ * outside them.
+ *
+ * Published so a reader can open the mechanism the test is about and try the
+ * drag themselves, rather than rebuilding it from a spec by hand.
+ */
+export function nearlyNonGrashofFixture(): MechanismFixture {
+  return {
+    joints: [
+      { id: 'A', x: 0, y: 0, ground: true, input: true },
+      { id: 'B', x: 0, y: 1.85 },
+      { id: 'C', x: 2.5, y: 3.0 },
+      { id: 'D', x: 4.2, y: 0, ground: true },
+    ],
+    links: [{ joints: 'AB' }, { joints: 'BC' }, { joints: 'CD' }],
+    inputAngVel: INPUT_SPEED,
+  };
+}
+
+/**
+ * A rocker whose swing is wider than a full turn.
+ *
+ * Ten pins and eight bars, drawn by a reader who found that it "says it loops
+ * but does not come back". An independent continuation of its configuration
+ * curve puts the crank's range at 444 degrees: from where it is drawn it turns
+ * clockwise through a whole revolution and 75 degrees more, stops, comes back,
+ * passes the start, stops 9 degrees beyond it, and comes back again.
+ *
+ * The sweep used to close every crank on the count of one revolution, and
+ * this one is not home after one -- the drawing at 360 degrees is half a
+ * mechanism away from the drawing at 0 -- so it was published as looping,
+ * with every joint but the crank teleporting at the wrap. The count of a
+ * revolution is only a cycle when the drawing is home on it.
+ */
+export function wideSwingRockerFixture(): MechanismFixture {
+  return {
+    joints: [
+      { id: 'A', x: -0.154, y: 0.528, ground: true, input: true, driveSpeed: -10 },
+      { id: 'B', x: 6.17, y: 0, ground: true },
+      { id: 'C', x: 0.97, y: 2.123 },
+      { id: 'D', x: 0.841, y: 0.28 },
+      { id: 'E', x: 2.641, y: 3.107 },
+      { id: 'F', x: 6.17, y: 3.107 },
+      { id: 'G', x: 4.665, y: 2.031 },
+      { id: 'H', x: 3.141, y: 1.303 },
+      { id: 'I', x: 3.954, y: -0.407 },
+      { id: 'J', x: 3.881, y: 1.886 },
+    ],
+    links: [
+      { joints: 'ACD' },
+      { joints: 'CE' },
+      { joints: 'EFG' },
+      { joints: 'BFJ' },
+      { joints: 'DHI' },
+      { joints: 'GH' },
+      { joints: 'IJ' },
+    ],
+    inputAngVel: -INPUT_SPEED,
+  };
+}
+
+/**
+ * The stock four-bar with its crank holding its length.
+ *
+ * Published so a reader can open a mechanism with a hold already on it and
+ * try the drag: B rides the arc about A, the amber guide shows the arc, and
+ * the chip on the crank names the length being held. The hold is the URL's
+ * `Hl` entry, so this link is also what proves it decodes.
+ */
+export function heldCrankFourBarFixture(): MechanismFixture {
+  return {
+    joints: [
+      { id: 'A', x: 0, y: 0, ground: true, input: true },
+      { id: 'B', x: 0, y: 2 },
+      { id: 'C', x: 3, y: 3 },
+      { id: 'D', x: 4, y: 0, ground: true },
+    ],
+    links: [{ joints: 'AB' }, { joints: 'BC' }, { joints: 'CD' }],
+    holds: [{ link: 'AB', hold: 'length' }],
+    inputAngVel: INPUT_SPEED,
+  };
+}
+
+/**
+ * A parallelogram with a third parallel crank -- Gruebler's paradox, drawn.
+ *
+ * Three equal cranks stand side by side, all pinned to ground and all carrying
+ * one coupler. Counting bodies and joints gives zero, and the thing turns
+ * perfectly well: the third crank repeats a constraint the first two already
+ * made, and the count has no way to know. Reported by a reader whose drawing
+ * refused to simulate.
+ */
+export function redundantParallelCrankFixture(): MechanismFixture {
+  return {
+    joints: [
+      { id: 'A', x: 0, y: 0, ground: true },
+      { id: 'B', x: 0, y: 2 },
+      { id: 'E', x: 4, y: 2 },
+      { id: 'F', x: 4, y: 0, ground: true },
+      { id: 'I', x: 2, y: 2 },
+      { id: 'J', x: 2, y: 0, ground: true, input: true },
+    ],
+    links: [{ joints: 'AB' }, { joints: 'EF' }, { joints: 'BEI' }, { joints: 'IJ' }],
+    inputAngVel: INPUT_SPEED,
+  };
+}
+
+/**
+ * A four-bar whose four links are all the same length -- a rhombus.
+ *
+ * It turns as a parallelogram, and twice a turn it folds flat: at a quarter and
+ * three-quarters every joint is on one line, which is the change point every
+ * equal-sided four-bar has. Both are places a solver can come back on the wrong
+ * assembly branch, and one reader watching this one saw exactly that -- the
+ * linkage arriving somewhere else at the end of a cycle the transport still
+ * called a loop. Reported from a shared link, and kept here because a mechanism
+ * that folds through a straight line is the hardest thing a position solver is
+ * asked to do.
+ */
+export function equalSidedFourBarFixture(): MechanismFixture {
+  return {
+    joints: [
+      { id: 'A', x: 0, y: 0, ground: true, input: true },
+      { id: 'B', x: 0, y: 2 },
+      { id: 'G', x: 2, y: 2 },
+      { id: 'H', x: 2, y: 0, ground: true },
+    ],
+    links: [{ joints: 'AB' }, { joints: 'BG' }, { joints: 'GH' }],
+    inputAngVel: INPUT_SPEED,
   };
 }

@@ -1,6 +1,11 @@
 @use 'sass:map';
 @use '@angular/material' as mat;
 
+// The plot draws itself this tall, axis included. The mock's plot is a short
+// wide strip: 400px is a poor width for reading a curve, and what a row wants
+// is the shape of the cycle with the numbers underneath, not a tall chart.
+$plot-height: 190px;
+
 @mixin css($theme) {
   // Get the color config from the theme.
   $color-config: mat.m2-get-color-config($theme);
@@ -11,110 +16,68 @@
   $background: map.get($theme, background);
   $foreground: map.get($theme, foreground);
 
-  #graph-checkbox-list-three {
+  // Stands where the chart would, at the chart's own height.
+  //
+  // Shorter, it was: turning the last series off shrank the card by ninety
+  // pixels, and in a panel scrolled to the bottom the browser clamps the scroll
+  // to the shorter content and does not put it back -- so a click on the legend
+  // of the last graph scrolled the panel out from under the pointer.
+  .graphPlaceholder {
     display: flex;
-    flex-direction: row;
-    justify-content: space-between;
     align-items: center;
-    padding-left: 4px;
-    padding-right: 10px;
-    margin-top: -10px;
-    margin-bottom: -25px;
-  }
-
-  #graph-checkbox-list-two {
-    display: flex;
-    flex-direction: row;
-    justify-content: start;
-    align-items: center;
-    gap: 20px;
-    padding-left: 4px;
-    padding-right: 10px;
-    margin-top: -10px;
-    margin-bottom: -25px;
-  }
-
-  #graph-checkbox-list-three,
-  #graph-checkbox-list-two {
-    // The negative bottom margin above pulls the chart up into this row, so the
-    // chart's SVG paints over the labels and swallows clicks meant for them.
-    // Lifting the row restores the label as a hit target for its checkbox.
-    position: relative;
-    z-index: 1;
-
-    .mdc-form-field {
-      align-items: center;
-    }
-
-    .mdc-label {
-      line-height: 20px;
-    }
-
-    .series-x {
-      --mat-checkbox-selected-focus-icon-color: #313aa7;
-      --mat-checkbox-selected-hover-icon-color: #313aa7;
-      --mat-checkbox-selected-icon-color: #313aa7;
-      --mat-checkbox-selected-pressed-icon-color: #313aa7;
-      --mat-checkbox-selected-focus-state-layer-color: #313aa7;
-      --mat-checkbox-selected-hover-state-layer-color: #313aa7;
-      --mat-checkbox-selected-pressed-state-layer-color: #313aa7;
-    }
-
-    .series-y {
-      --mat-checkbox-selected-focus-icon-color: #ea2b29;
-      --mat-checkbox-selected-hover-icon-color: #ea2b29;
-      --mat-checkbox-selected-icon-color: #ea2b29;
-      --mat-checkbox-selected-pressed-icon-color: #ea2b29;
-      --mat-checkbox-selected-focus-state-layer-color: #ea2b29;
-      --mat-checkbox-selected-hover-state-layer-color: #ea2b29;
-      --mat-checkbox-selected-pressed-state-layer-color: #ea2b29;
-    }
-
-    .series-z {
-      --mat-checkbox-selected-focus-icon-color: #fdb50e;
-      --mat-checkbox-selected-hover-icon-color: #fdb50e;
-      --mat-checkbox-selected-icon-color: #fdb50e;
-      --mat-checkbox-selected-pressed-icon-color: #fdb50e;
-      --mat-checkbox-selected-focus-state-layer-color: #fdb50e;
-      --mat-checkbox-selected-hover-state-layer-color: #fdb50e;
-      --mat-checkbox-selected-pressed-state-layer-color: #fdb50e;
-    }
-  }
-
-  #shift-up {
-    margin-top: -100px;
-    background-color: red;
-  }
-
-  #graphHide {
-    background-color: rgb(255, 255, 255);
-    position: absolute;
-    top: 100px;
-    left: 0;
-    width: 100%;
-    height: 240px;
-    z-index: 100;
-    display: flex;
     justify-content: center;
-    align-items: start;
-    color: black;
+    min-height: $plot-height - 6px;
+    margin: 4px 0 8px;
+    border: 1px dashed var(--border-divider);
     border-radius: var(--border-radius);
-    pointer-events: none;
-    padding-top: 80px;
-
-    &.compact-single-series {
-      top: 60px;
-    }
+    background: var(--surface-subtle);
+    color: var(--text-tertiary);
+    font-size: 13px;
+    text-align: center;
+    padding: 0 16px;
   }
 
-  app-analysis-apex-chart.compact-single-series {
+  app-analysis-apex-chart.hidden {
+    display: none;
+  }
+
+  // The floor is the height the chart draws itself at. Apex empties its host
+  // for an instant while it re-lays a chart out, and a host that collapses to
+  // nothing takes the panel's scroll position with it.
+  app-analysis-apex-chart {
     display: block;
-    margin-top: -40px;
+    min-height: $plot-height;
   }
 
+  // A host shorter than the chart does not make a shorter chart, it cuts the
+  // bottom off one -- which is where the time axis's label lives.
   app-analysis-apex-chart > div:not(.chart-render-error) {
     min-height: 0 !important;
-    height: 225px !important;
+    height: auto !important;
+  }
+
+  // Nothing below the plot but the axis it belongs to.
+  .apexcharts-canvas {
+    margin-bottom: -6px;
+  }
+
+  // Apex clips at its own SVG, which sits a few pixels inside the row -- so a
+  // marker riding the playhead lost its edge at the end of a cycle, and its top
+  // at the peak of a curve. The series are clipped by a mask of their own
+  // rather than by this, so letting the SVG overflow frees the marks and moves
+  // nothing else. The row outside it still clips, with a margin wide enough to
+  // hold a mark and no more.
+  .apexcharts-svg {
+    overflow: visible !important;
+  }
+
+  // A container Apex leaves in the DOM with a border on it whether or not there
+  // is anything to say. Empty, it reads as a stray box floating over the plot,
+  // and half of one while the row is opening.
+  .apexcharts-tooltip:not(.apexcharts-active),
+  .apexcharts-xaxistooltip:not(.apexcharts-active),
+  .apexcharts-yaxistooltip:not(.apexcharts-active) {
+    display: none !important;
   }
 
   .chart-render-error {
@@ -127,37 +90,122 @@
     color: mat.m2-get-color-from-palette($primary-palette, 900);
   }
 
-  #csvDownload {
-    width: 100%;
-    border-color: mat.m2-get-color-from-palette($primary-palette, 500) !important;
-    margin-top: 6px;
-    margin-bottom: 10px;
-
-    .mdc-button__label {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      line-height: 20px;
-      white-space: nowrap;
-    }
-
-    .mat-icon {
-      margin: 0;
-      height: 20px;
-      width: 20px;
-      font-size: 20px;
-      line-height: 20px;
-    }
-  }
-
+  // Sized like its siblings — the gap strip above the chart and the
+  // placeholder that stands in for one. Left to inherit, this spoke at the
+  // panel's base size out of a 16px-padded box, and read as a headline
+  // rather than as one more quiet note about the chart.
   .analysis-diagnostic {
-    margin: 16px 4px 12px;
-    padding: 16px;
+    margin: 4px 0 8px;
+    padding: 8px 12px;
     border: 1px solid mat.m2-get-color-from-palette($primary-palette, 200);
     border-radius: var(--border-radius);
     background: mat.m2-get-color-from-palette($primary-palette, 50);
     color: mat.m2-get-color-from-palette($primary-palette, 900);
-    line-height: 1.4;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+}
+
+.analysis-gap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  font-size: 12.5px;
+
+  .gapIcon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+  }
+
+  .gapShow {
+    margin-left: auto;
+    border: none;
+    background: none;
+    color: var(--warning-text);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+  }
+}
+
+// The numbers under the plot: a column each for the maximum and the minimum,
+// a row per series, and under a series its values from before the drag while
+// there is a comparison to make. The first column is the name column, and it
+// is fixed so the numbers line up down the table whatever the names are.
+.statsTable {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 0;
+  padding: 8px 0 10px;
+  border-top: 1px solid var(--border-rule);
+  font-variant-numeric: tabular-nums;
+}
+
+.statsHead,
+.statsRow {
+  display: grid;
+  grid-template-columns: 58px 1fr 1fr;
+  gap: 3px 10px;
+  align-items: baseline;
+}
+
+.statsHead span {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.statsName,
+.statsBeforeName {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.statsName {
+  font-size: 12.5px;
+  color: var(--text-primary);
+}
+
+// The swatch is the legend: the same ink the curve is drawn in, and for the
+// earlier curve the same dashes.
+.statsSwatch {
+  width: 18px;
+  height: 3px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+
+.statsValue {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-strong);
+
+  .statsUnit {
+    font-size: 11.5px;
+    font-weight: 400;
+    color: var(--text-secondary);
+  }
+}
+
+.statsBeforeName,
+.statsBefore {
+  font-size: 12px;
+  color: var(--text-tertiary);
+
+  svg {
+    display: block;
+    flex: 0 0 auto;
   }
 }

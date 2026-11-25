@@ -11,10 +11,11 @@
   $background: map.get($theme, background);
   $foreground: map.get($theme, foreground);
 
+  // The frame around this leaves the card's shadow its room; a second inset
+  // here would put the card 10px in from where every other card sits.
   #analysisWrapper {
     display: flex;
     flex-direction: column;
-    padding: 10px;
     gap: 10px;
   }
 
@@ -54,10 +55,228 @@
     // }
   }
 }
-#analysisWrapper .analysis-message {
-  margin: 8px 0 12px;
-  padding: 12px;
-  border-radius: var(--border-radius);
-  background: #f4f5fb;
-  line-height: 1.4;
+// The head of a panel of graphs. Sized as the title block it replaced -- the
+// same 20px title on the same gutter -- with a chip on the title's line and a
+// switch on the subtitle's, each shown only while it has something to say.
+#analysisWrapper .panelHead {
+  padding: 10px 15px 8px;
+  background: var(--card-surface);
+}
+
+#analysisWrapper .panelTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 30px;
+  color: var(--text-strong);
+}
+
+#analysisWrapper .panelTitleText,
+#analysisWrapper .panelSubText {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+// Names what is under the hand, in the accent the status strip uses for it.
+#analysisWrapper .tuningChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 11px;
+  background: var(--brand-tint);
+  color: var(--brand-dark);
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+
+  mat-icon {
+    width: 14px;
+    height: 14px;
+    font-size: 14px;
+    line-height: 14px;
+  }
+}
+
+#analysisWrapper .panelSub {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 22px;
+  padding-top: 2px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text-secondary);
+}
+
+// The switch that shows or hides the curves from before the drag, on every
+// open graph at once. The app's toggle block at its `compact` size, which is
+// what the block now calls the treatment this file used to write by hand --
+// four rules naming `#toggle-block`'s private ids from outside it.
+#analysisWrapper .compareToggle {
+  flex: 0 0 auto;
+}
+
+// The rows, on the panel's text gutter, closed off by a rule under the last.
+#analysisWrapper .rowList {
+  padding: 0 15px;
+
+  &::after {
+    content: '';
+    display: block;
+    margin: 0 -6px;
+    border-top: 1px solid var(--border-rule);
+  }
+}
+
+#analysisWrapper .rowList:last-child {
+  padding-bottom: 14px;
+}
+
+// The title and strip share the sticky head; the body has the spec's 6px rhythm.
+#analysisWrapper .tabbedAnalysis #normalPanel {
+  gap: 6px;
+  padding-bottom: 14px;
+}
+
+#analysisWrapper .panelHead.tabbedHead {
+  padding: 10px 0 0;
+  margin-bottom: -3px;
+
+  .panelTitle,
+  .panelSub {
+    padding-left: 15px;
+    padding-right: 15px;
+  }
+
+  .panelTitle {
+    flex-wrap: wrap;
+  }
+
+  app-tabs-block {
+    display: block;
+    margin-top: 6px;
+  }
+}
+
+#analysisWrapper .analysisTabPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  &[hidden] {
+    display: none;
+  }
+}
+
+#analysisWrapper .tabbedAnalysis .rowList {
+  padding-bottom: 0;
+
+  > app-analysis-graph-section:first-child .graphSection {
+    border-top: 0;
+  }
+}
+
+#analysisWrapper .noReaction {
+  margin: 4px 15px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+// The help card's hint pattern, worn inside a panel section: the card brings
+// its own padding, a section does not, so the rows take the section's 15px
+// gutter themselves. As padding, not margin — the row is stretched to the
+// section's full width, and a side margin pushed it out the right edge.
+#analysisWrapper panel-section .helpRule {
+  margin: 4px 15px 12px;
+  width: auto;
+}
+#analysisWrapper panel-section .helpHint {
+  margin: 0 0 14px;
+  padding: 0 15px;
+}
+
+// Why a force has no graph, and the one click to the thing that does. Sized
+// like `.helpHint` above, which is the panel's other quiet explanatory line.
+//
+// The way out is an underlined word inside the sentence rather than a button
+// beside it -- the same idiom the Edit panel's refusal strip uses, for the same
+// reason: the panel is 400px wide and a sentence with a button hard against it
+// wraps into four words and a control.
+#analysisWrapper panel-section .forceRedirect {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+#analysisWrapper panel-section .forceRedirectAction {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--brand-dark);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+  cursor: pointer;
+  vertical-align: baseline;
+
+  &:hover {
+    color: var(--brand-darker);
+  }
+}
+
+// The chips under the graphs: one row of four outlined chips in a block of
+// its own with the section's gutter, ruled off from the last graph. On, a
+// chip's glyph takes the arrow's own ink -- the color the trace is drawn in.
+// Gray carries the menu's reason on hover.
+#analysisWrapper .drawingSwitches {
+  container-type: inline-size;
+  margin: 0;
+  padding: 8px 15px 14px;
+
+  .drawingSwitchesHead {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0 0 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .drawingSwitchesHelp {
+    width: 18px;
+    height: 18px;
+    font-size: 15px;
+    line-height: 18px;
+    color: var(--text-disabled);
+    cursor: help;
+  }
+
+  // The switches are `app-view-button` at its labelled size; what is left
+  // here is the row they sit in.
+  .drawingChips {
+    display: grid;
+    grid-template-columns: 0.75fr 1fr 1.4fr 0.85fr;
+    gap: 6px;
+  }
+
+  .drawingChips.threeChips {
+    grid-template-columns: 0.75fr 1fr 1.4fr;
+  }
+
+  @container (max-width: 360px) {
+    .drawingChips:not(.threeChips) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+}
+
+#analysisWrapper .tabbedAnalysis .drawingSwitches {
+  padding-bottom: 0;
 }

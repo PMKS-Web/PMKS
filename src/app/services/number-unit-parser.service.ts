@@ -10,10 +10,18 @@ import {
 } from '../model/utils';
 import {
   ANGULAR_VELOCITY_TO_RAD_PER_SEC,
+  FORCE_TO_N,
   INERTIA_TO_KG_M2,
   MASS_TO_KG,
   TIME_TO_SECONDS,
 } from '../model/unit-conversions';
+import { MODEL_SCALE } from '../model/render-scale';
+import {
+  displayMassUnit,
+  inertiaUnitFor,
+  storedInertiaUnit,
+  storedMassUnit,
+} from '../model/mass-units';
 
 type AnyUnit =
   LengthUnit | AngleUnit | AngularVelocityUnit | ForceUnit | MassUnit | InertiaUnit | TimeUnit;
@@ -41,6 +49,8 @@ export class NumberUnitParserService {
         return 'lbf';
       case ForceUnit.NEWTON:
         return 'N';
+      case ForceUnit.KGF:
+        return 'kgf';
       case MassUnit.GRAM:
         return 'g';
       case MassUnit.KG:
@@ -49,8 +59,12 @@ export class NumberUnitParserService {
         return 'lbm';
       case InertiaUnit.KG_CM2:
         return 'kg·cm²';
+      case InertiaUnit.G_CM2:
+        return 'g·cm²';
       case InertiaUnit.KG_M2:
         return 'kg·m²';
+      case InertiaUnit.G_M2:
+        return 'g·m²';
       case InertiaUnit.LBM_IN2:
         return 'lbm·in²';
       case AngularVelocityUnit.RPM:
@@ -69,11 +83,45 @@ export class NumberUnitParserService {
     return '';
   }
 
+  /**
+   * The unit a torque reads in: the force unit times the length unit, always.
+   *
+   * One rule rather than three cases. Pounds-force already paired with inches
+   * because inches is what English measures in; centimeters was the one system
+   * where the torque did not follow its own drawing, so a reader working in cm
+   * was shown a moment in meters with a silent hundredth in the middle of it.
+   * A reader who wants the textbook's N·m picks SI, which is what that option
+   * is for.
+   *
+   * One function, because an axis title, a card's caption and an exported
+   * column heading all have to say the same thing.
+   */
+  public torqueLabel(force: ForceUnit, length: LengthUnit): string {
+    return `${this.unitLabel(force)}·${this.unitLabel(length)}`;
+  }
+
   public formatValueAndUnit(value: number, units: AnyUnit): string {
     const label = this.unitLabel(units);
     if (label === '') return 'Error in formatValueAndUnit()';
     const decimals = units === AngleUnit.DEGREE ? 0 : 2;
-    return value.toFixed(decimals) + ' ' + label;
+    const rounded = value.toFixed(decimals);
+    return (Number(rounded) === 0 ? (0).toFixed(decimals) : rounded) + ' ' + label;
+  }
+
+  /**
+   * Format a length held in internal model units (MODEL_SCALE times the user's
+   * unit — see render-scale.ts) for display in the user's unit. The one
+   * companion of parseModelLengthString: every panel that shows a model length
+   * goes through this pair so the internal scale never reaches the screen.
+   */
+  public formatModelLength(modelValue: number, units: LengthUnit): string {
+    return this.formatValueAndUnit(modelValue / MODEL_SCALE, units);
+  }
+
+  /** Parse user input in user units and return internal model units. */
+  public parseModelLengthString(input: string, desiredUnits: LengthUnit): [boolean, number] {
+    const [success, value] = this.parseLengthString(input, desiredUnits);
+    return [success, value * MODEL_SCALE];
   }
 
   public preProcessInput(input: string): [number, string] {
@@ -210,6 +258,11 @@ export class NumberUnitParserService {
       case 'pounds':
         givenUnits = ForceUnit.LBF;
         break;
+      // Not bare 'kg', which is a mass and means something else two fields up.
+      case 'kgf':
+      case 'kilogramforce':
+        givenUnits = ForceUnit.KGF;
+        break;
       default:
         return [false, value];
     }
@@ -259,16 +312,124 @@ export class NumberUnitParserService {
 
   public getInertiaUnit(input: string): InertiaUnit {
     switch (this.normalizeUnitToken(input)) {
+      case 'gcm2':
+        return InertiaUnit.G_CM2;
       case 'kgcm2':
         return InertiaUnit.KG_CM2;
       case 'kgm2':
         return InertiaUnit.KG_M2;
+      case 'gm2':
+        return InertiaUnit.G_M2;
       case 'lbmin2':
       case 'lbin2':
         return InertiaUnit.LBM_IN2;
       default:
         return InertiaUnit.NULL;
     }
+  }
+
+  /**
+   * The mass unit stored under a length system: g / kg / lbm.
+   *
+   * Not necessarily the one a reader sees -- under centimeters and meters that
+   * is their pick (`displayMassUnit`); see model/mass-units.ts for why the two
+   * are kept apart.
+   */
+  public storedMassUnit(length: LengthUnit): MassUnit {
+    return storedMassUnit(length);
+  }
+
+  /** The mass unit a reader sees: their pick under cm and m, lbm under inches. */
+  public displayMassUnit(length: LengthUnit, chosen: MassUnit): MassUnit {
+    return displayMassUnit(length, chosen);
+  }
+
+  /** A stored mass, formatted in the unit the reader chose. */
+  public formatStoredMass(stored: number, length: LengthUnit, chosen: MassUnit): string {
+    const display = displayMassUnit(length, chosen);
+    return this.formatValueAndUnit(
+      this.convertMass(stored, storedMassUnit(length), display),
+      display
+    );
+  }
+
+  /** Typed in the reader's mass unit (or any unit typed with it), returned as stored. */
+  public parseStoredMass(input: string, length: LengthUnit, chosen: MassUnit): [boolean, number] {
+    const [success, value] = this.parseMassString(input, displayMassUnit(length, chosen));
+    return [
+      success,
+      success
+        ? this.convertMass(value, displayMassUnit(length, chosen), storedMassUnit(length))
+        : value,
+    ];
+  }
+
+  /**
+   * The unit an inertia field shows beside its number: the reader's mass unit
+   * times the length squared -- g·cm², kg·cm², g·m², kg·m² or lbm·in².
+   */
+  public displayInertiaUnit(length: LengthUnit, mass: MassUnit): InertiaUnit {
+    return inertiaUnitFor(mass, length);
+  }
+
+  /**
+   * The unit link.massMoI is *stored* in, per length system — the one the
+   * solver's siUnitFactors and every circulating URL are written against.
+   */
+  public storedInertiaUnit(length: LengthUnit): InertiaUnit {
+    return storedInertiaUnit(length);
+  }
+
+  /** A stored inertia, formatted in the display unit for this length and mass. */
+  public formatStoredInertia(stored: number, length: LengthUnit, mass: MassUnit): string {
+    const display = inertiaUnitFor(mass, length);
+    return this.formatValueAndUnit(
+      this.convertInertia(stored, storedInertiaUnit(length), display),
+      display
+    );
+  }
+
+  /** Typed in the display inertia unit (or any unit typed with it), returned as stored. */
+  public parseStoredInertia(input: string, length: LengthUnit, mass: MassUnit): [boolean, number] {
+    const display = inertiaUnitFor(mass, length);
+    const [success, value] = this.parseInertiaString(input, display);
+    return [
+      success,
+      success ? this.convertInertia(value, display, storedInertiaUnit(length)) : value,
+    ];
+  }
+
+  /**
+   * The unit a force is *stored* in, per length system — the one the solver's
+   * siUnitFactors and every circulating URL are written against.
+   *
+   * The reader's chosen force unit is a separate thing: under metric and SI
+   * they may read newtons or kilograms-force, and the stored number is
+   * newtons either way.
+   */
+  public storedForceUnit(length: LengthUnit): ForceUnit {
+    return length === LengthUnit.INCH ? ForceUnit.LBF : ForceUnit.NEWTON;
+  }
+
+  /** A stored force, formatted in whichever force unit the reader chose. */
+  public formatStoredForce(stored: number, length: LengthUnit, display: ForceUnit): string {
+    return this.formatValueAndUnit(
+      this.convertForce(stored, this.storedForceUnit(length), display),
+      display
+    );
+  }
+
+  /** Typed in the reader's force unit, returned in the one storage uses. */
+  public parseStoredForce(
+    input: string,
+    length: LengthUnit,
+    display: ForceUnit
+  ): [boolean, number] {
+    const [success, value] = this.parseForceString(input, display);
+    return [
+      success,
+      success ? this.convertForce(value, display, this.storedForceUnit(length)) : value,
+    ];
   }
 
   public parseInertiaString(input: string, desiredUnits: InertiaUnit): [boolean, number] {
@@ -455,28 +616,7 @@ export class NumberUnitParserService {
     return value;
   }
 
-  private convertForce(value: number, givenUnits: ForceUnit, desiredUnits: ForceUnit): number {
-    if (givenUnits == desiredUnits) return value;
-    switch (givenUnits) {
-      case ForceUnit.NEWTON:
-        switch (desiredUnits) {
-          case ForceUnit.LBF:
-            return value * 0.224809;
-        }
-        break;
-      case ForceUnit.LBF:
-        switch (desiredUnits) {
-          case ForceUnit.NEWTON:
-            return value / 0.224809;
-        }
-        break;
-    }
-    console.error(
-      'Error in NumberUnitParserService.convertForce(): No valid conversion found between ' +
-        ForceUnit[givenUnits] +
-        ' and ' +
-        ForceUnit[desiredUnits]
-    );
-    return value;
+  public convertForce(value: number, givenUnits: ForceUnit, desiredUnits: ForceUnit): number {
+    return this.convertViaBase(value, givenUnits, desiredUnits, FORCE_TO_N, 'convertForce');
   }
 }

@@ -1,21 +1,30 @@
 <div id="editable-title-block">
   @if (!editMode) {
-    <div class="editModeRow">
+    <div class="editModeRow titleRow">
       <ng-container *ngTemplateOutlet="contentTpl"></ng-container>
-      {{ activeObjService.getSelectedObj().name }}
-      <!--    <button id='title-icon-button' mat-icon-button (click)='gotoEditMode()' matTooltip='Edit the name of this object.'-->
+      <span class="objectName">{{
+        ' ' + (displayName() ?? activeObjService.getSelectedObj()?.name ?? '')
+      }}</span>
       <!--            [matTooltipShowDelay]='1000' matTooltipPosition='above'>-->
-      <!--      <mat-icon>edit</mat-icon>-->
-      <!--    </button>-->
     </div>
   }
   @if (editMode) {
     <div class="editModeRow" [formGroup]="newIDForm">
       <ng-container *ngTemplateOutlet="contentTpl"></ng-container>
       <mat-form-field class="customInputForm">
+        <!-- Nothing here is a person's name, and Safari fills anything it
+             thinks is one from the reader's contact card: no autocomplete,
+             and a label that does not say "name". -->
         <input
           class="customInput"
           id="title-input-box"
+          aria-label="Title"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          spellcheck="false"
+          data-1p-ignore
+          data-lpignore="true"
           matInput
           type="text"
           #field
@@ -25,31 +34,71 @@
           appPrefixFocusAndSelect
         />
       </mat-form-field>
-      <!--    <input id='title-input-box' type='text' formControlName='newID' (keyup.enter)='saveNewID()'-->
-      <!--           (keyup.escape)='exitEditModeWithoutSaving()' appPrefixFocusAndSelect />-->
-      <!--    <button id='title-icon-button' mat-icon-button color='primary' (click)='saveNewID()'-->
       <!--            matTooltip='Save this name. Escape to cancel.'-->
       <!--            [matTooltipShowDelay]='1000' matTooltipPosition='above'>-->
-      <!--      <mat-icon>check</mat-icon>-->
-      <!--    </button>-->
     </div>
   }
+  <!-- Three actions in the row now, so the rename labels are the short ones. -->
   <div class="row">
-    @if (!editMode) {
-      <button class="mini-buttons blue" mat-stroked-button color="primary" (click)="gotoEditMode()">
-        <mat-icon svgIcon="edit_outline"></mat-icon>
-        Edit Name
+    <!-- One button for both halves of the rename gesture, sized by its wider
+         word the same way the lock button is — entering edit mode must not
+         reshuffle the row. Absent for a group, which has no one name. -->
+    @if (renamable()) {
+      <button
+        class="mini-buttons blue"
+        mat-stroked-button
+        color="primary"
+        (click)="editMode ? saveNewID() : gotoEditMode()"
+      >
+        @if (editMode) {
+          <mat-icon>check</mat-icon>
+        } @else {
+          <mat-icon svgIcon="edit_outline"></mat-icon>
+        }
+        <span class="labelSwap">
+          <span [style.visibility]="editMode ? 'hidden' : 'visible'">Rename</span>
+          <span [style.visibility]="editMode ? 'visible' : 'hidden'">Save</span>
+        </span>
       </button>
     }
-    @if (editMode) {
-      <button class="mini-buttons blue" mat-stroked-button color="primary" (click)="saveNewID()">
-        <mat-icon>check</mat-icon>
-        Save Name
+    @if (showsLock()) {
+      <!-- The icon states, the label acts: a locked object shows the closed
+           padlock beside the word Unlock. Both labels are always in the box,
+           one invisible, so the button is sized by the wider word and nothing
+           shifts when it toggles. -->
+      <button
+        class="mini-buttons blue"
+        mat-stroked-button
+        color="primary"
+        (click)="toggleLock()"
+        [appShortcutTip]="isLocked() ? 'Unlock' : 'Lock'"
+        shortcutTipFor="edit.lock"
+      >
+        <mat-icon svgIcon="{{ isLocked() ? 'lock' : 'unlock' }}"></mat-icon>
+        <span class="labelSwap">
+          <span [style.visibility]="isLocked() ? 'visible' : 'hidden'">Unlock</span>
+          <span [style.visibility]="isLocked() ? 'hidden' : 'visible'">Lock</span>
+        </span>
       </button>
     }
-    <button class="mini-buttons red" mat-stroked-button color="warn" (click)="deleteAction()">
+    <!-- Icon only where three labels no longer fit the row: a red trash can
+         beside Rename and Lock says everything the word did. Named where there
+         is room, so it is not a lone square beside a stretched button. -->
+    <button
+      class="mini-buttons red"
+      [class.iconOnly]="!deleteLabel()"
+      [disabled]="deleteDisabled()"
+      mat-stroked-button
+      color="warn"
+      [attr.aria-label]="deleteHint() ?? deleteLabel() ?? 'Delete'"
+      [matTooltip]="deleteHint() ?? deleteLabel() ?? 'Delete'"
+      matTooltipShowDelay="600"
+      (click)="deleteAction()()"
+    >
       <mat-icon svgIcon="remove"></mat-icon>
-      Delete
+      @if (deleteLabel(); as label) {
+        <span>{{ label }}</span>
+      }
     </button>
   </div>
 </div>

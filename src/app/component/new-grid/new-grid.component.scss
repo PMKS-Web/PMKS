@@ -11,16 +11,122 @@
   $background: map.get($theme, background);
   $foreground: map.get($theme, foreground);
 
+  // Every gesture on the drawing belongs to the drawing. Without this the
+  // browser keeps one-finger pan and two-finger pinch for scrolling the page,
+  // and hammer -- which is wired for exactly those two -- gets a stream the
+  // browser has already half-consumed: a drag that scrolls instead of moving a
+  // joint, and a pinch that zooms the page over a canvas that is also zooming.
+  // Page zoom stays available everywhere else, which is where a reader who
+  // needs it is going to reach for it anyway.
+  //
+  // The drawing is the window's background, so it is the size of the window
+  // and not the size of the document.
+  //
+  // A phone browser lays the page out in what is left between its own bars, so
+  // a canvas filling the document stopped at a hard white line a hundred points
+  // above the bottom of the screen -- grid, then nothing, then Safari. The
+  // large viewport is the whole screen, and the strip past the small one is
+  // behind a toolbar the system draws translucent, so the grid carries on under
+  // it and the drawing reads as the ground the app is standing on. `100vh` is
+  // the same number on every browser that matters -- it is what iOS has always
+  // meant by it -- and is here as the fallback for one that does not know
+  // `lvh`.
+  //
+  // Fixed, because the body is the small viewport and clips: in flow, the extra
+  // hundred points would be cut off exactly where they were cut off before.
+  // Nothing else moves -- every card over it is positioned and comes later in
+  // the DOM.
+  #canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100lvh;
+    touch-action: none;
+    // A long press on a phone otherwise raises the selection callout over the
+    // linkage, which lands on top of the menu that press was meant to open.
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
   #activeObjectHighlight {
     fill: mat.m2-get-color-from-palette($accent-palette, 500);
     stroke: mat.m2-get-color-from-palette($accent-palette, 500);
     opacity: 0.3;
   }
 
-  #axes_numbers {
-    fill: mat.m2-get-color-from-palette($foreground, 'text');
+  // The tutorial's pointer at one joint. Amber, because every other mark a
+  // joint carries here is about what the joint *is* -- ground, input, lock --
+  // and this one is about what to do next. Two rings rather than one, so it
+  // reads as a target rather than as a halo the joint has grown.
+  //
+  // Stroke widths are in model units like everything else on this canvas, so
+  // they are given as a fraction of the joint they surround rather than in
+  // pixels: a pixel here is whatever the current zoom says it is.
+  .tutorialRing {
+    circle {
+      fill: none;
+      stroke: var(--accent);
+      vector-effect: non-scaling-stroke;
+    }
+
+    // A constant width on screen rather than in model units: this is a pointer
+    // at a joint, not a part of the drawing, so it should not thin out as the
+    // student zooms out of the mechanism it is pointing at.
+    .ringOuter {
+      stroke-width: 2;
+      opacity: 0.35;
+    }
+
+    .ringInner {
+      stroke-width: 2.5;
+      opacity: 0.6;
+    }
+  }
+
+  // The grid is a background, and reads as one: two grays a shade apart, the
+  // minor one barely there, and the axes the only line on it with any weight.
+  // Both were black at a hairline width, which is a gray the browser chooses
+  // rather than one the app does -- and a different gray at every zoom level.
+  // Black at a low opacity rather than a baked-in gray: the two grays were
+  // the right shade over white and a jarring pale lattice over a background
+  // image, brightest exactly where the picture was dark. A transparent black
+  // darkens whatever is under it by the same fraction, which reads as the
+  // same grid on white and as a faint shadow on a photograph. The fractions
+  // are the ones the grays amounted to on white.
+  .gridLineMinor {
+    stroke: rgba(0, 0, 0, 0.05);
+  }
+
+  .gridLineMajor {
+    stroke: rgba(0, 0, 0, 0.1);
+  }
+
+  #jointTagHolder text,
+  #linkTagHolder text,
+  #forceTagHolder text {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    font-weight: 600;
+    dominant-baseline: central;
+  }
+
+  // A joint's name lands wherever its joint is, which is often on top of a
+  // link, another joint's name, or a ground hatch. The same white halo the
+  // grid's own numbers wear, so it reads over whatever it has landed on.
+  #jointTagHolder text {
     paint-order: stroke;
-    stroke: white;
+    stroke: var(--canvas-halo);
+    stroke-linejoin: round;
+    stroke-linecap: round;
+  }
+
+  #axes_numbers {
+    // Lighter than body text: these are a reference, not something to read.
+    fill: var(--text-secondary);
+    paint-order: stroke;
+    stroke: var(--canvas-halo);
     stroke-linejoin: round;
     stroke-linecap: round;
     alignment-baseline: middle;
@@ -34,8 +140,11 @@
     opacity: 0;
   }
 
+  // Switched on for one move by enableGridAnimationForThisAction, which takes
+  // it off again a moment after this ends. Out fast and in gently, so the eye
+  // follows where the drawing is going rather than watching it leave.
   .animated {
-    transition: transform 0.3s ease;
+    transition: transform 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
   }
 
   .my-custom-snackbar {
@@ -51,6 +160,10 @@
     stroke: mat.m2-get-color-from-palette($primary-palette, 900);
   }
 
+  // What a joint is drawn in when it has not been given a color of its own.
+  // A joint that has been keeps these rules for everything but the fill, which
+  // it carries inline -- so the shadow, and every state that means something
+  // other than "resting", still say the same thing on every joint.
   .joint-default {
     filter: url(#elevation-1);
     fill: mat.m2-get-color-from-palette($accent-palette, 50);
@@ -68,8 +181,460 @@
     fill: mat.m2-get-color-from-palette($accent-palette, 400);
   }
 
+  // Drawn on a joint rather than beside it, so its ink follows the joint's own
+  // color -- a dark pin needs a light padlock or the mark disappears into what
+  // it is sitting on. The component picks which; this is the default, for a
+  // joint drawn in the pale color it has always been drawn in.
+  .lockBadge {
+    .lockGlyph {
+      fill: var(--canvas-ink);
+    }
+
+    // Only a welded joint brings its own chip -- a plain one's circle is chip
+    // enough.
+    .lockChip {
+      fill: var(--surface);
+      stroke: var(--canvas-ink-faint);
+    }
+  }
+
   .link-selected {
     stroke: mat.m2-get-color-from-palette($accent-palette, 400);
+  }
+
+  // Pointed at from the transport, not picked: enough to say which machine is
+  // which, not enough to be mistaken for a selection.
+  .link-hovered {
+    stroke: mat.m2-get-color-from-palette($accent-palette, 200);
+  }
+
+  // Pointed at from a list that names one part. Stronger than the whole-machine
+  // hover above, because it has to answer "which of these eleven pins" across
+  // the width of the window: the tint alone was a change a reader had to hunt
+  // for. Elevated as well as filled, so it lifts off whatever it overlaps.
+  .joint-pointed {
+    filter: url(#elevation-3);
+    fill: mat.m2-get-color-from-palette($accent-palette, 400);
+    stroke: var(--brand);
+    stroke-width: 0.06;
+  }
+
+  .link-pointed {
+    stroke: mat.m2-get-color-from-palette($accent-palette, 400);
+    filter: url(#elevation-2);
+  }
+
+  // The grab-me ring around the selected link's CoM mark: dashed so it reads
+  // as an affordance rather than part of the standard symbol.
+  .com-drag-ring {
+    stroke: mat.m2-get-color-from-palette($accent-palette, 400);
+  }
+
+  // Scenery in the analysis modes: still drawn, so the reader can see it is
+  // there, but gray and out of the way of the machine being analyzed.
+  .link-inert {
+    fill: var(--canvas-inert) !important;
+    stroke: var(--canvas-inert) !important;
+    fill-opacity: 0.45;
+  }
+
+  .joint-inert {
+    filter: none;
+    fill: var(--canvas-inert-joint);
+  }
+
+  // The machines other than the one the reader picked, stepping back so the
+  // panel's machine is the one on show (MechanismService.isMutedBySelectedMechanism).
+  .link-muted,
+  .joint-muted,
+  .muted {
+    opacity: 0.3;
+  }
+
+  // A force on a body the analysis modes have nothing to say about. The arrow
+  // is the loudest thing on the canvas and it was still full-strength navy over
+  // a machine drawn as scenery.
+  .force-inert {
+    .forceLine,
+    .forceArrow,
+    .forceAnchor {
+      stroke: var(--canvas-inert);
+      fill: var(--canvas-inert);
+    }
+
+    .forceAnchor {
+      stroke: var(--canvas-inert);
+    }
+  }
+
+  // Held in place while editing: the cue is the small padlock badge riding
+  // each held joint (and a locked force's anchor) — drawn in the template, so
+  // nothing here restyles strokes and no state can cover another. The classes
+  // below stay as truthful state markers for tests and tooling.
+
+  // The edges of the tracing underlay, drawn only while its panel is open. The
+  // same accent every other "this is the thing you are editing" mark uses,
+  // broken rather than solid so a rectangle of picture cannot read as a part.
+  .bgImageOutline {
+    fill: none;
+    stroke: mat.m2-get-color-from-palette($accent-palette, 500);
+    pointer-events: none;
+  }
+
+  // Grab anywhere inside to slide the picture. Invisible, but a target: the
+  // whole picture moves, not just its edges.
+  .bgImageMoveSurface {
+    fill: transparent;
+    cursor: move;
+  }
+
+  // The corners and the turn knob. Filled rather than hollow so they read as
+  // things to take hold of, and white-edged so they stay findable over a dark
+  // photograph.
+  .bgImageHandle {
+    fill: mat.m2-get-color-from-palette($accent-palette, 500);
+    stroke: var(--canvas-halo);
+  }
+
+  // What holds the turn knob off the top edge, so it is not read as a corner.
+  .bgImageRotateStalk {
+    stroke: mat.m2-get-color-from-palette($accent-palette, 500);
+    pointer-events: none;
+  }
+
+  // A multi-selection is the third thing on this canvas that is placed rather
+  // than drawn, and it is moved by the same box-and-grips gesture as the
+  // underlay, so it wears the same accent -- written beside those rules rather
+  // than away from them, because the two are only right while they match.
+  .selectionTransform {
+    .selectionBounds,
+    .selectionStem {
+      fill: none;
+      stroke: mat.m2-get-color-from-palette($accent-palette, 500);
+    }
+
+    // Filled, and white-edged, so a grip is findable over a dark link the way
+    // the underlay's are over a dark photograph.
+    .selectionHandle {
+      fill: mat.m2-get-color-from-palette($accent-palette, 500);
+      stroke: var(--canvas-halo);
+    }
+
+    .selectionHandle:hover {
+      fill: mat.m2-get-color-from-palette($accent-palette, 700);
+    }
+  }
+
+  // --- Synthesis on the canvas -------------------------------------------
+  //
+  // The positions being designed for wear the same accent the tracing underlay
+  // wears, for the same reason: both are things being placed on the grid rather
+  // than parts of the drawing, and both are edited by the same box-and-grips
+  // gesture. The candidate linkage under them is drawn in the link palette but
+  // half-lit, because it is a proposal -- it is not in the drawing until the
+  // panel's Insert says so.
+
+  .synthPose {
+    cursor: move;
+  }
+
+  // Positions, previewed solutions and ghosts are all drawn the way the drawing
+  // draws a link: a filled outline at a quarter of the object scale, the same
+  // 0.7 fill opacity, and a stroke of its own color. They used to be strokes on
+  // a line, which came out the same width by arithmetic and subtly unlike every
+  // other bar on the canvas.
+  .synthBar {
+    fill-opacity: 0.7;
+
+    // A solution that is only proposed. Its fill is the color it will be
+    // built in, so the reader can see what they are choosing; its outline is
+    // broken, so an inserted linkage -- drawn solid, by the drawing's own
+    // renderer -- cannot be mistaken for one that is still an offer.
+    &--proposed {
+      fill-opacity: 0.45;
+    }
+
+    // The one that is being edited takes the accent, like everything else that
+    // is being edited on this canvas.
+    &--sel {
+      stroke: mat.m2-get-color-from-palette($accent-palette, 500);
+    }
+  }
+
+  // Outside Synthesis the positions are a record rather than a control: what
+  // the linkage on the grid was designed to do, kept beside it. Faint, and out
+  // of the way of every click -- a bar this size left hit-testable would sit
+  // over whatever is beneath it and swallow presses meant for a real part. The
+  // canvas menu is how they are taken away from here.
+  #synthesis.shadow {
+    opacity: 0.4;
+    pointer-events: none;
+
+    .synthPose {
+      cursor: default;
+    }
+  }
+
+  // The datum each position's coordinates are measured from. Drawn as a
+  // crosshair rather than another circle, so it is not read as a third pin.
+  .synthRef {
+    stroke: var(--text-secondary);
+
+    line {
+      stroke: inherit;
+    }
+  }
+
+  .synthRefRing {
+    fill: var(--surface);
+    stroke: inherit;
+  }
+
+  // The chevron inside a position, pointing at its front end.
+  .synthBarArrow {
+    fill: none;
+    stroke: var(--text-muted);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    pointer-events: none;
+  }
+
+  .synthPosePin {
+    fill: var(--accent-pale);
+    stroke: var(--text-muted);
+    pointer-events: none;
+  }
+
+  // The pins' letters, which the panel refers to by name. Haloed rather than
+  // boxed: they sit over whatever the drawing has behind them, and a box that
+  // size beside every pin would be more chrome than linkage.
+  .synthPreviewTag {
+    fill: var(--text-secondary);
+    stroke: var(--canvas-halo);
+    stroke-width: 3;
+    paint-order: stroke;
+    font-family: Roboto, sans-serif;
+    font-weight: 500;
+    pointer-events: none;
+  }
+
+  .synthPreviewJoint {
+    fill: var(--accent-pale);
+    stroke: var(--text-muted);
+  }
+
+  #synthesisPreview {
+    opacity: 0.85;
+  }
+
+  // The candidate that is picked, while a different one is being hovered.
+  .synthGhostLinkage {
+    opacity: 0.3;
+  }
+
+  // Where the machine starts, under the machine. A skeleton rather than a
+  // second solid linkage: two solid linkages on one grid compete for the
+  // reader's attention and only one of them is the thing being edited.
+  .startGhost {
+    // A target, not decoration: it is the most obvious thing in the window to
+    // press when what you want is to go back to the start.
+    cursor: pointer;
+    // The real linkage, behind the mechanism. 22% is the whole treatment: same
+    // shapes, same colors, plainly the same object earlier -- against a
+    // skeleton, which read as a diagram of the linkage and left a plate's
+    // diagonals to be explained.
+    opacity: 0.22;
+    transition: opacity 120ms ease-out;
+
+    // The hit area: invisible, and the only part of the ghost with a stroke
+    // wide enough to be aimed at with a finger.
+    .ghostGrab {
+      stroke: transparent;
+      stroke-linecap: round;
+    }
+
+    // The same ink, less transparent. A ghost that changed color on hover would
+    // read as a second state of the warning below it.
+    &:hover {
+      opacity: 0.4;
+    }
+
+    .ghostBody,
+    .synthBar {
+      stroke: none;
+    }
+
+    .ghostPin {
+      fill: rgba(63, 81, 181, 0.55);
+      stroke: none;
+    }
+
+    // The drag has taken the linkage somewhere its original start no longer
+    // exists. Nothing is broken and letting go here is allowed -- it just moves
+    // the start, which is what the tag says -- so this is the same
+    // informational indigo the strip and the seat use rather than an alarm
+    // color. Amber stays where it earns its keep: the toggle-point dot on the
+    // transport row, which is a warning about the linkage rather than about
+    // the reader.
+    //
+    // The shapes give way to a dotted outline with hollow pins: what is being
+    // said is that this pose is about to stop existing, and an outline is the
+    // drawing of a thing that is not there.
+    &.unreachable {
+      opacity: 0.5;
+
+      .ghostBody,
+      .synthBar {
+        fill: none;
+      }
+
+      .ghostEdge {
+        stroke: var(--brand-dark);
+        stroke-linecap: round;
+      }
+
+      .ghostPin {
+        fill: var(--surface);
+        stroke: var(--brand-dark);
+      }
+    }
+  }
+
+  // Where what the gesture is holding travels. `#pathsHolder`'s own rule, said
+  // again rather than shared because the two groups are switched on by
+  // different questions -- and it is the same ink at the same weight, which is
+  // the point: this is the app's traced path, borrowed for a gesture.
+  .dragTrace {
+    fill: none;
+    stroke: mat.m2-get-color-from-palette($primary-palette, 900);
+  }
+
+  .startGhostTag {
+    fill: var(--surface);
+    text-anchor: start;
+    font-family: Roboto, 'Helvetica Neue', sans-serif;
+  }
+
+  // The tag rides the pointer rather than the drawing: anchored to the one
+  // thing on screen the reader is definitely looking at, instead of floating
+  // over a linkage whose own marks it has to dodge.
+  .startGhostTagPill {
+    fill: var(--brand-dark);
+  }
+
+  // Where the middle of the coupler goes over the whole of the travel.
+  .synthTrace {
+    fill: none;
+    stroke: mat.m2-get-color-from-palette($primary-palette, 500);
+    opacity: 0.35;
+    pointer-events: none;
+  }
+
+  // The bar about to be dropped. It pulses so it reads as a promise about the
+  // next click rather than as a fourth position already placed.
+  .synthGhost {
+    animation: synthGhostPulse 1.8s ease-in-out infinite;
+  }
+
+  @keyframes synthGhostPulse {
+    0%,
+    100% {
+      opacity: 0.4;
+    }
+    50% {
+      opacity: 0.62;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .synthGhost {
+      animation: none;
+      opacity: 0.5;
+    }
+  }
+
+  .synthOutline,
+  .synthRegion {
+    fill: none;
+    stroke: mat.m2-get-color-from-palette($accent-palette, 500);
+  }
+
+  // The region has a body to grab, so unlike the selection outline it is filled
+  // -- faintly, because what it marks is where pivots may land, not a part.
+  .synthRegion {
+    fill: rgba(255, 193, 7, 0.08);
+    cursor: move;
+  }
+
+  .synthDrawSurface {
+    fill: transparent;
+    cursor: crosshair;
+  }
+
+  .synthHandle {
+    fill: mat.m2-get-color-from-palette($accent-palette, 500);
+    stroke: var(--canvas-halo);
+  }
+
+  .synthStalk {
+    stroke: mat.m2-get-color-from-palette($accent-palette, 500);
+  }
+
+  // What the chosen linkage does with each position, said beside it. A filled
+  // pill, because it is read against whatever the drawing happens to put behind
+  // it -- gray words over a link are words nobody can read.
+  .synthChip {
+    fill: var(--surface);
+    stroke: rgba(0, 0, 0, 0.12);
+
+    &--sel {
+      fill: mat.m2-get-color-from-palette($accent-palette, 500);
+      stroke: rgba(0, 0, 0, 0.2);
+    }
+  }
+
+  .synthChipDot {
+    stroke: var(--canvas-halo);
+  }
+
+  .synthChipNumber {
+    fill: var(--surface);
+    font-family: Roboto, sans-serif;
+    font-weight: 500;
+    text-anchor: middle;
+  }
+
+  .synthChipText {
+    fill: var(--text-secondary);
+    font-family: Roboto, sans-serif;
+    font-weight: 500;
+
+    &--sel {
+      fill: var(--text-strong);
+    }
+  }
+
+  // What the next click will do, beside the pointer that will do it.
+  .synthHint {
+    fill: mat.m2-get-color-from-palette($primary-palette, 500);
+    font-family: Roboto, sans-serif;
+    font-weight: 500;
+
+    &--sub {
+      fill: var(--text-tertiary);
+      font-weight: 400;
+    }
+  }
+
+  // The file dialog's input, kept out of the layout without display:none --
+  // which stops some browsers opening a picker from a synthetic click.
+  .offscreenFileInput {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+    left: -9999px;
   }
 
   #mouseLocation {
@@ -96,13 +661,15 @@
     }
   }
 
-  .forceEndpointSquare {
-    fill: mat.m2-get-color-from-palette($accent-palette, 50);
-    stroke: mat.m2-get-color-from-palette($accent-palette, 500);
+  .forceLabel {
+    fill: var(--text-primary);
+    stroke: var(--canvas-halo);
+    paint-order: stroke;
+  }
 
-    &:hover {
-      fill: mat.m2-get-color-from-palette($accent-palette, 100);
-    }
+  .forceEndpointHandle {
+    fill: var(--accent-tint);
+    stroke: var(--accent);
   }
 
   .forceLine {
@@ -120,4 +687,372 @@
   .forceSelectedLine {
     stroke: mat.m2-get-color-from-palette($accent-palette, 500);
   }
+
+  // Ring around the joint a dragged joint has been captured by: solid accent,
+  // unfilled, so it reads as a claim on that joint rather than as another joint.
+  .snapTarget {
+    fill: none;
+    stroke: mat.m2-get-color-from-palette($accent-palette, 500);
+    opacity: 0.85;
+    pointer-events: none;
+  }
+
+  // The axis a drag has just squared itself against, drawn to the joint that
+  // supplied it. Broken rather than solid so it cannot be mistaken for a link.
+  .axisSnapGuide {
+    stroke: mat.m2-get-color-from-palette($accent-palette, 500);
+    opacity: 0.7;
+    pointer-events: none;
+  }
+
+  // The same ring in red, for a joint in range that refuses the merge.
+  .snapRefused {
+    fill: none;
+    stroke: var(--danger);
+    pointer-events: none;
+  }
+
+  // Where a held bar lets the dragged joint go: amber, dashed, and behind the
+  // joint, so it reads as a track rather than as a part.
+  .holdGuide {
+    fill: none;
+    stroke: var(--accent);
+    opacity: 0.85;
+    pointer-events: none;
+  }
+
+  // A held value on its bar, and a hover dimension's number: one pill spec,
+  // white on a hairline outline with the panel's ink, sized in screen pixels.
+  .holdChip,
+  .dimensionPill {
+    rect {
+      fill: var(--surface);
+      stroke: rgba(0, 0, 0, 0.12);
+    }
+
+    text {
+      fill: var(--canvas-ink);
+      font-weight: 500;
+      stroke: none;
+    }
+
+    .holdChipGlyph {
+      fill: var(--canvas-ink);
+    }
+  }
+
+  // The hover dimension itself: a hairline in a quiet gray, so the bar it
+  // measures stays the thing being looked at. Solid black faded as a group,
+  // not a translucent stroke: the arrowhead sits over the end of the line,
+  // and two translucencies stacked there read darker than the line.
+  .hoverDimension {
+    .hairline {
+      opacity: 0.42;
+    }
+
+    // Lines as well as paths: the measures that came later -- a center of
+    // mass's offset, a ram's travel, a slot's angle -- are drawn as `line`
+    // elements, and each was carrying its own black stroke at its own
+    // model-scaled width. One rule, so a dimension is a dimension whatever it
+    // measures.
+    path,
+    line {
+      fill: none;
+      stroke: var(--canvas-black);
+    }
+  }
+
+  // One-shot feedback on release. Both translate against the joint's own
+  // bounding box rather than in pixels, so the motion holds its proportions at
+  // every zoom level instead of growing with the canvas transform.
+  .jointShake {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: shakeX 0.38s ease;
+  }
+
+  .jointPop {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: popIn 0.35s ease;
+  }
+
+  @keyframes shakeX {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    20% {
+      transform: translateX(-12%);
+    }
+    40% {
+      transform: translateX(12%);
+    }
+    60% {
+      transform: translateX(-7%);
+    }
+    80% {
+      transform: translateX(7%);
+    }
+  }
+
+  @keyframes popIn {
+    0% {
+      transform: scale(1.12);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+}
+
+// Phase 4 motion. Toggling Slider or Weld has to visibly change exactly one
+// mark, and each change has to read as one thing arriving rather than as a
+// redraw — so every transition here is scoped to the primitive that actually
+// changed, and none of them touches the mark underneath it.
+//
+// These are CSS animations on insert rather than transitions on a property,
+// because the marks come and go with the structure rather than changing value.
+// The per-frame redraw path stays stateless either way, which is what keeps the
+// glyphs cheap across ~360 timesteps.
+//
+// Every entrance is an opacity alone. A px offset grows with the canvas
+// transform, which shipped one animation bug here; a scale against the element's
+// own box shipped another. On a drawing thousands of units across seen at a
+// small zoom -- the Flywheel Engine at its real size, in Schematic -- that scale
+// froze headless Chromium (software compositing, as in CI): the compositor
+// stuck activating a frame, no requestAnimationFrame, nothing clickable. Headed
+// Chrome recovered, but the scale bought nothing worth the risk, and an opacity
+// animation does not trip it.
+.slider-mark {
+  .slider-block {
+    animation: blockIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  // The plate fades in over a block that never changes: a Slide's block is the
+  // same #000 as a Slot's, and the plate above it is the whole difference.
+  .slider-plate {
+    animation: plateIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  // Entrances fade in over the marker; exits are quiet, so there is no
+  // matching outward animation to leave with.
+  .slider-arrows {
+    animation: arrowsIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+// The skin arriving or leaving is a change of drawing, not of mechanism, so it
+// crossfades rather than moving anything.
+.cylinder-mark {
+  animation: skinIn 0.15s ease-out;
+}
+
+@keyframes blockIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+// To 1, not to 0.7: the plate carries its 0.7 as fill-opacity, and animating
+// group opacity to 0.7 as well would land it at 0.49 -- a paler plate than the
+// rider it is supposed to be the same body as.
+@keyframes plateIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes arrowsIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes skinIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+// A refusal still has to be legible without motion, which is why the snackbar
+// carries the reason rather than the shake.
+@media (prefers-reduced-motion: reduce) {
+  .slider-mark .slider-block,
+  .slider-mark .slider-plate,
+  .slider-mark .slider-arrows,
+  .cylinder-mark,
+  .jointShake,
+  .jointPop {
+    animation: none;
+  }
+}
+
+// Schematic is a whole-drawing view: the structural symbols remain recognizable,
+// but no body retains its filled silhouette or shadow among the connections.
+// Lines and outlines have model widths, so the camera scales the entire symbol.
+#canvas.schematic {
+  #linkHolder > path:not([stroke='transparent']),
+  .schematicRider,
+  .cylinder-barrel,
+  .cylinder-rod,
+  .ghostBody,
+  .synthBar {
+    stroke-width: calc(var(--drawing-scale) * 0.06px);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    filter: none;
+  }
+
+  .cylinder-barrel,
+  .cylinder-rod,
+  .ghostBody,
+  .synthBar {
+    fill: none !important;
+  }
+
+  // A plate of three or more joints is a closed outline whose inside takes a
+  // click, so it is shaded, faintly, in its own color to say so. A bar is an
+  // open line with no inside, so the same fill paints nothing on it.
+  #linkHolder > path:not([stroke='transparent']),
+  .schematicRider {
+    fill-opacity: 0.12 !important;
+  }
+
+  // The barrel a little heavier than the rod, so the two members of a
+  // cylinder read as two bodies even when both wear one color.
+  .cylinder-barrel {
+    stroke-width: calc(var(--drawing-scale) * 0.09px);
+  }
+
+  // Every joint wears the pin's language: the cream fill it has in every
+  // style, inside a hairline of ink.
+  .joint_circles,
+  #jointHolder .slideMark {
+    stroke: var(--canvas-ink);
+    stroke-width: calc(var(--drawing-scale) * 0.02px);
+    filter: none;
+  }
+
+  // Its width is bound in model units, because a picked weld's ring is that
+  // same stroke and a non-scaling one would read its model width as pixels.
+  #jointHolder .weldMark {
+    stroke: var(--canvas-ink);
+    filter: none;
+  }
+
+  .slider-block > path {
+    fill: var(--canvas-halo) !important;
+    stroke: var(--canvas-ink);
+    stroke-width: calc(var(--drawing-scale) * 0.03px);
+    filter: none;
+  }
+
+  // What drives the machine is black, a driven slider's block as a driven
+  // pin's motor is, with white heads on it saying which way it goes first.
+  // Outlined like every other block, a driver was the quietest thing on the
+  // drawing when it is the one thing that says what makes it move.
+  .slider-block.driven > path,
+  .schematic-drive-block {
+    fill: var(--canvas-ink) !important;
+  }
+
+  .schematic-heads path:not(.schematic-drive-block) {
+    fill: var(--canvas-halo);
+    stroke: none;
+  }
+
+  // A cylinder being placed wears the joints it will have.
+  .cylinder-preview .preview-joint {
+    fill: var(--accent-tint);
+    stroke: var(--canvas-ink);
+    stroke-width: calc(var(--drawing-scale) * 0.02px);
+  }
+
+  // The ghost is the schematic too: the lines, in their colors, and pins as
+  // pins. Stroked from the template, because the ghost's own rule takes the
+  // stroke off every body -- and a schematic body is nothing but its stroke,
+  // so the ghost was an invisible target that jumped the drawing to its start.
+  .startGhost {
+    opacity: 0.4;
+
+    &:hover {
+      opacity: 0.6;
+    }
+
+    &.unreachable {
+      opacity: 0.55;
+    }
+
+    .ghostPin {
+      fill: var(--accent-tint);
+      stroke: var(--canvas-ink);
+      stroke-width: calc(var(--drawing-scale) * 0.02px);
+    }
+  }
+}
+
+#canvas[data-drawing-style='fine'] {
+  #linkHolder > path:not([stroke='transparent']),
+  .cylinder-barrel,
+  .cylinder-rod {
+    stroke-width: calc(var(--drawing-scale) * 0.04px);
+  }
+}
+
+#canvas[data-drawing-style='fine'] {
+  path.link-selected,
+  path.link-pointed {
+    stroke-width: calc(var(--drawing-scale) * 0.06px);
+  }
+}
+
+// A schematic bar keeps its own color while it is picked, so a new color shows
+// the moment it is chosen: the amber is a band drawn under the line instead
+// (`#selectionHaloHolder`). A part picked inside a compound is a solid band
+// over a dashed one along the rest of the body.
+#canvas.schematic {
+  path.link-selected,
+  path.link-pointed {
+    filter: none;
+  }
+
+  .selection-halo {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+
+    &.picked,
+    &.context {
+      stroke: var(--canvas-selection);
+    }
+
+    // Square ends, so the dashes stay dashes: round caps on a band this wide
+    // grew each one into its neighbor and the band read as a string of beads.
+    &.context {
+      stroke-linecap: butt;
+    }
+
+    &.hovered {
+      stroke: var(--accent-pale);
+    }
+  }
+}
+
+// The body a picked part belongs to, in the other styles: a dashed amber edge
+// round the whole compound under the part's solid one.
+#canvas .compound-context {
+  stroke: var(--canvas-selection);
 }

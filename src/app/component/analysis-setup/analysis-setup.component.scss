@@ -1,0 +1,395 @@
+@use 'sass:map';
+@use '@angular/material' as mat;
+@use '../BLOCKS/blocks.common.scss' as blocks;
+@use 'src/app/component/left-tabs/left-tabs.vars' as nav;
+
+@mixin css($theme) {
+  $color-config: mat.m2-get-color-config($theme);
+  $primary-palette: map.get($color-config, 'primary');
+
+  // Scoped to the element, because this file is a mixin included from
+  // `mytheme.scss`: without the wrapper every rule below lands in the global
+  // stylesheet under a bare class name, and names like `.check`, `.chip`,
+  // `.dot`, `.num`, `.fact` and `.sectionHeader` are ordinary enough that other
+  // panels use them for their own things and quietly inherit whatever this
+  // panel happens to say. It reached `app-mechanism-panel`, `app-edit-panel`,
+  // `app-top-bar` and `app-synthesis-panel`, each of which was covering the
+  // borrowed rules with one of its own -- which is luck, not design. The
+  // component renders nothing through a CDK overlay or a portal, so everything
+  // it styles is inside its own element.
+  //
+  // `:where` rather than the bare element, because it weighs nothing: a plain
+  // wrapper adds a type selector to all 77 rules below at once and hands them
+  // fights they have been losing since they were written -- the check icons
+  // would jump from Material's 24px to the 19px asked for here. Correcting
+  // those is a change to how the drawer looks, which is not what scoping is for.
+  :where(app-analysis-setup) {
+    // Its own card, because this panel is not built from panel-sections and the
+    // drawer behind it deliberately draws nothing: one card per panel, never a
+    // card inside a card.
+    // The card owns the scroll and keeps its title, exactly as `panel-section`
+    // does for every panel built out of blocks. This one is not, because it is a
+    // single card rather than a stack of sections -- so it has to say the same
+    // three things itself rather than inherit them.
+    .setup {
+      display: flex;
+      flex-direction: column;
+      // Ends under its last section, and only runs on when there is more list
+      // than room -- at which point the drawer's own cap stops it a gap above
+      // the view controls and this card takes over the scrolling. A card held
+      // open to the full height of the window on a drawing with one short list
+      // in it is mostly empty white.
+      height: auto;
+      max-height: 100%;
+      overflow-y: auto;
+      overflow-x: hidden;
+      // Its sticky head is raised above this card's own contents and no further,
+      // so it cannot come out over the drawer's close button beside it.
+      isolation: isolate;
+      padding-bottom: 8px;
+      background: var(--card-surface);
+      border-top: 5px solid mat.m2-get-color-from-palette($primary-palette, 500);
+      // 5px, matching the 5px accent bar above it: a border's inner edge is
+      // rounded by the corner radius minus the border width, so any radius wider
+      // than the bar curves the bar's underside. The floating chrome has no bar
+      // and keeps the wider corner.
+      border-radius: var(--border-radius);
+      box-shadow: var(--card-shadow);
+    }
+
+    // Everything in the card is laid out at the card's own width, and stays
+    // there: a sticky head that could shrink would slide out from over a list
+    // wider than itself.
+    .setup > * {
+      width: 100%;
+      box-sizing: border-box;
+      flex: 0 0 auto;
+    }
+
+    .setupHead {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      padding: 12px 15px 12px;
+      background: var(--card-surface);
+      box-shadow: var(--scroll-shadow-hidden);
+      transition: box-shadow 0.15s ease-in-out;
+    }
+
+    // Something above, out of sight: the list runs under the head, and without
+    // this a scrolled card read as a card that simply started there.
+    .setup.scrolled > .setupHead {
+      box-shadow: var(--scroll-shadow);
+    }
+
+    .setupTitle {
+      font-size: 20px;
+      font-weight: 500;
+      line-height: 28px;
+    }
+
+    .setupSummary {
+      font-size: 14px;
+      line-height: 20px;
+      color: var(--text-secondary);
+      margin: 6px 0 0;
+    }
+
+    .sectionHeader {
+      @include blocks.section-header($theme);
+      min-height: 44px;
+
+      // This drawer's own two: a section that is not a mechanism says so
+      // quietly, and the whole band answers the pointer because the whole
+      // band folds it.
+      &.muted {
+        color: var(--text-secondary);
+      }
+
+      &:hover {
+        background: rgba(0, 0, 0, 0.02);
+      }
+    }
+
+    .sectionName {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0;
+    }
+
+    // The machine picked in the panel beside this drawer, marked the way a
+    // selected row is, so the two read as about the same machine.
+    .sectionHeader.picked {
+      background: var(--selection);
+    }
+
+    .mechLink {
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      text-decoration-color: rgba(63, 81, 181, 0.35);
+      cursor: pointer;
+    }
+
+    // The issues of one section, each an `issue-block`: 14px apart, and inset
+    // to the header's own 15px so the icons sit under the section's name.
+    .issueList {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 6px 15px 16px;
+    }
+
+    // The one line under "Not in any mechanism", above its issues.
+    .sectionNote {
+      margin: 0;
+      padding: 0 15px 4px;
+      font-size: 12px;
+      line-height: 18px;
+      color: var(--text-secondary);
+    }
+
+    // A section with nothing in the way is its name and a chip, and folds
+    // nothing, so it neither answers the pointer nor promises to.
+    .sectionHeader.fixed {
+      cursor: default;
+
+      &:hover {
+        background: transparent;
+      }
+    }
+
+    // The line under the mass table.
+    .note {
+      margin: 4px 0 0;
+      font-size: 12px;
+      line-height: 18px;
+      color: var(--text-secondary);
+    }
+
+    .massTable {
+      padding: 4px 16px 12px;
+    }
+
+    .massRow {
+      display: grid;
+      /* Mass earns the room a value like "10.00 lbm" needs; the name column
+         gives it up — names are short and ellipsis covers the rare long one. */
+      grid-template-columns: minmax(40px, 1fr) 76px 118px;
+
+      /* Except on a phone, where the drawer is the window and "the rare long
+         one" is every row: the library's own mechanisms carry names like
+         "Drag coupler", and 47px of name column reads them all as "Link D…".
+         The moment of inertia gives the room back — it is the number a reader
+         is least often reading on a phone, and it keeps its own ellipsis. */
+      @media (max-width: nav.$phone-max-width) {
+        grid-template-columns: minmax(96px, 1.4fr) 72px minmax(72px, 1fr);
+      }
+
+      /* Grid items default to min-width auto, so a field's own content forces
+         its column wide and shoves the last column off the drawer. */
+      > * {
+        min-width: 0;
+      }
+      gap: 4px;
+      align-items: center;
+      padding: 3px 0;
+      font-size: 13px;
+
+      &.head {
+        font-size: 9px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--text-tertiary);
+        font-weight: 600;
+        padding-bottom: 5px;
+        margin-bottom: 3px;
+        /* "Mass moment of inertia" is wider than its column: it wraps onto a
+           second line, sitting on the rule like the one-line headings. */
+        align-items: end;
+        line-height: 1.3;
+        /* The rule belongs under the header, where the mock draws it — not
+           under the legend, where a line reads as underlining the caption. */
+        border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+      }
+
+      /* The whole weightless row mutes as one thing: label, both fields. */
+      &.weightless .massName {
+        color: var(--text-muted);
+      }
+      &.weightless .cellField .customInput:not(:disabled) {
+        color: var(--text-primary);
+      }
+    }
+
+    // A machine's name over its rows, when the drawing holds several.
+    .massGroup {
+      padding: 8px 0 2px;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 16px;
+      color: var(--text-secondary);
+      overflow-wrap: anywhere;
+    }
+
+    .massRow.head + .massGroup {
+      padding-top: 2px;
+    }
+
+    // A slider's inertia: nothing to show, and pointing says why.
+    .pointMass {
+      align-self: stretch;
+      cursor: help;
+    }
+
+    .num {
+      text-align: right;
+    }
+
+    .massName {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .massMoI {
+      color: var(--text-secondary);
+    }
+
+    // The table's cells ARE the shared input component, told so: `cell` gives
+    // the field the whole column and hides the header parts the table's own
+    // headings already say. That used to be written here, as rules naming
+    // `#input-block`'s insides from outside it.
+    .cellField {
+      min-width: 0;
+
+      // Kept exactly as it was, and deliberately not folded into the block.
+      // Measured in the running app, this loses: a derived value's field is
+      // *disabled*, and Material's disabled ink wins over it, so the rule has
+      // no effect in either state the drawer actually shows. Moving it onto
+      // the block raised its specificity enough to start winning -- which is a
+      // visible change to a panel this work is not meant to be changing.
+      // Whether the value should be this ink is a question for whoever owns
+      // the mass table; it is not a reuse question.
+      &.derived .customInput {
+        color: var(--text-tertiary);
+      }
+    }
+
+    .dot {
+      display: inline-block;
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      border: 1.5px solid var(--brand-light);
+      background: transparent;
+      flex: none;
+    }
+
+    .dot.filled {
+      background: var(--brand);
+      border-color: var(--brand);
+    }
+
+    .stateSuffix {
+      display: inline-flex;
+      align-items: center;
+      margin-left: 4px;
+    }
+
+    .dotLegend {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0;
+      padding: 8px 0 0;
+      font-size: 10.5px;
+      color: var(--text-secondary);
+      border-bottom: none;
+
+      .resetAll {
+        margin-left: auto;
+        border: none;
+        background: none;
+        color: var(--brand);
+        font: inherit;
+        font-weight: 500;
+        cursor: pointer;
+        padding: 0;
+
+        &:disabled {
+          color: var(--text-disabled);
+          cursor: default;
+        }
+      }
+    }
+
+    // The header is a row of controls now, not one button, so the two halves that
+    // fold it carry the padding and the hit area the header used to have.
+    .sectionHeaderRow {
+      padding: 0;
+      gap: 8px;
+    }
+
+    .sectionToggle {
+      display: flex;
+      align-items: center;
+      min-height: 40px;
+      border: none;
+      background: transparent;
+      font: inherit;
+      color: inherit;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    // The name's half takes the slack, so pressing anywhere along the empty
+    // middle still folds the section the way pressing the header always did.
+    .sectionHeaderRow > .sectionToggle:first-child {
+      flex: 1 1 auto;
+      padding-left: 15px;
+      min-width: 0;
+    }
+
+    .sectionHeaderRow > .sectionToggle.chevron {
+      padding-right: 15px;
+    }
+
+    // Read-only: the mock washes the whole table out — names, values, fills —
+    // rather than leaving rows that merely cannot be clicked.
+    .massTable.readonly {
+      .massName {
+        color: var(--text-tertiary);
+      }
+      // Same story as `.derived` above: overridden by the disabled ink today.
+      .cellField .customInput {
+        color: var(--text-tertiary);
+      }
+    }
+
+    // The one thing left to do, so it is filled rather than outlined: the quiet
+    // outline buttons above it belong to individual checks, and this belongs to
+    // the whole drawer.
+    .enterRow {
+      padding: 12px 15px 4px;
+      border-top: 1px solid var(--border-rule);
+    }
+
+    .enterButton {
+      width: 100%;
+      height: 36px;
+      border: none;
+      border-radius: 4px;
+      background: mat.m2-get-color-from-palette($primary-palette, 500);
+      color: var(--text-on-accent);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+
+      &:hover {
+        background: mat.m2-get-color-from-palette($primary-palette, 700);
+      }
+    }
+  }
+}

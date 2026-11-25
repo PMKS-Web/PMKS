@@ -1,0 +1,127 @@
+@use 'sass:map';
+@use '@angular/material' as mat;
+
+@mixin css($theme) {
+  // Get the color config from the theme.
+  $color-config: mat.m2-get-color-config($theme);
+  // Get the primary color palette from the color-config.
+  $primary-palette: map.get($color-config, 'primary');
+  $typography-config: mat.m2-get-typography-config($theme);
+
+  // The drawer hands its height down to here, and this hands it to the card,
+  // which is what scrolls -- the same chain the settings panel uses, and for
+  // the same reason: a frame that scrolls carries the close button, which is
+  // positioned against it, off its own top edge.
+  #helpWrapper {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+
+    panel-section {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    // A line of standing text inside a section, rather than a control with a
+    // label: the address to write to when the form will not do.
+    .sectionNote {
+      margin: 0;
+      @include mat.m2-typography-level($typography-config, 'body-2');
+      color: var(--text-secondary);
+    }
+
+    // The fields and checkboxes stack on the same gap the sections' own
+    // controls do; the form is a plain box around them, not a layout of its own.
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    // A checkbox is drawn as an 18px box inside a 40px touch target, so three
+    // of them in a row sat 32px apart while everything else in the card is 10 --
+    // they read as three separate things rather than one set of options. Cut to
+    // 28, which is Material's own next density step down and still a comfortable
+    // target; the box stays 18px and stays centered in it.
+    mat-checkbox {
+      --mat-checkbox-state-layer-size: 28px;
+    }
+
+    .max-width {
+      width: 100%;
+    }
+
+    // Room for a message at the size one is written, without dragging the
+    // corner first: two rows invited a sentence, and a bug report is a
+    // paragraph. The type a step smaller so a paragraph fits in the box.
+    .feedbackMessage {
+      font-size: 12px;
+      line-height: 16px;
+    }
+
+    // The list of keys: a name on the left, the key on the right, and the
+    // groups apart far enough that a heading belongs to what is under it.
+    .keyGroup + .keyGroup {
+      margin-top: 14px;
+    }
+
+    .keyHeading {
+      margin: 0 0 4px;
+      @include mat.m2-typography-level($typography-config, 'body-2');
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .keyRow {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 3px 0;
+      @include mat.m2-typography-level($typography-config, 'body-2');
+    }
+
+    // A key, drawn as one: the cap is what a reader is looking for down the
+    // right-hand edge, so it keeps the same width whatever is printed on it.
+    .keyCap {
+      flex: none;
+      min-width: 24px;
+      padding: 2px 6px;
+      border: 1px solid var(--border-keycap);
+      border-bottom-width: 2px;
+      border-radius: 4px;
+      background: rgba(0, 0, 0, 0.03);
+      font-family: inherit;
+      font-size: 12px;
+      line-height: 16px;
+      text-align: center;
+      // "Option + drag" is one cap: broken over two lines it reads as two keys.
+      white-space: nowrap;
+      color: var(--text-primary);
+    }
+
+    .glossaryList {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin: 0;
+    }
+
+    .glossaryEntry {
+      dt {
+        @include mat.m2-typography-level($typography-config, 'body-2');
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      dd {
+        margin: 1px 0 0;
+        @include mat.m2-typography-level($typography-config, 'body-2');
+        color: var(--text-secondary);
+      }
+    }
+  }
+}

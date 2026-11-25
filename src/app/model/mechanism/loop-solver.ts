@@ -1,111 +1,538 @@
-import { Joint, PrisJoint, RealJoint, RevJoint } from '../joint';
+import { Joint, PrisJoint, RealJoint } from '../joint';
 import { Link } from '../link';
 
+/**
+ * One step of a kinematic loop.
+ *
+ * Everything is an id. Loops are enumerated once from timestep 0 but consumed
+ * against per-timestep deep copies, so an edge holding `Joint`/`Link` objects
+ * would read timestep 0's geometry forever while claiming to solve timestep 27.
+ * The codebase has been bitten by exactly that twice already — see the comment
+ * in `kinematic-solver.ts` about identity `indexOf` against copied joints, and
+ * `PrisJoint.rebindSlot`, which exists solely to re-resolve slot references by
+ * id on each copy.
+ */
+export type LoopEdge =
+  | { kind: 'link'; fromId: string; toId: string; linkId: string }
+  | { kind: 'slot'; fromId: string; toId: string; sliderId: string };
+
+export interface Loop {
+  /** Deterministic signature, used as the Map key everywhere. */
+  id: string;
+  edges: LoopEdge[];
+}
+
+/**
+ * A loop's signature: the first joint, then each step.
+ *
+ * The separators keep multi-character joint ids unambiguous, which the old
+ * letter-string format could not do — it keyed link lookups by concatenating
+ * two joint ids and so could not tell `AB`+`C` from `A`+`BC`.
+ */
+export function loopId(edges: LoopEdge[]): string {
+  if (edges.length === 0) {
+    return '';
+  }
+  return edges.reduce(
+    (signature, edge) =>
+      signature + (edge.kind === 'slot' ? `~${edge.sliderId}~${edge.toId}` : `-${edge.toId}`),
+    edges[0].fromId
+  );
+}
+
+/** How the walk reached a joint: through a link, or across a slot. */
+interface PathStep {
+  jointId: string;
+  /** Set when this step crossed a sliding pair rather than a link. */
+  viaSliderId?: string;
+}
+
+/** A joint the walk may step to, and how it would get there. */
+interface Neighbor {
+  joint: RealJoint;
+  viaSliderId?: string;
+}
+
 export class LoopSolver {
-  static determineLoops(joints: Joint[], links: Link[]): [string[], string[]] {
-    let allLoops: string[] = [];
-    let requiredLoops: string[] = [];
+  /**
+   * An independent set of loops running from one ground joint to another.
+   *
+   * Every such walk is enumerated, then reduced to a cycle basis: see
+   * `independent` for why the extras have to go rather than merely being
+   * harmless.
+   *
+   * Loops are **open chains**: the returned edges stop at the second ground
+   * joint. The closing ground-to-ground step is not represented, because no
+   * `Link` joins two ground joints and no consumer ever asked for one — the old
+   * letter format appended the starting letter back on and then every walk
+   * stopped one short of it.
+   *
+   * Every pair of ground joints is walked, not only the pairs containing the
+   * input. A closure that touches no ground pivot the input sits on is still a
+   * closure: a shaper's output stage — lever tip, connecting link, ram on its
+   * own guide — runs between the lever's pivot and the ram's guide, and both
+   * are ground. Enumerating only the input's own chains left that stage in no
+   * loop at all, so the velocity walk never reached the ram and the graph drew
+   * a joint that travels three units as standing still.
+   */
+  static determineLoops(joints: Joint[], links: Link[]): Loop[] {
+    // Enumerating every walk between every pair of grounds is exponential, and
+    // on a forty-five joint drawing it is two thirds of the cost of a rebuild.
+    // None of it depends on where anything *is*: the walk reads connectivity,
+    // ground and input flags, slot well-formedness, and which links span which
+    // joints. A drag moves joints and changes no topology at all, so it was
+    // paying for the same answer at every pointer move.
+    const signature = this.topologySignature(joints, links);
+    const remembered = this.loopCache.get(signature);
+    if (remembered) {
+      // Fresh all the way down, edges included: a consumer that reorders the
+      // list, or writes to an edge to re-orient it, would otherwise corrupt
+      // every later rebuild of the same drawing.
+      return this.copyOf(remembered);
+    }
+    const loops: Loop[] = [];
+    const slotNeighbors = this.slotAdjacency(joints);
     const groundJoints: Joint[] = [];
     joints.forEach((j) => {
       if (!(j instanceof RealJoint) || !j.ground) {
         return;
       }
-      if (
-          j.input ||
-          j.connectedJoints.findIndex((jt) => {
-            if (!(jt instanceof RealJoint)) {
-              return;
-            }
-            jt.input;
-          }) !== -1
-      ) {
+      // Ground joints carrying the input are walked first, so the loops that
+      // define the input's own chain come out ahead of the rest.
+      if (j.input) {
         groundJoints.unshift(j);
       } else {
         groundJoints.push(j);
       }
     });
-    if (groundJoints.length <= 2) {
-      // TODO: just have the binary link be the loop and return something
-    }
-    // find loops from one ground joint to another ground joint
+
+    const neighborCache = new Map<string, Neighbor[]>();
     while (groundJoints.length >= 2) {
       const desiredGround = groundJoints.shift()!;
       if (!(desiredGround instanceof RealJoint)) {
         continue;
       }
-      desiredGround.connectedJoints.forEach((cj) => {
-        const [validLoops, requiredSubLoops] = this.findGround(cj, groundJoints, cj.id, desiredGround.id + cj.id, [], [], desiredGround.input, links);
-        allLoops = allLoops.concat(validLoops);
-        requiredLoops = requiredLoops.concat(requiredSubLoops);
+      this.neighborsOf(desiredGround, slotNeighbors, neighborCache).forEach((next) => {
+        const path: PathStep[] = [
+          { jointId: desiredGround.id },
+          { jointId: next.joint.id, viaSliderId: next.viaSliderId },
+        ];
+        // Two grounds with one body between them, which the walk below cannot
+        // see: it starts *at* the neighbor and only records a loop when it
+        // finds a ground among that neighbor's own neighbors, so a chain that
+        // is already complete here was never written down.
+        //
+        // That was harmless while both ends were pins. A bar pinned to the
+        // frame at each end is frame, and a loop saying so says nothing. A bar
+        // whose ends *slide* is a mechanism -- the elliptical trammel is
+        // exactly this shape now that a slider is one joint, where before it
+        // was guide, pin, bar, pin, guide and the walk found the chain in the
+        // middle. With no loop, its rates fall to `determineLooplessKinematics`,
+        // which models the drive as a rotation about the input joint and leaves
+        // the sliding end at exactly zero.
+        if (groundJoints.indexOf(next.joint) !== -1 && this.slidesAcross(desiredGround, next)) {
+          const edges = this.edgesAlong(path, links);
+          if (edges) {
+            loops.push({ id: loopId(edges), edges });
+          }
+        }
+        const first = this.connectionFor(desiredGround.id, next.joint.id, next.viaSliderId, links);
+        if (first === undefined) return;
+        this.findGround(
+          next.joint,
+          groundJoints,
+          new Set([next.joint.id]),
+          new Set([first]),
+          path,
+          loops,
+          links,
+          slotNeighbors,
+          neighborCache
+        );
       });
     }
-    return [allLoops, requiredLoops];
+    const answer = this.independent(this.deduplicate(loops));
+    // A handful of entries, because a drawing holding several machines asks for
+    // one topology per machine and would otherwise evict itself every rebuild.
+    if (this.loopCache.size >= 12) {
+      this.loopCache.delete(this.loopCache.keys().next().value as string);
+    }
+    this.loopCache.set(signature, this.copyOf(answer));
+    return answer;
   }
 
-  // Searches through neighboring joints until ground joint is found
+  /** Last few topologies and the loops they came out to. */
+  private static loopCache = new Map<string, Loop[]>();
+
+  /** Loops nothing else holds a reference into. */
+  private static copyOf(loops: Loop[]): Loop[] {
+    return loops.map((loop) => ({ id: loop.id, edges: loop.edges.map((edge) => ({ ...edge })) }));
+  }
+
+  /**
+   * Everything the enumeration reads, and nothing it does not.
+   *
+   * Deliberately conservative: it is cheaper to rebuild loops that did not need
+   * rebuilding than to serve a drawing the loops of a different one. Positions
+   * are the one thing left out, and leaving them out is the whole point.
+   */
+  private static topologySignature(joints: Joint[], links: Link[]): string {
+    const parts: string[] = [];
+    for (const joint of joints) {
+      if (!(joint instanceof RealJoint)) {
+        parts.push(`?${joint.id}`);
+        continue;
+      }
+      // `rotates` belongs in the key as much as the slot's shape does. It is
+      // what tells a Slide from a Pin-in-slot, and a Slide holds its rider's
+      // orientation -- so two drawings alike in every other respect have
+      // different closures, and a cache keyed without it serves one the other's
+      // loops. It used to ride `isWelded` on the coincident pin, which the walk
+      // already recorded below.
+      const slot =
+        joint instanceof PrisJoint
+          ? `P${joint.isFloating ? 1 : 0}${joint.isSlotWellFormed ? 1 : 0}${joint.rotates ? 1 : 0}` +
+            `${joint.slotJointA?.id ?? ''}.${joint.slotJointB?.id ?? ''}.${joint.carrier?.id ?? ''}`
+          : 'R';
+      const linked = joint.connectedJoints.map((one) => one.id).join('.');
+      const holding = joint.links.map((one) => one.id).join('.');
+      parts.push(
+        `${joint.id}|${joint.ground ? 1 : 0}${joint.input ? 1 : 0}${joint.isWelded ? 1 : 0}` +
+          `|${slot}|${linked}|${holding}`
+      );
+    }
+    parts.push('--');
+    for (const link of links) {
+      parts.push(`${link.id}:${link.joints.map((one) => one.id).join('.')}`);
+    }
+    return parts.join(';');
+  }
+
+  /**
+   * Keep only the loops that say something the earlier ones did not.
+   *
+   * `deduplicate` removes a loop that repeats another one's bodies, but a
+   * mechanism can enumerate more distinct walks than it has independent
+   * closures. Jansen's leg yields four — `O-A-B-G`, `O-A-B-C-E-D-G`,
+   * `O-A-D-G`, `O-A-D-E-C-G` — and the fourth is the sum of the other three.
+   * The velocity system sizes its matrix from the unknown count (six here) but
+   * indexes its rows by loop, so a fourth loop writes past the last row.
+   *
+   * Independence is settled here, on topology, rather than in the solver: the
+   * loops are enumerated once per mechanism and the solver rebuilds its
+   * matrices every timestep, and every consumer of `requiredLoops` — the
+   * velocity solver, the force solver, the instant centers — has to be looking
+   * at the same set or they disagree about what the mechanism is.
+   *
+   * The test is elimination over GF(2) in the mechanism's cycle space. A loop
+   * is the set of (body, joint) incidences it uses; a walk that reduces to the
+   * empty set is a sum of loops already kept, and so adds no equation. What
+   * survives is a cycle basis, and because the scan is greedy in order, a
+   * mechanism whose loops were already independent comes back untouched.
+   */
+  private static independent(loops: Loop[]): Loop[] {
+    const basis = new Map<string, Set<string>>();
+    const kept: Loop[] = [];
+    for (const loop of loops) {
+      let vector = this.incidences(loop);
+      // Reduce against the basis, smallest remaining incidence first.
+      for (let pivot = this.lowest(vector); pivot !== undefined; pivot = this.lowest(vector)) {
+        const row = basis.get(pivot);
+        if (!row) {
+          break;
+        }
+        for (const bit of row) {
+          if (vector.has(bit)) {
+            vector.delete(bit);
+          } else {
+            vector.add(bit);
+          }
+        }
+      }
+      const pivot = this.lowest(vector);
+      if (pivot === undefined) {
+        continue;
+      }
+      basis.set(pivot, vector);
+      kept.push(loop);
+    }
+    return kept;
+  }
+
+  /**
+   * A loop as the (body, joint) incidences it uses, one bit each.
+   *
+   * Bodies and joints both become nodes and an incidence becomes an edge, so a
+   * pin shared by three bodies contributes three edges rather than a triangle
+   * that would count as an extra cycle. Prefixes keep the three kinds of body
+   * apart: a link, a sliding pair, and the frame that closes the walk — loops
+   * are returned as open ground-to-ground chains, and without that closing
+   * step they would not be cycles at all.
+   */
+  private static incidences(loop: Loop): Set<string> {
+    const bits = new Set<string>();
+    const toggle = (bodyId: string, jointId: string) => {
+      const bit = `${bodyId}|${jointId}`;
+      if (bits.has(bit)) {
+        bits.delete(bit);
+      } else {
+        bits.add(bit);
+      }
+    };
+    for (const edge of loop.edges) {
+      const bodyId = edge.kind === 'slot' ? `S:${edge.sliderId}` : `L:${edge.linkId}`;
+      toggle(bodyId, edge.fromId);
+      toggle(bodyId, edge.toId);
+    }
+    if (loop.edges.length > 0) {
+      toggle('F:', loop.edges[0].fromId);
+      toggle('F:', loop.edges[loop.edges.length - 1].toId);
+    }
+    return bits;
+  }
+
+  private static lowest(bits: Set<string>): string | undefined {
+    let lowest: string | undefined;
+    for (const bit of bits) {
+      if (lowest === undefined || bit < lowest) {
+        lowest = bit;
+      }
+    }
+    return lowest;
+  }
+
+  /**
+   * Where a sliding joint may be crossed to reach the link it slides in.
+   *
+   * The carrier stays out of `PrisJoint.links` and `connectedJoints` — the
+   * position solver depends on it being absent, and putting it there was the
+   * option this design rejected. So the adjacency lives here instead, built
+   * fresh for each walk.
+   *
+   * A slider is joined to exactly one of its carrier's joints, the same anchor
+   * the equations measure travel from. One sliding pair is one constraint;
+   * offering every carrier joint would let a single slot appear as two
+   * different loop closures, and since the carrier is rigid the walk can still
+   * reach its other joints by ordinary link steps.
+   */
+  private static slotAdjacency(joints: Joint[]): Map<string, Neighbor[]> {
+    const adjacency = new Map<string, Neighbor[]>();
+    const add = (fromId: string, joint: RealJoint, viaSliderId: string) => {
+      const existing = adjacency.get(fromId) ?? [];
+      existing.push({ joint, viaSliderId });
+      adjacency.set(fromId, existing);
+    };
+    for (const joint of joints) {
+      if (!(joint instanceof PrisJoint) || !joint.isFloating || !joint.isSlotWellFormed) {
+        continue;
+      }
+      const anchor = joint.slotJointA;
+      if (!(anchor instanceof RealJoint)) {
+        continue;
+      }
+      add(joint.id, anchor, joint.id);
+      add(anchor.id, joint, joint.id);
+    }
+    return adjacency;
+  }
+
+  /**
+   * Who this joint is connected to, worked out once per enumeration.
+   *
+   * The walk below visits the same joint on thousands of different paths, and
+   * this answer is the same every time -- it depends only on the drawing. Built
+   * fresh, it was a fifth of the time spent enumerating a forty-five joint
+   * linkage's loops, and most of its garbage.
+   */
+  private static neighborsOf(
+    joint: RealJoint,
+    slotNeighbors: Map<string, Neighbor[]>,
+    cache?: Map<string, Neighbor[]>
+  ): Neighbor[] {
+    const known = cache?.get(joint.id);
+    if (known) return known;
+    const linked = joint.connectedJoints
+      .filter((candidate): candidate is RealJoint => candidate instanceof RealJoint)
+      .map((candidate) => ({ joint: candidate }) as Neighbor);
+    const all = [...linked, ...(slotNeighbors.get(joint.id) ?? [])];
+    cache?.set(joint.id, all);
+    return all;
+  }
+
+  /**
+   * Drop loops that describe a circuit another loop already describes.
+   *
+   * Two walks that traverse the same set of bodies and sliding pairs are the
+   * same constraint written two ways; keeping both would over-determine the
+   * velocity system, which sizes its matrix from the loop count.
+   */
+  private static deduplicate(loops: Loop[]): Loop[] {
+    const bySignature = new Map<string, Loop>();
+    const signatureOf = (loop: Loop): string =>
+      loop.edges
+        .map((edge) => (edge.kind === 'slot' ? edge.sliderId : edge.linkId))
+        .sort()
+        .join(',') +
+      // Where the chain ends, when it ends on a slider. A grounded guide used to
+      // be crossed along its block's own edge, so the block's id sat in the list
+      // above and told two such closures apart. The walk steps straight onto the
+      // joint now, so two chains over the same bodies ending at two different
+      // guides would sign the same -- and one of them would be dropped as a
+      // repeat of the other, taking its equation with it.
+      `|${this.slidingEnds(loop).join('.')}`;
+    for (const loop of loops) {
+      const signature = signatureOf(loop);
+      const existing = bySignature.get(signature);
+      if (!existing || loop.id < existing.id) {
+        bySignature.set(signature, loop);
+      }
+    }
+    return loops.filter((loop) => bySignature.get(signatureOf(loop)) === loop);
+  }
+
+  /**
+   * The chain's two ends, which go into the dedup key beside the bodies.
+   *
+   * Both of them, unconditionally. The name and this comment used to promise a
+   * filter -- "kept only where an end slides" -- that the body never applied,
+   * which made the key stricter for every chain and stopped a chain and its
+   * reverse deduping here. Nothing broke, because `independent()` still
+   * eliminates the reverse over GF(2); the promise was simply not true.
+   */
+  private static slidingEnds(loop: Loop): string[] {
+    if (loop.edges.length === 0) return [];
+    return [loop.edges[0].fromId, loop.edges[loop.edges.length - 1].toId];
+  }
+
+  /**
+   * Whether one body reaching from one ground to another can move at all.
+   *
+   * Both ends pinned to the frame is frame. One end that slides, or a step
+   * taken along a slot, is a degree of freedom, and a loop is worth recording.
+   */
+  private static slidesAcross(ground: RealJoint, next: Neighbor): boolean {
+    return (
+      next.viaSliderId !== undefined ||
+      ground instanceof PrisJoint ||
+      next.joint instanceof PrisJoint
+    );
+  }
+
+  /**
+   * Walk outward until another ground joint is reached.
+   *
+   * The walk backtracks in place: `visited` and `path` are one set and one
+   * array pushed and popped as it descends, rather than a fresh copy of each
+   * per branch. On a linkage the size of a running horse this recursion visits
+   * hundreds of thousands of nodes, and copying two growing arrays at every one
+   * of them was most of the cost of opening the drawing at all.
+   *
+   * `traveled` holds the links and slots the path has already crossed, and a
+   * step that would cross one again is not taken. `edgesAlong` refuses such a
+   * path anyway, and every path extending it, so nothing is lost -- but it
+   * refused them only at the far ground, after the walk had descended through
+   * every ordering of a shared body's joints. Eleven cranks on one coupler
+   * plate made that factorial, and opening the drawing took thirty seconds.
+   */
   private static findGround(
     joint: Joint,
     groundJoints: Joint[],
-    linkPath: string,
-    path: string,
-    allFoundLoops: string[],
-    requiredLoops: string[],
-    storeJointPath: boolean,
-    links: Link[]
-  ): [string[], string[]] {
+    visited: Set<string>,
+    traveled: Set<string>,
+    path: PathStep[],
+    loops: Loop[],
+    links: Link[],
+    slotNeighbors: Map<string, Neighbor[]>,
+    neighborCache: Map<string, Neighbor[]>
+  ): void {
     if (!(joint instanceof RealJoint)) {
-      return [allFoundLoops, requiredLoops];
+      return;
     }
-    joint.connectedJoints.forEach((j) => {
-      if (!(j instanceof RealJoint)) {
-        return;
+    for (const next of this.neighborsOf(joint, slotNeighbors, neighborCache)) {
+      const j = next.joint;
+      if (visited.has(j.id)) {
+        continue;
       }
-      if (linkPath.includes(j.id)) {
-        return;
+      const connection = this.connectionFor(joint.id, j.id, next.viaSliderId, links);
+      if (connection === undefined || traveled.has(connection)) {
+        continue;
       }
+      const step: PathStep = { jointId: j.id, viaSliderId: next.viaSliderId };
       if (j.ground) {
         if (groundJoints.indexOf(j) === -1) {
-          return;
+          continue;
         }
-        if (storeJointPath) {
-          // const currentPathLoop = requiredLoops.find((loop) => loop[loop.length - 2] === j.id);
-          path = path + j.id;
-          let requiredLoop = true;
-          const traveledLinks = [];
-          for (let letterIndex = 1; letterIndex < path.length; letterIndex++)
-          {
-            if (!requiredLoop) {
-              continue;
-            }
-            const curLink = links.find(l => l.joints.findIndex(j => j.id === path[letterIndex - 1]) !== -1 && l.joints.findIndex(j => j.id === path[letterIndex]) !== -1);
-            if (curLink === undefined) {
-              requiredLoop = false;
-              continue
-            }
-            if (traveledLinks.findIndex(l_id => l_id === curLink.id) !== -1) {
-              requiredLoop = false;
-            } else {
-              traveledLinks.push(curLink.id);
-            }
-          }
-          if (requiredLoop) {
-            requiredLoops.push(path + path[0]);
-            // requiredLoops.push(path + j.id + path[0]);
-          }
-          // MAKE SURE THAT PATH HAS NOT TRAVELED TO THE SAME LINK
-          // if (currentPathLoop === undefined) {
-          //   requiredLoops.push(path + j.id + path[0]);
-          // } else if (currentPathLoop.length > path.length + 2) {
-          //   requiredLoops.splice(requiredLoops.indexOf(currentPathLoop), 1);
-          //   requiredLoops.push(path + j.id + path[0]);
-          // }
+        path.push(step);
+        const edges = this.edgesAlong(path, links);
+        path.pop();
+        if (edges) {
+          loops.push({ id: loopId(edges), edges });
         }
-        // allFoundLoops.push(path + j.id + path[0]);
-        allFoundLoops.push(path + path[0]);
       } else {
-        [allFoundLoops, requiredLoops] = this.findGround(j, groundJoints, linkPath + j.id, path + j.id, allFoundLoops, requiredLoops, storeJointPath, links);
+        visited.add(j.id);
+        traveled.add(connection);
+        path.push(step);
+        this.findGround(
+          j,
+          groundJoints,
+          visited,
+          traveled,
+          path,
+          loops,
+          links,
+          slotNeighbors,
+          neighborCache
+        );
+        path.pop();
+        traveled.delete(connection);
+        visited.delete(j.id);
       }
-    });
-    return [allFoundLoops, requiredLoops];
+    }
+  }
+
+  /**
+   * Turn a walked path into edges, or reject it.
+   *
+   * A path is a *required* loop only if every step is a real connection and no
+   * connection is used twice: a loop that re-traverses one body is implied by
+   * shorter loops rather than independent of them.
+   */
+  private static edgesAlong(path: PathStep[], links: Link[]): LoopEdge[] | undefined {
+    const edges: LoopEdge[] = [];
+    const traveled: string[] = [];
+    for (let index = 1; index < path.length; index++) {
+      const step = path[index];
+      const fromId = path[index - 1].jointId;
+      // A slot counts in the traveled bookkeeping exactly as a link does.
+      const connectionId = this.connectionFor(fromId, step.jointId, step.viaSliderId, links);
+      if (connectionId === undefined || traveled.includes(connectionId)) {
+        return undefined;
+      }
+      traveled.push(connectionId);
+      edges.push(
+        step.viaSliderId
+          ? { kind: 'slot', fromId, toId: step.jointId, sliderId: step.viaSliderId }
+          : { kind: 'link', fromId, toId: step.jointId, linkId: connectionId }
+      );
+    }
+    return edges;
+  }
+
+  /** The slot or link one step crosses, or undefined when nothing joins its two joints. */
+  private static connectionFor(
+    fromId: string,
+    toId: string,
+    viaSliderId: string | undefined,
+    links: Link[]
+  ): string | undefined {
+    return viaSliderId ?? this.linkBetween(fromId, toId, links)?.id;
+  }
+
+  private static linkBetween(fromId: string, toId: string, links: Link[]): Link | undefined {
+    return links.find(
+      (link) =>
+        link.joints.some((joint) => joint.id === fromId) &&
+        link.joints.some((joint) => joint.id === toId)
+    );
   }
 }

@@ -1,109 +1,590 @@
-<div id="synthesisWrapper">
-  <panel-section>
-    <title-block description="Automatically create a 4-bar linkage based on 3 coupler poses.">
-      3 Position Synthesis
-    </title-block>
-    <!--    <subtitle-block>PMKS+ will create a 4-bar linkage based on 3 poses.</subtitle-block>-->
-    <!--    <input-block unit='cm'>Length</input-block>-->
-    <!--    <app-not-ready-warning></app-not-ready-warning>-->
-    <!-- <img src='assets/temp3pos.png'> -->
-
-    <collapsible-subseciton [expanded]="true" [hideHeader]="true">
-      <subtitle-block>End-Effector Link (Coupler)</subtitle-block>
-      <input-block
-        [formGroup]="synthesisPoseForm"
-        _formControl="length"
-        tooltip="The length of the end-effector link"
-      >
-        Length
-      </input-block>
-      <radio-block
-        [formGroup]="synthesisPoseForm"
-        _formControl="cor"
-        option1="Back"
-        option2="Center"
-        option3="Front"
-        tooltip="The center of rotation of the end-effector link, and what the position coordinate represents"
-      >
-        Fixed Reference
-      </radio-block>
-      <mat-divider></mat-divider>
-
-      <!-- Construct panel sections for each pose -->
-      @for (i of [1, 2, 3]; track i) {
-        <div>
-          <!-- display header, with edit button on right if pose already has been created -->
-          <div>
-            <subtitle-block class="poseHeader">
-              <p>Pose {{ i }}</p>
-              <!-- <button-block class = "poseEdit" *ngIf="getCurrentPose() !== i && synthesisBuilder.isPoseDefined(i)"  icon="edit" (click)="setCurrentPose(i)">Edit</button-block> -->
-            </subtitle-block>
-          </div>
-          <!-- display editable pose configuration if pose is both created AND selected -->
-          @if (synthesisBuilder.isPoseDefined(i)) {
-            <div class="poseData">
-              <dual-input-block
-                [formGroup]="synthesisPoseForm"
-                formControl1="{{ getFormIDPoseX(i) }}"
-                formControl2="{{ getFormIDPoseY(i) }}"
-                tooltip="The position of the center of the end effector link"
-              >
-                Pose {{ i }} Position
-              </dual-input-block>
-              <input-block
-                [formGroup]="synthesisPoseForm"
-                _formControl="{{ getFormIDPoseTheta(i) }}"
-                tooltip="The angle of the end effector link in degrees"
-              >
-                Pose {{ i }} Angle
-              </input-block>
-            </div>
-          }
-          <!-- if pose has not yet been created and its the first undefined pose, show "create pose" button -->
-          @if (synthesisBuilder.getFirstUndefinedPose() === i) {
-            <div class="poseCreate">
-              <button-block
-                icon="add"
-                (click)="synthesisBuilder.createPose(i); this.svgGrid.updateObjectScale()"
-                >Create Pose
-              </button-block>
-            </div>
-          }
+<div id="synthesisPanel">
+  <!-- What kind of synthesis this is. One kind exists; the second is named
+       rather than hidden, because "can it fit a path?" is the first question
+       anyone asks of this screen and an empty answer is worse than a dated one. -->
+  @if (isChooser) {
+    <div class="chooser">
+      <div class="chooser__head">
+        <div class="chooser__title">Synthesis</div>
+        <div class="chooser__sub">
+          Build a mechanism from the motion you want, then insert it into the drawing.
         </div>
-      }
+      </div>
+      <div class="chooser__body">
+        <div class="chooser__prompt">What are you synthesizing?</div>
 
-      <mat-divider></mat-divider>
+        <button type="button" class="kindCard kindCard--on" (click)="startMotionSynthesis()">
+          <span class="kindCard__icon">
+            <mat-icon svgIcon="synthesis"></mat-icon>
+          </span>
+          <span class="kindCard__text">
+            <span class="kindCard__row">
+              <span class="kindCard__name">Motion &mdash; 3 Positions</span>
+              <chip-block size="small" kind="on">Four-bar or six-bar</chip-block>
+            </span>
+            <span class="kindCard__detail">
+              Place an end-effector link in three positions, then compare candidate four-bars that
+              guide it through them.
+            </span>
+          </span>
+        </button>
 
-      <!--      <button-block icon='add' [disabled]='!synthesisBuilder.isFullyDefined()' (click)='synthesisFunction()'>-->
-      <!--        Generate Linkage-->
-      <!--      </button-block>-->
+        <div class="kindCard kindCard--off">
+          <span class="kindCard__icon"><mat-icon>show_chart</mat-icon></span>
+          <span class="kindCard__text">
+            <span class="kindCard__row">
+              <span class="kindCard__name">Path &mdash; Points on a Curve</span>
+              <chip-block size="small">Coming soon</chip-block>
+            </span>
+            <span class="kindCard__detail">
+              Sketch a curve and fit a mechanism whose coupler point follows it.
+            </span>
+          </span>
+        </div>
+      </div>
+    </div>
+  } @else {
+    <div class="work">
+      <div class="work__head">
+        <button type="button" class="iconBtn" (click)="backToChooser()" aria-label="Back">
+          <mat-icon>arrow_back</mat-icon>
+        </button>
+        <div class="work__headText">
+          <div class="work__title">Motion Synthesis</div>
+          <div class="work__note">{{ headerNote() }}</div>
+        </div>
+      </div>
 
-      <button-block
-        [disabled]="synthesisBuilder.getAllPoses().length === 0"
-        (click)="synthesisBuilder.deleteAllPoses()"
-        customIcon="remove"
-        color="warn"
-      >
-        Remove All Poses
-      </button-block>
-    </collapsible-subseciton>
-  </panel-section>
-  <!--  <panel-section-collapsible [expanded]='true'>-->
-  <!--    <subtitle-block buttonLabel='Edit Pose' icon='edit' alwaysShown>Pose 1</subtitle-block>-->
-  <!--    <dual-input-block>Pose 1 Position</dual-input-block>-->
-  <!--    <input-block>Pose 1 Angle</input-block>-->
-  <!--    <button-block icon='arrow_forward'>Next Pose</button-block>-->
-  <!--  </panel-section-collapsible>-->
-  <!--  <panel-section-collapsible [expanded]='false'>-->
-  <!--    <subtitle-block buttonLabel='Edit Pose' icon='edit' alwaysShown>Pose 2</subtitle-block>-->
-  <!--    <dual-input-block>Pose 2 Position</dual-input-block>-->
-  <!--    <input-block>Pose 2 Angle</input-block>-->
-  <!--    <button-block icon='arrow_forward'>Next Pose</button-block>-->
-  <!--  </panel-section-collapsible>-->
-  <!--  <panel-section-collapsible [expanded]='false'>-->
-  <!--    <subtitle-block buttonLabel='Edit Pose' icon='edit' alwaysShown>Pose 3</subtitle-block>-->
-  <!--    <dual-input-block>Pose 3 Position</dual-input-block>-->
-  <!--    <input-block>Pose 3 Angle</input-block>-->
-  <!--    <button-block icon='auto_fix_normal'>Generate</button-block>-->
-  <!--  </panel-section-collapsible>-->
+      <div class="work__scroll" #workScroll [formGroup]="poseForm">
+        <!-- The bar being positioned ------------------------------------- -->
+        <!-- Named for what it is. Titled "Coupler", this section held a Length
+             field belonging to a different bar: the coupler is the four-bar's
+             own floating member, pinned *to* this link and only the same length
+             when it happens to be pinned at its ends. That is precisely what
+             the first requirement decides, and the two readings of the word
+             made the requirement read like a contradiction. -->
+        <collapsible-subsection class="sect" titleLabel="End-effector Link" [expanded]="true">
+          <div class="row">
+            <span class="row__label" [numberDrag]="lengthField">Length</span>
+            <mat-icon class="label-help" [matTooltip]="help.length" [matTooltipShowDelay]="400">
+              help_outline
+            </mat-icon>
+            <span class="row__spacer"></span>
+            <label class="field field--wide">
+              <input
+                appStandardField
+                type="text"
+                inputmode="decimal"
+                formControlName="length"
+                #lengthField
+                spellcheck="false"
+                aria-label="End-effector Link length"
+              />
+            </label>
+          </div>
+          <div class="row">
+            <span class="row__label">Fixed Reference</span>
+            <mat-icon class="label-help" [matTooltip]="help.ref" [matTooltipShowDelay]="400">
+              help_outline
+            </mat-icon>
+            <span class="row__spacer"></span>
+            <segmented-block
+              class="seg"
+              [options]="referenceLabels()"
+              [selected]="referenceIndex()"
+              (selectedChange)="setReference(referenceOptions()[$event].value)"
+            ></segmented-block>
+          </div>
+        </collapsible-subsection>
+
+        <!-- The three positions ------------------------------------------ -->
+        <collapsible-subsection class="sect" titleLabel="Positions" [expanded]="true">
+          <!-- Beside the heading rather than under it: they were a row of their
+               own, which cost a band of vertical space in a panel that has
+               little to spare, and left a gap once all three were placed and
+               there was nothing left to put in it. -->
+          <ng-container headerActions>
+            @if (showAddButton) {
+              <!-- Armed reads as a mode the reader is *in*, so it stops being
+                   the filled one: the button is now the way out of it. -->
+              <button-block
+                inline
+                [filled]="!design.armed"
+                [icon]="design.armed ? 'close' : 'ads_click'"
+                [click]="toggleArmed.bind(this)"
+                >{{ addLabel }}</button-block
+              >
+            }
+            @if (canDuplicate) {
+              <button-block
+                inline
+                icon="content_copy"
+                [tooltip]="help.duplicate"
+                [click]="duplicateLast.bind(this)"
+                ariaLabel="Duplicate Last Position"
+              ></button-block>
+            }
+          </ng-container>
+
+          @for (i of rows; track i) {
+            <!-- The row is a container, not a control. It was given
+                 role="button" so it could be reached by keyboard, which made it
+                 a button wrapping two textboxes and another button -- a shape
+                 no assistive technology can make sense of, and whose Space
+                 handler swallowed the nested button's own activation. The
+                 numbered chip is the control instead: one real button, with
+                 nothing inside it. Clicking anywhere on the row still selects,
+                 for the mouse.
+
+                 Clicking the row's own space arms the placer, which is what an
+                 empty row is for; clicking into one of its boxes does not, and
+                 says so by stopping there. Both ways of filling a position are
+                 live at the same time -- arming does not switch typing off, and
+                 typing does not switch arming off. -->
+            <div
+              class="poseRow"
+              [class.poseRow--sel]="isSelectedRow(i)"
+              [class.poseRow--empty]="!isPlaced(i)"
+              (click)="selectRow(i)"
+            >
+              <button
+                type="button"
+                class="poseRow__n"
+                [class.poseRow__n--placed]="isPlaced(i)"
+                [attr.aria-pressed]="isSelectedRow(i)"
+                [attr.aria-label]="isPlaced(i) ? 'Select position ' + i : 'Place position ' + i"
+                (click)="selectRow(i); $event.stopPropagation()"
+              >
+                {{ i }}
+              </button>
+              <span class="poseRow__axis" [numberDrag]="poseX">X</span>
+              <label class="field field--num">
+                <input
+                  appStandardField
+                  type="text"
+                  inputmode="decimal"
+                  spellcheck="false"
+                  placeholder="—"
+                  [formControlName]="'p' + i + 'x'"
+                  #poseX
+                  [attr.aria-label]="'Position ' + i + ' X'"
+                  (focus)="aimAtRow(i)"
+                  (click)="$event.stopPropagation()"
+                />
+              </label>
+              <span class="poseRow__axis" [numberDrag]="poseY">Y</span>
+              <label class="field field--num">
+                <input
+                  appStandardField
+                  type="text"
+                  inputmode="decimal"
+                  spellcheck="false"
+                  placeholder="—"
+                  [formControlName]="'p' + i + 'y'"
+                  #poseY
+                  [attr.aria-label]="'Position ' + i + ' Y'"
+                  (focus)="aimAtRow(i)"
+                  (click)="$event.stopPropagation()"
+                />
+              </label>
+              <span class="poseRow__axis poseRow__axis--angle" [numberDrag]="poseAngle"
+                >&#8894;</span
+              >
+              <label class="field field--angle">
+                <input
+                  appStandardField
+                  type="text"
+                  inputmode="decimal"
+                  spellcheck="false"
+                  placeholder="—"
+                  [formControlName]="'p' + i + 'theta'"
+                  #poseAngle
+                  [attr.aria-label]="'Position ' + i + ' angle'"
+                  (focus)="aimAtRow(i)"
+                  (click)="$event.stopPropagation()"
+                />
+              </label>
+              <mat-icon
+                class="poseRow__status"
+                [class.poseRow__status--ok]="reached(i) === true"
+                [class.poseRow__status--defect]="reached(i) === false"
+                [class.poseRow__status--arm]="isPreviewingRow(i)"
+                [matTooltip]="rowStatusTip(i)"
+                [matTooltipShowDelay]="300"
+              >
+                {{ rowStatusIcon(i) }}
+              </mat-icon>
+              <button
+                type="button"
+                class="poseRow__remove"
+                [class.poseRow__remove--off]="!isPlaced(i)"
+                [disabled]="!isPlaced(i)"
+                [attr.aria-label]="'Remove position ' + i"
+                (click)="removeRow($event, i)"
+              >
+                <mat-icon>close</mat-icon>
+              </button>
+            </div>
+          }
+        </collapsible-subsection>
+
+        <!-- What a solution has to satisfy -------------------------------- -->
+        <collapsible-subsection class="sect" titleLabel="Requirements" [expanded]="true">
+          @for (rq of requirements(); track rq.key) {
+            <div class="req" [class.req--on]="rq.on">
+              <!-- The switch sits beside the button rather than inside it: a
+                   control nested in a button is neither valid nor operable,
+                   and the hand-drawn knob that used to live there was only a
+                   picture of one. Pressing the row still toggles, for a reader
+                   who aims at the words. -->
+              <div class="req__line">
+                <button type="button" class="req__press" (click)="rq.toggle()">
+                  <mat-icon class="req__icon">
+                    {{ rq.on ? 'check_circle' : 'radio_button_unchecked' }}
+                  </mat-icon>
+                  <span class="req__text">
+                    <span class="req__label">{{ rq.label }}</span>
+                    <span class="req__detail">{{ rq.detail }}</span>
+                  </span>
+                </button>
+                <toggle-block
+                  class="req__switch"
+                  bare
+                  [formGroup]="switchForm"
+                  [_formControl]="rq.key === 'coupler' ? 'coupler' : 'region'"
+                  [ariaLabel]="rq.label"
+                ></toggle-block>
+              </div>
+
+              @if (rq.hasRegion) {
+                <div class="region" [formGroup]="regionForm">
+                  <div class="region__line">
+                    <span class="region__summary">{{ regionSummary() }}</span>
+                    <button
+                      type="button"
+                      class="region__draw"
+                      [class.region__draw--on]="design.regionDraw"
+                      (click)="toggleRegionDraw()"
+                    >
+                      {{ design.regionDraw ? 'Cancel' : 'Redraw' }}
+                    </button>
+                  </div>
+                  <!-- Four numbers on one row cannot each carry a unit and
+                       still show their digits, so the unit is said once for
+                       all of them and the boxes hold plain numbers. -->
+                  <div class="region__fields">
+                    <span class="region__tag" [numberDrag]="rxField">X</span>
+                    <label class="field field--tiny"
+                      ><input
+                        appStandardField
+                        type="text"
+                        inputmode="decimal"
+                        formControlName="rx"
+                        #rxField
+                        aria-label="Region X"
+                    /></label>
+                    <span class="region__tag" [numberDrag]="ryField">Y</span>
+                    <label class="field field--tiny"
+                      ><input
+                        appStandardField
+                        type="text"
+                        inputmode="decimal"
+                        formControlName="ry"
+                        #ryField
+                        aria-label="Region Y"
+                    /></label>
+                    <span class="region__tag" [numberDrag]="rwField">W</span>
+                    <label class="field field--tiny"
+                      ><input
+                        appStandardField
+                        type="text"
+                        inputmode="decimal"
+                        formControlName="rw"
+                        #rwField
+                        aria-label="Region width"
+                    /></label>
+                    <span class="region__tag" [numberDrag]="rhField">H</span>
+                    <label class="field field--tiny"
+                      ><input
+                        appStandardField
+                        type="text"
+                        inputmode="decimal"
+                        formControlName="rh"
+                        #rhField
+                        aria-label="Region height"
+                    /></label>
+                    <span class="region__unit">{{ lengthUnit }}</span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </collapsible-subsection>
+
+        <!-- Under the requirements rather than inside them: it is not one of
+             them, it is what they have jointly done. -->
+        @if (requirementsBlocking) {
+          <div class="sect sect--note">
+            <div class="note note--warn">
+              <mat-icon>rule</mat-icon>
+              <span>{{ requirementsBlockingNote() }}</span>
+            </div>
+          </div>
+        }
+
+        <!-- Running the search -------------------------------------------- -->
+        <!-- What came back ------------------------------------------------ -->
+        @if (showResults) {
+          <!-- Only when it has something in it: with one solution and nothing
+               to explain, this was an empty band above the Solution heading. -->
+          @if (showGallery || !hasSolution || showNoCandidateReason) {
+            <section class="sect">
+              <!-- A heading over a gallery says what there is to choose between.
+                 Over a single solution it only repeats what the section below
+                 already says, at greater length. -->
+              @if (showGallery || !hasSolution) {
+                <div class="sect__head">
+                  <div class="sect__title">{{ candidateHeading() }}</div>
+                </div>
+              }
+
+              @if (showNoCandidateReason) {
+                <div class="note note--bad">
+                  <mat-icon>error_outline</mat-icon>
+                  <span>{{ noCandidateReason() }}</span>
+                </div>
+              }
+
+              @if (showGallery) {
+                <div class="gallery" [class.gallery--all]="solution.showAll">
+                  @for (c of visibleCandidates(); track c.key) {
+                    <button
+                      type="button"
+                      class="card"
+                      [class.card--sel]="c.selected"
+                      (click)="pickCandidate(c.key)"
+                      (pointerenter)="hoverCandidate(c.key)"
+                      (pointerleave)="hoverCandidate(null)"
+                    >
+                      <span class="card__head">
+                        <span class="card__name">{{ c.name }}</span>
+                        <span class="card__kind">{{ c.kind }}</span>
+                      </span>
+                      <svg class="card__thumb" width="100%" height="48" viewBox="0 0 120 48">
+                        <path
+                          [attr.d]="c.thumb"
+                          fill="none"
+                          stroke="#c5cae9"
+                          stroke-width="4"
+                          stroke-linecap="round"
+                        ></path>
+                        <path
+                          [attr.d]="c.thumbCoupler"
+                          fill="none"
+                          stroke="#303e9f"
+                          stroke-width="4"
+                          stroke-linecap="round"
+                        ></path>
+                      </svg>
+                      <span class="card__reach" [class.card__reach--ok]="c.defectFree">
+                        {{ c.reachText }}
+                      </span>
+                      <span class="card__metric" [class.card__metric--binds]="c.binds">{{
+                        c.metric
+                      }}</span>
+                    </button>
+                  }
+                </div>
+
+                @if (hasMoreCandidates) {
+                  <button type="button" class="linkBtn" (click)="toggleAllCandidates()">
+                    {{ moreLabel() }}
+                    <mat-icon>{{ solution.showAll ? 'expand_less' : 'expand_more' }}</mat-icon>
+                  </button>
+                }
+              }
+            </section>
+          }
+
+          @if (hasSolution) {
+            <section class="sect sect--last">
+              <div class="sect__title">{{ solutionHeading }}</div>
+
+              @if (solutionWarning()) {
+                <div class="note note--warn" role="status">
+                  <mat-icon>warning</mat-icon>
+                  <span>{{ solutionWarning() }}</span>
+                </div>
+              }
+
+              <div class="row">
+                <span class="row__label">Assembly Branch</span>
+                <mat-icon class="label-help" [matTooltip]="help.branch" [matTooltipShowDelay]="400">
+                  help_outline
+                </mat-icon>
+                <span class="row__spacer"></span>
+                <segmented-block
+                  class="seg"
+                  [options]="branchLabels"
+                  [selected]="branchIndex()"
+                  [disabledAt]="branchUnavailable()"
+                  (selectedChange)="pickBranch(branchOptions()[$event].key)"
+                ></segmented-block>
+              </div>
+
+              <div class="row">
+                <span class="row__label">Input Joint</span>
+                <mat-icon class="label-help" [matTooltip]="help.pin" [matTooltipShowDelay]="400">
+                  help_outline
+                </mat-icon>
+                <span class="row__spacer"></span>
+                <segmented-block
+                  class="seg"
+                  [options]="pinLabels()"
+                  [selected]="solution.driveOnFarPin ? 1 : 0"
+                  (selectedChange)="setPin($event === 1)"
+                ></segmented-block>
+              </div>
+
+              <div class="row">
+                <button
+                  type="button"
+                  class="row__label row__label--btn"
+                  [disabled]="!!driverRefusal"
+                  (click)="toggleDriver()"
+                >
+                  Add Input Link (Six-Bar)
+                </button>
+                <mat-icon class="label-help" [matTooltip]="help.driver" [matTooltipShowDelay]="400">
+                  help_outline
+                </mat-icon>
+                <span class="row__spacer"></span>
+                <!-- The reason hangs on a wrapper, not on the block: a
+                     disabled control takes no pointer events, and the block's
+                     own help mark is hidden in this row. That is the pattern
+                     `button-block` uses for the same reason. -->
+                <span
+                  class="row__switch"
+                  [matTooltip]="driverRefusal ?? ''"
+                  [matTooltipDisabled]="!driverRefusal"
+                  [matTooltipShowDelay]="200"
+                  matTooltipPosition="above"
+                >
+                  <toggle-block
+                    bare
+                    [formGroup]="switchForm"
+                    _formControl="driver"
+                    [disabled]="!!driverRefusal"
+                    ariaLabel="Add Input Link"
+                  ></toggle-block>
+                </span>
+              </div>
+
+              <div class="dims">
+                <button type="button" class="dims__head" (click)="toggleDimensions()">
+                  <span class="dims__title">Link Lengths</span>
+                  <span class="dims__summary">{{ dimensionsSummary() }}</span>
+                  <mat-icon>{{ solution.dimensionsOpen ? 'expand_less' : 'expand_more' }}</mat-icon>
+                </button>
+                @if (solution.dimensionsOpen) {
+                  <div class="dims__body">
+                    @for (d of dimensionRows(); track d.label) {
+                      <div class="dims__row">
+                        <span>{{ d.label }}</span>
+                        <span class="dims__value">{{ d.value }}</span>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            </section>
+          }
+        }
+      </div>
+
+      <!-- The transport, and the one button that changes the drawing ------- -->
+      <div class="foot">
+        @if (hasSolution) {
+          <div class="transport" [class.transport--playing]="solution.playing">
+            <div class="transport__line">
+              @if (showGallery) {
+                <span class="transport__name">{{ solutionName }}</span>
+              }
+              <span class="transport__note">{{ previewNote() }}</span>
+              <span class="transport__angle">{{ angleLabel() }}</span>
+              <button
+                type="button"
+                class="iconBtn iconBtn--sm"
+                (click)="togglePlay()"
+                [attr.aria-label]="solution.playing ? 'Pause Preview' : 'Play Preview'"
+              >
+                <mat-icon>{{ solution.playing ? 'pause' : 'play_arrow' }}</mat-icon>
+              </button>
+              <button
+                type="button"
+                class="iconBtn iconBtn--sm"
+                (click)="flipDirection()"
+                aria-label="Reverse Direction"
+              >
+                <mat-icon>{{ solution.clockwise ? 'rotate_right' : 'rotate_left' }}</mat-icon>
+              </button>
+            </div>
+            <div class="track">
+              <div class="track__channel"></div>
+              <div class="track__done" [style.width]="alongPercent()"></div>
+              @for (tk of poseTicks(); track $index) {
+                <div
+                  class="track__tick"
+                  [class.track__tick--ok]="tk.reached"
+                  [style.left.%]="tk.percent"
+                ></div>
+              }
+              <input
+                class="track__scrub"
+                type="range"
+                step="1"
+                [min]="scrubMin()"
+                [max]="scrubMax()"
+                [value]="scrubValue()"
+                (input)="setScrub($event)"
+                aria-label="Scrub Preview"
+              />
+            </div>
+          </div>
+        }
+        <!-- One button, because there is only ever one next step: search, or
+             commit what the search found. -->
+        <!-- A bar and nothing else. The sentence that used to be here described
+             the search accurately and was gone before anybody finished reading
+             it, which is a sentence doing no work. -->
+        @if (solution.generating) {
+          <div class="foot__progress">
+            <div class="sweep"><div class="sweep__bar"></div></div>
+          </div>
+        }
+        <div class="foot__buttons">
+          <button
+            type="button"
+            class="cta cta--insert"
+            [class.cta--busy]="solution.generating"
+            [disabled]="primaryDisabled"
+            (click)="primaryAction()"
+          >
+            <mat-icon>{{ primaryIcon }}</mat-icon>
+            {{ primaryLabel }}
+          </button>
+          <button type="button" class="danger" (click)="deleteAll()">
+            <mat-icon>delete_outline</mat-icon>Delete All Positions
+          </button>
+        </div>
+        @if (solution.inserted) {
+          <div class="note note--good">
+            <mat-icon>check_circle</mat-icon>
+            <span>{{ insertedNote() }}</span>
+            <button type="button" class="note__undo" (click)="undoInsert()">Undo</button>
+          </div>
+        }
+      </div>
+    </div>
+  }
 </div>

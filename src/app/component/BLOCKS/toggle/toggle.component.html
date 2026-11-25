@@ -1,29 +1,49 @@
-<div id="toggle-block">
-  <div [formGroup]="this.formGroup" class="row">
+<div
+  id="toggle-block"
+  [class.toggle-block--disabled]="disabled()"
+  [class.compact]="compact()"
+  [class.bare]="bare()"
+>
+  <div [formGroup]="this.formGroup()" class="row">
     <!-- <input type="checkbox" id="vehicle1" name="vehicle1" value="Bike" [formControlName]="this._formControl" /> -->
     <span class="label"><ng-content></ng-content></span>
-    @if (!addInput) {
-      <mat-icon matTooltip="{{ this.tooltip }}" [matTooltipShowDelay]="1000" class="label-help"
+    @if (!addInput()) {
+      <mat-icon matTooltip="{{ this.tooltip() }}" matTooltipShowDelay="400" class="label-help"
         >help_outline
       </mat-icon>
     }
     <div class="spacer"></div>
-    @if (addInput) {
-      <span class="label angle-label {{ disableInput ? 'disabled' : '' }}">⊾</span>
+    @if (addInput()) {
+      <span class="label angle-label {{ disableInput() ? 'disabled' : '' }}">⊾</span>
     }
-    @if (addInput) {
-      <mat-form-field class="customInputForm" (click)="disableInput ? null : field.select()">
+    @if (addInput()) {
+      <mat-form-field
+        class="customInputForm"
+        (click)="disableInput() ? null : selectAll(field)"
+        (mouseenter)="setMouseOver(true)"
+        (mouseleave)="setMouseOver(false)"
+      >
         <input
           class="customInput"
           matInput
           type="text"
           #field
           (keyup.enter)="field.blur()"
-          [formControlName]="this._formControlForInput"
+          (focus)="setFocused(true)"
+          (blur)="setFocused(false)"
+          [formControlName]="this._formControlForInput() ?? null"
         />
       </mat-form-field>
     }
     <div class="spacer"></div>
-    <mat-slide-toggle color="primary" [formControlName]="this._formControl"></mat-slide-toggle>
+    <mat-slide-toggle
+      color="primary"
+      [formControlName]="this._formControl()"
+      [attr.data-action]="dataAction()"
+      [aria-label]="ariaLabel() ?? ''"
+    ></mat-slide-toggle>
+    @if (mixed()) {
+      <span class="mixed-state">Mixed</span>
+    }
   </div>
 </div>

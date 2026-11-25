@@ -1,6 +1,154 @@
-// Width of the labelled left nav rail. The bottom bar indents past it and the
-// slide-out panel starts at it, so they all read this one value.
-$rail-width: 96px;
+// Where the chrome sits, in one place, so the strip, the panels, the drawers,
+// the playback card and the project menu cannot drift apart.
+//
+// Everything is measured from the *card*, which is what a reader sees. A card
+// is $card-inset from the window and from its neighbor -- always that, in
+// every direction. The frames the scrolling cards live in are set back by
+// $shadow-room so the card's own shadow has somewhere to fall inside a box that
+// clips; that is why the frame numbers are not round.
 
-// Height of app-bottombar; the rail and panel stop above it.
-$bottom-bar-height: 20px;
+/** The one gap. Between a card and the window, and between a card and a card. */
+$card-inset: 12px;
+
+/**
+ * Air a card needs around it inside a frame that clips, for its shadow.
+ *
+ * Read off `--card-shadow`, not chosen: its widest layer is `0 6px 10px`, which
+ * reaches 6 + 10/2 = 11px below the card, and `0 1px 18px` reaches 10px to the
+ * sides. 10px was a pixel under both, which is why every scrolling panel ended
+ * in a shadow that stopped square instead of fading out.
+ */
+$shadow-room: 16px;
+
+/** Height of the cards along the top. */
+$top-card-height: 48px;
+
+/** Where the top strip's cards end. */
+$top-strip-bottom: $card-inset + $top-card-height;
+
+/** Frames are set back from the card line by the room their shadow needs. */
+$frame-inset: $card-inset - $shadow-room;
+$panel-top: $top-strip-bottom + $card-inset - $shadow-room;
+
+// Kept for anything still measuring from the top of the panel frame.
+$top-strip-height: $panel-top;
+
+// Room kept at the bottom for the playback card and the status strip beneath it.
+$playback-clearance: 110px;
+
+/**
+ * Room kept at the bottom for the view-controls card and the status strip.
+ *
+ * The same 110px as above only because that card is 60px tall today: it is the
+ * card's own height plus the 38px the cluster floats above the status strip
+ * plus the one gap. The view controls measure themselves and publish
+ * `--view-controls-clearance`; this is the fallback for before that lands.
+ */
+$view-controls-clearance: 110px;
+
+/**
+ * Where the phone layout starts: the one breakpoint that changes the layout.
+ *
+ * The same 600 as `PHONE_MAX_WIDTH` in `viewport.service.ts`, which puts the
+ * class the sheet is styled by on the panel; a spec fails when the two differ.
+ * Chosen from the panel rather than from a device list: below about this a
+ * panel standing at the side takes more of the window than it leaves.
+ */
+$phone-max-width: 600px;
+
+/**
+ * Where the lower line tightens.
+ *
+ * The view controls and the transport share that line on a phone, and they
+ * give up padding at the same width so the two cards change together. The
+ * status strip drops its units and cursor readouts here too.
+ */
+$lower-line-tightens: 720px;
+
+/**
+ * The narrowest window the chrome is laid out for.
+ *
+ * The sizes were fitted to a 390px phone; a 360px one is thirty narrower. Below
+ * this the cards give up what padding they can, the view buttons shrink, and
+ * as a last resort the tab card scrolls rather than putting a mode off the edge
+ * of the window.
+ */
+$narrow-phone: 380px;
+
+/**
+ * Where the bottom cluster stops fitting across one line.
+ *
+ * Three cards need 759px: the row's own 24px of padding, the 160px transport,
+ * the scrub card at the 250px it will not go below, the 301px view controls,
+ * and a gap between each pair. Below this the cluster wraps -- the scrub card
+ * takes a full-width line above the other two -- which is when the right drawer
+ * has to stop above the whole cluster rather than above the view controls at
+ * its right-hand end.
+ */
+$cluster-wraps: 780px;
+
+/**
+ * Where the playback cluster can stand clear of the analysis panel.
+ *
+ * The panel is 420px wide in the analysis modes and the cluster about 880, so
+ * past this the two fit side by side -- and once they do, the cluster moves to
+ * the right and the panel takes the height the cluster was keeping free.
+ */
+$cluster-clears-panel: 1340px;
+
+// Height of app-bottombar.
+$bottom-bar-height: 26px;
+
+/**
+ * How far a panel's *frame* stops short of the bottom in the non-analysis
+ * modes, so its *card* stops $card-inset above the status strip.
+ *
+ * The card sits $shadow-room inside the frame, so the frame has to stop that
+ * much sooner than the card is meant to. Measuring the frame as though it were
+ * the card left 22px under the panel against 12px over it.
+ */
+$panel-bottom-clearance: $bottom-bar-height + $frame-inset;
+
+/**
+ * The phone sheet's grab handle.
+ *
+ * Named here because two files need it and they sit on opposite sides of it:
+ * the handle hangs on the sheet's top edge, and the playback cluster has to
+ * stand clear of the handle rather than of the sheet.
+ *
+ * 44px because that is the smallest thing a thumb can be asked to hit. The
+ * pill drawn inside it is 5px tall, which is a mark rather than a target.
+ */
+$sheet-handle-height: 44px;
+
+/**
+ * The pill the handle draws, and the air under it.
+ *
+ * Named because the same two numbers decide three things that have to agree:
+ * how far the pill floats above the sheet, how far it floats above the controls
+ * row when the sheet is shut, and where the grip line sits inside it. Left as
+ * literals they drifted -- the pill was centered in the 44px target, so it stood
+ * 12px clear when shut and 28px clear when open, the extra 16 being the sheet's
+ * own shadow-room. Two different gaps for the same control, and the larger one
+ * on the state where the pill is supposed to read as the sheet's own edge.
+ *
+ * The one gap, like everything else: the pill stands as far off the sheet as
+ * the sheet stands off the controls row, as the controls row stands off the
+ * status strip, and as the cards along the top stand off the window. Four gaps
+ * that were 12, 16, 6 and 12, which is what made a stack of cards read as a
+ * stack of accidents.
+ */
+$sheet-pill-height: 20px;
+$sheet-grip-gap: $card-inset;
+
+/**
+ * The least canvas worth leaving on a phone.
+ *
+ * The sheet already gives way to the top strip and the transport, but between
+ * them those two can take the whole window -- three machines unsynced in
+ * analysis on a small phone leaves about twelve pixels, and a drawing squeezed
+ * to twelve pixels is a drawing nobody can see while they work the controls for
+ * it. The sheet gives this up before it gives up anything else, because it is
+ * the one thing here with a handle for opening again.
+ */
+$least-canvas: 120px;

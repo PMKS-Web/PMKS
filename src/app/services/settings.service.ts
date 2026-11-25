@@ -6,8 +6,29 @@ import {
   GlobalUnit,
   ForceUnit,
   AngularVelocityUnit,
+  MassUnit,
 } from '../model/unit-enums';
 import type { ForceAnalysisMode } from '../model/mechanism/force-solver';
+import { MODEL_SCALE } from '../model/render-scale';
+import { OBJECT_SCALE } from '../model/object-scale';
+import { DrawingStyle, drawingScale, readDrawingStyle } from '../model/drawing-style';
+import { local_storage_available } from '../model/utils';
+
+/**
+ * A preference remembered on this machine.
+ *
+ * Storage can be missing or refused -- private windows, an embedded frame --
+ * and a setting that cannot be remembered is not worth failing over.
+ */
+function readStoredFlag(key: string, fallback: boolean): boolean {
+  if (!local_storage_available()) return fallback;
+  const stored = localStorage.getItem(key);
+  return stored === null ? fallback : stored === 'true';
+}
+
+export function writeStoredFlag(key: string, value: boolean): void {
+  if (local_storage_available()) localStorage.setItem(key, String(value));
+}
 
 @Injectable({
   providedIn: 'root',
@@ -16,29 +37,158 @@ export class SettingsService {
   lengthUnit = new BehaviorSubject(LengthUnit.CM);
   angleUnit = new BehaviorSubject(AngleUnit.DEGREE);
   forceUnit = new BehaviorSubject(ForceUnit.NEWTON);
+  /**
+   * The unit masses are *read* in, not the one they are stored in.
+   *
+   * Storage follows the length unit (model/mass-units.ts); this is the
+   * reader's pick between grams and kilograms under centimeters and meters,
+   * and is ignored under inches, which have only pounds-mass. NULL means no
+   * pick -- the length's own mass -- and is what a change of length puts back,
+   * so a reader who never touches Mass Units sees what the app always showed.
+   * Read it through `displayMassUnit`, never directly.
+   */
+  massUnit = new BehaviorSubject(MassUnit.NULL);
   // inputTorque = new BehaviorSubject(TorqueUnit.CM_N);
   globalUnit = new BehaviorSubject(GlobalUnit.METRIC);
   isInputCW = new BehaviorSubject(true);
-  /** Always RPM. The input panel converts for display via inputSpeedUnit. */
-  inputSpeed = new BehaviorSubject(20);
+  /**
+   * Always RPM. The input panel converts for display via inputSpeedUnit.
+   *
+   * Slow on purpose: the point of the animation is to be watched, and 20 RPM
+   * is three seconds a turn, which is faster than a reader can follow a coupler
+   * point round.
+   */
+  inputSpeed = new BehaviorSubject(5);
   /**
    * Display unit for the input joint's speed. Chosen from the Input Settings
    * section rather than typed, so it is a view preference only — inputSpeed
    * stays in RPM and the URL format is unchanged.
    */
   inputSpeedUnit = new BehaviorSubject(AngularVelocityUnit.RPM);
+  /**
+   * How fast a driven prismatic joint travels, in user length units per second.
+   *
+   * Its own setting, not a second reading of `inputSpeed`, because the two are
+   * different physical quantities: every rebuild turns `inputSpeed` into rad/s
+   * by multiplying by π/30, and a translation put through that conversion moves
+   * at 0.105 of the speed the panel says. There is no unit *picker* to go with
+   * it — length per second has one honest spelling, and which one it is follows
+   * `lengthUnit` (cm/s, m/s, in/s).
+   *
+   * One unit a second by default, which is 1 cm/s in a new drawing. It was
+   * five, and a classroom slider's stroke is a couple of centimeters: a cycle
+   * of a tenth of a second, over before it could be watched. A drive switched
+   * on with a press gets a speed fitted to its own stroke instead
+   * (`fitAskedDriveSpeeds`); this is the speed of every other one. A shared
+   * URL carries its own and is not changed by this.
+   */
+  linearInputSpeed = new BehaviorSubject(1);
   // One mechanism-wide choice, shown by every force-analysis panel.
   forceAnalysisMode = new BehaviorSubject<ForceAnalysisMode>('static');
   animating = new BehaviorSubject(false);
   isShowMajorGrid = new BehaviorSubject(true);
   isShowMinorGrid = new BehaviorSubject(true);
+  /**
+   * Whether dragging lands on the grid.
+   *
+   * The reader's own editing preference, kept on their machine rather than in
+   * the URL: a shared link says what the mechanism is, and how someone else's
+   * cursor behaves while they edit their copy of it is not part of that.
+   *
+   * Off until asked for. Dragging has always put a joint exactly where the
+   * cursor let go, and a drawing where a joint cannot sit at 3.7 unless it is
+   * told otherwise is a different app from the one everyone already has.
+   */
+  isSnapToGrid = new BehaviorSubject(readStoredFlag('snapToGrid', false));
 
-  isShowID = new BehaviorSubject(false);
-  isShowCOM = new BehaviorSubject(false);
+  /**
+   * Whether a drag squares itself up with its neighbors.
+   *
+   * On, because it always has been: a joint dragged nearly level with another
+   * one has been pulled level, with a guide line to say so, for as long as
+   * there have been guide lines. The toggle is for turning it off.
+   */
+  isSnapToAlignment = new BehaviorSubject(readStoredFlag('snapToAlignment', true));
+
+  // On, so a reader's first drawing already has the letters the panels, the
+  // menus and the tutorial call its joints by. A shared URL carries its own.
+  isShowID = new BehaviorSubject(true);
+  /**
+   * On by default, and remembered on this machine rather than in the URL: the
+   * mark only appears on links that have been given mass — a massless link has
+   * no center of mass worth pointing at — so a fresh drawing shows nothing
+   * extra, and a link given weight announces it. Nearly every circulating URL
+   * carries the *old* default (off) in its stored bit, which is why the bit is
+   * no longer read: a display preference should not travel with the drawing.
+   */
+  isShowCOM = new BehaviorSubject(readStoredFlag('showCoM', true));
+  /**
+   * Whether weight loads the mechanism. On by default — every link with mass
+   * hangs from it — and recorded in the URL when turned off, so a shared
+   * analysis means the same thing on arrival.
+   */
+  isGravity = new BehaviorSubject(true);
+  /**
+   * Whether the traced paths are drawn at all.
+   *
+   * Which joints trace their path is a property of the drawing, kept per joint
+   * and shared in its URL. This is the view's own switch over the lot of them:
+   * a drawing with several machines tracing at once is mostly ink, and reading
+   * it means putting the ink away for a moment -- not editing every joint that
+   * was asked to trace and then having to ask again.
+   */
+  isShowTraces = new BehaviorSubject(true);
+  /**
+   * A link whose center of mass to draw while the reader is asking about it.
+   *
+   * Hovering the analysis panel's center-of-mass heading points at the thing on
+   * the grid the numbers under it describe, without turning the setting on
+   * behind the reader's back.
+   */
+  previewCoMLinkId: string | null = null;
   tempGridDisable: boolean = false; //This is to hide the grid lines to fit only to the linkage when doing a svg fit
 
   isGridDebugOn: boolean = false;
-  static _objectScale = new BehaviorSubject(1);
+  // In user units; the internal world is MODEL_SCALE times larger, and every
+  // visual size in the mark system is a multiple of this number.
+  //
+  // The subject itself lives in model/object-scale.ts — a leaf module — so
+  // that Coord's closeness thresholds can read it without importing this
+  // service and closing a module cycle. This static is its public face.
+  static _objectScale = OBJECT_SCALE;
+
+  /** Legacy cylinder clearance, retained independently of visual sizing. Zero follows old URLs. */
+  static preservedCylinderScale = 0;
+  static get cylinderObjectScale(): number {
+    return this.preservedCylinderScale || this.objectScale;
+  }
+  readonly drawingStyle = new BehaviorSubject<DrawingStyle>(readDrawingStyle());
+  /** Set by the viewport, read only by artwork. Neither value is serialized. */
+  drawingZoom = 0;
+  get drawingScale(): number {
+    return drawingScale(this.objectScale, this.drawingZoom, this.drawingStyle.value);
+  }
+  /** A force is a load, not structure, so every style draws it at Standard's size. */
+  get forceScale(): number {
+    return drawingScale(this.objectScale, this.drawingZoom, 'standard');
+  }
+  get isSchematic(): boolean {
+    return this.drawingStyle.value === 'schematic';
+  }
+
+  /**
+   * Set while a size the *app* chose is being adopted, rather than one the
+   * reader asked for.
+   *
+   * The repair a size change runs on a cylinder (decision S29) is an edit's
+   * worth of geometry, and a size the reader typed earns an undo entry for it.
+   * A size adopted on load must not: the drawing has not been edited, it has
+   * been opened, and `adoptScaleForDrawing` revises the state it arrived in
+   * instead. Recorded rather than passed down, because the size reaches the
+   * rebuild twice -- once through this service's own subject, which every open
+   * panel is subscribed to -- and neither pass can tell whose change it is.
+   */
+  static objectScaleAdopting = false;
 
   static get objectScale(): number {
     return SettingsService._objectScale.value;

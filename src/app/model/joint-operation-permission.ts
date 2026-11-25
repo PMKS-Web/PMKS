@@ -1,0 +1,390 @@
+/**
+ * Whether one structural edit may be made at one joint, and why not.
+ *
+ * The menu grays a row, the panel disables a control, the group edit refuses a
+ * selection and the mutation itself turns an edit away — four places that have
+ * to agree about the same rule, and four places that used to each carry their
+ * own copy of it. A control offered and then refused one layer down reads as a
+ * broken app; a control grayed for a reason nothing enforces is worse, because
+ * it is a rule the reader cannot discover is gone.
+ *
+ * So the rule lives here, once, as a function of the drawing rather than of any
+ * service. Callers pass the few facts that are theirs to know — what the
+ * cylinders are, whether a joint reads as driven, whether it already carries a
+ * block — and get back either `undefined` or the sentence the reader sees.
+ *
+ * **Pure on purpose.** Nothing here touches a service, so the panel and the
+ * canvas and a spec can all ask the same question of the same drawing.
+ */
+
+import { Joint, PrisJoint, RealJoint } from './joint';
+import { RealLink } from './link';
+import { Cylinder, cylindersEnclosing } from './cylinder';
+
+/**
+ * A structural edit, named as the state it is asking for rather than as a toggle.
+ *
+ * `ground` and `attach` are here although they change no topology of their own:
+ * both are per-joint edits the menu and the panel offer, and a cylinder refuses
+ * both at the seal. `stepsBetween` never emits either, so a change of joint type
+ * never asks about them.
+ */
+export type JointOperation =
+  'weld' | 'unweld' | 'add-slider' | 'remove-slider' | 'ground' | 'attach';
+
+/**
+ * Why an edit will not happen, in the two lengths the app needs: `short` for a
+ * chip or a menu row's gray note, `long` for a tooltip or a snackbar.
+ */
+export interface OperationRefusal {
+  code: string;
+  short: string;
+  long: string;
+}
+
+/**
+ * What the caller knows and this module does not.
+ *
+ * `isDriven` and `hasSlider` are questions about the joint graph that the
+ * canvas already answers, and a slider's input lives on its guide rather than
+ * on the pin — re-deriving that here would be a second answer to a question
+ * `GridUtilsService` has settled.
+ */
+export interface JointOperationContext {
+  cylinders: Cylinder[];
+  isDriven: (joint: RealJoint) => boolean;
+  hasSlider: (joint: RealJoint) => boolean;
+}
+
+/**
+ * The one answer. `undefined` means the edit may proceed.
+ *
+ * A no-op is allowed rather than refused: asking to weld a joint that is
+ * already welded is not an error, and the control that would do it is the same
+ * control that undoes it.
+ *
+ * `after` judges the edit on the joint as it will stand once that other edit
+ * has run: the second half of a change of joint type, where one press gives a
+ * pin its block and welds it in the same edit (`model/joint-type.ts`).
+ */
+export function refuseJointOperation(
+  joint: Joint | undefined,
+  operation: JointOperation,
+  context: JointOperationContext,
+  after?: JointOperation
+): OperationRefusal | undefined {
+  if (!(joint instanceof RealJoint)) {
+    const long =
+      operation === 'weld' || operation === 'unweld'
+        ? 'Only a joint can be welded.'
+        : operation === 'ground'
+          ? 'Only a joint can be grounded.'
+          : operation === 'attach'
+            ? 'Only a joint can have something attached to it.'
+            : 'Only a joint can carry a slider.';
+    return { code: 'joint.not-a-joint', short: 'not a joint', long };
+  }
+  switch (operation) {
+    case 'weld':
+      return refuseWeld(joint, context, after);
+    case 'unweld':
+      return refuseUnweld(joint, context);
+    case 'add-slider':
+      return refuseAddSlider(joint, context);
+    case 'remove-slider':
+      return refuseRemoveSlider(joint, context);
+    case 'ground':
+      return refuseGround(joint, context);
+    case 'attach':
+      return refuseAttach(joint, context);
+  }
+}
+
+/**
+ * Why nothing new may be built onto this joint, or `undefined` when something
+ * may.
+ *
+ * A cylinder places the joint it slides on rather than solving for it: the seal
+ * stands where the barrel's length and the part's travel put it. A bar, a second
+ * cylinder or a load hung there would be a third body asking to be carried by a
+ * point nothing is free to move. The joints at the two ends are where a cylinder
+ * attaches to the drawing, and they take all three. And a driven pin that
+ * already joins two bodies takes no third, at either end of a new link.
+ *
+ * Exported as well as reachable through `refuseJointOperation`, because the
+ * Attach rows ask about one thing and have no type change to walk.
+ *
+ * Takes the cylinders alone rather than the whole context: what is driven and
+ * what already carries a block are facts about *other* edits, and asking a
+ * mutation to invent them in order to ask this question is how a rule ends up
+ * enforced only where a menu happens to have a context to hand.
+ */
+export function refuseAttach(
+  joint: Joint | undefined,
+  context: Pick<JointOperationContext, 'cylinders'>
+): OperationRefusal | undefined {
+  if (!(joint instanceof RealJoint)) return undefined;
+  // A driven pin turns one body against another, so it has room for two: a
+  // crank and the ground, or two links. A third arriving leaves the input no
+  // way to say which pair to move -- and the solver used to pick one and run
+  // anyway, under a setup drawer saying the input was refused. The same rule a
+  // drop onto the joint already keeps (`MERGE_REFUSAL_MESSAGES['driven-joint']`).
+  if (
+    joint.input &&
+    !(joint instanceof PrisJoint) &&
+    joint.links.length + (joint.ground ? 1 : 0) >= 2
+  ) {
+    return {
+      code: 'input.two-bodies',
+      short: 'input already connected',
+      long: 'This input already drives one body against another, so a third can’t join it. Remove the input first.',
+    };
+  }
+  if (cylindersEnclosing(context.cylinders, joint).length === 0) return undefined;
+  return {
+    code: 'cylinder.attach-at-an-end-joint',
+    short: 'inside a cylinder',
+    long: 'This joint is inside a cylinder. Attach to one of the joints at its ends.',
+  };
+}
+
+/**
+ * Why this joint cannot be grounded, or `undefined` when it can.
+ *
+ * A cylinder is held in place at the two joints at its ends, so grounding the
+ * one in the middle of it is asking for a part to be bolted to the world by its
+ * own moving seal. The menu, the Edit panel and `MechanismService.toggleGround`
+ * all quote this, so no surface can offer a row the mutation then declines.
+ *
+ * Exported as well as reachable through `refuseJointOperation`, because the
+ * Grounded row asks about one operation and has no type change to walk.
+ */
+export function refuseGround(
+  joint: Joint | undefined,
+  context: JointOperationContext
+): OperationRefusal | undefined {
+  if (!(joint instanceof RealJoint)) return undefined;
+  if (cylindersEnclosing(context.cylinders, joint).length === 0) return undefined;
+  return {
+    code: 'cylinder.ground-an-end-joint',
+    short: 'ground an end joint instead',
+    long: 'A cylinder is held in place at the joints at its two ends, so this joint cannot be grounded. Ground one of those instead.',
+  };
+}
+
+/** A weld and a drive on the same joint, said once for both places that refuse it. */
+export const WELD_IS_DRIVEN: OperationRefusal = {
+  code: 'weld.is-driven',
+  short: 'it is an input',
+  long: 'A weld says these bodies do not move relative to each other, and an input says they do. Remove the input first.',
+};
+
+function refuseWeld(
+  joint: RealJoint,
+  context: JointOperationContext,
+  after?: JointOperation
+): OperationRefusal | undefined {
+  // Welding a slider is what makes it a Slide: its riders stop turning against
+  // the slot and the assembly keeps the slot's angle. It used to be refused
+  // here, because the weld had to land on the coincident pin instead — the
+  // object a slider no longer has.
+  if (joint instanceof PrisJoint ? !joint.rotates : joint.isWelded) return undefined;
+
+  // A mount welds like any other joint: it is where a cylinder attaches to the
+  // rest of the drawing, so fusing one into a bracket is the ordinary thing to
+  // want. What is closed is the ram's *inside* -- the buried barrel end and the
+  // seal -- and welding anything to one of those is fusing a part to its own
+  // workings. The buried end is never drawn and the seal is the square the skin
+  // draws, so the rule is here for every path that can reach either.
+  if (cylindersEnclosing(context.cylinders, joint).length > 0) {
+    return {
+      code: 'cylinder.sealed-weld',
+      short: 'inside a cylinder',
+      long: 'This joint is inside a cylinder and can’t be welded. Weld one of the end joints instead.',
+    };
+  }
+
+  // A weld is the statement that the bodies at this joint do not move relative
+  // to each other, and an input is the statement that they do. Both at once is
+  // not a state the model can honor.
+  //
+  // Except on a slider, where the weld is the Slide: it stops the riders
+  // turning against the slot and leaves them free to travel along it, which is
+  // the one motion a slider's (linear) input drives. A driven Pin-in-slot
+  // therefore becomes a driven Prismatic joint without losing its input (#384).
+  // Only while the slot stays. A change of type to Welded takes the slot off
+  // first and welds the pin left behind, so it is judged as that pin: allowed
+  // on the frame, where the fused bars turn together against ground, and
+  // refused floating. That is the same test the change back from Welded has to
+  // pass, so neither direction is open without the other.
+  const keepsItsSlot =
+    after === 'add-slider' || (joint instanceof PrisJoint && after !== 'remove-slider');
+  if (joint.input && !joint.ground && !keepsItsSlot) return WELD_IS_DRIVEN;
+
+  return weldNeedsLinks(joint, after);
+}
+
+/**
+ * How many leaf bars of `link` actually meet at `joint`.
+ *
+ * A compound link sits as one entry in `joint.links` whether its weld is *at*
+ * `joint` (two or more leaves touching `joint`) or at some other joint (only
+ * one leaf reaching `joint`). Counting the leaves that carry `joint` tells
+ * those two apart.
+ */
+export function memberBarsTouching(link: RealLink, joint: RealJoint): number {
+  if (link.subset.length === 0) return link.joints.includes(joint) ? 1 : 0;
+  return link.subset.reduce(
+    (count, child) => count + (child instanceof RealLink ? memberBarsTouching(child, joint) : 0),
+    0
+  );
+}
+
+/**
+ * Whether a weld that a change of type *keeps* still has two bodies to fuse
+ * once the slot leaves.
+ *
+ * Prismatic and Welded are both welded, so `stepsBetween` emits no weld step
+ * between them and nothing asks `weldNeedsLinks` — the change is the slot
+ * coming off, and the weld simply stays. On a Slide with one bar that weld was
+ * the bar held to the slot, and with the slot gone the reconciler finds nothing
+ * for it to be rigid about and takes it away: the reader who chose Welded would
+ * be handed a Revolute without a word.
+ *
+ * Asked by leaf bars touching the joint rather than by `links.length` or
+ * `subset.length > 0`: a compound fused *at* this joint counts once per leaf
+ * meeting here (two or more, so the weld survives), while a compound welded at
+ * some other joint has only one leaf reaching here and is refused just like a
+ * plain bar — matching Pin-in-slot to Welded. (A closed loop already welded at
+ * its other corners also has two leaves meeting here, which is harmless since
+ * the loop is already rigid.)
+ */
+export function weldOutlivesTheSlot(joint: RealJoint): OperationRefusal | undefined {
+  const bars = joint.links.filter((link): link is RealLink => link instanceof RealLink);
+  const meeting = bars.reduce((sum, bar) => sum + memberBarsTouching(bar, joint), 0);
+  if (meeting >= 2) return undefined;
+  return {
+    code: 'weld.needs-two-links',
+    short: 'needs 2 links',
+    long:
+      meeting <= 0
+        ? 'A weld fuses links that meet at a joint, and this joint isn’t connected to any links.'
+        : 'A weld fuses the links that meet at a joint, and without its slot only one meets here.',
+  };
+}
+
+/**
+ * What a weld needs to hold, which depends on what it is welding.
+ *
+ * On a slider the weld is the Slide: the riders stop turning against the slot,
+ * so one rider is enough and the slot is the other half. On every other joint it
+ * fuses the links that meet there, so it needs two of them.
+ *
+ * Judged on the joint as it will stand once `after` has run — the second half of
+ * a change of type, where one press gives a pin its slot and welds it in the
+ * same edit (`model/joint-type.ts`). A block used to be a link of the pin it
+ * rode, so gaining one gave a pin on a single bar its second link; a slider is
+ * the joint itself now, and what it holds is whatever rides it.
+ */
+export function weldNeedsLinks(
+  joint: RealJoint,
+  after?: JointOperation
+): OperationRefusal | undefined {
+  const slides =
+    after === 'add-slider' || (joint instanceof PrisJoint && after !== 'remove-slider');
+  const bars = joint.links.filter((link): link is RealLink => link instanceof RealLink);
+  if (slides) {
+    if (bars.length >= 1) return undefined;
+    return {
+      code: 'weld.needs-a-rider',
+      short: 'nothing rides it',
+      long: 'A Prismatic joint locks a link’s angle to the slot, and no link is connected to this joint.',
+    };
+  }
+  const meeting = joint.links.length;
+  if (meeting >= 2) return undefined;
+  // A loose joint has no links at all, and telling it "only one meets here" is
+  // a sentence about a link that is not there.
+  return {
+    code: 'weld.needs-two-links',
+    short: 'needs 2 links',
+    long:
+      meeting <= 0
+        ? 'A weld fuses links that meet at a joint, and this joint isn’t connected to any links.'
+        : after === 'remove-slider'
+          ? 'A weld fuses the links that meet at a joint, and without its slot only one meets here.'
+          : 'A weld fuses the links that meet at a joint, and only one meets here.',
+  };
+}
+
+function refuseUnweld(
+  joint: RealJoint,
+  context: JointOperationContext
+): OperationRefusal | undefined {
+  // Read the way `refuseWeld` reads it, and for the same reason: a slider
+  // records its weld in `rotates`, so asking `isWelded` of one answers false
+  // however welded it is. That made this fail *open* -- the guard below, which
+  // is what stops a reader taking a sealed cylinder apart, stopped firing at
+  // the one joint a cylinder is sealed at.
+  const welded = joint instanceof PrisJoint ? !joint.rotates : joint.isWelded;
+  if (!welded) return undefined;
+  // The seal's weld is what makes a cylinder one part, and it never comes off.
+  // A welded *mount* has no block of its own, so taking one back out of a
+  // neighboring compound is an ordinary unweld and stays legal — which is why
+  // this asks about interiors and not about membership.
+  if (cylindersEnclosing(context.cylinders, joint).length > 0) {
+    return {
+      code: 'cylinder.sealed-unweld',
+      short: 'inside a cylinder',
+      long: 'This weld is what holds a cylinder together as one part, so it cannot be undone. Delete the cylinder instead.',
+    };
+  }
+  return undefined;
+}
+
+function refuseAddSlider(
+  joint: RealJoint,
+  context: JointOperationContext
+): OperationRefusal | undefined {
+  if (context.hasSlider(joint)) return undefined;
+
+  // The ram's own block belongs to its interior, and an interior joint takes
+  // no second one -- that is what sealed means. A *mount* is not interior:
+  // giving one a block is how a ram gets a carriage, and it is the same edit
+  // as giving any other joint one. This asked about membership before, so a
+  // mount was turned away for a slider the cylinder keeps somewhere else
+  // entirely.
+  if (cylindersEnclosing(context.cylinders, joint).length > 0) {
+    return {
+      code: 'cylinder.sealed-slider',
+      short: 'inside a cylinder',
+      long: 'This joint already slides inside a cylinder and can’t be converted into another slider. Convert one of its end joints instead.',
+    };
+  }
+
+  // A drive used to block this, on the grounds that a pin's drive turns and a
+  // slot's travels. But taking a slot away from a driven joint was always
+  // allowed and kept the drive, so the change went one way only: a driven pin
+  // could not get back the slot it had just lost. The drive carries across in
+  // both directions now, at the same signed number, so a round trip lands
+  // exactly where it began (#384).
+  return undefined;
+}
+
+function refuseRemoveSlider(
+  joint: RealJoint,
+  context: JointOperationContext
+): OperationRefusal | undefined {
+  if (!context.hasSlider(joint)) return undefined;
+  // The cylinder's own block is the cylinder. An external block on a mount is
+  // an ordinary block and comes off like one, which is why this asks about
+  // interiors rather than about membership.
+  if (cylindersEnclosing(context.cylinders, joint).length > 0) {
+    return {
+      code: 'cylinder.sealed-slider',
+      short: 'inside a cylinder',
+      long: 'This joint is the cylinder’s sliding joint. Delete the cylinder to remove it.',
+    };
+  }
+  return undefined;
+}

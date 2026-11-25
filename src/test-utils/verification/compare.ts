@@ -2,7 +2,7 @@ import { VerificationDataset } from '../../test-data/verification/types';
 import { KinematicsTrace } from './solve';
 
 /**
- * Pairs each PMKS+ timestep with the MATLAB row at the same input-crank
+ * Pairs each PMKS timestep with the MATLAB row at the same input-crank
  * rotation, matched on (whole degrees rotated since start, sweep direction).
  * Both sides step the input exactly 1 degree per row from the same starting
  * position, but they detect toggle points of non-full-rotation linkages a
@@ -188,4 +188,27 @@ export function alignToDataset(
     excludedActualTimesteps,
     expectedDirections
   );
+}
+
+/**
+ * Where a sampled path turns round, ignoring wobble below `noise`.
+ *
+ * Joint positions are rounded, so a smooth extremum is a run of samples that
+ * differ in the last digit and a plain sign-change count reads three reversals
+ * in a path that has two. Stepping from the last confirmed point rather than
+ * from the previous sample takes the rounding out.
+ */
+export function turningPoints(values: number[], noise: number): number[] {
+  const turns: number[] = [];
+  let direction = 0;
+  let anchor = 0;
+  for (let i = 1; i < values.length; i++) {
+    const step = values[i] - values[anchor];
+    if (Math.abs(step) < noise) continue;
+    const now = Math.sign(step);
+    if (direction !== 0 && now !== direction) turns.push(anchor);
+    direction = now;
+    anchor = i;
+  }
+  return turns;
 }

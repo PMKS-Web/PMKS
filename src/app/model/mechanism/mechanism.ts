@@ -1,23 +1,92 @@
 import { Joint, PrisJoint, RealJoint, RevJoint } from '../joint';
-import { Link, Piston, RealLink, Shape } from '../link';
+import { actuatorOrRefusal } from '../actuator';
+import { Link, RealLink } from '../link';
+import { assignBodies, BodyAssignment } from './bodies';
+import { mobilityFromGeometry } from './mobility';
+import { freedomsOf } from './freedoms';
 import { Force } from '../force';
-// import {LoopSolver} from "./loop-solver";
-import { PositionSolver } from './position-solver';
-// import {IcSolver} from "./ic-solver";
+import { PositionSolver, PositionSolverDriveState, PRISMATIC_INPUT_STEP } from './position-solver';
 import { InstantCenter } from '../instant-center';
-import { LoopSolver } from './loop-solver';
+import { Loop, LoopSolver } from './loop-solver';
 import { Coord } from '../coord';
 import { KinematicsSolver } from './kinematic-solver';
 import { ForceAnalysisMode, ForceAnalysisSeries, ForceSolver } from './force-solver';
 import { roundNumber } from '../utils';
 import { LBF_IN_PER_NEWTON_METER, LBF_PER_NEWTON } from '../unit-conversions';
+import { MODEL_SCALE } from '../render-scale';
+
+/**
+ * Why a mechanism will not run. One of these, not a boolean, because the ways a
+ * linkage fails call for quite different things to be done about them.
+ */
+export type MechanismFailure =
+  | 'dangling-slider'
+  | 'mobility'
+  | 'not-driven'
+  | 'nothing-can-move'
+  | 'dead-position'
+  | 'hidden-freedom'
+  | 'cycle-never-closes'
+  | 'cylinder-has-no-travel'
+  /** The solve threw. Nothing is known but that, and readiness says so. */
+  | 'solver-error'
+  /** Past the most machines one drawing runs (`MOST_MACHINES`), so not solved at all. */
+  | 'too-many-machines'
+  /**
+   * An input the actuator model refuses -- three bodies at a driven pin, a
+   * welded one. Not solved: the solver would pick a pair and run, under a
+   * setup drawer saying the input could not be one.
+   */
+  | 'input-refused';
+
+/**
+ * One component of a rate, as a cell of an exported table.
+ *
+ * A sample the rate solver refused has no entry at all: `forgetRates` takes
+ * back everything that sample would have said rather than leaving the one
+ * before it standing in. So every reader of these maps needs an answer for
+ * "nothing", and a table's answer is an empty cell. A blank is a gap a reader
+ * can see; a zero is a claim the solver did not make; and reaching through the
+ * map with `!` -- which is what every one of these did -- ends the export on a
+ * TypeError.
+ */
+function rateCell(value: number[] | undefined, index: number, conversion: number): string {
+  const component = value?.[index];
+  return component === undefined || !Number.isFinite(component)
+    ? ''
+    : roundNumber(component * conversion, 4).toString();
+}
+
+/** The same, for a rate that is one number rather than two. */
+function scalarCell(value: number | undefined): string {
+  return value === undefined || !Number.isFinite(value) ? '' : roundNumber(value, 4).toString();
+}
 
 export class Mechanism {
+  private _failure: MechanismFailure | undefined;
+  private _unusableCylinder: string | undefined;
+  /** Joints the position ordering never reached, captured at the failure. */
+  private _unreachableJoints: string[] = [];
+  /**
+   * How near the cycle came to closing before the solver gave up, in user
+   * units. Captured at the failure so the panel can say whether the loop only
+   * just misses or wanders wide.
+   */
+  private _cycleGap: number | undefined;
   private _joints: Joint[][] = [[]];
   private _links: Link[][] = [[]];
   private _forces: Force[][] = [[]];
   private _ics: InstantCenter[][] = [[]];
   private _timeNum: number[] = [];
+  /**
+   * Which samples the look-ahead added, parallel to the frames.
+   *
+   * A subdivided step still lands on the original spacing at its end, so the
+   * samples marked here are exactly the ones between: drop them and what is
+   * left is the uniform cycle the walk would have produced without
+   * subdividing. That is what lets the export offer uniform row spacing.
+   */
+  private _addedSamples: boolean[] = [];
   private _internalTriangleSimLinkMap = new Map<string, number[]>();
   private forceAnalysisCache = new Map<ForceAnalysisMode, ForceAnalysisSeries>();
 
@@ -25,9 +94,18 @@ export class Mechanism {
   private _unit: string;
   private _dof: number;
   private _inputAngularVelocities: number[] = [];
-  private _requiredLoops: string[] = [];
-  private _allLoops: string[] = [];
+  private _requiredLoops: Loop[] = [];
+  private _driveState?: PositionSolverDriveState;
   private mechanismValid = true;
+  /**
+   * Whether the drive now runs against the order the frames were solved in.
+   *
+   * Set by `withReversedDrive`, which turns the drive round without touching
+   * the frames. Anything reading a direction has to know: the frames still
+   * climb the way they always did, so a crank angle taken off them is the same
+   * angle, while the machine walking them is now going the other way.
+   */
+  private _framesRunBackwards = false;
 
   constructor(
     joints: Joint[],
@@ -36,41 +114,59 @@ export class Mechanism {
     ics: InstantCenter[],
     gravity: boolean,
     unit: string,
-    inputAngVel: number
+    inputAngVel: number,
+    // 'adaptive' cuts a rocking input's small arc into a full cycle's worth of
+    // samples; 'degree' holds the crank's classical one-per-degree grid. The
+    // MATLAB verification harness pins 'degree', because its truth tables are
+    // stated row-per-degree and compared one to one -- the solver is the same
+    // either way, so the values it vouches for are the values 'adaptive'
+    // interpolates between.
+    private readonly sampling: 'adaptive' | 'degree' = 'adaptive',
+    // Which of `joints` this machine is actually made of. It has to be handed
+    // frame it shares with its neighbors -- an anchored bar a slider runs
+    // along, a fixed link between two frames -- and the far ends of those
+    // pieces are somebody else's joints. Without the distinction a neighbor's
+    // driven pin reads as this machine's input: it is handed the foreign
+    // speed, skips the "nothing drives this" blocker, and then solves a
+    // mechanism nothing actually turns. Omitted means every joint is its own.
+    ownJointIds?: ReadonlySet<string>,
+    // Refused before anything is solved: a machine past the most one drawing
+    // runs is still built, so every panel can name it, and costs no solve.
+    refused?: MechanismFailure
   ) {
     joints.forEach((j) => {
-      this._joints[0].push(this.cloneJointAt(j, j.x, j.y));
+      const clone = this.cloneJointAt(j, j.x, j.y);
+      // Cleared on the copy, so every solver downstream -- loops, positions,
+      // kinematics, forces, the drive profile -- asks the same question once
+      // rather than each rediscovering ownership for itself.
+      if (ownJointIds && !ownJointIds.has(clone.id) && clone instanceof RealJoint) {
+        clone.input = false;
+      }
+      this._joints[0].push(clone);
     });
     links.forEach((l) => {
       const linkJoints = l.joints.map((joint) => this._joints[0].find((j) => j.id === joint.id)!);
-      switch (l.constructor) {
-        case RealLink:
-          if (!(l instanceof RealLink)) {
-            return;
-          }
-          const realLink = new RealLink(
-            l.id,
-            linkJoints,
-            l.mass,
-            l.massMoI,
-            new Coord(l.CoM.x, l.CoM.y),
-            this.cloneLinkSubset(l.subset, this._joints[0], true),
-            l
-          );
-          realLink.name = l.name;
-          realLink.fill = l.fill;
-          this.restoreLinkSubsetState(l.subset, realLink.subset);
-          this._links[0].push(realLink);
-          break;
-        case Piston:
-          if (!(l instanceof Piston)) {
-            return;
-          }
-          const piston = new Piston(l.id, linkJoints, l.mass);
-          piston.name = l.name;
-          this._links[0].push(piston);
-          break;
+      // `instanceof`, not a switch on the constructor. The switch listed every
+      // class a link could be and silently dropped anything absent from the
+      // list -- so when the block stopped existing, a drawing's links would
+      // have gone missing one class at a time rather than failing where the
+      // class was removed.
+      if (!(l instanceof RealLink)) {
+        return;
       }
+      const realLink = new RealLink(
+        l.id,
+        linkJoints,
+        l.mass,
+        l.massMoI,
+        new Coord(l.CoM.x, l.CoM.y),
+        this.cloneLinkSubset(l.subset, this._joints[0], true),
+        l
+      );
+      realLink.name = l.name;
+      realLink.fill = l.fill;
+      this.restoreLinkSubsetState(l.subset, realLink.subset);
+      this._links[0].push(realLink);
     });
     this.wireJointGraph(0, joints);
     forces.forEach((f) => {
@@ -93,23 +189,75 @@ export class Mechanism {
     this._dof = this.determineDegreesOfFreedom();
     this._inputAngularVelocities.push(inputAngVel);
     // no index found for input Joint
-    if (
-      //If DOF is 1 and at least one joint is an input joint
-      this._dof === 1 &&
-      this._joints[0].findIndex((j) => {
-        if (!(j instanceof RealJoint)) {
-          return;
-        }
-        return j.input;
-      }) !== -1
-    ) {
-      [this._allLoops, this._requiredLoops] = LoopSolver.determineLoops(
-        this._joints[0],
-        this._links[0]
-      );
-      this.findFullMovementPos(inputAngVel);
+    // A dangling slider has a block and no direction for it to slide along, so
+    // there is no constraint to solve and no honest number to report. Refusing
+    // here rather than downstream keeps every solver from having to guess what
+    // an absent slot line means (§4.1).
+    const dangling = this._joints[0].some(
+      (joint) => joint instanceof PrisJoint && joint.isDangling
+    );
+    const driven = this._joints[0].some((j) => j instanceof RealJoint && j.input);
+    const drivenJoint = joints.find(
+      (joint): joint is RealJoint =>
+        joint instanceof RealJoint && joint.input && (!ownJointIds || ownJointIds.has(joint.id))
+    );
+    // A pin's refusal only: a slider on a floating slot has no actuator the
+    // model can describe and is driven correctly all the same (the gripper's
+    // ram), while a pin the model refuses is a drive with no one pair to turn.
+    const inputRefused =
+      drivenJoint !== undefined &&
+      !(drivenJoint instanceof PrisJoint) &&
+      typeof actuatorOrRefusal(drivenJoint) === 'string';
+    // Ordered the way the fixes depend on each other, because this is also the
+    // order the panel reports them in: a slider with nothing to slide along has
+    // no mobility worth counting, and adding an input to a linkage whose
+    // mobility is wrong will not make it run.
+    if (refused) {
+      this.setMechanismInvalid(refused);
+    } else if (dangling) {
+      this.setMechanismInvalid('dangling-slider');
+    } else if (this._dof !== 1) {
+      this.setMechanismInvalid('mobility');
+    } else if (!driven) {
+      this.setMechanismInvalid('not-driven');
+    } else if (inputRefused) {
+      this.setMechanismInvalid('input-refused');
     } else {
-      this.setMechanismInvalid();
+      try {
+        this.solveFromTheDrawnPose(inputAngVel);
+      } catch (error) {
+        // A solve that throws is a machine that could not be solved, and it has
+        // to come back as one. Left to escape, the throw left
+        // `MechanismService.updateMechanism` before it had stored the machines
+        // it was building, so every panel went on describing the drawing from
+        // the moment *before* the edit -- which is how a body with Driven Input
+        // switched on came to be told that nothing drives it (decision S26).
+        // The cause of that particular throw is fixed where it was; this is for
+        // the next one, whose sentence will at least be true.
+        console.error('This mechanism could not be solved:', error);
+        this.setMechanismInvalid('solver-error');
+      }
+    }
+  }
+
+  /** Everything a valid, driven, one-freedom machine is solved for, in order. */
+  private solveFromTheDrawnPose(inputAngVel: number): void {
+    this._requiredLoops = LoopSolver.determineLoops(this._joints[0], this._links[0]);
+    this.findFullMovementPos(inputAngVel);
+    // The solver's static holds what *this* build found; read it now, before
+    // the next mechanism's build resets and overwrites it.
+    this._unusableCylinder = PositionSolver.unusableCylinderDrive;
+    // For the same reason, and for anything that differentiates this
+    // mechanism after every other one has been solved over the top of it.
+    // Built here rather than on demand: it is derived from a dozen more of
+    // the same statics, and by the time a graph asks they belong elsewhere.
+    PositionSolver.ensureSimultaneousSystem(this._joints[0], this._links[0]);
+    this._driveState = PositionSolver.captureDriveState();
+    // A sealed cylinder with no stroke emits no steps, so the failure above
+    // is already recorded -- as "nothing can move", which is true but says
+    // nothing a student can act on. Name the ram instead.
+    if (this._unusableCylinder !== undefined && !this.mechanismValid) {
+      this._failure = 'cylinder-has-no-travel';
     }
   }
 
@@ -119,6 +267,20 @@ export class Mechanism {
     if (source instanceof PrisJoint) {
       const prisJoint = new PrisJoint(source.id, x, y, source.input, source.ground);
       prisJoint.angle_rad = source.angle_rad;
+      prisJoint.isSealed = source.isSealed;
+      // The two things a slider used to keep somewhere else: the mass on its
+      // block, and the Slide on the weld of its coincident pin. Both are the
+      // joint's own now, and a copy that dropped them would leave every
+      // timestep after the first holding a massless Pin-in-slot -- which the
+      // force solver reads as a body with no weight and the mobility count as
+      // a freedom the drawing does not have.
+      prisJoint.mass = source.mass;
+      prisJoint.rotates = source.rotates;
+      // Points at the editable objects for now; wireJointGraph rebinds it to
+      // this timestep's copies once they exist.
+      if (source.carrier && source.slotJointA && source.slotJointB) {
+        prisJoint.slideOn(source.carrier, source.slotJointA, source.slotJointB);
+      }
       copy = prisJoint;
     } else if (source instanceof RevJoint) {
       copy = new RevJoint(source.id, x, y, source.input, source.ground);
@@ -153,6 +315,13 @@ export class Mechanism {
       joint.connectedJoints = source.connectedJoints
         .map((connected) => joints.find((candidate) => candidate.id === connected.id))
         .filter((connected): connected is Joint => connected !== undefined);
+      // A slot's carrier and defining joints live outside links/connectedJoints
+      // (§2.3 Option A), so nothing above reaches them. Left unrebound they
+      // would keep pointing at the editable mechanism and every timestep would
+      // measure the same, un-moving slot.
+      if (joint instanceof PrisJoint) {
+        joint.rebindSlot(links, joints);
+      }
     }
   }
 
@@ -182,11 +351,6 @@ export class Mechanism {
         link.name = source.name;
         link.fill = source.fill;
         return [link];
-      }
-      if (source instanceof Piston) {
-        const piston = new Piston(source.id, joints, source.mass);
-        piston.name = source.name;
-        return [piston];
       }
       return [];
     });
@@ -251,99 +415,360 @@ export class Mechanism {
   }
 
   /**
-   * steps to determine DOF (Gruebler's Criteron with Exceptions):
-   1.determine number of links + ground
-   1a. If mechanismn contains parallel linkage, remove from the number of links(N) and number of joints (J1)
-   2.determine number of ground joints
-   3.determine number of slider joints
+   * The mobility this machine is judged by.
+   *
+   * The count itself is `freedoms.ts`, taken over the drawing's own bodies. A
+   * cylinder is a sliding joint like any other and adds its freedom, unless
+   * both its ends are on one rigid body, which `assignBodies` already knows
+   * (S25).
    */
-  determineDegreesOfFreedom() {
-    let N = 0; // start with 1 to account for ground link
-    let J1 = 0;
-    const J2 = 0;
-    let groundNotFound = true;
-    this.links[0].forEach((l) => {
-      N++;
-      // TODO: Account for this case later
-      // if (this.determineParallelLinkage(l)) {
-      //   N -= l.joints.length - 2;
-      //   J1 -= (l.joints.length - 2) * 2;
-      // }
-    });
-
-    this.joints[0].forEach((j) => {
-      // TODO: Account for this instance later
-      switch (j.constructor) {
-        case RevJoint:
-          if (!(j instanceof RevJoint)) {
-            return;
-          }
-          if (j.ground) {
-            J1 += j.links.length;
-            if (groundNotFound) {
-              N++;
-              groundNotFound = false;
-            }
-          } else {
-            J1 += j.links.length - 1;
-          }
-          break;
-        case PrisJoint:
-          if (!(j instanceof PrisJoint)) {
-            return;
-          }
-          J1 += j.links.length;
-          break;
-      }
-    });
-    if (groundNotFound) {
-      return NaN;
-    }
-    return 3 * (N - 1) - 2 * J1 - J2;
+  determineDegreesOfFreedom(): number {
+    const { counted, dof } = freedomsOf(this.joints[0], this.links[0], this.bodyAssignment());
+    this.countedFreedoms = counted;
+    return dof;
   }
 
-  private findFullMovementPos(inputAngVel: number) {
+  /** Gruebler's own count, kept for the diagnosis a failed solve makes. */
+  private countedFreedoms = 0;
+
+  /**
+   * What a rigid body is in *this* machine: the drawing's own answer.
+   *
+   * Two links pinned to each other at two or more shared joints cannot move
+   * relative to each other — the second pin constrains nothing the first did
+   * not already, so it is redundant. Gruebler's equation has no way to know
+   * that and subtracts for it anyway, reporting a mobility one lower than the
+   * assembly actually has. Users hit this by drawing a coupler as two
+   * overlapping links (or by welding one across a pair of joints another link
+   * already spans): a perfectly ordinary four-bar then counts as DOF 0 and
+   * refuses to simulate. Collapsing such links into one body before counting
+   * removes the paradox.
+   */
+  private bodyAssignment(): BodyAssignment {
+    return assignBodies(this.joints[0], this.links[0]);
+  }
+
+  /** The freedoms the drawing's geometry has, second order and all. */
+  private measuredFreedoms(): number | undefined {
+    return mobilityFromGeometry(this.joints[0], this.links[0], this.bodyAssignment());
+  }
+
+  /**
+   * How many independent ways the drawing can move when a solve from its
+   * start pose could not step it: more than the one the count promised, when
+   * a part is tied to nothing. Undefined when the geometry agrees with the
+   * count, which is what a dead position actually looks like.
+   */
+  private _hiddenFreedoms?: number;
+
+  get hiddenFreedoms(): number | undefined {
+    return this._hiddenFreedoms;
+  }
+
+  /**
+   * A solve that could not take its first step is a dead position -- unless
+   * the drawing can move more ways than it was counted to. Gruebler charges
+   * twice for a crosshead held to its line by two slides, so a locomotive
+   * whose valve rod was left hanging free still counted as one freedom, was
+   * handed to a solver that had two to choose between, and came back "at a
+   * dead position" with advice to drag it off a limit it was not at. The
+   * geometry knows better, and this is where it is asked.
+   */
+  private explainDeadPosition(): void {
+    const measured = this.measuredFreedoms();
+    // More than the one freedom the input drives -- not merely more than
+    // Gruebler counted. A crosshead on two slides counts below zero and is
+    // rescued by this same measurement, and a rescue that says "one" is the
+    // count agreeing with the drawing, not a freedom the drawing hid.
+    if (measured !== undefined && measured > this._dof) {
+      this._hiddenFreedoms = measured;
+      this.setMechanismInvalid('hidden-freedom');
+      return;
+    }
+    this.setMechanismInvalid('dead-position');
+  }
+
+  /** One refinement per build, and never again after its fallback re-solve. */
+  private refineAttempted = false;
+
+  /** Whether this build has already been asked of the simultaneous route. */
+  private wholeAttempted = false;
+
+  /**
+   * Solve the drawing as one system when the joint-by-joint walk cannot take a
+   * first step from where it was drawn.
+   *
+   * The walk places joints outward from the input one at a time, and some
+   * drawings cannot be put in that order from where their input is: set the
+   * input on a scissor lift's floor pivot, or on a hood hinge's grounded arm,
+   * and it finds no first step in either direction. That was reported as a dead
+   * position, with advice to drag a joint off a limit the drawing was not at --
+   * and the simultaneous route, which a welded mount has used all along, solves
+   * them. So it is asked once, from the same start, before anything is called
+   * a dead position. Returns whether it was asked, since its answer then
+   * stands, valid or not.
+   */
+  private solveWholeInstead(
+    inputAngVel: number,
+    revoluteStep: number,
+    prismaticStep: number | undefined
+  ): boolean {
+    if (this.wholeAttempted || PositionSolver.coupledRoute) return false;
+    this.wholeAttempted = true;
+    // Nothing past the start pose was kept, and the start is what the walk
+    // was given. Held rather than trusted to survive: a failed attempt clears
+    // the frames, and the walk may need them again.
+    const start = {
+      joints: this._joints[0],
+      links: this._links[0],
+      forces: this._forces[0],
+      loops: this._requiredLoops.slice(),
+      speed: this._inputAngularVelocities[0],
+    };
+    const rewind = () => {
+      this._joints = [start.joints];
+      this._links = [start.links];
+      this._forces = [start.forces];
+      this._timeNum = [];
+      this._addedSamples = [];
+      this._inputAngularVelocities = [start.speed];
+      this._requiredLoops = start.loops.slice();
+      this.mechanismValid = true;
+      this._failure = undefined;
+      this._cycleGap = undefined;
+      this._hiddenFreedoms = undefined;
+      this._unreachableJoints = [];
+    };
+    rewind();
+    const forced = PositionSolver.forceCoupledRoute;
+    PositionSolver.forceCoupledRoute = true;
+    try {
+      this.findFullMovementPos(inputAngVel, revoluteStep, prismaticStep);
+    } finally {
+      PositionSolver.forceCoupledRoute = forced;
+    }
+    if (!this.mechanismValid) {
+      // As the refinement does when its fine pass fails: walk it again, so the
+      // failure reported, and the solver's statics everything after a build
+      // reads -- what the walk could not place, among them -- are the walk's
+      // own rather than a route this drawing was only tried on.
+      rewind();
+      this.findFullMovementPos(inputAngVel, revoluteStep, prismaticStep);
+    }
+    return true;
+  }
+
+  /**
+   * How far a joint may move between two samples before the step is cut finer.
+   *
+   * Against the drawing's own size, so it means the same thing whatever units
+   * the linkage was drawn in. Five per cent of the span is well clear of
+   * anything a healthy linkage does -- measured over every template, the worst
+   * single sample is Chebyshev's 3.0% and all but three sit under 1% -- and
+   * well under what a toggle produces, which is 31% on the six-bar this was
+   * found on. So a mechanism that moves smoothly is sampled exactly as it was
+   * before, and only a fold pays for the extra solves.
+   */
+  private static readonly JUMP_LIMIT_FRACTION = 0.05;
+
+  /**
+   * The most samples a cycle may hold.
+   *
+   * The crank budget in findFullMovementPos counts crank, not solves, so
+   * something still has to bound the solves themselves: a fold can always be
+   * asked for one more cut. Above the budget itself, so a cycle that is long
+   * rather than folded -- a rocker whose swing is more than a turn -- is ended
+   * by the crank running out and not by this.
+   */
+  private static readonly MAX_SAMPLES = 6000;
+
+  /** The span of the drawing at rest, which the jump limit is a fraction of. */
+  private startingSpan(): number {
+    const start = this._joints[0] ?? [];
+    if (start.length < 2) return 0;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const joint of start) {
+      minX = Math.min(minX, joint.x);
+      maxX = Math.max(maxX, joint.x);
+      minY = Math.min(minY, joint.y);
+      maxY = Math.max(maxY, joint.y);
+    }
+    return Math.hypot(maxX - minX, maxY - minY);
+  }
+
+  /** The furthest any joint has moved from `from` to the pose just solved. */
+  private solvedJump(from: number): number {
+    let worst = 0;
+    for (const joint of this._joints[from] ?? []) {
+      const to = PositionSolver.jointMapPositions.get(joint.id);
+      if (!to) continue;
+      worst = Math.max(worst, Math.hypot(to[0] - joint.x, to[1] - joint.y));
+    }
+    return worst;
+  }
+
+  /**
+   * Solve the sample after `at`, looking ahead before it is kept.
+   *
+   * The solver is asked for the next pose at the full step first. If what comes
+   * back has moved further than a linkage should move in one frame, it is put
+   * back and asked again at half the step, and so on down -- so the extra
+   * solves are spent only where the motion is fast, which is the whole point of
+   * doing it this way rather than sampling the entire cycle finer. Near a
+   * toggle the output moves as roughly the square root of the step, so halving
+   * buys about a factor of 1.4 and it takes several cuts to bring a fold down.
+   *
+   * Sixty-four cuts is the floor, matching the boundary solver's own halving
+   * cap. A fold has no bottom -- the velocity there is genuinely unbounded --
+   * so the last word has to be a limit on the work rather than on the jump.
+   *
+   * Cutting by halves is what keeps the original spacing a *subset* of the
+   * samples: every full step still lands on a sample, which is what lets the
+   * export offer rows at uniform spacing afterwards.
+   *
+   * Returns the fraction of a full step that was actually taken, so the caller
+   * can keep its clock and its count of whole steps.
+   */
+  private solveLookingAhead(
+    at: number,
+    angVelDir: boolean,
+    baseStep: number,
+    jumpLimit: number,
+    subdividing: boolean,
+    room: number
+  ): { solved: boolean; fraction: number } {
+    const FINEST_CUTS = 64;
+    const held = PositionSolver.capturePose();
+    // Never past the next point of the original spacing. The walk has to land
+    // on those points: they are what the counts of whole steps mean, and a
+    // rocking cycle closes only by coming back to the very pose it left, which
+    // it can only do if the way home is over the same points as the way out.
+    // `room` is how much of a whole step is left before the next one, so this
+    // is the coarsest cut that still fits inside it.
+    let cuts = 1;
+    while (1 / cuts > room + 1e-12) cuts *= 2;
+    for (;;) {
+      PositionSolver.revoluteSampleStep = baseStep / cuts;
+      const solved = PositionSolver.determinePositionAnalysis(
+        this._joints[at],
+        this._links[at],
+        this._forces[at],
+        angVelDir
+      );
+      // A refusal on the *branch* is a reason to try a shorter step rather
+      // than a limit. The solver continues from the pose before it, so over a
+      // long step near a toggle it can land on the far root of the pair -- a
+      // welded rider back to front, a ram assembled inside out -- which the
+      // acceptance checks refuse, correctly, while the near root was reachable
+      // all along by going a shorter way. Reversing there turns a mechanism
+      // round in the middle of travel it has.
+      //
+      // Every other refusal is left as a limit. A travel bound genuinely is
+      // one -- a rider at the end of its slot, a ram at its stop -- and reads
+      // the same however finely it is approached, so refining there only
+      // creeps up on a wall, spending the sample budget to land nearer it. An
+      // iteration that came away with nothing is a weaker claim: it says this
+      // seed and this step found no pose, not that none exists. It is treated
+      // as a limit all the same, because the solve is already subdivided
+      // internally where it is commanded, and because retrying it out here
+      // costs ten fixtures their cycle.
+      //
+      // The rollback makes the retry safe either way: a refused sample leaves
+      // nothing of itself behind.
+      const acceptable = solved
+        ? this.solvedJump(at) <= jumpLimit
+        : PositionSolver.refusalKind !== 'branch';
+      if (!subdividing || cuts >= FINEST_CUTS || acceptable) {
+        PositionSolver.revoluteSampleStep = baseStep;
+        return { solved, fraction: 1 / cuts };
+      }
+      // Either refused for its branch, or solved and too far to keep. Stand
+      // the solver back on the pose it stepped from before asking again, or
+      // the finer step reads the sample just rejected as where it is starting
+      // from.
+      PositionSolver.restorePose(held);
+      cuts *= 2;
+    }
+  }
+
+  private findFullMovementPos(
+    inputAngVel: number,
+    revoluteStep: number = Math.PI / 180,
+    prismaticStep?: number,
+    startupCuts = 0
+  ): void {
+    // The loop below flips inputAngVel at each reversal; a re-solve has to
+    // start from the speed that was asked for, not the one the loop ended on.
+    const requestedAngVel = inputAngVel;
     let simForward = true;
     let falseTwice = 0;
     let inputAngVelDirection = inputAngVel > 0;
     let currentTimeStamp = 0;
+    // The floor under every "is it home" question below, for a drawing too
+    // small for a fraction of its size to mean anything.
     const TOLERANCE = 0.008;
-    let max_counter = 0;
     let curTimeNum = 0;
     // PositionSolver.incrementRevInput steps the crank by exactly one degree, so a
     // fully rotating revolute input closes its cycle after exactly this many samples.
     // Ending on that count instead of on a position tolerance keeps the sample count
     // — and therefore the t=0 pose — identical every time the mechanism is rebuilt.
-    const STEPS_PER_REVOLUTION = 360;
+    const STEPS_PER_REVOLUTION = Math.round((2 * Math.PI) / revoluteStep);
+    // How many turns a crank is given to bring the whole drawing home. One
+    // closes most cycles; a rod that passes through tangency with its slot
+    // comes home on the second; a winding of three is the most this will
+    // wait for, and a drawing that is not home by then is refused below
+    // rather than shown with a teleport at the wrap.
+    const MAX_REVOLUTIONS = 3;
+    // Whole steps of crank a cycle may spend. A rocker's cycle is out and back
+    // over each side of its start, and a limit may lie as far away as the
+    // crank is allowed to turn -- so four times that, and not a step more.
+    const CRANK_BUDGET = 4 * MAX_REVOLUTIONS * STEPS_PER_REVOLUTION;
     const inputJoint = this.joints[0].find((j) => j instanceof RealJoint && j.input);
     const revoluteInput = inputJoint !== undefined && !(inputJoint instanceof PrisJoint);
-    // A rocker cannot complete a crank revolution; it reverses instead, and only the
+    // An input that cannot go round reverses instead, and only the
     // return-to-start tolerance can tell us where its cycle ends.
-    let everReversed = false;
-    // TODO: Make sure to also account for m/s for slider and for other units, such as degree per second
+    let reversals = 0;
     const angularSpeed = Math.abs(inputAngVel);
+    PositionSolver.resetStaticVariables();
+    // After the reset, which is what puts the default back.
+    PositionSolver.revoluteSampleStep = revoluteStep;
+    PositionSolver.determineJointOrder(this.joints[0], this.links[0]);
+    // A grounded slider's refined spacing, once its stroke has been walked at
+    // the fixed one. After the joint order, which is where a cylinder sets
+    // its own; a cylinder is never refined, its stroke being known up front.
+    if (prismaticStep !== undefined && PositionSolver.drivenSampleStep === undefined) {
+      PositionSolver.drivenSampleStep = prismaticStep;
+    }
+    // Before anything is measured from t = 0, put t = 0 on its own constraints.
+    PositionSolver.settleInitialPose(this.joints[0]);
+    PositionSolver.setUpSolvingForces(this.forces[0]);
+    const startCoordinates = this._joints[0].map((joint) => [joint.x, joint.y]);
+
+    // How far one sample advances the input: a degree of crank for a revolute
+    // input, a length along the slot for a prismatic one. Dividing by the
+    // speed turns that into the seconds each sample spans, so the two have to
+    // be measured in the same units -- a prismatic input's speed is length per
+    // second, and using the rotational step against it put playback and the
+    // reported cycle time on a clock unrelated to the speed that was asked for.
+    //
+    // A driven cylinder knows its own travel and asks for a step that cuts it
+    // into a fixed number of samples, so a short part is not animated in six
+    // frames and a long one in six hundred. Anything else prismatic keeps the
+    // fixed step, having no end of travel to divide.
+    const sampleStep = revoluteInput
+      ? revoluteStep
+      : (PositionSolver.drivenSampleStep ?? PRISMATIC_INPUT_STEP);
     // Time always moves forward, including across a rocking mechanism's
     // direction reversal. At zero speed retain finite sample coordinates so
     // static-equivalent dynamic results can still be plotted and exported.
-    let timeNumIncrement =
-      angularSpeed > Number.EPSILON ? Math.PI / 180 / angularSpeed : Math.PI / 180;
-    this.joints[0].forEach((j) => {
-      if (!(j instanceof RealJoint)) {
-        return;
-      }
-      if (!j.ground) {
-        max_counter++;
-      }
-    });
-
-    PositionSolver.resetStaticVariables();
-    PositionSolver.determineJointOrder(this.joints[0], this.links[0]);
-    PositionSolver.setUpSolvingForces(this.forces[0]);
+    let timeNumIncrement = angularSpeed > Number.EPSILON ? sampleStep / angularSpeed : sampleStep;
 
     const connectedJointMapIndices = new Map<string, number[]>();
     this.links[0].forEach((l) => {
       const numArray: number[] = [];
-      // if (!(l instanceof RealLink)) {return}
       l.joints.forEach((j) => {
         const jointIndex = this.joints[0].findIndex((jt) => jt.id === j.id);
         numArray.push(jointIndex);
@@ -351,32 +776,134 @@ export class Mechanism {
       connectedJointMapIndices.set(l.id, numArray);
     });
 
-    const desiredJointID = PositionSolver.jointNumOrderSolverMap.get(1);
+    const desiredJointID = PositionSolver.jointNumOrderSolverMap.get(1)?.[0];
     const desiredJointIndex = this.joints[0].findIndex((j) => j.id === desiredJointID);
     if (desiredJointIndex === -1) {
+      // The ordering emitted no steps at all, so nothing in this mechanism can
+      // move. Returning quietly left it *reporting itself valid* with a single
+      // frame: the play button enabled, nothing happening, and the panel with
+      // nothing to say about why.
+      this._unreachableJoints = [...PositionSolver.unsolvableJoints];
+      this.setMechanismInvalid('nothing-can-move');
       return;
     }
     const desiredJoint = this.joints[0][desiredJointIndex];
     const startingPositionX = desiredJoint.x;
     const startingPositionY = desiredJoint.y;
-    let xDiff = Math.abs(startingPositionX - Math.round(desiredJoint.x * 100) / 100);
-    let yDiff = Math.abs(startingPositionY - Math.round(desiredJoint.y * 100) / 100);
     this._timeNum.push(curTimeNum);
 
+    // A reversing input passes through its starting pose twice: once on the way
+    // back from the first limit, and again after the second. Stopping at the
+    // first crossing precomputes half the motion — for a cylinder, whichever
+    // fraction of its stroke happened to lie on one side of where it was drawn.
+    // The cycle is closed only once both limits have been reached and the
+    // mechanism is home again.
+    // One revolution closes most cycles, but not every one: a rod that passes
+    // through tangency with its slot comes back on the other assembly branch,
+    // so after a full turn of the crank the block is across the slot from
+    // where it started. Its true period is two revolutions — out on one
+    // branch, home on the other. Watching only the reference joint missed
+    // this (the crank pin is home; the block is not), and the animation
+    // teleported at the wrap.
+    // Whole steps of input travel taken. The counts below mean crank, not
+    // solves: a step cut finer still adds up to one of these, so a mechanism
+    // that needs subdividing closes its cycle after the same amount of crank as
+    // one that does not, and the frame cap still counts the same thing it did.
+    let gridSteps = 0;
+    // Signed travel from the start pose, in whole steps. Signed because a
+    // rocker walks back over ground it has covered, and the original spacing
+    // has to be the same set of points in both directions -- measured from
+    // where the walk began rather than from wherever it last turned round.
+    let travel = 0;
+    // Whether the latest sample landed on the original spacing.
+    let onSpacing = true;
+    // A reversing cycle is home when its travel is back to nothing and the
+    // *drawing* is where it started -- all of it, on the same assembly branch.
+    // It used to be judged on one reference joint, to a hundredth of a pixel:
+    // a linkage that came back on another branch could pass that with half its
+    // joints elsewhere, and the animation teleported them at the wrap. And a
+    // linkage drawn at one of its own limits could never pass it -- at a fold
+    // the pose is exquisitely sensitive to the crank, and a rounding of a ten
+    // thousandth in the pin comes back as a few thousandths of the span in the
+    // rest -- so it walked its swing again and again until the budget ran out.
+    // "Same branch" is the question, and the answer is the same line the
+    // solver draws between a step and a jump: the other branch is most of a
+    // mechanism away, and solver noise is far under what one sample may move.
+    const jumpLimit = this.startingSpan() * Mechanism.JUMP_LIMIT_FRACTION;
+    const differentPose = Math.max(jumpLimit, TOLERANCE);
+    const home = () =>
+      reversals >= 2 &&
+      onSpacing &&
+      travel === 0 &&
+      this.seamGapAt(currentTimeStamp) <= differentPose;
+    const startedForward = inputAngVel > 0;
+    /** How much of a whole step is left before the next point of the spacing. */
+    const roomToNextPoint = (): number => {
+      const past = travel - Math.floor(travel);
+      const gap = inputAngVelDirection === startedForward ? 1 - past : past;
+      return gap < 1e-9 ? 1 : gap;
+    };
+    // Which samples subdivision added. Sample 0 is on the spacing by definition.
+    const addedSamples: boolean[] = [false];
+    // The sample standing at each travel already walked. A reversing input
+    // comes home over the ground it went out on, and the pose at each point of
+    // that ground is not a new question: it was solved on the way out. Asking
+    // again is what put a rocker on the other assembly branch -- at a limit
+    // the two branches meet, the solver has no history to say which is which,
+    // and the walk back chose by a coin. So a step onto covered ground is put
+    // on the pose found there, which also makes the seam at home exactly zero.
+    const visited = new Map<number, number>([[0, 0]]);
+    const stepSign = () => (inputAngVelDirection === startedForward ? 1 : -1);
+    // How near home the crank's turns came, whole turn by whole turn.
+    let closestSeam = Infinity;
+    // Only where the crank spacing is the spacing this mechanism moves by -- a
+    // driven pin or cylinder steps by a field of its own -- and only under
+    // 'adaptive', so the tables the verification suite is stated against keep
+    // their exact one-degree spacing.
+    const canSubdivide =
+      this.sampling === 'adaptive' &&
+      revoluteInput &&
+      PositionSolver.stepsByRevoluteSampleStep &&
+      jumpLimit > 0;
+    let revolutionsToClose = 1;
     const cycleIncomplete = () =>
-      revoluteInput && !everReversed
-        ? currentTimeStamp < STEPS_PER_REVOLUTION
-        : xDiff > TOLERANCE || yDiff > TOLERANCE;
+      revoluteInput && reversals === 0
+        ? gridSteps < STEPS_PER_REVOLUTION * revolutionsToClose
+        : !home();
 
     while (!simForward || currentTimeStamp === 0 || cycleIncomplete()) {
-      const possible = PositionSolver.determinePositionAnalysis(
-        this._joints[currentTimeStamp],
-        this._links[currentTimeStamp],
-        this._forces[currentTimeStamp],
-        max_counter,
-        inputAngVelDirection
+      const attempt = this.solveLookingAhead(
+        currentTimeStamp,
+        inputAngVelDirection,
+        revoluteStep,
+        jumpLimit,
+        canSubdivide,
+        roomToNextPoint()
       );
+      const possible = attempt.solved;
       if (possible) {
+        const covered = visited.get(travel + stepSign() * attempt.fraction);
+        // Covered ground is put on the pose found there -- unless a prismatic
+        // input's crank has carried through a dead center, in which case the
+        // same travel is now a different pose on purpose: the piston runs
+        // back while the wheel turns on, and the solver, keeping its motion
+        // history across that reversal, has already chosen the continuing
+        // branch. Reinstating there would swing the wheel back. A rocking pin
+        // is put back unconditionally, as before.
+        if (covered !== undefined) {
+          // Retraced when the re-solve landed on the visited pose to within a
+          // fraction of the step it just took: a settled solve reproduces the
+          // way out to its own noise, far under a step, while a step past a
+          // dead center leaves the two branches about two steps apart. Not
+          // the jump limit, which is bigger than either.
+          const retraced =
+            revoluteInput || this.poseGapTo(covered) <= 0.5 * this.solvedJump(currentTimeStamp);
+          // A pose on the other branch that is a *jump* away is the crossed
+          // assembly a rocker's limit offers, not a wheel turning on: the
+          // rocker retraces. Only a move under the jump limit is continuous.
+          const carriedThrough = !retraced && this.solvedJump(currentTimeStamp) <= jumpLimit;
+          if (!carriedThrough) this.reinstatePose(covered);
+        }
         this._joints.push([]);
         this._links.push([]);
         this._forces.push([]);
@@ -395,77 +922,25 @@ export class Mechanism {
           connectedJointIndices.forEach((ji: number) => {
             connectedJoints.push(this._joints[currentTimeStamp + 1][ji]);
           });
-          switch (l.constructor) {
-            case RealLink:
-              if (!(l instanceof RealLink)) {
-                return;
-              }
-              // connectedJointIndices = connectedJointMapIndices.get(l.id)!;
-              // connectedJointIndices.forEach((ji: number) => {
-              //   connectedJoints.push(this._joints[currentTimeStamp + 1][ji]);
-              // });
-              // const connectedJoints: Joint[] = [];
-              // TODO: think of possible way to reduce this if there is time
-              // l.joints.forEach(j => {
-              //   const joint = this._joints[currentTimeStamp + 1].find(jt => jt.id === j.id);
-              //   if (joint === undefined) {return}
-              //   connectedJoints.push(joint);
-              // });
-              const pushLink = new RealLink(
-                l.id,
-                connectedJoints,
-                l.mass,
-                l.massMoI,
-                this.transportPoint(l.CoM, l.joints, connectedJoints),
-                this.cloneLinkSubset(l.subset, this._joints[currentTimeStamp + 1], true),
-                l
-              );
-              pushLink.name = l.name;
-              pushLink.fill = l.fill;
-              this.restoreLinkSubsetState(l.subset, pushLink.subset);
-              this._links[currentTimeStamp + 1].push(pushLink);
-              break;
-            case Piston:
-              if (!(l instanceof Piston)) {
-                return;
-              }
-              // connectedJointIndices = connectedJointMapIndices.get(l.id)!;
-              // connectedJointIndices.forEach((ji: number) => {
-              //   connectedJoints.push(this._joints[currentTimeStamp + 1][ji]);
-              // });
-              const newLink = new Piston(l.id, connectedJoints, l.mass);
-              newLink.name = l.name;
-              this._links[currentTimeStamp + 1].push(newLink);
-              break;
+          // See the constructor: asked as `instanceof` rather than switched on
+          // the constructor, so a class that is no longer drawn cannot quietly
+          // take a link out of every timestep after the first.
+          if (!(l instanceof RealLink)) {
+            return;
           }
-          // if (!(l instanceof RealLink)) {return}
-          // const connectedJointIndices = connectedJointMapIndices.get(l.id)!;
-          // const connectedJoints: Joint[] = [];
-          // connectedJointIndices.forEach((ji: number) => {
-          //   connectedJoints.push(this._joints[currentTimeStamp + 1][ji]);
-          // });
-          // // const connectedJoints: Joint[] = [];
-          // // TODO: think of possible way to reduce this if there is time
-          // // l.joints.forEach(j => {
-          // //   const joint = this._joints[currentTimeStamp + 1].find(jt => jt.id === j.id);
-          // //   if (joint === undefined) {return}
-          // //   connectedJoints.push(joint);
-          // // });
-          // const pushLink = new RealLink(l.id, connectedJoints);
-          // pushLink.shape = l.shape;
-          // // TODO: Update this to just one function later...
-          // if (pushLink.shape === 'line') {
-          //   pushLink.bound = RealLink.getBounds(new Coord(connectedJoints[0].x, connectedJoints[0].y),
-          //     new Coord(connectedJoints[1].x, connectedJoints[1].y), l.shape);
-          // } else {
-          //   pushLink.bound = RealLink.rotateBounds(l.joints[0], l.joints[1], new Coord(connectedJoints[0].x, connectedJoints[0].y),
-          //     new Coord(connectedJoints[1].x, connectedJoints[1].y), l.bound);
-          // }
-          // pushLink.d = RealLink.getPointsFromBounds(pushLink.bound, pushLink.shape);
-          // // TODO: When you insert a joint onto a link, be sure to utilize this function call
-          // pushLink.CoM = RealLink.determineCenterOfMass(pushLink.joints);
-          // pushLink.forces = l.forces;
-          // this._links[currentTimeStamp + 1].push(pushLink);
+          const pushLink = new RealLink(
+            l.id,
+            connectedJoints,
+            l.mass,
+            l.massMoI,
+            this.transportPoint(l.CoM, l.joints, connectedJoints),
+            this.cloneLinkSubset(l.subset, this._joints[currentTimeStamp + 1], true),
+            l
+          );
+          pushLink.name = l.name;
+          pushLink.fill = l.fill;
+          this.restoreLinkSubsetState(l.subset, pushLink.subset);
+          this._links[currentTimeStamp + 1].push(pushLink);
         });
         this.wireJointGraph(currentTimeStamp + 1, this.joints[0]);
         // TODO: If forces are a part of links, is all of this info needed? Or just the positions?
@@ -487,77 +962,354 @@ export class Mechanism {
         });
         Force.normalizeVisualWidths(this._forces[currentTimeStamp + 1]);
         this.attachForcesToLinks(currentTimeStamp + 1);
-        // this.links[0].forEach(l => {
-        //   if (l instanceof RealLink) {
-        //     l.determineCenterOfMass(l.joints, 'x');
-        //     l.determineCenterOfMass(l.joints, 'y');
-        //     this._links[currentTimeStamp + 1].push(l as Link);
-        //     // this.determineLinkCoMLocations(links);
-        //   }
-        // });
-        // for (const entry of desiredMap.entries()) {
-        //   const joint_index = jointIDToJointIndexMap.get(entry[0]);
-        //   if (joint_index === undefined) {return}
-        //   const joint = joints[joint_index];
-        //   // const joint = this.SimulationJoints.find(j => j.id === entry[0]);
-        //   joint.x = entry[1][0];
-        //   joint.y = entry[1][1];
-        //   this._joints[currentTimeStamp + 1].push(joint as Joint);
-        // }
         falseTwice = 0;
         currentTimeStamp++;
-        if (curTimeNum + timeNumIncrement <= 0) {
+        if (curTimeNum + timeNumIncrement * attempt.fraction <= 0) {
           timeNumIncrement = timeNumIncrement * -1;
         }
-        curTimeNum = curTimeNum + timeNumIncrement;
+        curTimeNum = curTimeNum + timeNumIncrement * attempt.fraction;
         this._timeNum.push(curTimeNum);
         this._inputAngularVelocities.push(inputAngVel);
-        // TODO: Create own function to determine this. Probably just utilize tracer joint logic
-        // const ffs = this.calculateForces(this.SimulationLinks, this.SimulationForces);
-        // adjust for linkAngle (for center of mass)
-        // TODO: arguments passed in has to come from mechanism ICs and not from IC
-        // const determined_ics = IcSolver.determineICPositions(ics, joints);
+        // Halves, so these sums are exact in binary and a sample either lands
+        // on the original spacing or is one subdivision added.
+        gridSteps += attempt.fraction;
+        travel += stepSign() * attempt.fraction;
+        onSpacing = Math.abs(travel - Math.round(travel)) < 1e-9;
+        if (onSpacing) {
+          travel = Math.round(travel);
+        }
+        addedSamples.push(!onSpacing);
+        if (!visited.has(travel)) {
+          visited.set(travel, currentTimeStamp);
+        }
       } else {
+        // A step that cannot be taken is a limit of the input's travel,
+        // wherever it falls. That includes past a full turn: an input that
+        // went round once without coming home and then stopped is a rocker
+        // whose swing is wider than a revolution, and it reverses here like
+        // any other. Falling back to the one-turn cycle instead left it
+        // labeled as looping, with the drawing teleporting at every wrap.
         if ((!simForward && currentTimeStamp === 0) || falseTwice === 2) {
-          //If we are here, the mechnism is in a toggle point
-          this.setMechanismInvalid();
+          // A blocked dyadic ordering needs the coupled route before a finer
+          // command. Otherwise repeated startup cuts hand that route a step
+          // below its useful resolution even when the original step works.
+          if (
+            currentTimeStamp === 0 &&
+            this.solveWholeInstead(requestedAngVel, revoluteStep, prismaticStep)
+          ) {
+            return;
+          }
+          // Refusing the first prescribed step says nothing about a shorter
+          // step. Retry the whole walk on a finer grid, in both directions,
+          // before treating a valid narrow stroke as a dead starting pose.
+          if (currentTimeStamp === 0 && this.sampling === 'adaptive' && startupCuts < 10) {
+            this._joints[0].forEach((joint, index) => {
+              [joint.x, joint.y] = startCoordinates[index];
+            });
+            this._joints.length = this._links.length = this._forces.length = 1;
+            this._timeNum = [];
+            this._inputAngularVelocities = [requestedAngVel];
+            this.findFullMovementPos(
+              requestedAngVel,
+              revoluteInput ? revoluteStep / 2 : revoluteStep,
+              revoluteInput ? prismaticStep : sampleStep / 2,
+              startupCuts + 1
+            );
+            return;
+          }
+          this.explainDeadPosition();
           return;
         }
         falseTwice += 1;
-        everReversed = true;
+        reversals += 1;
         simForward = !simForward;
         inputAngVel = inputAngVel * -1;
         inputAngVelDirection = !inputAngVelDirection;
         // The joints are about to retrace their path, so the solver's record of
-        // which way they were heading is now wrong.
-        PositionSolver.clearMotionHistory();
+        // which way they were heading is now wrong -- for a rocking pin. A
+        // slider that reverses at a crank's dead center is a piston: the
+        // crank it pushes carries through on its momentum while the slider
+        // runs back, so there the record is exactly right, and keeping it is
+        // what picks the continuing branch over the retrace when the two
+        // roots part again a step past the dead center.
+        if (revoluteInput) PositionSolver.clearMotionHistory();
       }
-      xDiff = Math.abs(
-        startingPositionX - roundNumber(this._joints[currentTimeStamp][desiredJointIndex].x, 2)
-      );
-      yDiff = Math.abs(
-        startingPositionY - roundNumber(this._joints[currentTimeStamp][desiredJointIndex].y, 2)
-      );
-      if (currentTimeStamp === 750) {
-        this.setMechanismInvalid();
+      // The whole drawing has to be home, not just the reference joint, before
+      // a turn of the crank is allowed to be the whole cycle. If it is not,
+      // give the crank another turn, up to the most this will wait for.
+      if (
+        possible &&
+        revoluteInput &&
+        reversals === 0 &&
+        onSpacing &&
+        Math.abs(gridSteps - STEPS_PER_REVOLUTION * revolutionsToClose) < 1e-9
+      ) {
+        const seam = this.seamGapAt(currentTimeStamp);
+        closestSeam = Math.min(closestSeam, seam);
+        if (seam > differentPose && revolutionsToClose < MAX_REVOLUTIONS) {
+          revolutionsToClose += 1;
+        }
+      }
+      // A rocker walks home over the points it walked out on, so it is back
+      // where it started exactly when its travel is. Standing somewhere else
+      // at that point means it came back on another branch, and no amount of
+      // further walking will close that.
+      if (possible && reversals >= 2 && onSpacing && travel === 0 && !home()) {
+        this._cycleGap = this.seamGapAt(currentTimeStamp) / MODEL_SCALE;
+        this.setMechanismInvalid('cycle-never-closes');
+        return;
+      }
+      // Crank, not solves, so subdividing a fold cannot spend the budget a
+      // cycle has to close in -- with a ceiling on the samples themselves,
+      // because a fold has no bottom and the work has to end somewhere.
+      if (gridSteps >= CRANK_BUDGET || this._joints.length > Mechanism.MAX_SAMPLES) {
+        // How close it ever came to its starting pose, skipping the first few
+        // frames where it is trivially still there. setMechanismInvalid wipes
+        // the frames, so this is the last chance to measure.
+        let nearest = Infinity;
+        for (let frame = 30; frame < this._joints.length; frame++) {
+          const joint = this._joints[frame]?.[desiredJointIndex];
+          if (!joint) continue;
+          nearest = Math.min(
+            nearest,
+            Math.hypot(joint.x - startingPositionX, joint.y - startingPositionY)
+          );
+        }
+        this._cycleGap = Number.isFinite(nearest) ? nearest / MODEL_SCALE : undefined;
+        this.setMechanismInvalid('cycle-never-closes');
         return;
       }
     }
 
-    // Pin the closing sample to the analytic period 2*pi/|w| rather than to 360
-    // accumulated float additions, so the reported cycle time scales exactly with
-    // input speed and the last sample lines up with the first.
-    if (revoluteInput && !everReversed && angularSpeed > Number.EPSILON) {
-      this._timeNum[this._timeNum.length - 1] = (2 * Math.PI) / angularSpeed;
-      // Closing at a fixed 360 steps assumes assembly-mode tracking held all the
-      // way around; if it did not, the cycle no longer ends where it began and
-      // the seam would otherwise be silent.
-      if (xDiff > TOLERANCE || yDiff > TOLERANCE) {
+    // A rocking input covers only its own arc, and a degree per sample cuts a
+    // small arc into almost nothing: a linkage that swings eight degrees out
+    // and back was a cycle of some thirty frames, so the scrubber jumped and
+    // the graphs were drawn between a handful of points. The arc is only known
+    // once it has been walked, so walk it at crank spacing first, then cut the
+    // same arc into the sample count a full crank turn would have had and walk
+    // it again. One refinement, never a coarsening, and never for a crank:
+    // a full revolution already has its 360, and the MATLAB verification
+    // tables are stated at exactly that spacing.
+    // A grounded slider has the same trouble the other way about: its fixed
+    // spacing is a tenth of a length unit, which cuts a small drawing's stroke
+    // into a handful of frames. Its stroke is only known once walked too, so
+    // it is refined the same way; a cylinder is not, its stroke being known
+    // before the walk and already cut into SAMPLES_PER_STROKE.
+    const prismaticAtFixedStep =
+      !revoluteInput &&
+      (prismaticStep !== undefined || PositionSolver.drivenSampleStep === undefined);
+    if (
+      this.sampling === 'adaptive' &&
+      !this.refineAttempted &&
+      ((revoluteInput &&
+        // Only when the crank spacing is what this mechanism moves by: a driven
+        // pin steps by its own field, so re-solving it with a finer crank
+        // spacing repeats the identical arc under a 58-times-faster clock.
+        PositionSolver.stepsByRevoluteSampleStep) ||
+        prismaticAtFixedStep) &&
+      reversals >= 2
+    ) {
+      // Whole steps, not frames: the question this asks is how much *arc* the
+      // rocker covered, and a fold that was cut finer adds frames without
+      // adding arc. Counting frames would read a subdivided sliver as a longer
+      // swing than it is and refine it less than it needs.
+      const samples = Math.round(gridSteps);
+      const TARGET_SAMPLES = 360;
+      // Sixty-four cuts per degree matches the boundary solver's own halving
+      // cap, while bounding the work needed to resolve a narrow stroke.
+      const FINEST = revoluteStep / 64;
+      if (samples > 0 && samples < TARGET_SAMPLES * (2 / 3)) {
+        this.refineAttempted = true;
+        const refined = Math.max((revoluteStep * samples) / TARGET_SAMPLES, FINEST);
+        const refinedPrismatic = prismaticAtFixedStep
+          ? (sampleStep * samples) / TARGET_SAMPLES
+          : undefined;
+        // The editable pose and what the caller derived from it, because a
+        // failed attempt rewinds all the way to here. The fine pass is not
+        // guaranteed to walk the same cycle: a limit is wherever the solver
+        // failed, and a failure at one degree is sometimes a fold too sharp
+        // for that seed rather than a place the linkage cannot pass. A finer
+        // step walks through such a fold and out into arc the coarse pass
+        // never saw -- the honest response to which is not to wander until
+        // the frame cap calls the whole mechanism broken, but to keep the
+        // cycle that did close.
+        const start = {
+          joints: this._joints[0],
+          links: this._links[0],
+          forces: this._forces[0],
+          // setMechanismInvalid clears the loops with the frames, and the
+          // loops were found by the caller before any of this began.
+          loops: this._requiredLoops.slice(),
+          speed: this._inputAngularVelocities[0],
+        };
+        this._joints.length = 1;
+        this._links.length = 1;
+        this._forces.length = 1;
+        this._timeNum.length = 0;
+        this._addedSamples.length = 0;
+        // Back to its seed entry, not to nothing: the first speed is pushed by
+        // the constructor before this function ever runs, so it is the one
+        // entry a re-entry will not put back -- and without it the array runs
+        // one short of the frames, and the last sample of every refined cycle
+        // solves against an undefined speed.
+        this._inputAngularVelocities.length = 1;
+        this.findFullMovementPos(requestedAngVel, refined, refinedPrismatic);
+        if (!this.mechanismValid) {
+          // Walk the coarse arc again rather than pasting its frames back.
+          // Restoring arrays alone left the position solver's statics -- the
+          // joint map, the motion history, the force anchors -- describing the
+          // pose the abandoned fine pass died in, and everything that runs
+          // after a build reads those statics. A re-solve of twenty-odd
+          // samples is cheap, deterministic, and leaves the solver in exactly
+          // the state the coarse pass always left it in.
+          this._joints = [start.joints];
+          this._links = [start.links];
+          this._forces = [start.forces];
+          this._timeNum = [];
+          this._addedSamples = [];
+          this._inputAngularVelocities = [start.speed];
+          this._requiredLoops = start.loops;
+          this.mechanismValid = true;
+          this._failure = undefined;
+          this._cycleGap = undefined;
+          this.findFullMovementPos(requestedAngVel);
+        }
+        return;
+      }
+    }
+
+    this._addedSamples = addedSamples;
+
+    // Every turn the crank was given ended in a different pose. A cycle that
+    // jumps between two poses at the wrap is not a cycle: it used to be kept
+    // anyway, labeled as looping, and the reader saw the drawing teleport
+    // once a turn.
+    if (revoluteInput && reversals === 0 && closestSeam > differentPose) {
+      this._cycleGap = closestSeam / MODEL_SCALE;
+      this.setMechanismInvalid('cycle-never-closes');
+      return;
+    }
+
+    // Pin the closing sample to the analytic period rather than to hundreds of
+    // accumulated float additions, so the reported cycle time scales exactly
+    // with input speed and the last sample lines up with the first.
+    if (revoluteInput && reversals === 0 && angularSpeed > Number.EPSILON) {
+      this._timeNum[this._timeNum.length - 1] = (revolutionsToClose * 2 * Math.PI) / angularSpeed;
+      // Closing at a fixed step count assumes assembly-mode tracking held all
+      // the way around; if it did not, the cycle no longer ends where it began
+      // and the seam would otherwise be silent.
+      const seam = this.seamGapAt(currentTimeStamp);
+      if (seam > this.seamTolerance()) {
         console.warn(
-          `Cycle did not close: after one input revolution the reference joint is off by (${xDiff}, ${yDiff})`
+          `Cycle did not close: after ${revolutionsToClose} input revolution(s) the drawing is off by ${seam}`
         );
       }
     }
+  }
+
+  /**
+   * Stand the position solver on a sample already found.
+   *
+   * Every joint, the input included: the input is stepped by repeated
+   * addition, so putting it back on the sample it stood on before also takes
+   * out whatever the additions drifted by since.
+   */
+  /** How far the solver's current pose stands from the one recorded at `sample`, at its furthest joint. */
+  private poseGapTo(sample: number): number {
+    let worst = 0;
+    for (const joint of this._joints[sample]) {
+      const at = PositionSolver.jointMapPositions.get(joint.id);
+      if (!at) continue;
+      worst = Math.max(worst, Math.hypot(at[0] - joint.x, at[1] - joint.y));
+    }
+    return worst;
+  }
+
+  private reinstatePose(sample: number): void {
+    for (const joint of this._joints[sample]) {
+      PositionSolver.jointMapPositions.set(joint.id, [joint.x, joint.y]);
+    }
+  }
+
+  /**
+   * Which samples the look-ahead added, parallel to the frames.
+   *
+   * Empty when nothing was subdivided, which is the ordinary case.
+   */
+  get addedSamples(): boolean[] {
+    return this._addedSamples;
+  }
+
+  /** Whether this cycle needed cutting finer anywhere -- i.e. it passes a fold. */
+  get hasAddedSamples(): boolean {
+    return this._addedSamples.some(Boolean);
+  }
+
+  /** How far the furthest joint stands from its starting position at `sample`. */
+  private seamGapAt(sample: number): number {
+    const start = this._joints[0];
+    const now = this._joints[sample];
+    if (!now || now.length !== start.length) return Infinity;
+    let gap = 0;
+    for (let index = 0; index < start.length; index++) {
+      gap = Math.max(gap, Math.hypot(now[index].x - start[index].x, now[index].y - start[index].y));
+    }
+    return gap;
+  }
+
+  /**
+   * A seam wide enough to mean "different pose", not solver noise.
+   *
+   * Relative to the drawing's own size because coordinates arrive at whatever
+   * scale the caller drew in: nearby roots can be indistinguishable numerically, so
+   * noise is orders below a thousandth of the drawing while a branch swap is
+   * on the order of a link length.
+   *
+   * Its *size*, measured across the bounding box, and not its distance from the
+   * world origin. `seamGapAt` does not care where the mechanism sits, so a
+   * tolerance that did made the same linkage close in one revolution near the
+   * origin and two after being dragged away from it -- and the wrap teleported
+   * on whichever side of that the drawing happened to land.
+   */
+  private seamTolerance(): number {
+    const start = this._joints[0];
+    if (start.length === 0) return 1e-3;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const joint of start) {
+      minX = Math.min(minX, joint.x);
+      maxX = Math.max(maxX, joint.x);
+      minY = Math.min(minY, joint.y);
+      maxY = Math.max(maxY, joint.y);
+    }
+    return Math.max(maxX - minX, maxY - minY, 1) * 1e-3;
+  }
+
+  /**
+   * Out and back, rather than round and round.
+   *
+   * Taken from the sign of the recorded input velocity, which the solver flips
+   * at each reversal — so a cycle containing both signs is one that turned
+   * around. Owned by the mechanism because three places were deriving it
+   * separately — the readiness facts, the transport's direction control, and
+   * the drive profile's own geometry — and on a prismatic input the three could
+   * disagree, which showed as a direction button doing one thing beside a label
+   * saying another.
+   *
+   * An earlier version compared a joint's position at the start and the
+   * midpoint, which read every mechanism as reciprocating: the joint it sampled
+   * was the first in the frame, and the first joint is usually ground, which
+   * never moves.
+   */
+  get reciprocates(): boolean {
+    /* eslint-disable no-restricted-syntax -- a sign change, not a direction */
+    return (
+      this._inputAngularVelocities.some((speed) => speed > 0) &&
+      this._inputAngularVelocities.some((speed) => speed < 0)
+    );
+    /* eslint-enable no-restricted-syntax */
   }
 
   /** Seconds spanned by one full traversal of the precomputed motion. */
@@ -565,18 +1317,53 @@ export class Mechanism {
     return this._timeNum.length > 1 ? this._timeNum[this._timeNum.length - 1] : 0;
   }
 
-  private setMechanismInvalid() {
+  private setMechanismInvalid(cause: MechanismFailure) {
     // TODO: Set all of the joints, links, force, instant center positions as empty
     this.joints = [[]];
     this.links = [[]];
     this.forces = [[]];
-    this.allLoops = [];
     this.requiredLoops = [];
     this.mechanismValid = false;
+    this._failure = cause;
   }
 
   public isMechanismValid(): boolean {
     return this.mechanismValid;
+  }
+
+  /**
+   * Why this mechanism will not run, or undefined if it will.
+   *
+   * Four quite different situations used to arrive at the same false: a shape
+   * nothing can move, a linkage locked at a dead position, a cycle that never
+   * comes back to where it started, and a mobility that is simply not one. The
+   * panel can only tell a student which of those they are looking at -- and so
+   * what to do about it -- if the solver says which one it hit.
+   */
+  get failure(): MechanismFailure | undefined {
+    return this._failure;
+  }
+
+  /**
+   * The cylinder whose barrel is too short to slide in at all, if any.
+   *
+   * Captured here rather than read from the solver's static afterwards: with
+   * several mechanisms built one after another, that static holds whatever the
+   * last one found, so a good linkage would inherit the complaint of a bad one
+   * built after it.
+   */
+  get unusableCylinder(): string | undefined {
+    return this._unusableCylinder;
+  }
+
+  /** Joints the position ordering never reached, when nothing-can-move. */
+  get unreachableJoints(): string[] {
+    return this._unreachableJoints;
+  }
+
+  /** Nearest return to the starting pose in user units, when the cycle never closes. */
+  get cycleGap(): number | undefined {
+    return this._cycleGap;
   }
 
   get internalTriangleSimLinkMap(): Map<string, number[]> {
@@ -611,20 +1398,87 @@ export class Mechanism {
     this._unit = value;
   }
 
-  get requiredLoops(): string[] {
+  /**
+   * Put the shared solvers back on this mechanism's own constraints.
+   *
+   * `KinematicsSolver` and `PositionSolver` both keep their working state in
+   * statics, which was fine when a drawing held one mechanism. It holds as many
+   * as are drawn now, and every one of them is solved over the top of the last
+   * -- so anything that comes back later to differentiate a particular one has
+   * to say which one it means first. Cheap: three assignments and a reference.
+   */
+  prepareSolvers(): void {
+    PositionSolver.restoreDriveState(this._driveState);
+    KinematicsSolver.requiredLoops = this._requiredLoops;
+  }
+
+  /**
+   * The same cycle, driven the other way round it.
+   *
+   * A fully rotating input traverses one closed loop of poses, so reversing it
+   * changes nothing about the loop -- only which way the machine walks it, and
+   * how fast each part is going as it does. So the frames are kept exactly as
+   * they are and only the signed input speed is turned round.
+   *
+   * The poses remain indexed in their original order; elapsed time and the
+   * row order of graphs and exports are derived from the traversal below.
+   * This keeps analysis, playback and a freshly reopened URL on one clock.
+   *
+   * Rates are not stored per frame. Every velocity and acceleration is derived
+   * from the pose and this one signed number, so negating it is the whole of
+   * the change: velocities turn round, accelerations do not (they go as the
+   * square of the speed), and the force analysis is untouched at every pose --
+   * which is right, because what a part has to carry at a pose does not depend
+   * on which way it arrived there.
+   */
+  withReversedDrive(): Mechanism | undefined {
+    if (!this.mechanismValid || this._joints.length < 2) return undefined;
+    const reversed: Mechanism = Object.create(Mechanism.prototype);
+    Object.assign(reversed, this);
+    reversed._inputAngularVelocities = this._inputAngularVelocities.map((speed) => -speed);
+    reversed._framesRunBackwards = !this._framesRunBackwards;
+    // A new object rather than a mutation: the panels and graphs cache what
+    // they have drawn against the mechanism they drew it from, and identity is
+    // how they know to look again.
+    //
+    // The cache holds the same answers -- reversing changes no force at any
+    // pose -- but it is keyed by nothing else, so it is cleared rather than
+    // carried into an object claiming a different drive.
+    reversed.forceAnalysisCache = new Map();
+    return reversed;
+  }
+
+  /** Elapsed playback time of a stored sample, keeping both cycle endpoints. */
+  elapsedTimeAtSample(index: number): number {
+    const time = this._timeNum[index] ?? 0;
+    const last = this._timeNum.length - 1;
+    return this._framesRunBackwards && index > 0 && index < last ? this.cyclePeriod - time : time;
+  }
+
+  /** Rows go forward in time even when the stored poses are traversed backwards. */
+  samplesInPlaybackOrder(): number[] {
+    const steps = this._timeNum.map((_, index) => index);
+    return this._framesRunBackwards && steps.length > 2
+      ? [0, ...steps.slice(1, -1).reverse(), steps.length - 1]
+      : steps;
+  }
+
+  playbackRowOfSample(index: number): number {
+    const last = this._timeNum.length - 1;
+    return this._framesRunBackwards && index > 0 && index < last ? last - index : index;
+  }
+
+  /** See `_framesRunBackwards`. */
+  get framesRunBackwards(): boolean {
+    return this._framesRunBackwards;
+  }
+
+  get requiredLoops(): Loop[] {
     return this._requiredLoops;
   }
 
-  set requiredLoops(value: string[]) {
+  set requiredLoops(value: Loop[]) {
     this._requiredLoops = value;
-  }
-
-  get allLoops(): string[] {
-    return this._allLoops;
-  }
-
-  set allLoops(value: string[]) {
-    this._allLoops = value;
   }
 
   get joints(): Joint[][] {
@@ -710,39 +1564,7 @@ export class Mechanism {
         break;
       default:
         return;
-      // case 'km':
-      //   posUnit = 'km';
-      //   forceUnit = 'N';
-      //   torqueUnit = 'N*km';
-      //   accUnit = 'km/s^2';
-      //   break;
-      // case 'in':
-      //   posUnit = 'in';
-      //   forceUnit = 'lbf';
-      //   torqueUnit = 'lbf*in';
-      //   accUnit = 'in/s^2';
-      //   break;
-      // case 'ft':
-      //   posUnit = 'ft';
-      //   forceUnit = 'lbf';
-      //   torqueUnit = 'lbf*ft';
-      //   accUnit = 'ft/s^2';
-      //   break;
     }
-    // switch (this._unit) {
-    //   case 'Metric':
-    //     posUnit = 'cm';
-    //     forceUnit = 'N';
-    //     torqueUnit = 'N*cm';
-    //     accUnit = 'cm/s^2';
-    //     break;
-    //   case 'English':
-    //     posUnit = 'ft';
-    //     forceUnit = 'lbm*ft/s^2';
-    //     torqueUnit = 'lbm*ft^2/s^2';
-    //     accUnit = 'in/s^2';
-    //     break;
-    // }
     for (const joint of this.joints[0].filter((candidate) =>
       this.isForceAnalysisJoint(candidate)
     )) {
@@ -774,9 +1596,6 @@ export class Mechanism {
         });
         forceTitleRow.push(' ');
         this.links[0].forEach((l) => {
-          if (l instanceof Piston) {
-            return;
-          }
           forceTitleRow.push('Link ' + l.id + ' CoM x ' + posUnit);
           forceTitleRow.push('Link ' + l.id + ' CoM y ' + posUnit);
           forceTitleRow.push('Link ' + l.id + ' CoM Vel x ' + velUnit);
@@ -786,24 +1605,12 @@ export class Mechanism {
         });
         forceTitleRow.push(' ');
         this.links[0].forEach((l) => {
-          if (l instanceof Piston) {
-            return;
-          }
-          // forceTitleRow.push('Link ' + l.id + ' angPos ' + angAccUnit);
           forceTitleRow.push('Link ' + l.id + ' angPos ' + angPosUnit);
           forceTitleRow.push('Link ' + l.id + ' angVel ' + angVelUnit);
           forceTitleRow.push('Link ' + l.id + ' angAcc ' + angAccUnit);
         });
         break;
     }
-
-    // this.SimulationLinks.forEach(l => {
-    //   if (l instanceof ImagLink) {
-    //     return;
-    //   }
-    //   forceTitleRow.push('Link ' + l.id + ' CoM x ' + posUnit);
-    //   forceTitleRow.push('Link ' + l.id + ' CoM y ' + posUnit);
-    // });
 
     return forceTitleRow;
   }
@@ -843,38 +1650,8 @@ export class Mechanism {
         velUnit = 'in/s';
         accUnit = 'in/s^2';
         break;
-      // case 'km':
-      //   posUnit = 'km';
-      //   velUnit = 'km/s';
-      //   accUnit = 'km/s^2';
-      //   break;
-      // case 'in':
-      //   posUnit = 'in';
-      //   velUnit = 'in/s';
-      //   accUnit = 'in/s^2';
-      //   break;
-      // case 'ft':
-      //   posUnit = 'ft';
-      //   velUnit = 'ft/s';
-      //   accUnit = 'ft/s^2';
-      //   break;
     }
-    // switch (this._unit) {
-    //   case 'Metric':
-    //     posUnit = 'cm';
-    //     velUnit = 'cm/s';
-    //     accUnit = 'cm/s^2';
-    //     break;
-    //   case 'English':
-    //     posUnit = 'in';
-    //     velUnit = 'in/s';
-    //     accUnit = 'in/s^2';
-    //     break;
-    // }
     this.joints[0].forEach((j) => {
-      // if (j instanceof PrisJoint) {
-      //   return;
-      // }
       kinematicTitleRow.push('Joint ' + j.id + ' x ' + posUnit);
       kinematicTitleRow.push('Joint ' + j.id + ' y ' + posUnit);
       kinematicTitleRow.push('Joint ' + j.id + ' vx ' + velUnit);
@@ -884,12 +1661,6 @@ export class Mechanism {
     });
     kinematicTitleRow.push(' ');
     this.links[0].forEach((l) => {
-      if (l instanceof Piston) {
-        return;
-      }
-      // if (l instanceof ImagLink) {
-      //   return;
-      // }
       kinematicTitleRow.push('Link ' + l.id + ' CoM ' + 'x ' + posUnit);
       kinematicTitleRow.push('Link ' + l.id + ' CoM ' + 'y ' + posUnit);
       kinematicTitleRow.push('Link ' + l.id + ' CoM ' + 'vx ' + velUnit);
@@ -899,12 +1670,6 @@ export class Mechanism {
     });
     kinematicTitleRow.push(' ');
     this.links[0].forEach((l) => {
-      if (l instanceof Piston) {
-        return;
-      }
-      // if (l instanceof ImagLink) {
-      //   return;
-      // }
       kinematicTitleRow.push('Link ' + l.id + ' angle ' + angPosUnit);
       kinematicTitleRow.push('Link ' + l.id + ' angVel ' + angVelUnit);
       kinematicTitleRow.push('Link ' + l.id + ' angAcc ' + angAccUnit);
@@ -941,49 +1706,19 @@ export class Mechanism {
         velUnitConversion = 1;
         accUnitConversion = 1;
         break;
-      // case 'km':
-      //   forceUnitConversion = 1; // convert from newtons -> newton
-      //   torqueUnitConversion = 1; // convert from newton_meter -> newton_centimeter
-      //   accUnitConversion = 1; // cm/s^2
-      //   break;
-      // case 'in':
-      //   forceUnitConversion = 1; // convert from newtons -> newton
-      //   torqueUnitConversion = 1; // convert from newton_meter -> newton_centimeter
-      //   accUnitConversion = 1; // cm/s^2
-      //   break;
-      // case 'ft':
-      //   forceUnitConversion = 1; // convert from newtons -> newton
-      //   torqueUnitConversion = 1; // convert from newton_meter -> newton_centimeter
-      //   accUnitConversion = 1; // cm/s^2
-      //   break;
     }
-    // switch (this._unit) {
-    //   case 'Metric':
-    //     forceUnitConversion = 1; // convert from newtons -> newton
-    //     torqueUnitConversion = 1; // convert from newton_meter -> newton_centimeter
-    //     accUnitConversion = 1; // cm/s^2
-    //     break;
-    //   case 'English':
-    //     forceUnitConversion = 0.2248089431; // convert from newton ->
-    //     torqueUnitConversion = 0.73756214728 ; // convert from newton_meter ->
-    //     // change this since conversion is starting at cm instead of m
-    //     accUnitConversion = 3.2808399;
-    //     break;
-    // }
     ForceSolver.resetVariables();
     ForceSolver.determineDesiredLoopLettersForce(this.requiredLoops);
     if (analysisType === 'dynamics') {
       KinematicsSolver.resetVariables();
-      KinematicsSolver.requiredLoops = this.requiredLoops;
+      // The inertia terms come from differentiating this mechanism, and the
+      // solvers have been used by every other mechanism in the drawing since.
+      this.prepareSolvers();
     }
     // Go through each step within the mechanism
     this.joints.forEach((_, index) => {
-      // this.insertNewJointPos(tsl);
       const force_row = Array<string>();
-      // const A_row = Array<Array<string>>(); // unknown array
-      // const B_row = Array<string>(); // known array
       force_row.push(this.timeNum[index].toString());
-      // force_row.push((index * tsl.angular_velocity * Math.PI / 180).toString());
       if (analysisType === 'dynamics') {
         // determine kinematic analysis
         KinematicsSolver.determineKinematics(
@@ -1020,29 +1755,9 @@ export class Mechanism {
         roundNumber(ForceSolver.unknownVariableTorque * torqueUnitConversion, 4).toString()
       );
       force_row.push(' ');
-      // this.SimulationJoints.forEach(j => {
-      //   // force_row.push('(' + j.x.toString() + ',' + j.y.toString() + ')');
-      //   force_row.push(j.x.toString());
-      //   force_row.push(j.y.toString());
-      // });
-      // force_row.push(' ');
-      // this.SimulationLinks.forEach(l => {
-      //   if (l instanceof ImagLink) {
-      //     return;
-      //   }
-      //   const cur_link = l as RealLink;
-      //   force_row.push(Simulator.roundToHundredThousandth(cur_link.CoM_x).toString());
-      //   force_row.push(Simulator.roundToHundredThousandth(cur_link.CoM_y).toString());
-      //   // force_row.push(Simulator.roundToHundredThousandth(KinematicsSolver.linkCoMMap.get(l.id)[0]).toString());
-      //   // force_row.push(Simulator.roundToHundredThousandth(KinematicsSolver.linkCoMMap.get(l.id)[1]).toString());
-      //   // force_row.push('(' + Simulator.roundToHundredThousandth(KinematicsSolver.linkAccMap.get(l.id)[0] * accUnitConversion) +
-      //   //   ',' + Simulator.roundToHundredThousandth(KinematicsSolver.linkAccMap.get(l.id)[1] * accUnitConversion) + ')');
-      // });
       this.forces[index].forEach((f) => {
         force_row.push(roundNumber(f.startCoord.x, 4).toString());
         force_row.push(roundNumber(f.startCoord.y, 4).toString());
-        // force_row.push(Simulator.roundToHundredThousandth(f.xLocOfForceOnLink).toString());
-        // force_row.push(Simulator.roundToHundredThousandth(f.yLocOfForceOnLink).toString());
       });
       force_row.push(' ');
       switch (analysisType) {
@@ -1050,105 +1765,31 @@ export class Mechanism {
           this.joints[index].forEach((j) => {
             force_row.push(roundNumber(j.x, 4).toString());
             force_row.push(roundNumber(j.y, 4).toString());
-            // force_row.push(Simulator.roundToHundredThousandth(KinematicsSolver.jointIndexMap.get(j.id)[0] * accUnitConversion).toString());
-            // force_row.push(Simulator.roundToHundredThousandth(KinematicsSolver.jointIndexMap.get(j.id)[1] * accUnitConversion).toString());
           });
-          // force_row.push(' ');
-          // this.SimulationLinks.forEach(l => {
-          //   if (l instanceof ImagLink) {
-          //     return;
-          //   }
-          // force_row.push(Simulator.roundToHundredThousandth())
-          // force_row.push(Simulator.roundToHundredThousandth(KinematicsSolver.linkCoMMap.get(l.id)[0] * accUnitConversion).toString());
-          // force_row.push(Simulator.roundToHundredThousandth(KinematicsSolver.linkCoMMap.get(l.id)[1] * accUnitConversion).toString());
-          // });
-          // force_row.push(' ');
           break;
         case 'dynamics':
           this.joints[index].forEach((j) => {
             force_row.push(roundNumber(j.x, 4).toString());
             force_row.push(roundNumber(j.y, 4).toString());
-            // force_row.push(Simulator.roundToHundredThousandth(KinematicsSolver.jointIndexMap.get(j.id)[0] * accUnitConversion).toString());
-            // force_row.push(Simulator.roundToHundredThousandth(KinematicsSolver.jointIndexMap.get(j.id)[1] * accUnitConversion).toString());
-            force_row.push(
-              roundNumber(
-                KinematicsSolver.jointVelMap.get(j.id)![0] * velUnitConversion,
-                4
-              ).toString()
-            );
-            force_row.push(
-              roundNumber(
-                KinematicsSolver.jointVelMap.get(j.id)![1] * velUnitConversion,
-                4
-              ).toString()
-            );
-            force_row.push(
-              roundNumber(
-                KinematicsSolver.jointAccMap.get(j.id)![0] * accUnitConversion,
-                4
-              ).toString()
-            );
-            force_row.push(
-              roundNumber(
-                KinematicsSolver.jointAccMap.get(j.id)![1] * accUnitConversion,
-                4
-              ).toString()
-            );
-            // force_row.push('(' + Simulator.roundToHundredThousandth(KinematicsSolver.jointAccMap.get(j.id)[0] * accUnitConversion) +
-            //   ',' + Simulator.roundToHundredThousandth(KinematicsSolver.jointAccMap.get(j.id)[1] * accUnitConversion) + ')');
+            force_row.push(rateCell(KinematicsSolver.jointVelMap.get(j.id), 0, velUnitConversion));
+            force_row.push(rateCell(KinematicsSolver.jointVelMap.get(j.id), 1, velUnitConversion));
+            force_row.push(rateCell(KinematicsSolver.jointAccMap.get(j.id), 0, accUnitConversion));
+            force_row.push(rateCell(KinematicsSolver.jointAccMap.get(j.id), 1, accUnitConversion));
           });
           force_row.push(' ');
           this.links[index].forEach((l) => {
-            if (l instanceof Piston) {
-              return;
-            }
-            force_row.push(
-              roundNumber(
-                KinematicsSolver.linkCoMMap.get(l.id)![0] * posUnitConversion,
-                4
-              ).toString()
-            );
-            force_row.push(
-              roundNumber(
-                KinematicsSolver.linkCoMMap.get(l.id)![1] * posUnitConversion,
-                4
-              ).toString()
-            );
-            force_row.push(
-              roundNumber(
-                KinematicsSolver.linkVelMap.get(l.id)![0] * velUnitConversion,
-                4
-              ).toString()
-            );
-            force_row.push(
-              roundNumber(
-                KinematicsSolver.linkVelMap.get(l.id)![1] * velUnitConversion,
-                4
-              ).toString()
-            );
-            force_row.push(
-              roundNumber(
-                KinematicsSolver.linkAccMap.get(l.id)![0] * accUnitConversion,
-                4
-              ).toString()
-            );
-            force_row.push(
-              roundNumber(
-                KinematicsSolver.linkAccMap.get(l.id)![1] * accUnitConversion,
-                4
-              ).toString()
-            );
-            // force_row.push('(' + Simulator.roundToHundredThousandth(KinematicsSolver.linkAccMap.get(l.id)[0] * accUnitConversion) +
-            //   ',' + Simulator.roundToHundredThousandth(KinematicsSolver.linkAccMap.get(l.id)[1] * accUnitConversion) + ')');
+            force_row.push(rateCell(KinematicsSolver.linkCoMMap.get(l.id), 0, posUnitConversion));
+            force_row.push(rateCell(KinematicsSolver.linkCoMMap.get(l.id), 1, posUnitConversion));
+            force_row.push(rateCell(KinematicsSolver.linkVelMap.get(l.id), 0, velUnitConversion));
+            force_row.push(rateCell(KinematicsSolver.linkVelMap.get(l.id), 1, velUnitConversion));
+            force_row.push(rateCell(KinematicsSolver.linkAccMap.get(l.id), 0, accUnitConversion));
+            force_row.push(rateCell(KinematicsSolver.linkAccMap.get(l.id), 1, accUnitConversion));
           });
           force_row.push(' ');
           this.links[index].forEach((l) => {
-            if (l instanceof Piston) {
-              return;
-            }
-            force_row.push(roundNumber(KinematicsSolver.linkAngPosMap.get(l.id)!, 4).toString());
-            force_row.push(roundNumber(KinematicsSolver.linkAngVelMap.get(l.id)!, 4).toString());
-            force_row.push(roundNumber(KinematicsSolver.linkAngAccMap.get(l.id)!, 4).toString());
+            force_row.push(scalarCell(KinematicsSolver.linkAngPosMap.get(l.id)));
+            force_row.push(scalarCell(KinematicsSolver.linkAngVelMap.get(l.id)));
+            force_row.push(scalarCell(KinematicsSolver.linkAngAccMap.get(l.id)));
           });
           break;
       }
@@ -1160,9 +1801,8 @@ export class Mechanism {
   kinematicLoopAnalysis() {
     const kinematicAnalysis = Array<Array<string>>();
     KinematicsSolver.resetVariables();
-    KinematicsSolver.requiredLoops = this.requiredLoops;
+    this.prepareSolvers();
     this.joints.forEach((_, index) => {
-      // const row = Array<number>();
       const row = Array<string>();
       row.push(this.timeNum[index].toString());
       KinematicsSolver.determineKinematics(
@@ -1184,46 +1824,9 @@ export class Mechanism {
           velUnitConversion = 1; // cm/s
           accUnitConversion = 1; // cm/s^2
           break;
-        // case 'km':
-        //   posUnitConversion = 1; // cm
-        //   velUnitConversion = 1; // cm/s
-        //   accUnitConversion = 1; // cm/s^2
-        //   break;
-        // case 'in':
-        //   posUnitConversion = 1; // cm
-        //   velUnitConversion = 1; // cm/s
-        //   accUnitConversion = 1; // cm/s^2
-        //   break;
-        // case 'ft':
-        //   posUnitConversion = 1; // cm
-        //   velUnitConversion = 1; // cm/s
-        //   accUnitConversion = 1; // cm/s^2
-        //   break;
       }
-      // switch (this._unit) {
-      //   case 'Metric':
-      //     posUnitConversion = 1; // cm
-      //     velUnitConversion = 1; // cm/s
-      //     accUnitConversion = 1; // cm/s^2
-      //     break;
-      //   case 'English':
-      //     // change this since conversion is starting at cm instead of m
-      //     posUnitConversion = 0.3048;
-      //     velUnitConversion = 3.28084;
-      //     accUnitConversion = 3.2808399;
-      //     break;
-      // }
 
       this.joints[0].forEach((j) => {
-        // if (j instanceof ImagJoint) {
-        //   return;
-        // }
-        // row.push((this.SimulationJoints[KinematicsSolver.jointIndexMap.get(j.id)].x * posUnitConversion).toString());
-        // row.push((this.SimulationJoints[KinematicsSolver.jointIndexMap.get(j.id)].y * posUnitConversion).toString());
-        // row.push((KinematicsSolver.jointVelMap.get(j.id)[0] * velUnitConversion).toString());
-        // row.push((KinematicsSolver.jointVelMap.get(j.id)[1] * velUnitConversion).toString());
-        // row.push((KinematicsSolver.jointAccMap.get(j.id)[0] * accUnitConversion).toString());
-        // row.push((KinematicsSolver.jointAccMap.get(j.id)[1] * accUnitConversion).toString());
         row.push(
           roundNumber(
             this.joints[index][KinematicsSolver.jointIndexMap.get(j.id)!].x * posUnitConversion,
@@ -1236,66 +1839,25 @@ export class Mechanism {
             4
           ).toString()
         );
-        row.push(
-          roundNumber(KinematicsSolver.jointVelMap.get(j.id)![0] * velUnitConversion, 4).toString()
-        );
-        row.push(
-          roundNumber(KinematicsSolver.jointVelMap.get(j.id)![1] * velUnitConversion, 4).toString()
-        );
-        row.push(
-          roundNumber(KinematicsSolver.jointAccMap.get(j.id)![0] * accUnitConversion, 4).toString()
-        );
-        row.push(
-          roundNumber(KinematicsSolver.jointAccMap.get(j.id)![1] * accUnitConversion, 4).toString()
-        );
+        row.push(rateCell(KinematicsSolver.jointVelMap.get(j.id), 0, velUnitConversion));
+        row.push(rateCell(KinematicsSolver.jointVelMap.get(j.id), 1, velUnitConversion));
+        row.push(rateCell(KinematicsSolver.jointAccMap.get(j.id), 0, accUnitConversion));
+        row.push(rateCell(KinematicsSolver.jointAccMap.get(j.id), 1, accUnitConversion));
       });
       row.push(' ');
       this.links[0].forEach((l) => {
-        if (l instanceof Piston) {
-          return;
-        }
-        // if (l instanceof ImagLink) {
-        //   return;
-        // }
-        // row.push((KinematicsSolver.linkCoMMap.get(l.id)[0] * posUnitConversion).toString());
-        // row.push((KinematicsSolver.linkCoMMap.get(l.id)[1] * posUnitConversion).toString());
-        // row.push((KinematicsSolver.linkVelMap.get(l.id)[0] * velUnitConversion).toString());
-        // row.push((KinematicsSolver.linkVelMap.get(l.id)[1] * velUnitConversion).toString());
-        // row.push((KinematicsSolver.linkAccMap.get(l.id)[0] * accUnitConversion).toString());
-        // row.push((KinematicsSolver.linkAccMap.get(l.id)[1] * accUnitConversion).toString());
-        row.push(
-          roundNumber(KinematicsSolver.linkCoMMap.get(l.id)![0] * posUnitConversion, 4).toString()
-        );
-        row.push(
-          roundNumber(KinematicsSolver.linkCoMMap.get(l.id)![1] * posUnitConversion, 4).toString()
-        );
-        row.push(
-          roundNumber(KinematicsSolver.linkVelMap.get(l.id)![0] * velUnitConversion, 4).toString()
-        );
-        row.push(
-          roundNumber(KinematicsSolver.linkVelMap.get(l.id)![1] * velUnitConversion, 4).toString()
-        );
-        row.push(
-          roundNumber(KinematicsSolver.linkAccMap.get(l.id)![0] * accUnitConversion, 4).toString()
-        );
-        row.push(
-          roundNumber(KinematicsSolver.linkAccMap.get(l.id)![1] * accUnitConversion, 4).toString()
-        );
+        row.push(rateCell(KinematicsSolver.linkCoMMap.get(l.id), 0, posUnitConversion));
+        row.push(rateCell(KinematicsSolver.linkCoMMap.get(l.id), 1, posUnitConversion));
+        row.push(rateCell(KinematicsSolver.linkVelMap.get(l.id), 0, velUnitConversion));
+        row.push(rateCell(KinematicsSolver.linkVelMap.get(l.id), 1, velUnitConversion));
+        row.push(rateCell(KinematicsSolver.linkAccMap.get(l.id), 0, accUnitConversion));
+        row.push(rateCell(KinematicsSolver.linkAccMap.get(l.id), 1, accUnitConversion));
       });
       row.push(' ');
       this.links[0].forEach((l) => {
-        if (l instanceof Piston) {
-          return;
-        }
-        // if (l instanceof ImagLink) {
-        //   return;
-        // }
-        // row.push((KinematicsSolver.linkAngPosMap.get(l.id)).toString());
-        // row.push((KinematicsSolver.linkAngVelMap.get(l.id)).toString());
-        // row.push((KinematicsSolver.linkAngAccMap.get(l.id)).toString());
-        row.push(roundNumber(KinematicsSolver.linkAngPosMap.get(l.id)!, 4).toString());
-        row.push(roundNumber(KinematicsSolver.linkAngVelMap.get(l.id)!, 4).toString());
-        row.push(roundNumber(KinematicsSolver.linkAngAccMap.get(l.id)!, 4).toString());
+        row.push(scalarCell(KinematicsSolver.linkAngPosMap.get(l.id)));
+        row.push(scalarCell(KinematicsSolver.linkAngVelMap.get(l.id)));
+        row.push(scalarCell(KinematicsSolver.linkAngAccMap.get(l.id)));
       });
       kinematicAnalysis.push(row);
     });

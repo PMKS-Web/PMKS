@@ -1,42 +1,70 @@
-import { T } from '@angular/cdk/keycodes';
-import { Injectable } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
+import { modeChanged } from './services/mode-change-hooks';
 import { BehaviorSubject } from 'rxjs';
 import { MechanismService } from './services/mechanism.service';
 import { SynthesisBuilderService } from './services/synthesis/synthesis-builder.service';
 import { ActiveObjService } from 'src/app/services/active-obj.service';
 import { SettingsService } from './services/settings.service';
+import { AnalyticsService } from './services/analytics.service';
+import { ReportedMode } from './model/analytics-events';
 
 export enum TabID {
   SYNTHESIZE,
   EDIT,
-  ANALYZE
+  /** Kinematic analysis: position, velocity, acceleration. */
+  ANALYZE,
+  /** Force analysis, which asks for more of a mechanism than kinematics does. */
+  FORCE,
 }
 
+/** Edit is where every visit starts, so only leaving it is worth counting. */
+const REPORTED_MODES: Partial<Record<TabID, ReportedMode>> = {
+  [TabID.SYNTHESIZE]: 'synthesis',
+  [TabID.ANALYZE]: 'kinematic',
+  [TabID.FORCE]: 'force',
+};
+
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class SelectedTabService {
+  private synthesis = inject(SynthesisBuilderService);
+  private mechanism = inject(MechanismService);
+  private activeObjService = inject(ActiveObjService);
+  private settings = inject(SettingsService);
+  private analytics = inject(AnalyticsService);
 
   private _tabNum: BehaviorSubject<TabID>;
   private _tabVisible: BehaviorSubject<boolean>;
 
-  constructor(
-    private synthesis: SynthesisBuilderService,
-    private mechanism: MechanismService,
-    private activeObjService: ActiveObjService,
-    private settings: SettingsService
-  ) {
+  /**
+   * Whether the phone's bottom sheet is showing its contents.
+   *
+   * Here rather than in the component that draws it, because two things ask
+   * for it and only one of them is that component: the sheet's own handle, and
+   * the canvas, which opens it when a tap selects a part. Kept out of the
+   * canvas's reach any other way, that would have to be a static.
+   *
+   * Shut to begin with. A reader arriving on a phone has come to look at a
+   * mechanism, and a panel taking half the window before anything is selected
+   * is a panel in the way of the thing it is about.
+   */
+  readonly sheetExpanded = signal(false);
+
+  constructor() {
     this._tabNum = new BehaviorSubject<TabID>(TabID.EDIT);
     this._tabVisible = new BehaviorSubject<boolean>(true);
   }
 
   public setTab(tabID: TabID) {
-
     let previousTab = this.getCurrentTab();
     let isDifferentTab = previousTab !== tabID;
 
     // when switching from synthesis to edit/analyze tab, clear selected synthesis pose, if it exists
-    if (previousTab === TabID.SYNTHESIZE && this.activeObjService.getSelectedObjType() === "SynthesisPose") {
+    if (
+      previousTab === TabID.SYNTHESIZE &&
+      this.activeObjService.getSelectedObjType() === 'SynthesisPose'
+    ) {
       this.activeObjService.updateSelectedObj(null);
     }
 
@@ -44,7 +72,6 @@ export class SelectedTabService {
     this._tabVisible.next(true);
 
     if (isDifferentTab) this.onNewTab(previousTab);
-
   }
 
   public showTab() {
@@ -55,6 +82,15 @@ export class SelectedTabService {
     this._tabVisible.next(false);
   }
 
+  /**
+   * The mode, for anything that has to follow a change rather than ask about
+   * the current one. The canvas listens: the panel beside it is a different
+   * width in every mode, and the transport comes and goes with the analyses.
+   */
+  public get tabChanged() {
+    return this._tabNum.asObservable();
+  }
+
   public getCurrentTab() {
     return this._tabNum.getValue();
   }
@@ -63,28 +99,81 @@ export class SelectedTabService {
     return this._tabVisible.getValue();
   }
 
-  private onNewTab(previousTab: TabID) {
+  /**
+   * Either of the two analysis modes.
+   *
+   * The geometry is locked in both, and both are read-only, so almost
+   * everything that used to ask "is this the Analyze tab" means this instead.
+   */
+  public isAnalysisMode(tab: TabID = this.getCurrentTab()) {
+    return tab === TabID.ANALYZE || tab === TabID.FORCE;
+  }
 
-    // Replaces the old stop button: leaving Analyze is what rewinds the
-    // mechanism, so the other modes always act on the pose at time 0.
-    if (previousTab === TabID.ANALYZE) {
-      this.mechanism.animate(0, false);
+  /**
+   * Whether the current mode's panel needs the wide drawer.
+   *
+   * The two analyses need it for their tables and graphs; Synthesis needs it
+   * for a row of three numbers per position and a gallery of candidate
+   * linkages read side by side. Edit is the only mode that still fits in the
+   * narrow one.
+   */
+  public isWidePanel(tab: TabID = this.getCurrentTab()) {
+    return this.isAnalysisMode(tab) || tab === TabID.SYNTHESIZE;
+  }
+
+  private onNewTab(previousTab: TabID) {
+    const mode = REPORTED_MODES[this.getCurrentTab()];
+    if (mode) this.analytics.trackOnce('mode_open', { mode });
+
+    // A setup drawer answers a question about one mode, so it goes when that
+    // mode does -- otherwise the Force list sits over the Synthesis canvas
+    // looking like the app is stuck between two places. The drawer registers
+    // that reaction itself (mode-change-hooks.ts), so this service does not
+    // import a component.
+    modeChanged(this.getCurrentTab());
+
+    // What each mode boundary does to the pose and to playback.
+    //
+    // This used to be one rule -- leaving an analysis mode rewinds -- which was
+    // right while Edit had no transport: the only way to be mid-cycle was to be
+    // in an analysis mode, and the only reason to leave one was to go back to
+    // editing at the start. Now that the transport is chrome, that rule covers
+    // the wrong set. Rewinding on the way into Edit would destroy the pose the
+    // reader pressed Edit *because of*: run it, find the frame where it fouls,
+    // press Edit, and the frame is gone.
+    //
+    //   Analysis -> Edit        pose kept, playback paused
+    //   Edit -> Analysis        pose kept, playback continues
+    //   Analysis <-> Analysis   both kept (unchanged)
+    //   anything -> Synthesis   eased to the start, playback stopped
+    //
+    // Synthesis is the one mode with no mechanism to be mid-cycle in, and the
+    // one whose entry the old rule missed: coming to it from Edit left a
+    // drawing parked mid-cycle behind the positions being placed on it.
+    if (this.getCurrentTab() === TabID.SYNTHESIZE) {
+      this.mechanism.easeToStart();
+      this.settings.animating.next(false);
+    } else if (this.getCurrentTab() === TabID.EDIT && this.isAnalysisMode(previousTab)) {
+      // Paused where it stands, rather than eased home. Editing is refused
+      // while displaced until Phase 2, and the panel's banner says so with the
+      // way back beside it -- which is a choice the reader gets to make, where
+      // a rewind is one made for them.
+      this.mechanism.pauseInPlace();
       this.settings.animating.next(false);
     }
 
-    if (this.getCurrentTab() === TabID.SYNTHESIZE) {
+    /*
+      Leaving Synthesis no longer saves.
 
-      // reset flag
-      this.synthesis.modifiedMechanism = false;
-    }
-    else if (previousTab === TabID.SYNTHESIZE && this.getCurrentTab() === TabID.EDIT) {
+      It used to, because the old mode built onto the grid as the reader typed
+      and nothing else was going to write that down. The redesign only ever
+      touches the drawing through Insert, Undo-insert and Delete, and each of
+      those saves for itself -- so this wrote a second, identical entry on the
+      way out, and the first Undo after inserting appeared to do nothing at all
+      because it stepped back onto the same state.
 
-      // save mechanism state if modified in synthesis tab
-      this.mechanism.save();
-      // reset flag
-      this.synthesis.modifiedMechanism = false;
-    }
-
+      The flag that was supposed to gate it had not been set by anything for as
+      long as the redesign has existed, and is gone with it.
+    */
   }
-
 }

@@ -1,0 +1,99 @@
+@use 'sass:map';
+@use '@angular/material' as mat;
+
+@mixin css($theme) {
+  // Get the color config from the theme.
+  $color-config: mat.m2-get-color-config($theme);
+  // Get the primary color palette from the color-config.
+  $primary-palette: map.get($color-config, 'primary');
+  $accent-palette: map.get($color-config, 'accent');
+  $typography-config: mat.m2-get-typography-config($theme);
+  $background: map.get($theme, background);
+  $foreground: map.get($theme, foreground);
+
+  .collapsibleSubsection {
+    // The header is a row: the toggle takes all of it unless a section has put
+    // something beside it, and then that something takes what it needs.
+    /* Edge to edge. The inset used to be here, which meant the toggle's own
+       background -- and so its hover, and its hit area -- stopped short of both
+       sides of the panel, leaving a strip beside the header that looked part of
+       it and did nothing. The inset belongs to the text, so it now sits on the
+       button's padding instead. */
+    .panel-header {
+      display: flex;
+      align-items: center;
+      height: 40px;
+      width: 100%;
+      box-sizing: border-box;
+      border-top: 1px solid var(--border-rule);
+    }
+
+    .panel-header__actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 0 0 auto;
+      padding-right: 15px;
+
+      // Empty unless a section fills it, and an empty box must take no room.
+      &:empty {
+        display: none;
+      }
+    }
+
+    .panel-header__toggle {
+      padding: 0 15px;
+      border-style: none;
+      height: 100%;
+      flex: 1 1 auto;
+      min-width: 0;
+      //border-color: mat.get-color-from-palette($primary-palette, 500);
+      //Hide left and right borders
+      //border-left: 0;
+      //border-right: 0;
+      background-color: transparent;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      @include mat.m2-typography-level($typography-config, 'subtitle-2');
+      color: mat.m2-get-color-from-palette($primary-palette, 500);
+      cursor: pointer;
+
+      //On hover, change background color
+      &:hover {
+        background-color: rgba(0, 0, 0, 0.02);
+      }
+
+      mat-icon {
+        transition: transform 0.15s ease-in-out;
+
+        &.rotate180 {
+          transform: rotate(180deg);
+        }
+      }
+    }
+
+    .panel-content {
+      // Tighter under the header than above the next one: a section's contents
+      // belong to the title above them, and an equal gap on both sides left
+      // them floating between the two.
+      padding: 4px 15px 10px;
+      gap: 10px;
+      display: flex;
+      flex-direction: column;
+      // The collapse animates this box down to zero height; without clipping,
+      // the children would keep painting over whatever follows.
+      overflow: hidden;
+      transition: transform 0.15s ease-in-out;
+
+      &.settled {
+        overflow: visible;
+      }
+
+      &.hidden {
+        transform: scaleY(0);
+        height: 0;
+      }
+    }
+  }
+}

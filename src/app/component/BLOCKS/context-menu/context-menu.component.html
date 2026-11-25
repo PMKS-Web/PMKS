@@ -1,0 +1,132 @@
+<div
+  id="contextMenu"
+  class="fade-in-out"
+  [class.cm-empty]="empty()"
+  [class.byKeyboard]="byKeyboard"
+  (keydown)="onKey($event)"
+  cdkMenu
+>
+  @if (model().header; as header) {
+    <div class="cm-header">
+      <div class="cm-header__names">
+        <div class="cm-header__title">{{ header.title }}</div>
+        <div class="cm-header__subtitle">{{ header.subtitle }}</div>
+      </div>
+      <!-- The way into the other mode, as one icon: a row of its own would cost
+           height on every menu, and this costs none. -->
+      @if (header.crossing; as crossing) {
+        <button
+          type="button"
+          class="cm-cross"
+          [class.cm-cross--off]="!!crossing.refusal"
+          [attr.aria-label]="crossing.label"
+          [matTooltip]="crossing.refusal?.long ?? ''"
+          [matTooltipDisabled]="!crossing.refusal"
+          matTooltipPosition="left"
+          [matTooltipShowDelay]="500"
+          [appShortcutTip]="crossing.label"
+          [shortcutTipFor]="crossing.shortcut"
+          [shortcutTipDisabled]="!!crossing.refusal"
+          shortcutTipPosition="left"
+          (click)="cross(crossing)"
+        >
+          @if (crossing.material) {
+            <mat-icon>{{ crossing.icon }}</mat-icon>
+          } @else {
+            <mat-icon [svgIcon]="crossing.icon"></mat-icon>
+          }
+        </button>
+      }
+    </div>
+  }
+
+  <!-- What the part can be, above the ladder: one question, so a grid rather
+       than a row each (D8). Every value is a menu item, because inside a CDK
+       menu that is what the arrow keys reach, and a radio item is what says
+       which one is chosen.
+
+       The keys walk it as a list, not as a grid: `CdkMenu` builds its key
+       manager with vertical orientation only, so Up and Down step through all
+       four cells in order and Left and Right are swallowed. That is what a
+       `role="menu"` is per the APG, and it is deliberate here -- two columns
+       are a way to fit four values in a card 224px wide, not a claim that the
+       values are arranged in two dimensions.
+
+       A refused value's reason opens away from the card, on the side its column
+       is on, so that it is never over another value: see `reasonSide`. -->
+  @if (model().choice; as choice) {
+    <div class="cm-choice" cdkMenuGroup [attr.aria-label]="choice.label">
+      @for (option of choice.options; track $index) {
+        <div
+          class="cm-choice__cell"
+          cdkMenuItemRadio
+          [cdkMenuItemChecked]="$index === choice.chosen"
+          [cdkMenuItemDisabled]="!!option.refusal || ($index === choice.chosen && settled(choice))"
+          [class.cm-choice__cell--chosen]="$index === choice.chosen"
+          [class.cm-choice__cell--settled]="$index === choice.chosen && settled(choice)"
+          [class.cm-choice__cell--off]="!!option.refusal"
+          [class.cm-choice__cell--fault]="$index === choice.chosen && !!choice.fault"
+          [matTooltip]="hoverTextFor(choice, option, $index)"
+          [matTooltipDisabled]="!hoverTextFor(choice, option, $index)"
+          [matTooltipPosition]="reasonSide($index)"
+          [matTooltipShowDelay]="500"
+          (cdkMenuItemTriggered)="choose(option)"
+        >
+          <mat-icon [svgIcon]="option.icon" aria-hidden="true"></mat-icon>
+          <span class="cm-choice__label">{{ option.label }}</span>
+        </div>
+      }
+    </div>
+  }
+
+  @for (group of model().groups; track $index) {
+    @if (group.rows.length > 0) {
+      <div class="cm-group">
+        @if (group.label) {
+          <div class="cm-group__label">{{ group.label }}</div>
+        }
+        <!-- The tooltip waits half a second: running the pointer down the list
+             otherwise flashes a chip per row, which is what made it jumpy. -->
+        @for (row of group.rows; track row) {
+          <div
+            class="cm-row"
+            cdkMenuItem
+            [class.cm-row--off]="row.disabled"
+            [class.cm-row--on]="row.checked && !row.disabled"
+            [class.cm-row--destructive]="row.destructive"
+            [cdkMenuItemDisabled]="row.disabled"
+            [matTooltip]="row.hoverText"
+            [matTooltipDisabled]="!row.hoverText"
+            matTooltipPosition="below"
+            [matTooltipShowDelay]="500"
+            (cdkMenuItemTriggered)="run(row)"
+          >
+            @if (row.material) {
+              <mat-icon>{{ row.icon }}</mat-icon>
+            } @else {
+              <mat-icon [svgIcon]="row.icon"></mat-icon>
+            }
+            <span class="cm-row__text"
+              ><span class="cm-row__label">{{ row.label }}</span>
+              @if (row.detail) {
+                <span class="cm-row__detail">{{ row.detail }}</span>
+              }
+            </span>
+            <!-- One slot on the right, and one thing in it: the reason when the
+                 row is grayed, a count where one says something, the key
+                 otherwise. -->
+            @if (row.refusal) {
+              <span class="cm-row__reason">{{ row.refusal.short }}</span>
+            } @else if (row.checked) {
+              <mat-icon class="cm-row__check">check</mat-icon>
+            } @else if (row.hint) {
+              <span class="cm-row__hint">{{ row.hint }}</span>
+            } @else if (row.shortcut) {
+              <kbd class="cm-row__key">{{ row.shortcut }}</kbd>
+            }
+          </div>
+        }
+      </div>
+    }
+  }
+</div>

@@ -1,6 +1,10 @@
 // Verifies the Force Analysis accordion on both the joint and the link
 // analysis panels: one row per reacting link / per external joint, and a single
 // mechanism-wide "Force Analysis Type" toggle shared by both.
+//
+// These rows now live in the Force mode rather than beside the kinematic ones,
+// and that mode refuses to open without a load — so the four-bar is given one
+// first, through the same context menu a user would reach for.
 const { chromium } = await import(
   (process.env.PMKS_PLAYWRIGHT_DIR ?? '/tmp/pmks-playwright') + '/node_modules/playwright/index.mjs'
 );
@@ -10,7 +14,7 @@ import path from 'node:path';
 const screenshotDir = path.resolve('artifacts/screenshots');
 await fs.mkdir(screenshotDir, { recursive: true });
 
-const baseUrl = process.env.PMKS_URL || 'http://127.0.0.1:4200/';
+const baseUrl = process.env.PMKS_BASE_URL || process.env.PMKS_URL || 'http://localhost:4200/';
 const runPrefix = process.env.RUN_PREFIX || 'force-panels';
 const chromePath =
   process.env.PMKS_CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -38,6 +42,7 @@ page.setDefaultTimeout(10000);
 page.on('pageerror', (error) =>
   issue('Uncaught page error', { severity: 'high', error: error.stack || error.message })
 );
+import { waitForReady } from './app-ready.mjs';
 page.on('console', (msg) => {
   const text = msg.text();
   if (msg.type() === 'error' && !/favicon|google-analytics/i.test(text)) {
@@ -48,69 +53,129 @@ page.on('console', (msg) => {
 const shot = (name) =>
   page.screenshot({ path: path.join(screenshotDir, `${runPrefix}-${name}`), fullPage: true });
 
-async function dismissIntro() {
-  const intro = page.locator('.introjs-tooltip, .introjs-overlay').first();
-  if (await intro.isVisible().catch(() => false)) {
-    await page
-      .locator('.introjs-skipbutton')
-      .first()
-      .click({ force: true })
-      .catch(() => page.keyboard.press('Escape'));
-    await page.waitForTimeout(350);
-  }
-}
-
 /** Titles of the expansion rows under the Force Analysis subsection. */
+/**
+ * The reaction rows the panel is showing.
+ *
+ * They no longer sit inside a "Force Analysis" collapsible: the panel puts the
+ * mode radio and the rows at its own level now, so the rows are found by what
+ * they are rather than by what used to contain them.
+ */
 async function forceRowTitles() {
   return page.evaluate(() => {
-    const sections = [...document.querySelectorAll('collapsible-subseciton')];
-    const forceSection = sections.find((el) => /Force Analysis/.test(el.innerText));
-    if (!forceSection) return null;
-    return [...forceSection.querySelectorAll('mat-expansion-panel-header')].map((el) =>
-      el.innerText.replace(/help_outline/g, '').trim()
+    const panel = document.querySelector('app-analysis-panel');
+    if (!panel?.querySelector('[role=tablist][aria-label="Force analysis type"]')) return null;
+    return (
+      [...panel.querySelectorAll('app-analysis-graph-section .graphTitle')]
+        .map((el) => el.innerText.replace(/help_outline/g, '').trim())
+        // "Force on Link AB" on a joint, "Force at Joint B" on a link.
+        .filter((text) => /^Force (on Link|at Joint)/.test(text))
     );
   });
 }
 
 async function toggleLabels() {
   return page.evaluate(() => {
-    const sections = [...document.querySelectorAll('collapsible-subseciton')];
-    const forceSection = sections.find((el) => /Force Analysis/.test(el.innerText));
-    const group = forceSection?.querySelector('mat-button-toggle-group');
+    const group = document.querySelector('app-analysis-panel app-tabs-block');
     if (!group) return null;
-    return [...group.querySelectorAll('mat-button-toggle')].map((el) => ({
+    return [...group.querySelectorAll('button')].map((el) => ({
       text: el.innerText.trim(),
-      checked: el.classList.contains('mat-button-toggle-checked'),
+      checked: el.getAttribute('aria-selected') === 'true',
     }));
   });
 }
 
-/** Select a joint or link by clicking its SVG element, then open the Analyze tab. */
+/** Model-space point to screen, through the layer the mechanism is drawn in. */
+const toScreen = (x, y) =>
+  page.evaluate(
+    ([modelX, modelY]) => {
+      const m = document.querySelector('#linkHolder').getScreenCTM();
+      return { x: modelX * m.a + modelY * m.c + m.e, y: modelX * m.b + modelY * m.d + m.f };
+    },
+    [x, y]
+  );
+
+const jointCoord = (id) =>
+  page.evaluate((jointId) => {
+    const srv = ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv;
+    const joint = srv.joints.find((candidate) => candidate.id === jointId);
+    return joint ? { x: joint.x, y: joint.y } : undefined;
+  }, id);
+
+const forceCount = () =>
+  page.evaluate(
+    () => ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv.forces.length
+  );
+
+/**
+ * Weigh every link.
+ *
+ * Links arrive massless, and "Mass on every link" is one of the things force
+ * analysis asks for -- so a drawing that has never been given masses cannot
+ * enter the mode at all, which is the requirement doing its job rather than
+ * something to work around in the product.
+ */
+async function weighTheLinks() {
+  await page.evaluate(() => {
+    const srv = ng.getComponent(document.querySelector('app-new-grid')).mechanismSrv;
+    srv.links.forEach((link) => {
+      link.mass = 1;
+      link.massMoI = 1;
+    });
+    srv.updateMechanism(true);
+  });
+  await page.waitForTimeout(600);
+}
+
+/** Hang a load on link BC, which is what makes the Force mode enterable at all. */
+async function attachForceToBC() {
+  const b = await jointCoord('B');
+  const c = await jointCoord('C');
+  const on = await toScreen(b.x + (c.x - b.x) * 0.4, b.y + (c.y - b.y) * 0.4);
+  await page.mouse.move(on.x, on.y);
+  await page.mouse.click(on.x, on.y, { button: 'right' });
+  await page.waitForTimeout(500);
+  await page.evaluate(() => {
+    const item = [...document.querySelectorAll('#contextMenu .cm-row')].find(
+      (node) => node.querySelector('.cm-row__label')?.textContent?.trim() === 'Force'
+    );
+    item?.click();
+  });
+  await page.waitForTimeout(300);
+  await page.mouse.move(on.x + 110, on.y - 80, { steps: 8 });
+  await page.waitForTimeout(200);
+  await page.mouse.click(on.x + 110, on.y - 80);
+  await page.waitForTimeout(800);
+}
+
+/** Select a joint or link by clicking its SVG element, then open the Force mode. */
 async function selectAndAnalyze(selector, index) {
+  // Selection is an Edit-mode act; the analysis modes lock the geometry.
+  await page.locator('.tabButton', { hasText: 'Edit' }).click();
+  await page.waitForTimeout(400);
   await page.locator(selector).nth(index).click({ force: true });
   await page.waitForTimeout(400);
-  // The tab button toggles, so only click it when the panel is not already open.
-  const open = await page
-    .locator('app-analysis-panel #analysisWrapper')
-    .first()
-    .isVisible()
-    .catch(() => false);
-  if (!open) await page.locator('button.leftButton').nth(2).click();
+  await page.locator('.tabButton', { hasText: 'Force' }).click();
   await page.waitForTimeout(900);
 }
 
-/** Expansion headers live in a scrolling panel; bring one into view before clicking. */
+/** Graph headers live in a scrolling panel; bring one into view before clicking. */
 async function expandRow(text) {
-  const row = page.locator('mat-expansion-panel-header', { hasText: text }).first();
+  const row = page.locator('app-analysis-graph-section .graphHeader', { hasText: text }).first();
   await row.scrollIntoViewIfNeeded();
-  await row.click();
+  if ((await row.getAttribute('aria-expanded')) !== 'true') await row.click();
   await page.waitForTimeout(1500);
 }
 
 try {
-  await page.goto(`${baseUrl}?${fourBar}`, { waitUntil: 'networkidle', timeout: 60000 });
-  await page.waitForTimeout(1200);
-  await dismissIntro();
+  await page.goto(`${baseUrl}?${fourBar}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await waitForReady(page);
+
+  await weighTheLinks();
+  await attachForceToBC();
+  check('the four-bar took a load, so Force analysis can be entered', (await forceCount()) === 1, {
+    forces: await forceCount(),
+  });
 
   // --- Joint panel: joint B connects links AB and BC. ---
   await selectAndAnalyze('#jointHolder svg', 1);
@@ -169,7 +234,7 @@ try {
   );
 
   // Flip the shared setting to dynamic from the joint side.
-  await page.locator('mat-button-toggle', { hasText: 'In-motion' }).first().click();
+  await page.getByRole('tab', { name: 'In-motion', exact: true }).first().click();
   await page.waitForTimeout(1500);
   await shot('03-joint-dynamic.png');
   const afterFlip = await toggleLabels();
@@ -180,11 +245,11 @@ try {
   // --- Link panel: link BC has external joints B and C. ---
   await selectAndAnalyze('#linkHolder path', 1);
   const linkHeading = await page.evaluate(
-    () => document.body.innerText.match(/(Kinematic )?Analysis for Link \w+/)?.[0]
+    () => document.body.innerText.match(/(Kinematic Analysis|Kinematics|Forces) for Link \w+/)?.[0]
   );
   await shot('04-link-panel.png');
 
-  check('link panel title dropped the "Kinematic" prefix', linkHeading === 'Analysis for Link BC', {
+  check('link panel title names the analysis as a noun', linkHeading === 'Forces for Link BC', {
     linkHeading,
   });
 
@@ -211,7 +276,7 @@ try {
   );
 
   // Flip back from the link side and confirm the joint side follows.
-  await page.locator('mat-button-toggle', { hasText: 'Static' }).first().click();
+  await page.getByRole('tab', { name: 'Static', exact: true }).first().click();
   await page.waitForTimeout(1200);
   await selectAndAnalyze('#jointHolder svg', 1);
   const backOnJoint = await toggleLabels();
@@ -232,4 +297,6 @@ try {
 }
 
 const failed = checks.filter((c) => !c.ok);
+for (const c of checks) console.log(`${c.ok ? 'PASS' : 'FAIL'}  ${c.name}`);
 console.log(JSON.stringify({ passed: checks.length - failed.length, failed, issues }, null, 2));
+process.exit(failed.length || issues.length ? 1 : 0);

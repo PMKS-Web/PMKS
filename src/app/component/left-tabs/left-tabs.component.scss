@@ -13,150 +13,514 @@
   $background: map.get($theme, background);
   $foreground: map.get($theme, foreground);
 
-  #collapsibleContainer {
-    overflow-y: hidden;
-  }
-
-  .tabList {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-  }
-
-  // The active mode's controls sit inside its group, so the highlight wraps
-  // both the tab and its tools.
-  .activeTabPill {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 0;
-    box-sizing: border-box;
-    background-color: mat.m2-get-color-from-palette($primary-palette, 50);
-    border-left: 5px solid mat.m2-get-color-from-palette($primary-palette, 500);
-    // translateY (GPU-composited) slides the highlight between tabs; height eases
-    // it open. Both match the tools' grow animation exactly — same 200ms and
-    // easing — so the highlight and its contents move as one, with no per-frame
-    // JS to stutter or leave it stranded mid-slide.
-    transition:
-      transform 200ms cubic-bezier(0.4, 0, 0.2, 1),
-      height 200ms cubic-bezier(0.4, 0, 0.2, 1),
-      opacity 150ms ease;
-    will-change: transform, height;
-
-    &.hidden {
-      opacity: 0;
+  @media (max-width: 900px) {
+    .panel.behindDrawer {
+      display: none;
     }
   }
 
-  .tabGroup {
-    position: relative;
-    z-index: 1;
-    box-sizing: border-box;
-    border-left: 5px solid transparent;
+  // The mock's help panel: a title, a lead, a rule and a hint or two. It
+  // replaces a collapsible section wrapped round a GIF -- an animation of the
+  // gesture, which had to be watched and could not be scanned.
+  //
+  // Defined once here, where both panels this drawer hosts can reach it, rather
+  // than twice in the two components that draw it.
+  .helpPanel {
+    padding: 14px 15px 18px;
+    background: var(--card-surface);
+    border-top: 5px solid mat.m2-get-color-from-palette($primary-palette, 500);
+    // 5px, matching the 5px accent bar above it: a border's inner edge is
+    // rounded by the corner radius minus the border width, so any radius wider
+    // than the bar curves the bar's underside. The floating chrome has no bar
+    // and keeps the wider corner.
+    border-radius: var(--border-radius);
+    box-shadow: var(--card-shadow);
   }
 
-  .leftButton {
+  .helpTitle {
+    font-size: 20px;
+    font-weight: 500;
+    line-height: 28px;
+  }
+
+  .helpLead {
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--text-secondary);
+    margin: 6px 0 0;
+  }
+
+  .helpRule {
+    height: 1px;
+    background: var(--border-divider);
+    margin: 14px 0;
+  }
+
+  .helpHints {
     display: flex;
     flex-direction: column;
+    gap: 12px;
+  }
+
+  // The tutorial's offer, and the line it leaves behind. Below the panel's own
+  // hints and under a rule, so it reads as an option rather than as the thing
+  // the panel is for -- a student who never presses it has still been told
+  // about right-click.
+  .offer {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+
+    > mat-icon {
+      flex: 0 0 auto;
+      width: 20px;
+      height: 20px;
+      font-size: 20px;
+      line-height: 20px;
+      color: mat.m2-get-color-from-palette($primary-palette, 500);
+    }
+  }
+
+  .offerText {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .offerTitle {
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+    color: var(--text-strong);
+  }
+
+  .offerWhy {
+    margin: 3px 0 0;
+    font-size: 13px;
+    line-height: 19px;
+    color: var(--text-secondary);
+  }
+
+  // Start, and the way to say no. The offer is a question, and a question with
+  // only one answer keeps getting asked.
+  .offerButtons {
+    display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 8px;
-    width: 100%;
-    padding: 10px 0 8px;
-    border: 0;
-    background: none;
-    cursor: pointer;
-    color: inherit;
+    gap: 4px;
+    margin-top: 11px;
+  }
+
+  .offerDismiss {
+    height: 32px;
+    padding: 0 10px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
     font-family: inherit;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--hover-wash);
+    }
+  }
+
+  .offerButton {
+    height: 32px;
+    padding: 0 14px;
+    border: none;
+    border-radius: 4px;
+    background: mat.m2-get-color-from-palette($primary-palette, 500);
+    color: var(--text-on-accent);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  // The same line as a card of its own, for when the panel above it is showing
+  // a selected part rather than its empty state.
+  .resumeCard {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+    box-sizing: border-box;
+    // No margin of its own: the wrapper around these cards already spaces them,
+    // and the frame's own note warns that a margin here is what once pushed a
+    // card past the bottom of a frame capped at its own height and cut the
+    // shadow off. Ten pixels, the same as every other pair of cards in this
+    // column.
+    padding: 12px 15px;
+    border: none;
+    border-radius: var(--border-radius);
+    background: var(--card-surface);
+    box-shadow: var(--card-shadow);
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 19px;
+    text-align: left;
+    color: mat.m2-get-color-from-palette($primary-palette, 500);
+    cursor: pointer;
 
     mat-icon {
-      transform: scale(1.3);
-      height: 24px;
-      width: 24px;
-      margin: 0;
-      overflow: visible;
-    }
-
-    .tabLabel {
-      @include mat.m2-typography-level($typography-config, 'body-2');
-      line-height: 16px;
+      flex: 0 0 auto;
+      width: 18px;
+      height: 18px;
+      font-size: 18px;
+      line-height: 18px;
     }
   }
 
-  .tabTools {
-    // A flex column so the buttons and the animation bar stretch to one width;
-    // the 8px side padding gives every control an equal gutter inside the pill.
-    // The bottom padding is part of the box (not a child margin) so scrollHeight,
-    // which the pill measures, includes it. overflow:hidden lets the grow
-    // animation collapse the box cleanly.
+  .resumeLine {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 0 8px 10px;
-    overflow: hidden;
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+    padding: 0;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 19px;
+    text-align: left;
+    color: mat.m2-get-color-from-palette($primary-palette, 500);
+    cursor: pointer;
 
-    // While the grow animation constrains this box's height, its children must
-    // keep their natural size (not flex-shrink to fit) so scrollHeight — which
-    // the pill measures for its target height — stays the true, full height.
-    > * {
-      flex-shrink: 0;
-    }
-
-    // Same button look as the edit panel; the container prefix keeps its
-    // border-color winning over Material's default outline.
-    @include blocks.mini-buttons($theme);
-
-    .mini-buttons {
-      width: 100%;
-      justify-content: flex-start;
+    mat-icon {
+      flex: 0 0 auto;
+      width: 18px;
+      height: 18px;
+      font-size: 18px;
+      line-height: 19px;
     }
   }
 
-  .navSpacer {
-    flex: 1 1 auto;
+  .helpHint {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--text-secondary);
+
+    mat-icon {
+      flex: 0 0 auto;
+      width: 20px;
+      height: 20px;
+      font-size: 20px;
+      line-height: 20px;
+      color: mat.m2-get-color-from-palette($primary-palette, 500);
+    }
   }
 
+  // Below the top strip, and clear of whatever is along the bottom -- which is
+  // the playback card in the analysis modes and only the status strip in the
+  // others. Edit used to keep the playback card's room clear too, and stopped
+  // 70px short of anything.
   .panel {
     position: absolute;
-    top: 30px;
-    left: nav.$rail-width;
+    top: nav.$panel-top;
+    // Flush with the window on its own side, and the card set in from there by
+    // the one gap. The frame used to start $shadow-room short of the card, which
+    // once the shadow needed more room than the gap is wide put the frame four
+    // pixels off the edge of the window -- and a box hanging off the window is a
+    // page that can be scrolled sideways.
+    left: 0;
+    // The inset is the frame's, not the wrapper's inside it: the frame is what
+    // clips, so it is the frame that has to leave the card's shadow somewhere
+    // to fall. It used to be a margin on the wrapper, which put the card 10px
+    // past the bottom of a frame capped at the frame's own height and cut the
+    // shadow off there. Only three sides need it: on the fourth the window
+    // itself is the edge, and a shadow fading off the screen fades off it.
+    padding: nav.$shadow-room;
+    padding-left: nav.$card-inset;
+    box-sizing: border-box;
     overflow-x: hidden;
     overflow-y: auto;
-    max-height: calc(100% - 30px - #{nav.$bottom-bar-height});
+    --panel-clearance: #{nav.$panel-bottom-clearance};
+    max-height: calc(100% - #{nav.$top-strip-height} - var(--panel-clearance));
+    max-width: calc(100vw - 24px);
     display: flex;
+    z-index: var(--layer-panel);
 
-    animation-duration: 4s;
+    &.edit {
+      --panel-clearance: calc(
+        var(--edit-panel-clearance, #{nav.$panel-bottom-clearance + nav.$shadow-room}) -
+          #{nav.$shadow-room}
+      );
+    }
 
+    &.analysis {
+      // Measured by the playback bar, which is the only thing that knows how
+      // tall it is: unsynced it carries a row per machine. The fallback is the
+      // height of a transport with one row in it, which is what this was until
+      // a drawing with three machines came down through it.
+      --panel-clearance: calc(
+        var(--playback-clearance, #{nav.$playback-clearance}) - #{nav.$shadow-room}
+      );
+
+      // Wide enough for the cluster to sit beside the panel rather than under
+      // it, so the panel can run down to the status strip like it does in the
+      // other modes.
+      @media (min-width: nav.$cluster-clears-panel) {
+        --panel-clearance: #{nav.$panel-bottom-clearance};
+      }
+    }
+
+    // Hand the height down to the card, which is what scrolls. Each step needs
+    // `min-height: 0` or a flex item refuses to shrink below its content and
+    // the cap never reaches the bottom of the chain.
+    .page1,
+    .page2,
+    .page3 {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+
+      > * {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+
+      #editWrapper,
+      #analysisWrapper,
+      #synthesisPanel {
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+
+      panel-section {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+    }
+
+    // The page keeps its own width while the frame's width animates, and the
+    // frame clips it. As a flex item it shrank with the frame, so a switch
+    // from Edit to an analysis mode re-wrapped every line of the panel on
+    // every frame of the widening; now the wider panel is laid out once, at
+    // its width, and revealed. Not on the phone, where the page is as wide as
+    // the sheet and has no width of its own to keep.
+    &:not(.sheet) > .page1,
+    &:not(.sheet) > .page2,
+    &:not(.sheet) > .page3 {
+      flex: 0 0 auto;
+    }
+
+    // --- the phone layout ---------------------------------------------
+    //
+    // Below `ViewportService`'s breakpoint the panel stops being a side panel.
+    // At 250px against a 390px window it took two thirds of the screen and the
+    // linkage was framed into the strip left over; at the analysis width there
+    // was no strip left over at all. A sheet along the bottom gives the drawing
+    // the whole width and rather more than half the height, which is the
+    // trade every phone app makes with a panel it cannot shrink.
+    //
+    // `data-canvas-inset` is switched to `bottom` in the template by the same
+    // signal that adds this class, so the framing follows the sheet rather than
+    // having to be told about it separately.
+    &.sheet {
+      top: auto;
+      // On top of the controls row, which is on top of the status strip. Both
+      // of those stay where they are; the sheet is the only thing here that
+      // moves, which is what makes its handle worth reaching for.
+      bottom: var(--controls-top, #{nav.$bottom-bar-height});
+      left: 0;
+      right: 0;
+      // Beating the animation, which writes 278px or 428px straight onto the
+      // element and would otherwise leave a phone-width sheet standing in a
+      // desktop-width column. The file says so where the states are declared;
+      // this is the other end of that warning.
+      width: auto !important;
+      max-width: 100vw;
+      // Enough to work in, never enough to take the drawing away. `dvh` for
+      // the same reason the body uses it: `vh` on a phone is measured with the
+      // address bar hidden.
+      //
+      // The second term is what is actually left once the strip above and the
+      // transport below have taken theirs. Without it a short window -- a small
+      // phone in analysis, where the cluster wraps to three rows -- stacked the
+      // cluster on top of a sheet that was still claiming its 48%, and pushed
+      // the transport up under the top strip and eventually off the screen
+      // entirely. The sheet gives way, because it is the one thing here with a
+      // handle for getting it out of the way.
+      //
+      // No loop, despite `--playback-clearance` being read here and
+      // `--sheet-height` being read there: what is read here is the cluster's
+      // *height*, which is decided by how many machines it has a row for and
+      // never by where the sheet is.
+      max-height: min(
+        48dvh,
+        calc(
+          100dvh - #{nav.$top-strip-bottom} - #{nav.$sheet-handle-height} -
+            #{nav.$least-canvas} - var(--playback-clearance, #{nav.$playback-clearance})
+        )
+      );
+      // On the card line, like the strip along the top -- and the same gap
+      // underneath, so the sheet stands off the controls row by exactly what
+      // the controls row stands off the status strip. It was $shadow-room, so
+      // the sheet's card sat 4px further in than the top bar's cards and 16px
+      // above the row rather than 12.
+      //
+      // The cost is 4px of the card's side shadow, which this box clips. Worth
+      // it: a shadow nobody can name is a poor reason for a card that is
+      // visibly not lined up with the one above it.
+      padding: 0 nav.$card-inset nav.$card-inset;
+      // The slide itself is run from the component rather than declared here.
+      // A CSS transition on `max-height` animates the cap, not the sheet: this
+      // panel is capped at 48dvh and its content is usually well under that, so
+      // most of the range is spent shrinking a cap nothing is touching and the
+      // sheet appears to snap open and then finish moving 3px. The component
+      // animates between the two heights it has actually measured, which is the
+      // whole of the range and none of the slack. A `transform` would have been
+      // simpler still and is not available: the mode panel already carries an
+      // Angular animation that writes `translateX` inline, and inline wins.
+      // No room above, unlike every other side. Everywhere else the frame is
+      // set back so the card's shadow has somewhere to fall inside a box that
+      // clips -- but the sheet's top edge is the one the handle hangs on, and
+      // 16px of padding there put the card 16px below the place the pill was
+      // measured from. That is the whole of the difference between the shut
+      // state and the open one. The card's upward shadow is 8px of haze under a
+      // 5px indigo bar; losing it costs nothing anybody can see, and buys a
+      // handle that means the same thing in both states.
+      z-index: var(--layer-sheet);
+
+      // Shut, the sheet is just its handle and a sliver of the card behind it,
+      // so the drawing has the window. The height is a cap rather than a fixed
+      // height so a short panel still only takes what it needs.
+      &.collapsed {
+        max-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        overflow: hidden;
+      }
+
+      // The card inside is what a reader sees, and on a phone it takes the
+      // width it is given. Fixed at 250 or 400 it left the sheet two thirds
+      // covered and a third empty -- and at 400 on a 390px window it was the
+      // page that had to scroll sideways.
+      .page1,
+      .page2,
+      .page3 {
+        width: auto;
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+    }
+
+    // Never wider than the window it is in. The analysis page is 420px, which
+    // is wider than a phone, and the page scrolled sideways to show the rest of
+    // a card whose rounded corner was off the edge. The cap has to be on the
+    // frame too: its width is an animation state, which is a style on the
+    // element and beats a rule from this file.
+    .page1,
+    .page2,
+    .page3 {
+      max-width: calc(100vw - 24px);
+    }
+
+    // The frame's width minus the room it keeps around the card for the card's
+    // shadow. The card was always this wide -- the inset used to be a margin on
+    // the wrapper inside the page, and moving it to the frame left the page at
+    // the frame's own width, so the card overhung it and its right-hand shadow
+    // was cut off.
+    // Synthesis is as wide as the analysis panel, not as wide as Edit: it
+    // holds a row of three numbers per position, a gallery of candidate
+    // linkages side by side, and a transport -- none of which fit in 250px,
+    // and all of which are comparisons that stop working once they wrap.
     .page1 {
-      width: 270px; //Be careful, there are multiple places to change this value
+      width: 400px; //Be careful, there are multiple places to change this value
     }
 
     .page2 {
-      width: 270px; //Be careful, there are multiple places to change this value
+      width: 250px; //Be careful, there are multiple places to change this value
     }
 
     .page3 {
-      width: 420px; //Be careful, there are multiple places to change this value
+      width: 400px; //Be careful, there are multiple places to change this value
     }
   }
 
-  .tabContainer {
-    @include mat.elevation(2);
-    background-color: white;
+  // The grab handle for the phone sheet. A wide, shallow target -- the whole
+  // width of the window and 28px of it -- because it is pressed with a thumb
+  // reaching up from the bottom of the phone, and the pill it draws is far too
+  // small to aim at.
+  .sheetHandle {
+    position: fixed;
+    left: 0;
+    right: 0;
+    // Its bottom edge is the sheet's top edge -- or, shut, the top of the
+    // controls row. Either way the pill is placed from here, which is what
+    // makes the two states the same.
+    bottom: calc(var(--sheet-height, 0px) + var(--controls-top, #{nav.$bottom-bar-height}));
+    height: nav.$sheet-handle-height;
     display: flex;
-    flex-direction: column;
-    z-index: 1;
+    align-items: flex-end;
+    justify-content: center;
+    border: none;
+    // A button, so it arrives with the browser's own padding on it -- 1px top
+    // and bottom in Chrome. Left alone that padding shrank the grip inside it
+    // to 42px and stood the pill 13px off the sheet where every other gap here
+    // is 12: an off-by-one nobody would ever find by reading the stylesheet,
+    // because the number it comes from is not in the stylesheet.
+    padding: 0;
+    background: transparent;
+    z-index: var(--layer-sheet-handle);
+    cursor: pointer;
+    // Only the pill itself takes presses, so the canvas either side of it is
+    // still canvas.
+    pointer-events: none;
+  }
 
-    position: absolute;
-    top: 30px;
-    left: 0px;
-    width: nav.$rail-width;
-    // Runs to the very bottom so the rail covers the bottom bar's left end
-    // rather than leaving a bare corner beneath it.
-    height: calc(100% - 30px);
-    // No scrollbar; on a short viewport the animation bar drops its vertical
-    // slider (see animation-bar.scss) so the remaining controls still fit.
-    overflow-y: hidden;
+  // The pill is 44x5 and nobody can hit 5px with a thumb, so what takes the
+  // press is a box around it rather than the pill itself: 120 wide and the full
+  // height of the bar, which clears the 44px minimum in both directions. The
+  // rest of the bar stays transparent to the canvas underneath.
+  .sheetGrip {
+    position: relative;
+    pointer-events: auto;
+    display: flex;
+    // The pill at the foot of the target rather than in the middle of it. What
+    // a reader sees is the pill, so it is the pill that has to sit the same
+    // distance above the sheet as it does above the controls row when the sheet
+    // is shut -- and centered in a 44px box it stood 22px clear of both, which
+    // reads as a thing floating near the sheet rather than a thing on it. The
+    // box keeps its full height, so all that grew is the reach *above* the
+    // pill, which is where a thumb coming up the screen arrives first.
+    align-items: flex-end;
+    justify-content: center;
+    width: 120px;
+    height: 100%;
+    padding-bottom: nav.$sheet-grip-gap;
+    box-sizing: border-box;
+
+    // A small card carrying the grip, rather than a bare pill with a white halo
+    // around it: the halo was a soft-edged blob sitting on the ruling, and read
+    // as something smudged onto the drawing rather than as a control.
+    &::before {
+      content: '';
+      width: 56px;
+      height: nav.$sheet-pill-height;
+      border-radius: 10px;
+      background: var(--card-surface);
+      box-shadow: var(--card-shadow);
+    }
+
+    &::after {
+      content: '';
+      position: absolute;
+      // Centered on the card above, which is at the foot of the box now rather
+      // than the middle of it. Written from the same two names the card is
+      // placed by, so the line cannot come adrift from the pill it is drawn on.
+      bottom: calc(#{nav.$sheet-grip-gap} + (#{nav.$sheet-pill-height} - 4px) / 2);
+      width: 28px;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(0, 0, 0, 0.32);
+    }
   }
 }

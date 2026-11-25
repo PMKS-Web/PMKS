@@ -14,56 +14,75 @@ Converts a BaseN string back into an integer. If the input string starts
 with a '-', the decoded number will be negative.
 */
 export class BaseNConverter {
+  // the list of uri-allowed characters, excluding , . - _ ~
+  static readonly baseNChars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_-';
+  static readonly N = this.baseNChars.length;
 
-    // the list of uri-allowed characters, excluding , . - _ ~
-    static readonly baseNChars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_-";
-    static readonly N = this.baseNChars.length;
+  // convert number to base64. If negative, add 0 to the beginning.
+  static toUrlSafeBaseN(integer: number, padToLength: number | null = null): string {
+    // assert integer is a whole number
+    integer = Math.floor(integer);
 
-    // convert number to base64. If negative, add 0 to the beginning.
-    static toUrlSafeBaseN(integer: number, padToLength: number | null = null): string {
-        // assert integer is a whole number
-        integer = Math.floor(integer);
+    let positive = integer >= 0; // Store sign to insert - to beginning if negative
+    integer = Math.abs(integer); // We only deal with positive numbers now
 
-        let positive = (integer >= 0); // Store sign to insert - to beginning if negative
-        integer = Math.abs(integer); // We only deal with positive numbers now
+    let baseNString = '';
+    do {
+      baseNString = BaseNConverter.baseNChars.charAt(integer % BaseNConverter.N) + baseNString;
+      integer = Math.floor(integer / BaseNConverter.N);
+    } while (integer > 0);
 
-        let baseNString = "";
-        do {
-            baseNString = BaseNConverter.baseNChars.charAt(integer % BaseNConverter.N) + baseNString;
-            integer = Math.floor(integer / BaseNConverter.N);
-        } while (integer > 0);
-
-        if (!positive) {
-            baseNString = "0" + baseNString;
-        }
-
-        if (padToLength !== null && baseNString.length < padToLength) {
-            baseNString = "0".repeat(padToLength - baseNString.length) + baseNString;
-        }
-    
-        return baseNString;
+    if (!positive) {
+      baseNString = '0' + baseNString;
     }
 
-    // decode base64 string back to number. If string starts with 0, the number is nonpositive.
-    static fromUrlSafeBaseN(baseNString: string, forcePositive: boolean = false): number {
-        let positive = true; // Assume positive number by default
-        let index = 0;
-
-        if (!forcePositive && baseNString[0] === '0') {
-            positive = false; // Number is negative
-            index = 1; // Start decoding from index 1, skipping the negative sign
-        }
-
-        let integer = 0;
-        for (let i = index; i < baseNString.length; i++) {
-            integer *= BaseNConverter.N;
-            integer += BaseNConverter.baseNChars.indexOf(baseNString[i]);
-        }
-
-        if (!positive && integer !== 0) {
-            integer = -integer;
-        }
-
-        return integer;
+    if (padToLength !== null && baseNString.length < padToLength) {
+      baseNString = '0'.repeat(padToLength - baseNString.length) + baseNString;
     }
+
+    return baseNString;
+  }
+
+  // decode base64 string back to number. If string starts with 0, the number is nonpositive.
+  static fromUrlSafeBaseN(baseNString: string, forcePositive: boolean = false): number {
+    let positive = true; // Assume positive number by default
+    let index = 0;
+
+    if (!forcePositive && baseNString[0] === '0') {
+      positive = false; // Number is negative
+      index = 1; // Start decoding from index 1, skipping the negative sign
+    }
+
+    let integer = 0;
+    for (let i = index; i < baseNString.length; i++) {
+      integer *= BaseNConverter.N;
+      integer += BaseNConverter.baseNChars.indexOf(baseNString[i]);
+    }
+
+    if (!positive && integer !== 0) {
+      integer = -integer;
+    }
+
+    return integer;
+  }
+}
+
+/**
+ * How many places a number keeps when it rides a URL.
+ *
+ * Every number in this format is packed as a base-N integer of thousandths.
+ * The constant lives here, with the converter, because three separate places
+ * were spelling it out — the mechanism codec, the synthesis codec, and the
+ * fixture gallery — and a format constant restated is a format that can drift.
+ */
+export const URL_DECIMAL_PLACES = 1000;
+
+/** A number as the base-N integer of its thousandths. */
+export function toUrlSafeDecimal(value: number): string {
+  return BaseNConverter.toUrlSafeBaseN(Math.round(value * URL_DECIMAL_PLACES));
+}
+
+/** The inverse of {@link toUrlSafeDecimal}. */
+export function fromUrlSafeDecimal(text: string): number {
+  return BaseNConverter.fromUrlSafeBaseN(text) / URL_DECIMAL_PLACES;
 }

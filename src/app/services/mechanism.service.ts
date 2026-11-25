@@ -1,38 +1,205 @@
-import { Injectable, Injector } from '@angular/core';
+import { CylinderGestureEnd, cylinderGestureEnds } from '../model/cylinder-gesture-ends';
+import { writeMechanismName } from '../model/mechanism/mechanism-name';
+import { paintOf } from '../model/joint-colors';
+import { familyReading, machineFacts } from '../model/machine-facts/machine-facts';
+import { AnalyticsService } from './analytics.service';
+import { orphanedByLinkRemoval } from '../model/link-removal';
+import { graftJoint } from '../model/graft-joint';
+import { pruneUnlinkedJoints } from '../model/prune-unlinked-joints';
+import { selectableLinks } from '../model/selection';
+import { LinkTraceService } from './link-trace.service';
+import { Injectable, Injector, inject } from '@angular/core';
+import { HeldValue, holdWith, LinkHold } from '../model/link';
+import {
+  cylinderMemberLinks,
+  holdOf,
+  holdableBar,
+  memberHoldReads,
+  memberHoldTransition,
+} from '../model/link-holds';
+import { holdChips } from '../model/hold-chips';
+import {
+  StartMoveRefusal,
+  anglesTurnedSince,
+  refuseMovingStart,
+} from '../model/start-move-refusal';
 import { Joint, PrisJoint, RealJoint, RevJoint } from '../model/joint';
-import { Link, Piston, RealLink } from '../model/link';
+import {
+  driveDirectionWord,
+  driveKindOf,
+  speedTurning,
+  turnsClockwise,
+} from '../model/drive-direction';
+import { bodiesUnder, Link, RealLink } from '../model/link';
+import { isSlideCandidate, slideAssemblyAt } from '../model/slide-assembly';
+import {
+  Cylinder,
+  cylinderCreationLayout,
+  cylinderJoints,
+  cylinderStrokeAlong,
+  cylinderOfJointIn,
+  cylindersEnclosing,
+  cylinderOfBarIn,
+  cylinderOfLinkIn,
+  cylindersOfLinkIn,
+  cylindersIn,
+  cylinderAtSeal,
+  memberInertiaIsDerived,
+} from '../model/cylinder';
+import { isFrozenCylinder } from '../model/cylinder-frozen';
+import { memberSilhouette } from '../model/cylinder-fusion';
+import { planDerivedInteriors } from '../model/cylinder-interiors';
 import { Force } from '../model/force';
+import {
+  DriveProfile,
+  driveProfileOf as buildDriveProfile,
+  fractionalSampleAlong,
+} from '../model/mechanism/drive-profile';
 import { Mechanism } from '../model/mechanism/mechanism';
-import { ToolbarComponent } from '../component/toolbar/toolbar.component';
+import {
+  MechanismPartition,
+  movingJointIds,
+  MOST_MACHINES,
+  partitionKey,
+  partitionMechanisms,
+  UnassignedGeometry,
+} from '../model/mechanism/mechanism-partition';
+import { MechanismReadiness, readinessOf } from '../model/mechanism/readiness';
+import { unassignedIssues } from '../model/mechanism/unassigned-issues';
+import { forceIssues } from '../model/mechanism/force-issues';
+import { issueText, SetupIssue } from '../model/mechanism/setup-issue';
 import { InstantCenter } from '../model/instant-center';
 import {
-  gridStates,
   jointStates,
-  linkStates,
-  forceStates,
-  shapeEditModes,
-  createModes,
-  moveModes,
   roundNumber,
   LengthUnit,
   point_on_line_segment_closest_to_point,
   getDistance,
   distance_points,
 } from '../model/utils';
-import { BehaviorSubject, connect, Subject } from 'rxjs';
+import { BehaviorSubject, Subject } from 'rxjs';
 import { GridUtilsService } from './grid-utils.service';
+import {
+  AnchorReach,
+  CommitPose,
+  CoordinateRule,
+  MachineAnchor,
+  GhostBody,
+  StartPoseGhost,
+  anchorFrom,
+  anchorStillNames,
+  blendFrame,
+  coordinateIn,
+  coordinateRuleFor,
+  coordinatesAcross,
+  findPose,
+  reachAnchor,
+  topologyOf,
+} from '../model/mechanism/anchor';
 import { ActiveObjService } from './active-obj.service';
-import { AnimationBarComponent } from '../component/animation-bar/animation-bar.component';
-import { NewGridComponent } from '../component/new-grid/new-grid.component';
+import { currentJointState } from './joint-drag-state';
+import { angleReference, describeActuator, resolveActuator } from '../model/actuator';
+import { NotificationService } from './notification.service';
 import { SettingsService } from './settings.service';
+import { slotHalfLength } from '../model/joint-marks';
+import { interiorNames, nextFreeLetter } from '../model/joint-letters';
+import {
+  derivedBodyOf,
+  derivedCenterOfMass,
+  memberMasses,
+  weldedMembers,
+} from '../model/link-body';
+import { siUnitFactors } from '../model/unit-conversions';
+import { DragStateService } from './drag-state.service';
 import { Coord } from '../model/coord';
-import { Line } from '../model/line';
+import { SelectedTabService, TabID } from '../selected-tab.service';
+import { AnalysisSampleService } from './analysis-sample.service';
+import { ForceAnalysisSeries, ForceAnalysisMode } from '../model/mechanism/force-solver';
+import {
+  arrowPath,
+  buildVectorTrace,
+  sweptSpanOf,
+  DrawnVectorTrace,
+  LiveVectorArrow,
+  planar,
+  VectorQuantity,
+  VectorTraceRefusal,
+  VectorTraceShape,
+  VECTOR_INK,
+} from '../model/vector-trace';
+import { frozenJointIds } from '../model/lock-set';
 import { SaveHistoryService } from './save-history.service';
 import { NumberUnitParserService } from './number-unit-parser.service';
-import { PositionSolver } from '../model/mechanism/position-solver';
+import { PositionSolver, SAMPLES_PER_STROKE } from '../model/mechanism/position-solver';
 import { ColorService } from './color.service';
 import { siUnitFactorsForLength } from '../model/unit-conversions';
 import { transformRigidCoord, transformRigidPath } from '../model/compound-link-path';
+import {
+  MERGE_REFUSAL_MESSAGES,
+  MergeRefusal,
+  refuseJointMerge,
+  slotWouldFoldACylinder,
+} from '../model/drop-target';
+import { forceOffRefusedJoint, refuseForceOnJoint } from '../model/force-on-joint';
+import { constrainForceAnchor } from '../model/force-anchor';
+import {
+  OperationRefusal,
+  memberBarsTouching,
+  refuseAttach,
+} from '../model/joint-operation-permission';
+import { redundantlyHeldJointSets } from '../model/rigid-bodies';
+import { reseatEndJoint } from '../model/slot-reseat';
+import { MODEL_SCALE } from '../model/render-scale';
+import { labelForBody, visibleBodyName as nameOfBody } from '../model/body-label';
+import { weldHoldNotice } from '../model/weld-hold-notice';
+import { renameAnchors } from '../model/force-anchor-name';
+import { SynthesisBuilderService } from './synthesis/synthesis-builder.service';
+
+/** One machine's playback state, carried across a rebuild by `partitionKey`. */
+interface HeldPlayback {
+  seconds: number;
+  playing: boolean;
+  direction: number;
+  /** Running backwards only because its drive was turned round in place. */
+}
+
+/** A paused drawing's place in each cycle, independent of sample counts. */
+export interface PausedPlaybackPose {
+  mechanisms: { id: string; fraction: number }[];
+}
+
+/**
+ * One machine's displayed pose, carried across a rebuild that re-measures it.
+ *
+ * The clock cannot carry it -- that is the whole point -- so what is kept is
+ * the driven coordinate in the *new* rule plus the pose itself, which is what
+ * tells the two legs of a reversing cycle apart. Exactly what an anchor keeps,
+ * about the displayed pose rather than the start.
+ */
+interface HeldPose {
+  rule: CoordinateRule;
+  coordinate: number;
+  seed: ReadonlyMap<string, { x: number; y: number }>;
+}
+
+/**
+ * One solved object out of a frame, by id, in constant time.
+ *
+ * A Mechanism holds the same objects in the same order at every sample, so the
+ * position an id sits at is fixed for the machine's whole life and worth
+ * looking up once (see `frameIndexOf`). The id at that position is still
+ * checked, and the linear search is still there behind it: a frame is allowed
+ * to drop an object the solver could not place, and a wrong answer here moves a
+ * joint to another joint's coordinates.
+ */
+function at<T extends { id: string }>(
+  frame: T[],
+  where: Map<string, number>,
+  id: string
+): T | undefined {
+  const guess = frame[where.get(id) ?? -1];
+  return guess?.id === id ? guess : frame.find((candidate) => candidate.id === id);
+}
 
 /** Blend two angles along the shorter arc, so a wrap past pi does not spin. */
 function blendAngle(from: number, to: number, blend: number): number {
@@ -42,11 +209,51 @@ function blendAngle(from: number, to: number, blend: number): number {
   return from + delta * blend;
 }
 
+/**
+ * The nearest number a person would have picked: 1, 2 or 5 times a power of ten.
+ *
+ * A default that reads 13.7 rpm claims to have been calculated from something,
+ * and invites the reader to treat it as a result rather than as a starting
+ * point. The ladder is the one every axis and every ruler climbs.
+ */
+export function niceSpeed(raw: number): number {
+  if (!Number.isFinite(raw) || raw <= 0) return 0;
+  const decade = Math.pow(10, Math.floor(Math.log10(raw)));
+  const steps = [1, 2, 5, 10].map((step) => step * decade);
+  return steps.reduce((best, step) =>
+    Math.abs(Math.log(step / raw)) < Math.abs(Math.log(best / raw)) ? step : best
+  );
+}
+
 @Injectable({
   providedIn: 'root',
 })
 export class MechanismService {
+  gridUtils = inject(GridUtilsService);
+  activeObjService = inject(ActiveObjService);
+  private injector = inject(Injector);
+  private settingsService = inject(SettingsService);
+  private nup = inject(NumberUnitParserService);
+  private notify = inject(NotificationService);
+  private analytics = inject(AnalyticsService);
+  /**
+   * The synthesis design, whose poses are stored in user lengths like every
+   * other coordinate. Injected directly rather than through the injector this
+   * file uses for its circular dependencies: the builder knows nothing about
+   * mechanisms, so there is no cycle to break.
+   */
+  private design = inject(SynthesisBuilderService);
+
   public mechanismTimeStep: number = 0;
+  /**
+   * Is the animation running?
+   *
+   * On the service that owns playback. It used to be a static on the animation
+   * bar, which was a component: the flag outlived the bar's own rendering by a
+   * whole redesign, and every part of the app that needed to know whether the
+   * mechanism was moving had to import a piece of chrome to ask.
+   */
+  public isPlaying: boolean = false;
   /** Playback rate relative to real time. 1 means one simulated second per second. */
   public animationSpeedMultiplier: number = 1;
   public joints: Joint[] = [];
@@ -54,9 +261,17 @@ export class MechanismService {
   public forces: Force[] = [];
   public ics: InstantCenter[] = [];
   public mechanisms: Mechanism[] = [];
+  /**
+   * Which part of the drawing each entry of `mechanisms` was built from, in the
+   * same order. Kept beside the solved mechanisms rather than inside them
+   * because these are the *editable* objects the grid draws and the panels
+   * mutate; a Mechanism holds deep copies at every timestep.
+   */
+  public partitions: MechanismPartition[] = [];
+  /** Geometry that is in no mechanism, and why. Reported, never solved. */
+  public unassigned: UnassignedGeometry = { floatingChains: [], looseJoints: [], fixedLinks: [] };
   public showPathHolder: boolean = true;
 
-  // private moveModes: moveModes = moveModes;
   // private selectedJoint!: RealJoint;
 
   // This is the state of the mechanism
@@ -76,16 +291,74 @@ export class MechanismService {
   private static readonly FRAME_INTERVAL_MS = 16;
   private playbackClockMs: number | null = null;
   private playbackTimeSeconds = 0;
+  /**
+   * Whether every machine runs on the one clock.
+   *
+   * Synced is the default and the useful case: two mechanisms on the same wall
+   * clock can be compared, which is the whole reason for drawing them together.
+   * Unsynced gives each its own time and its own play button, for reading one
+   * machine's cycle without the others moving.
+   */
+  syncMechanisms = true;
+  /**
+   * Each machine's own place in its own cycle, in seconds from its start pose.
+   *
+   * Always -- not only while unsynced. The machines were sharing one clock and
+   * one running flag, which is why pausing or scrubbing one of them moved the
+   * others. `syncMechanisms` decides how many rows the transport offers, and
+   * nothing else now.
+   */
+  private ownSeconds: number[] = [];
+  /** Which machines are running. */
+  private ownPlaying: boolean[] = [];
+  /**
+   * Which way each machine's playback runs, +1 or -1.
+   *
+   * Only ever -1 for a machine whose input reverses on its own. Turning a
+   * continuous drive round is an edit -- the solved cycle itself is mirrored --
+   * but a machine that already goes out and back has no other direction to be
+   * driven in, so the only thing "reverse" can mean there is to play the cycle
+   * backwards. That is a view of the same motion, not a different mechanism,
+   * which is why it lives here and not in the URL.
+   */
+  private playbackDirection: number[] = [];
   private playbackFrameQueued = false;
   private advancingPlayback = false;
+  /** Set while one row is being seeked, so the seek does not spread. */
+  private seekingOneMechanism = false;
 
-  constructor(
-    public gridUtils: GridUtilsService,
-    public activeObjService: ActiveObjService,
-    private injector: Injector,
-    private settingsService: SettingsService,
-    private nup: NumberUnitParserService
-  ) {}
+  /**
+   * Recompute every link outline after the object scale changed.
+   *
+   * A link's `d` is computed once and cached, but its width is `barHalfWidth`
+   * of the scale --
+   * so changing the scale left every bar at its old size while joints, ground
+   * marks and the whole mark system grew around it. Worst on a slotted link,
+   * where the R-relative channel kept scaling and outgrew the bar it is meant to
+   * be a hole in.
+   *
+   * A method rather than a subscription to `_objectScale`. That subject is
+   * static and replays its current value, so subscribing in the constructor
+   * rebuilt every link the moment a service was built and left one live
+   * subscriber per instance ever created -- which under a test run meant one
+   * recompute per accumulated service, and a spec asserting the contour is
+   * built once saw fifteen. Every other route that changes the scale rebuilds
+   * the links from scratch anyway; the settings panel is the one that does not.
+   *
+   * Cylinder geometry is retained independently of visual sizing (PR #33),
+   * so changing display thickness only refreshes silhouettes and outlines.
+   */
+  applyObjectScaleChange(): void {
+    this.refreshSkinSilhouettes();
+    this.links.forEach((link) => {
+      if (link instanceof RealLink) {
+        link.subset.forEach((part) => {
+          if (part instanceof RealLink) part.reComputeDPath();
+        });
+        link.reComputeDPath();
+      }
+    });
+  }
 
   // delete mechanism and reset
   resetMechanism() {
@@ -114,37 +387,167 @@ export class MechanismService {
     return this.forces;
   }
 
+  /**
+   * Is the drawing away from the pose an edit is allowed to start from?
+   *
+   * Answered from the model rather than from `settings.animating`, which is a
+   * flag the transport pushes: it went false the moment the reader left an
+   * analysis mode, while the ease back to the start pose was still running, so
+   * for a fifth of a second the app believed the mechanism was standing still
+   * and let edits through against a pose that was still moving.
+   *
+   * `mechanismTimeStep > 0` is subsumed: a machine at a non-zero step is not at
+   * its start pose, and neither is one whose own clock is elsewhere while the
+   * shared step reads zero.
+   */
   isAnimating(): boolean {
-    return this.mechanismTimeStep > 0 || this.settingsService.animating.getValue();
+    return this.isPlaying || !this.atStartPose();
+  }
+
+  /**
+   * How many joints make a drawing heavy enough to stop solving it in Edit.
+   *
+   * Below this a rebuild is milliseconds and nobody would thank us for the
+   * complication. The render stress test — forty-five joints — takes seconds,
+   * and paid them at every pointer move of a drag.
+   */
+  private static readonly SOLVE_IN_EDIT_UP_TO = 24;
+
+  /** True while the drawing is built but its motion has not been worked out. */
+  private solvingDeferred = false;
+
+  /** For the surfaces that have to say so, and for the gate that undoes it. */
+  get solvingIsDeferred(): boolean {
+    return this.solvingDeferred;
+  }
+
+  /** Set for the one rebuild that `solveNow` asks for. */
+  private forceSolveOnce = false;
+
+  /**
+   * Whether a rebuild in Edit would put this drawing's solve off.
+   *
+   * The standing property of the drawing, where `solvingDeferred` is the state
+   * of the last rebuild -- which `solveNow` clears and the next edit sets
+   * again.
+   */
+  private editWouldDeferSolving(): boolean {
+    return this.joints.length > MechanismService.SOLVE_IN_EDIT_UP_TO;
+  }
+
+  private shouldDeferSolving(): boolean {
+    // The mode gate asks for the solve *before* it switches mode, so at the
+    // moment that matters the app is still in Edit and the test below would
+    // put the work off again -- which is what the flag is for.
+    if (this.forceSolveOnce) {
+      this.forceSolveOnce = false;
+      return false;
+    }
+    if (this.joints.length <= MechanismService.SOLVE_IN_EDIT_UP_TO) return false;
+    // In an analysis mode the answer is the whole point, so it is never
+    // deferred there however large the drawing is.
+    return !this.injector.get(SelectedTabService).isAnalysisMode();
+  }
+
+  /**
+   * Work out the motion now, for a drawing whose solve was put off.
+   *
+   * Called from the one place that needs it before it can decide anything --
+   * pressing an analysis mode -- rather than from a subscription, so the answer
+   * exists before the readiness gate reads it and the mode is not refused for
+   * the want of a solve nobody had asked for yet.
+   */
+  solveNow(): void {
+    if (!this.solvingDeferred) return;
+    this.forceSolveOnce = true;
+    this.updateMechanism();
+    // An edit saved while the solve was put off is asked about now that its
+    // answer exists; with none pending, this solve is only the starting point.
+    if (this.runCheckPending) this.noticeFirstRun();
+    else this.runningBefore ??= this.runningMachines();
   }
 
   updateMechanism(save: boolean = false) {
-    console.log('update mechanism', save);
+    // Everything derived from cylinder STRUCTURE (not pose) caches against
+    // this: the structures themselves, the drawn marks, the guards. Bumped
+    // here because this is the one funnel every mutation passes through, so
+    // within a revision the topology cannot have changed.
+    this.cylinderRevision++;
+    this.poseRevision++;
+    this.solveRevision++;
     Force.normalizeVisualWidths(this.forces);
     // Changing the input speed re-samples the same geometry onto a different time
     // axis. Hold the simulation time rather than the sample index, so t and the pose
     // on screen stay consistent with each other across the rebuild. Read it before
     // rewinding, which is what the held time is measured against. The drawn time,
     // not the sample's: during playback it carries the sub-sample fraction.
-    const heldTime = this.currentTimeSeconds();
+    // Zero for the machine being edited at a pose, and its own elapsed seconds
+    // for every other. Its displayed pose *is* its provisional t = 0 while the
+    // gesture is in flight, so holding its clock and laying it back on after the
+    // rebuild moved it that far along a cycle that now starts under the
+    // reader's hand: on a four-bar two seconds in, every pointer move threw the
+    // joint two seconds' worth of motion away from the cursor and the drag flew
+    // apart. The commit puts the display back where the hand was.
+    const editedIndex = this.stagedMachineIndex();
+    const heldTime = editedIndex === this.masterMechanismIndex() ? 0 : this.currentTimeSeconds();
+    // Each machine's own place, its own running flag and its own playback
+    // direction, kept by *identity* rather than by list position -- see
+    // `partitionKey`. Restoring only the shared time put every machine back on
+    // the master's clock, so any edit -- a speed change, a reversal, a joint
+    // moved -- silently pulled them all back into step with each other.
+    //
+    // Playback direction survives the rebuild untouched. A drive reversal
+    // reflects the phase clock, but it does not turn that clock backwards:
+    // fresh frames solved from the new speed sign already run the new way.
+    const heldEach = new Map<string, HeldPlayback>(
+      this.partitions.map((partition, index) => [
+        partitionKey(partition),
+        {
+          seconds: index === editedIndex ? 0 : (this.ownSeconds[index] ?? 0),
+          playing: this.ownPlaying[index] === true,
+          direction: this.playbackDirection[index] === -1 ? -1 : 1,
+        },
+      ])
+    );
+    // A machine whose input is about to be measured differently cannot be put
+    // back by its clock, so its pose is taken instead -- see `heldPoses`.
+    const heldPoses = this.posesAcrossReparameterization();
+    // A staging with no gesture behind it is stale, and the rebuild about to
+    // run is exactly where that becomes a corrupted design: the machine is
+    // still marked "seed this one from what is drawn", so the displaced pose
+    // becomes t = 0.
+    //
+    // Every path that ends a gesture is supposed to close its staging, and
+    // three rounds of review found three that did not -- Escape, a right or
+    // middle click, a mode key, Space, tabbing away. Rather than a fourth list
+    // of paths to keep in step, the invariant is enforced where it is needed:
+    // no pointer down, no commit in flight, no staging.
+    this.closeStaleStaging();
+    if (this.seedFromDisplay) this.stagedRebuilt = true;
     this.restoreStartPose();
+
+    // The sealed-cylinder invariant is enforced HERE, at the one funnel every
+    // mutation passes through, not at the gestures: whatever wrote a member
+    // joint — a drag path, a panel or table field, a merge, an undo edge, or
+    // a code path nobody found — the assembly is re-derived from its two
+    // mounts before the solver, the codec or the canvas can read a bent one.
+    this.deriveCylinderInteriors();
+    // And only then the silhouettes, which the outlines below are built from.
+    this.refreshSkinSilhouettes();
+    // Every load back on the linkage it acts on. Joints move under holds,
+    // solvers and drags that never touch the forces riding the link between
+    // them, and a plate whose corner was dragged in leaves a load standing
+    // where the plate used to be; this is the one funnel every edit passes
+    // through, so it is where the rule holds however the joints got there.
+    // After the start pose is back: restoring it writes sample zero's force
+    // ends, which would put a force the repair had moved straight back.
+    this.keepForcesOnTheirLinks();
 
     // A compound Boolean union is pose-independent. Build it once for the
     // editable pose, then let Mechanism rigidly transform it for solved frames.
     this.links.forEach((link) => {
       if (link instanceof RealLink) link.reComputeDPath();
     });
-    // console.log(this.mechanisms[0]);
-    //There are multiple mechanisms since there was a plan to support multiple mechanisms
-    //You can treat this as a single mechanism for now at index 0
-
-    this.mechanisms = [];
-    // TODO: Determine logic later once everything else is determined
-    // Settings exposes RPM to users and persistence; solvers use rad/s.
-    let inputAngularVelocity = (this.settingsService.inputSpeed.value * Math.PI) / 30;
-    if (this.settingsService.isInputCW.value) {
-      inputAngularVelocity = inputAngularVelocity * -1;
-    }
     let unitStr = 'cm';
     switch (this.settingsService.lengthUnit.value) {
       case LengthUnit.INCH:
@@ -154,25 +557,762 @@ export class MechanismService {
         unitStr = 'm';
         break;
     }
-    this.mechanisms.push(
-      //This creates a new mechanism with the current state of the joints, links, forces, and ics
-      //If the mechnaism is simulatable, it will generate loops and all future time steps
-      new Mechanism(
-        this.joints,
-        this.links,
-        this.forces,
-        this.ics,
-        true,
-        unitStr,
-        inputAngularVelocity
-      )
-    );
+
+    this.applyUniformBodyProperties(unitStr);
+
+    // One machine per grounded component of the drawing. Each is solved on its
+    // own -- its own mobility, its own input, its own cycle -- so a half-built
+    // chain in the corner no longer makes the finished linkage beside it
+    // unsolvable.
+    const partitioning = partitionMechanisms(this.joints, this.links, this.forces);
+    this.partitions = partitioning.mechanisms;
+    this.unassigned = partitioning.unassigned;
+    this.rebuildOwnerIndex();
+    // A structural edit can fuse two driven machines into one -- attaching a
+    // link across them, un-grounding a shared pivot, dropping one's joint onto
+    // the other's. The toggle's one-input-per-machine rule only runs at toggle
+    // time, so nothing else would notice, and the solver would silently drive
+    // whichever input it found first while the other kept its badge.
+    this.reconcileOneInputPerMechanism();
+    // Solving is the expensive half of a rebuild -- the loops once, then a
+    // position solve at every one of the cycle's samples -- and in Edit nothing
+    // reads the result but the traced-path preview. On a drawing large enough
+    // for that to be seconds rather than milliseconds, it waits until the
+    // reader asks for an analysis, which is the first moment the answer is
+    // actually wanted and a natural place to be kept waiting.
+    if (this.shouldDeferSolving()) {
+      this.solvingDeferred = true;
+      this.mechanisms = [];
+      this.ownSeconds = [];
+      this.ownPlaying = [];
+      this.playbackDirection = [];
+      this.isPlaying = false;
+      this.showPathHolder = false;
+      // Deferring the solve must not defer the undo entry: the URL encodes the
+      // editable drawing at its start pose, which exists whether or not the
+      // motion has been worked out.
+      if (save) {
+        this.save();
+      }
+      this.leaveForceAnalysisWithoutInputs();
+      return;
+    }
+    this.solvingDeferred = false;
+    // Only the machine that changed is solved again. A drawing of several
+    // machines is dragged one joint at a time, and every other machine's
+    // sweep was being redone for nothing: four four-bars cost four sweeps per
+    // pointer move. A machine is kept when everything its solve was built
+    // from reads the same as last time.
+    const built = new Map<string, { fingerprint: string; mechanism: Mechanism }>();
+    const buildEach = () =>
+      this.partitions.map((partition, index) => {
+        const key = partitionKey(partition);
+        // A machine that moves past the fourth, or back under it, is a
+        // different build even where nothing it is made of changed.
+        const fingerprint =
+          this.solveFingerprint(partition, unitStr) + (index >= MOST_MACHINES ? '|past' : '');
+        const kept = this.lastBuilt.get(key);
+        const mechanism =
+          kept && kept.fingerprint === fingerprint
+            ? kept.mechanism
+            : new Mechanism(
+                partition.joints,
+                partition.links,
+                partition.forces,
+                this.ics,
+                this.settingsService.isGravity.value,
+                unitStr,
+                this.inputVelocityFor(partition),
+                'adaptive',
+                new Set(partition.ownJoints.map((joint) => joint.id)),
+                index >= MOST_MACHINES ? 'too-many-machines' : undefined
+              );
+        built.set(key, { fingerprint, mechanism });
+        return mechanism;
+      });
+
+    this.mechanisms = buildEach();
+    this.lastBuilt = built;
+    // With the cycles in hand: a drive somebody has just switched on is given a
+    // speed fitted to how long its own machine actually takes, which cannot be
+    // known before it has solved. Fitting one changes its machine's
+    // fingerprint, so that machine -- and only that machine -- is solved again
+    // at the speed it has just been given. Once: the ask is cleared by the
+    // fit, so there is no third pass.
+    if (this.fitAskedDriveSpeeds()) {
+      this.mechanisms = buildEach();
+      this.lastBuilt = built;
+    }
+    // Every machine's held state, re-laid onto the machines that now exist:
+    // matched by identity, defaulted for one that has just appeared, and
+    // dropped for one that has gone. Written wholesale rather than in place
+    // because these arrays are read by length elsewhere -- `isPlaying` is the
+    // or of `ownPlaying`, `atStartPose` the and of `ownSeconds` -- and an entry
+    // left behind past the end of a shrunken drawing was permanent.
+    this.ownSeconds = [];
+    this.ownPlaying = [];
+    this.playbackDirection = [];
+    this.partitions.forEach((partition, index) => {
+      const was = heldEach.get(partitionKey(partition));
+      this.ownSeconds[index] = 0;
+      // Synced, the shared flag is what actually decides whether a row runs, so
+      // the per-row flags are seeded from it rather than from a held value the
+      // transport had no reason to keep up to date.
+      this.ownPlaying[index] = this.syncMechanisms ? this.isPlaying : was?.playing === true;
+      // Reversal changes phase, not the direction this clock advances.
+      // Fresh frames already incorporate the new drive sign.
+      this.playbackDirection[index] = was?.direction ?? 1;
+    });
     this.activeObjService.fakeUpdateSelectedObj();
+    // Where each machine's cycle is meant to start, taken for anything that has
+    // just become solvable and dropped for anything whose owned joints have
+    // changed. Before the re-seeks below, which move the editable arrays off
+    // sample 0 -- an anchor read from them after that would record wherever
+    // the reader was looking as the place the design starts.
+    this.refreshAnchors();
     this.reseekToTime(heldTime);
+    this.restoreOwnTimes(heldEach);
+    // After the clocks, and overriding them where they have stopped meaning
+    // what they meant.
+    this.restoreHeldPoses(heldPoses);
 
     if (save) {
       this.save();
     }
+    this.leaveForceAnalysisWithoutInputs();
+  }
+
+  /**
+   * Set by the URL reader while a different drawing arrives -- a template, a
+   * shared link, an opened file -- so one that already runs is not reported as
+   * a mechanism the reader made run (`noticeFirstRun`).
+   */
+  arriving = false;
+  /**
+   * The moving joints of every machine that ran after the last saved edit,
+   * undo, redo or arrival. Undefined while a deferred solve hides what runs:
+   * there is nothing to compare against until the first solve, and that solve
+   * is then the starting point rather than something the reader made run.
+   */
+  private runningBefore?: Set<string>;
+  /** An edit was saved while the solve was put off, so whether it made a machine run is still unknown. */
+  private runCheckPending = false;
+  /** Whether this visit has reported its first run; one report a visit, whatever family runs next. */
+  private reportedFirstRun = false;
+
+  /** A drawing has arrived, or an undo or redo has landed: what runs now is the starting point. */
+  arrived(): void {
+    this.arriving = false;
+    this.runCheckPending = false;
+    this.runningBefore = this.solvingDeferred ? undefined : this.runningMachines();
+  }
+
+  private runningMachines(): Set<string> {
+    return new Set(
+      this.partitions
+        .filter((_, index) => this.mechanisms[index]?.isMechanismValid())
+        .flatMap(movingJointIds)
+    );
+  }
+
+  /**
+   * Report the moment an edit of the reader's makes a machine run that did
+   * not before: the point at which a student's own build works. Once a visit.
+   *
+   * Asked after every saved edit, which is every committed gesture -- a drag
+   * that saves directly as much as an edit that rebuilds with `save` -- and
+   * never mid-drag. A machine is new when none of its moving joints was in a
+   * machine that ran, so building a second machine beside a template that
+   * already runs still counts, and a running machine that is merely edited --
+   * even given a tracer with a letter earlier than any it had -- does not.
+   *
+   * Named by family -- one PMKS recognized, or its body count -- which is a
+   * word from the app's own catalog, never anything the reader typed.
+   */
+  private noticeFirstRun(): void {
+    if (this.arriving) return;
+    if (this.solvingDeferred) {
+      this.runCheckPending = true;
+      return;
+    }
+    this.runCheckPending = false;
+    const before = this.runningBefore;
+    const running = this.runningMachines();
+    this.runningBefore = running;
+    if (!before || this.reportedFirstRun) return;
+    const index = this.partitions.findIndex(
+      (partition, at) =>
+        this.mechanisms[at]?.isMechanismValid() &&
+        !movingJointIds(partition).some((id) => before.has(id))
+    );
+    if (index === -1) return;
+    this.reportedFirstRun = true;
+    const partition = this.partitions[index];
+    const solved = this.mechanisms[index];
+    let family = 'Not recognized';
+    try {
+      family = familyReading(partition, solved, machineFacts(partition, solved)).name;
+    } catch {
+      // Recognition reads the solved cycle. Whatever goes wrong in it, the
+      // edit around it must not: a report with no family is the worst case.
+    }
+    this.analytics.track('mechanism_runs', { family });
+  }
+
+  /**
+   * Force Analysis has no result to remain on once its last load is removed.
+   *
+   * This is deliberately checked after the edit has rebuilt and entered the
+   * history. The mass or force removal is still undoable; the mode simply
+   * returns to the place where another load can be added.
+   */
+  private leaveForceAnalysisWithoutInputs(): void {
+    if (this.tabs.getCurrentTab() !== TabID.FORCE) return;
+    // A slider's mass is the sliding joint's own now, where it used to be its
+    // block's -- so a drawing can be loaded by something that is not a link.
+    const hasMass =
+      this.links.some((link) => link instanceof RealLink && Number(link.mass) > 0) ||
+      this.joints.some((joint) => joint instanceof PrisJoint && Number(joint.mass) > 0);
+    if (this.forces.length === 0 && !hasMass) this.tabs.setTab(TabID.EDIT);
+  }
+
+  /**
+   * How fast this mechanism's own input is driven, in the units its solver wants.
+   *
+   * Settings exposes RPM to users and persistence; solvers use rad/s. A
+   * prismatic input is a different quantity, not another unit of the same one:
+   * its speed is length per second, so it comes from its own setting and never
+   * meets the pi/30 conversion -- which used to run on it anyway, leaving a
+   * driven block traveling at a tenth of the speed the panel reported. What it
+   * does need is the MODEL_SCALE the solvers measure length in; an angular
+   * speed has no length in it to want one.
+   *
+   * Asked per mechanism rather than once for the drawing, because which of the
+   * two quantities applies depends on what *this* machine is driven by: a
+   * cylinder beside a crank must not be handed the crank's rpm.
+   */
+  /** The machines from the last build, by the key that survives a rebuild. */
+  private lastBuilt = new Map<string, { fingerprint: string; mechanism: Mechanism }>();
+
+  /**
+   * Everything a machine's solve reads, as one string.
+   *
+   * Joints by place and kind, links by mass, inertia, center and shape,
+   * forces by where they act and how hard, and the document-wide inputs the
+   * constructor is handed. Two partitions with the same fingerprint solve to
+   * the same frames, so the earlier ones can stand.
+   */
+  private solveFingerprint(partition: MechanismPartition, unitStr: string): string {
+    const joints = partition.joints.map((joint) => {
+      const real = joint instanceof RealJoint ? joint : undefined;
+      // Everything a slider's own solve reads: the slot's angle, whether its
+      // riders may turn against it, and the mass the force solver hangs at the
+      // joint. The last two belonged to the block and the coincident pin, so
+      // they used to arrive in the *link* half of this fingerprint -- left out
+      // of it, a typed mass or a change of joint type re-solved nothing.
+      const slide =
+        joint instanceof PrisJoint
+          ? `${joint.angle_rad}${joint.rotates ? '' : 's'}m${joint.mass}`
+          : '';
+      // Spelled, not read off the class: a production build renames classes.
+      const kind = joint instanceof PrisJoint ? 'P' : joint instanceof RevJoint ? 'R' : 'J';
+      const flags = [real?.ground && 'g', real?.input && 'i', real?.isWelded && 'w']
+        .filter(Boolean)
+        .join('');
+      return `${joint.id}@${joint.x},${joint.y}:${kind}${flags}${slide}`;
+    });
+    const links = partition.links.map((link) => {
+      const body = link instanceof RealLink ? link : undefined;
+      const pins = link.joints.map((joint) => joint.id).join('');
+      const subset = body?.subset.map((part) => part.id).join('+') ?? '';
+      const shape = `${body?.isCircle ? 'o' : ''}d${body?.d.length ?? ''}`;
+      const center = `${body?.CoM.x ?? ''},${body?.CoM.y ?? ''}`;
+      const inertia = `m${link.mass}I${body?.massMoI ?? ''}`;
+      const kind = body ? 'L' : 'K';
+      return `${link.id}[${pins}]${kind}${inertia}c${center}${shape}s${subset}`;
+    });
+    const forces = partition.forces.map((force) => {
+      const from = `${force.startCoord.x},${force.startCoord.y}`;
+      const to = `${force.endCoord.x},${force.endCoord.y}`;
+      const at = `${from}-${to}`;
+      return `${force.id}>${force.link.id}@${at}m${force.mag}${force.local ? 'l' : ''}${force.arrowOutward ? 'out' : 'in'}`;
+    });
+    return [
+      joints.join('|'),
+      links.join('|'),
+      forces.join('|'),
+      this.settingsService.isGravity.value,
+      unitStr,
+      this.inputVelocityFor(partition),
+      this.ics.length,
+    ].join('#');
+  }
+
+  private inputVelocityFor(partition: MechanismPartition): number {
+    // Its own joints, not everything it is handed to solve against: a frame
+    // piece shared with the machine next door carries that machine's driven
+    // pin, and asking `joints` handed this one the neighbor's speed.
+    const driven = partition.ownJoints.find((j) => j instanceof RealJoint && j.input) as
+      RealJoint | undefined;
+    const signed = this.driveSpeedOf(driven);
+    // rpm for a pin, length per second for a slider -- two different
+    // quantities, and only the second has a length in it wanting MODEL_SCALE.
+    return driven instanceof PrisJoint ? signed * MODEL_SCALE : (signed * Math.PI) / 30;
+  }
+
+  /**
+   * How fast a joint drives its mechanism, signed for direction, in the units
+   * its kind of drive is measured in.
+   *
+   * One definition, read by the solver and shown by the panel. Zero on the
+   * joint means "follow the document-wide default", which is what a URL written
+   * before mechanisms could be driven separately says, and what a joint just
+   * switched on says too.
+   */
+  driveSpeedOf(joint: RealJoint | undefined): number {
+    if (joint && joint.driveSpeed !== 0) {
+      return joint.driveSpeed;
+    }
+    const magnitude =
+      joint instanceof PrisJoint
+        ? this.settingsService.linearInputSpeed.value
+        : this.settingsService.inputSpeed.value;
+    return speedTurning(this.settingsService.isInputCW.value, magnitude);
+  }
+
+  /**
+   * Set the speed of one mechanism's drive.
+   *
+   * The document-wide default follows along, so the next joint switched on
+   * starts where the reader last was rather than at whatever the app shipped
+   * with -- and so a drawing holding one mechanism behaves exactly as it did
+   * when the speed really was one number.
+   *
+   * Which is why every *other* machine's speed is written onto its own drive
+   * first. `driveSpeedOf` falls back to that default for any drive that has
+   * never been given a speed of its own -- the state every joint just switched
+   * on is in, and every URL written before drives had speeds of their own --
+   * so moving it here would otherwise retype, or reverse, every machine in the
+   * drawing that the reader had not touched. Done here rather than at the call
+   * sites so no caller has to remember: the Edit panel's field, its direction
+   * flip and the transport's reverse all arrive through this one door.
+   *
+   * `signed` is rpm for a pin and length per second, in the current length
+   * unit, for a prismatic drive -- the same two quantities `driveSpeedOf`
+   * answers in. Zero is not a speed and is ignored, because zero on the joint
+   * is how "follow the default" is spelled.
+   */
+  setDriveSpeed(joint: RealJoint, signed: number): void {
+    if (!Number.isFinite(signed) || signed === 0) {
+      return;
+    }
+    this.pinDriveSpeeds();
+    joint.driveSpeed = signed;
+    const magnitude = Math.abs(signed);
+    if (joint instanceof PrisJoint) {
+      this.settingsService.linearInputSpeed.next(magnitude);
+    } else {
+      this.settingsService.inputSpeed.next(magnitude);
+    }
+    this.settingsService.isInputCW.next(turnsClockwise(signed));
+  }
+
+  /**
+   * One drive per machine, re-checked after the drawing has been partitioned.
+   *
+   * The toggle enforces this when a joint is switched on, which is the only
+   * moment anybody was checking -- but a structural edit can fuse two machines
+   * that were each legitimately driven: attach a link across them, drop one's
+   * joint onto the other's, un-ground a pivot they share. The result is a
+   * single mechanism with two `input` joints, and since the flag is stored per
+   * joint that state round-trips URLs and undo forever. The solver drives
+   * whichever it finds first, so the second joint keeps its badge while its
+   * speed controls quietly do nothing.
+   *
+   * The first in the machine's own order is kept, which is the one the solver
+   * would have picked anyway, so nothing that was running changes what it does.
+   */
+  private reconcileOneInputPerMechanism(): void {
+    const dropped: string[] = [];
+    this.partitions.forEach((partition) => {
+      let seen = false;
+      partition.ownJoints.forEach((candidate) => {
+        if (!(candidate instanceof RealJoint) || !candidate.input) return;
+        if (!seen) {
+          seen = true;
+          return;
+        }
+        candidate.input = false;
+        dropped.push(candidate.name || candidate.id);
+      });
+    });
+    this.sayOneInputPerMechanism(dropped);
+  }
+
+  /**
+   * Say that a drive was taken away, and — where it is the reason — why.
+   *
+   * Two paths reach this: a rebuild that finds two driven joints in one machine
+   * because two machines fused, and a reader deliberately driving a second
+   * joint. Both used to be silent or nearly so, and the second is the one that
+   * hurts: somebody building a two-degree-of-freedom arm drives the shoulder,
+   * then drives the elbow, and the shoulder's drive quietly disappears. Nothing
+   * on screen says the app has a rule, so it reads as a bug in the app or a
+   * mistake by the reader.
+   *
+   * The mobility clause is added only when mobility is the reason. On a 1-DOF
+   * linkage moving the drive from one joint to another is an ordinary edit and
+   * a lecture about degrees of freedom would be noise.
+   *
+   * A minute's cooldown rather than once per session: a reader who dismisses it
+   * without reading is not helped by never seeing it again, and a reader
+   * fighting the rule for the third time in ten seconds does not need it three
+   * times. The id is shared by both callers so the two cannot double up.
+   */
+  private sayOneInputPerMechanism(dropped: string[], near?: RealJoint): void {
+    if (dropped.length === 0) return;
+    const names = dropped.join(', ');
+    const verb = dropped.length === 1 ? 'is' : 'are';
+    const dof = this.mobilityNear(near);
+    const why =
+      dof !== undefined && dof > 1
+        ? ` PMKS only solves one-degree-of-freedom mechanisms, and this one has ${dof} degrees of freedom.` +
+          ' Add a constraint, or build the parts as separate mechanisms.'
+        : '';
+    this.notify.news(
+      'input.oneDriven',
+      `One driven joint per mechanism, so ${names} ${verb} no longer driven.${why}`,
+      { cooldownMs: 60000 }
+    );
+  }
+
+  /**
+   * The mobility of the machine a joint belongs to, or of the drawing's first.
+   *
+   * Read off the last solve, which is right even mid-rebuild: mobility is a
+   * property of the geometry and its constraints, and which joint carries the
+   * drive is not one of them.
+   */
+  private mobilityNear(joint?: RealJoint): number | undefined {
+    const index = joint ? this.indexOfMechanismContaining(joint) : 0;
+    const dof = this.mechanisms[index === -1 ? 0 : index]?.dof;
+    return typeof dof === 'number' && Number.isFinite(dof) ? dof : undefined;
+  }
+
+  /**
+   * Take the drive away from whatever currently has it in this joint's machine.
+   *
+   * One input per *mechanism*, not one per drawing. Clearing every input in the
+   * document -- which is what this used to do -- meant that driving a second
+   * linkage stopped the first, so two machines could never run at once however
+   * well the solver handled them.
+   */
+  private clearInputsSharingMechanismWith(joint: RealJoint): string[] {
+    const index = this.indexOfMechanismContaining(joint);
+    // A joint in no machine -- one on a bar pinned down at both ends, say --
+    // shares a mechanism with nothing that has one. Clearing every input in the
+    // document, which is what the fallback used to do, took the four-bar's own
+    // drive away in the same click that switched on a joint driving nothing.
+    const scope =
+      index === -1
+        ? this.joints.filter((candidate) => this.indexOfMechanismContaining(candidate) === -1)
+        : this.partitions[index].ownJoints;
+    const dropped: string[] = [];
+    scope.forEach((candidate) => {
+      if (candidate instanceof RealJoint && candidate.input && candidate.id !== joint.id) {
+        candidate.input = false;
+        dropped.push(candidate.name || candidate.id);
+      }
+    });
+    return dropped;
+  }
+
+  /**
+   * Which machine each part belongs to, worked out once per rebuild.
+   *
+   * This question is asked of every joint and every link on every change
+   * detection pass -- the canvas asks it to decide each part's color, the
+   * panels ask it to decide whose clock they are reading -- and answering it by
+   * searching the partitions is quadratic in the size of the drawing. On a
+   * forty-five joint linkage that was tens of thousands of id comparisons per
+   * frame, which is what made the stress test crawl and what made *anything*
+   * that redraws, the settings drawer included, crawl along with it.
+   */
+  private ownerOfPart = new Map<Joint | Link | Force, number>();
+
+  /**
+   * Which machine each part is *solved by*, which is the wider question.
+   *
+   * Frame is shared. A rail anchored at every joint is world, so the
+   * partitioner hands it to each machine that runs along it and gives it to
+   * none of them -- `ownJoints` says the pins at its ends belong to no
+   * machine. That is the right answer to "whose input is this" and the wrong
+   * one to "where are this pin's solved positions", which is what every
+   * analysis panel is really asking: the rail's *link* was found anyway
+   * (`partition.links` carries the frame pieces), so the bar graphed while the
+   * two pins holding its own ends came back with no series at all.
+   */
+  private solverOfPart = new Map<Joint | Link | Force, number>();
+
+  /** Every joint some link is made of, for the same reason. */
+  private jointsOnALink = new Set<Joint>();
+
+  private rebuildOwnerIndex(): void {
+    const attached = new Set<Joint>();
+    this.links.forEach((link) => link.joints.forEach((joint) => attached.add(joint)));
+    this.jointsOnALink = attached;
+
+    const owner = new Map<Joint | Link | Force, number>();
+    const solver = new Map<Joint | Link | Force, number>();
+    // In partition order, first writer wins: a fixed bar between two frames
+    // puts its far end in both, and `ownJoints` is what says whose it is.
+    this.partitions.forEach((partition, index) => {
+      const claim = (part: Joint | Link | Force) => {
+        if (!owner.has(part)) owner.set(part, index);
+      };
+      const solved = (part: Joint | Link | Force) => {
+        if (!solver.has(part)) solver.set(part, index);
+      };
+      partition.ownJoints.forEach(claim);
+      partition.links.forEach(claim);
+      partition.forces.forEach(claim);
+      // Everything the solver was handed, which is `ownJoints` plus the frame
+      // shared with the machines next door. Those pieces move with this
+      // machine's samples and are read out of them, so the graphs have
+      // somewhere to look even where ownership says "no machine".
+      partition.joints.forEach(solved);
+      partition.links.forEach(solved);
+      partition.forces.forEach(solved);
+    });
+    // "In no machine" is an answer too. Recording only the positive ones left
+    // every part of the half-drawn chain this partitioning exists to tolerate a
+    // permanent miss, falling through to the full scan on every binding on
+    // every change-detection pass -- which is exactly the mixed drawing where
+    // the analysis modes ask of every part whether it is inert. Whatever no
+    // partition claimed above belongs to none of them, by definition.
+    const unassigned = (part: Joint | Link | Force) => {
+      if (!owner.has(part)) owner.set(part, -1);
+      if (!solver.has(part)) solver.set(part, -1);
+    };
+    this.joints.forEach(unassigned);
+    this.links.forEach(unassigned);
+    this.forces.forEach(unassigned);
+    this.ownerOfPart = owner;
+    this.solverOfPart = solver;
+  }
+
+  /** Which mechanism holds this joint, link or force — none, if it is unassigned. */
+  indexOfMechanismContaining(part: Joint | Link | Force): number {
+    // Optional because this method is also borrowed onto a stub in the test
+    // fixtures, which has partitions but never ran a rebuild.
+    const known = this.ownerOfPart?.get(part);
+    if (known !== undefined) return known;
+    // A part the index has not seen -- one made since the last rebuild, or a
+    // copy carrying the same id. Answer it the slow, always-correct way.
+    const id = part.id;
+    return this.partitions.findIndex(
+      (partition) =>
+        partition.ownJoints.some((joint) => joint.id === id) ||
+        partition.links.some((link) => link.id === id) ||
+        partition.forces.some((force) => force.id === id)
+    );
+  }
+
+  /**
+   * Which mechanism solved this part — the one whose samples hold it.
+   *
+   * Wider than `indexOfMechanismContaining` by exactly the frame: a bar
+   * anchored at every joint, and the pins holding it, are handed to every
+   * machine bolted to them and owned by none. Ownership answers "whose input
+   * is this, whose clock, which machine did the reader just merge"; this
+   * answers "where do I read this part's solved values", which is the only
+   * thing the analysis panels ever wanted.
+   */
+  indexOfMechanismSolving(part: Joint | Link | Force): number {
+    const known = this.solverOfPart?.get(part);
+    if (known !== undefined) return known;
+    // A part the index has not seen -- see `indexOfMechanismContaining`. No
+    // `ownJoints` arm: every owned joint is in `joints` as well, which is what
+    // makes this the wider question rather than a different one.
+    const id = part.id;
+    const found = this.partitions.findIndex(
+      (partition) =>
+        partition.joints.some((joint) => joint.id === id) ||
+        partition.links.some((link) => link.id === id) ||
+        partition.forces.some((force) => force.id === id)
+    );
+    if (found !== -1 || !(part instanceof Link)) return found;
+    // A leaf of a welded compound. A partition holds root bodies, so a
+    // cylinder's barrel or rod that a weld has swallowed is in no partition's
+    // list -- and the analysis panel told the reader that body "is not in a
+    // mechanism that can be solved" about a machine running perfectly well.
+    // The samples that hold it are its root's.
+    const root = this.rootLinkOwning(part);
+    return root && root.id !== id ? this.indexOfMechanismSolving(root) : -1;
+  }
+
+  /** The partition this part belongs to, if it belongs to one. */
+  partitionContaining(part: Joint | Link | Force): MechanismPartition | undefined {
+    const index = this.indexOfMechanismContaining(part);
+    return index === -1 ? undefined : this.partitions[index];
+  }
+
+  /** The solved mechanism this part belongs to, if it belongs to one. */
+  mechanismContaining(part: Joint | Link | Force): Mechanism | undefined {
+    const index = this.indexOfMechanismContaining(part);
+    return index === -1 ? undefined : this.mechanisms[index];
+  }
+
+  /** The solved mechanism whose samples hold this part, frame pieces included. */
+  mechanismSolving(part: Joint | Link | Force): Mechanism | undefined {
+    const index = this.indexOfMechanismSolving(part);
+    return index === -1 ? undefined : this.mechanisms[index];
+  }
+
+  /**
+   * Whether this part is frame: solved by a machine, owned by none.
+   *
+   * A rail pinned down at every joint, and the pins that hold it. It stands
+   * still while the machine runs along it, and statics counts it as world
+   * rather than as a body — so it has positions to read and no reaction.
+   */
+  isFramePart(part: Joint | Link | Force): boolean {
+    return (
+      this.indexOfMechanismContaining(part) === -1 && this.indexOfMechanismSolving(part) !== -1
+    );
+  }
+
+  /**
+   * Why no reaction is solved at this joint, in the one sentence three places
+   * say it: the graph that declines to draw one, the panel heading above it,
+   * and the menu row that grays the arrow.
+   *
+   * A frame pin needs its own answer. "Only one part meets it" is the ordinary
+   * reason and it sends the reader of a rail's end pin to count the parts at a
+   * joint where two of them plainly meet.
+   */
+  noReactionSentence(part: Joint | Link | Force | undefined, subject: string): string {
+    if (!part || !this.isFramePart(part)) {
+      return `Only one part meets ${subject}, so there is no force to graph here.`;
+    }
+    // The subject is written as it reads mid-sentence -- "this joint", "Joint
+    // K" -- and this one leads with it.
+    const lead = subject.charAt(0).toUpperCase() + subject.slice(1);
+    return `${lead} belongs to a link grounded at every joint, so force analysis treats it as part of the frame and solves no reaction here.`;
+  }
+
+  /**
+   * The drawing's own object with this id, whatever kind of thing it is.
+   *
+   * A graph, a section header and a panel each names its subject by id and each
+   * used to look it up for itself -- joints, then links, and none of them
+   * forces, so a force's graph belonged to no machine at all. Written once here
+   * so the three cannot answer differently for the same id.
+   */
+  partById(id: string): Joint | Link | Force | undefined {
+    return (
+      this.joints.find((joint) => joint.id === id) ??
+      this.links.find((link) => link.id === id) ??
+      this.forces.find((force) => force.id === id) ??
+      // A member bar a weld swallowed. A cylinder's barrel and rod stay two
+      // bodies a reader selects after an end joint is welded into a bracket,
+      // and every graph names its subject by id and comes here for the samples
+      // behind it -- so a Rod panel drew nothing but dashes.
+      bodiesUnder(this.links).find((link) => link.id === id)
+    );
+  }
+
+  /**
+   * The solved mechanism the part with this id is read out of, if any.
+   *
+   * The analysis bridge: every graph, header and panel names its subject by id
+   * and comes here for the samples behind it. It asks which machine *solved*
+   * the part rather than which one owns it, so the pins holding an anchored
+   * rail read out of the machine that runs along the rail instead of drawing
+   * empty charts.
+   */
+  mechanismForId(id: string): Mechanism | undefined {
+    const part = this.partById(id);
+    return part ? this.mechanismSolving(part) : undefined;
+  }
+
+  /**
+   * The readiness of the machine this part belongs to, or nothing when it
+   * belongs to none.
+   *
+   * Per part rather than per drawing. With several machines on one grid, "is
+   * anything analysable" is the wrong question to ask about the joint under
+   * the pointer: a drawing can hold a four-bar that runs and a half-drawn
+   * chain that does not, and offering analysis from the half-drawn one is an
+   * offer the analysis modes will not honor.
+   */
+  readinessOfPart(part: Joint | Link | Force): MechanismReadiness | undefined {
+    const index = this.indexOfMechanismSolving(part);
+    return index === -1 ? undefined : this.readinessOfEachMechanism()[index];
+  }
+
+  /**
+   * Whether this joint has any force to graph — the reaction index's answer,
+   * not a count of what looks like it meets here.
+   *
+   * The count is wrong for a floating slider. Its carrier is deliberately not
+   * in `joint.links` (the slider rides the bar rather than being one of its
+   * members), so counting links says one body meets a joint where the solver
+   * generates a reaction against two. The panel reads the index; so does this,
+   * or the menu grays a row the panel would have filled.
+   */
+  jointHasForceToGraph(joint: Joint): boolean {
+    if (!(joint instanceof RealJoint)) return false;
+    // A driven joint always has one: the effort that drives it.
+    if (joint.input) return true;
+    const solved = this.mechanismSolving(joint);
+    if (!solved?.isMechanismValid()) return false;
+    const mode = this.settingsService.forceAnalysisMode.value;
+    const index = solved.getForceAnalysis(mode).reactionIndex;
+    return (index.linksByJoint.get(joint.id) ?? []).length > 0;
+  }
+
+  /** Can this part's own machine be simulated? Says nothing about the others. */
+  isPartSimulatable(part: Joint | Link | Force): boolean {
+    return this.mechanismSolving(part)?.isMechanismValid() ?? false;
+  }
+
+  /**
+   * The mechanism whose cycle is longest, which is the one the shared clock is
+   * measured against: run every machine on the same wall clock and the master
+   * timeline has to be long enough to hold the slowest of them.
+   */
+  masterMechanismIndex(): number {
+    let best = -1;
+    let longest = -1;
+    this.mechanisms.forEach((mechanism, index) => {
+      if (!mechanism.isMechanismValid()) {
+        return;
+      }
+      if (mechanism.cyclePeriod > longest) {
+        longest = mechanism.cyclePeriod;
+        best = index;
+      }
+    });
+    // Nothing runs, so nothing is really the master. Naming the first anyway
+    // keeps the timeline reporting the empty clock an unsolved mechanism has
+    // always reported, instead of a missing one.
+    return best === -1 && this.mechanisms.length > 0 ? 0 : best;
+  }
+
+  /** The mechanism the shared scrubber is measured against, if any can run. */
+  masterMechanism(): Mechanism | undefined {
+    const index = this.masterMechanismIndex();
+    return index === -1 ? undefined : this.mechanisms[index];
+  }
+
+  /**
+   * Put N and S where the cylinder says they are, whatever wrote them
+   * (decision S2). The arithmetic is `model/cylinder-interiors.ts`; this is
+   * where its answer lands.
+   */
+  private deriveCylinderInteriors(): void {
+    this.gridUtils.commitCylinderPlacements(planDerivedInteriors(this.sealedStructures()));
   }
 
   /**
@@ -180,7 +1320,7 @@ export class MechanismService {
    * time held from a slower cycle inside the new, shorter one.
    */
   private reseekToTime(seconds: number) {
-    if (!this.mechanisms[0]?.isMechanismValid()) {
+    if (!this.oneValidMechanismExists()) {
       // The rebuild can invalidate the mechanism; a step left pointing into the
       // old cycle would keep the editor gated on a time that no longer exists.
       this.mechanismTimeStep = 0;
@@ -191,20 +1331,196 @@ export class MechanismService {
       return;
     }
     const wrapped = this.wrapTime(seconds);
-    this.animate(this.stepAtTime(wrapped), AnimationBarComponent.animate);
+    this.animate(this.stepAtTime(wrapped), this.isPlaying);
     // animate() treats any external call as a seek and snaps its clock to the
     // sample, so restore the sub-sample fraction afterwards — playback resumes
     // from exactly the held time, not the nearest sample.
     this.playbackTimeSeconds = wrapped;
   }
 
+  /**
+   * Put each machine back where it was after a rebuild.
+   *
+   * By `partitionKey`, not by index and not by the M-number: a rebuild can add,
+   * remove or reorder mechanisms, and both of those pair machines positionally
+   * -- so deleting the first machine handed the second the first's place in its
+   * cycle.
+   */
+  private restoreOwnTimes(held: Map<string, HeldPlayback>): void {
+    if (!this.oneValidMechanismExists()) return;
+    this.partitions.forEach((partition, index) => {
+      const was = held.get(partitionKey(partition));
+      const period = this.mechanisms[index]?.cyclePeriod ?? 0;
+      if (!was || !(period > 0)) return;
+      // Zero is a position, not an absence. `reseekToTime` above has already
+      // written the master's time into every machine's clock, so skipping the
+      // machines held at their own start left exactly those holding somebody
+      // else's phase -- which, unsynced, is a machine visibly jumping on an
+      // edit that had nothing to do with it. Synced, they are all meant to be
+      // on the master's clock, and the skip is what puts them there.
+      // Except the machine being edited at a pose, whose zero is a statement
+      // rather than an absence: its displayed pose is its provisional t = 0, so
+      // synced it must be taken *off* the master's clock rather than left on
+      // it. Skipped here, the master-time reseek above had already carried it
+      // a third of a cycle from the pose under the reader's hand.
+      if (this.syncMechanisms && !(was.seconds > 0) && index !== this.stagedMachineIndex()) return;
+      this.ownSeconds[index] = ((was.seconds % period) + period) % period;
+    });
+    this.applyPose();
+  }
+
+  /**
+   * Run something with the drawing parked at its start pose, and put every
+   * machine back afterwards.
+   *
+   * Encoding a URL is a round trip through t = 0, because that is the pose the
+   * format stores. Getting there and back used to go through `animate`, which
+   * treats an outside call as a seek of the whole drawing -- so saving, which
+   * happens on every edit, quietly pulled every machine onto the master's
+   * clock. That is most of what "the mechanisms are not independent" was.
+   */
+  encodeFromStartPose<T>(encode: (heldStep: number) => T): T {
+    const held = this.ownSeconds.slice();
+    const step = this.mechanismTimeStep;
+    const playing = this.isPlaying;
+    // Any machine away from its own start, not just the one the shared handle
+    // reports. Unsynced, each keeps its own clock: with the master parked at
+    // zero and another machine scrubbed a quarter of the way round, the rewind
+    // was skipped and the encoder wrote down the pose that machine happened to
+    // be *displaying* as the pose it starts in. The linkage the reader shared
+    // arrived at the other end a different shape.
+    if (step > 0 || held.some((seconds) => seconds > 0)) {
+      this.animate(0, false);
+    }
+    try {
+      return encode(step);
+    } finally {
+      this.ownSeconds = held;
+      this.seekingOneMechanism = true;
+      try {
+        this.animate(step, playing);
+      } finally {
+        this.seekingOneMechanism = false;
+      }
+    }
+  }
+
   save() {
+    // Held while a pose-capturing edit is mid-flight: it will save once, at the
+    // end, so the whole gesture is one entry in the history rather than one for
+    // the mutation and another for settling it onto the anchor.
+    if (this.savesHeld) return;
     const saveHistoryService = this.injector.get(SaveHistoryService);
     saveHistoryService.save();
+    // After the entry is written, so nothing in the report can cost an edit
+    // its undo. Here rather than in `updateMechanism` because a drag commits by
+    // calling this directly, after rebuilds that did not save.
+    this.noticeFirstRun();
+  }
+
+  /** Apply a pose-independent change to the authored drawing, then restore every clock. */
+  editingAtStartPose<T>(work: () => T): T {
+    this.cancelPosedEdit();
+    return this.encodeFromStartPose(work);
+  }
+
+  /**
+   * Map a point on the displayed body back to its authored body frame. Two
+   * existing pins determine this uniquely; adding an attachment needs no new
+   * motion solve to rediscover the old start pose.
+   */
+  private attachmentFrame(
+    link: RealLink
+  ): { point: (point: Coord) => Coord; angle: number } | undefined {
+    if (this.isAtStartPose()) return { point: (point) => new Coord(point.x, point.y), angle: 0 };
+    const index = this.indexOfMechanismSolving(link);
+    const frames = this.mechanisms[index];
+    // An unsolved or unassigned body is never animated, even when another
+    // independent machine is paused away from its start.
+    if (!frames?.isMechanismValid()) {
+      return { point: (point) => new Coord(point.x, point.y), angle: 0 };
+    }
+    const authored = new Map(frames.joints[0].map((joint) => [joint.id, joint]));
+    for (let first = 0; first < link.joints.length; first++) {
+      for (let second = first + 1; second < link.joints.length; second++) {
+        const a = link.joints[first];
+        const b = link.joints[second];
+        const startA = authored.get(a.id);
+        const startB = authored.get(b.id);
+        if (!startA || !startB) continue;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const sx = startB.x - startA.x;
+        const sy = startB.y - startA.y;
+        const lengthSquared = dx * dx + dy * dy;
+        if (!(lengthSquared > 1e-16) || !(sx * sx + sy * sy > 1e-16)) continue;
+        const real = (sx * dx + sy * dy) / lengthSquared;
+        const imaginary = (sy * dx - sx * dy) / lengthSquared;
+        const x = a.x;
+        const y = a.y;
+        return {
+          // The similarity also accounts for the tiny chord shortening of an
+          // interpolated animation frame, so the point returns under the hand.
+          point: (point) =>
+            new Coord(
+              startA.x + real * (point.x - x) - imaginary * (point.y - y),
+              startA.y + imaginary * (point.x - x) + real * (point.y - y)
+            ),
+          angle: Math.atan2(imaginary, real),
+        };
+      }
+    }
+    return undefined;
+  }
+
+  canAttachAtPose(link: RealLink): boolean {
+    return !this.isPlaying && this.attachmentFrame(link) !== undefined;
+  }
+
+  /**
+   * Force properties are read in the displayed frame. Capture the requested
+   * result there before rewinding: the normal rebuild restores old solved
+   * force values as well as joint positions, which would erase the change.
+   */
+  editForcesAtPose(forces: readonly Force[], work: () => void): boolean {
+    const frames = forces.map((force) => this.attachmentFrame(force.link));
+    if (frames.some((frame) => !frame)) return false;
+    work();
+    const requested = forces.map((force, index) => ({
+      force,
+      local: force.local,
+      magnitude: force.mag,
+      outward: force.arrowOutward,
+      angle: force.angleRad + (force.local ? frames[index]!.angle : 0),
+    }));
+    this.editingAtStartPose(() => {
+      requested.forEach(({ force, local, magnitude, angle, outward }) => {
+        force.arrowOutward = outward;
+        force.setLocal(local);
+        force.setMagnitude(magnitude);
+        force.setDirectionRadians(angle);
+      });
+      this.updateMechanism(true);
+    });
+    this.onMechUpdateState.next(2);
+    return true;
   }
 
   updateLinkageUnits(fromUnits: LengthUnit, toUnits: LengthUnit) {
     if (fromUnits === toUnits) return;
+    // Against the design, not the pose on screen. Everything below multiplies
+    // the *live* joints -- which mid-cycle are a solved sample, not t = 0 --
+    // and the rebuild at the end then restored them from frames the scaling
+    // never touched. The scale was applied and undone in the same call: the
+    // reader saw the unit change and the geometry stay exactly as it was.
+    //
+    // A unit change is identity-addressed (plan §6.2): it says nothing about
+    // the pose, so it is made at the start and the reader is put back
+    // afterwards. The clocks have to go to zero with the pose, not just the
+    // joints -- the rebuild's own restore reads them, and left running it
+    // would undo the scaling a second time.
+    const heldEach = this.partitions.map((_, index) => this.secondsOf(index));
+    this.rewindToStart();
 
     const from = siUnitFactorsForLength(fromUnits);
     const to = siUnitFactorsForLength(toUnits);
@@ -217,7 +1533,28 @@ export class MechanismService {
     this.joints.forEach((joint) => {
       joint.x *= lengthScale;
       joint.y *= lengthScale;
+      if (!(joint instanceof PrisJoint)) return;
+      // A prismatic drive's speed is a length per second in the *user's* unit,
+      // so it rescales with the geometry exactly as a coordinate does. An rpm
+      // drive is angular and scale-invariant, which is what hid this: only the
+      // rams were wrong, and by the whole unit factor -- a ram set to 2 cm/s
+      // came out of a switch to meters running at 2 m/s, a hundred times its
+      // stroke rate, with the panel still reading 2.
+      if (joint.driveSpeed !== 0) joint.driveSpeed *= lengthScale;
+      // And the sliding body's mass, which every mass in the drawing gets a few
+      // lines below: it was a link's until a slider became one joint, so it was
+      // rescaled along with the links and is now missed by that pass.
+      joint.mass *= massScale;
     });
+    // And the default every drive that has never been given one of its own
+    // reads, which is most of them.
+    this.settingsService.linearInputSpeed.next(
+      this.settingsService.linearInputSpeed.value * lengthScale
+    );
+    // The synthesis design is drawn in the same lengths, and it outlives the
+    // mechanism built from it: leave it alone and poses laid out in centimeters
+    // are reread as inches the next time the reader opens Synthesis.
+    this.design.convertLengths(lengthScale);
 
     const updateLink = (link: Link): void => {
       link.mass *= massScale;
@@ -225,6 +1562,10 @@ export class MechanismService {
         link.massMoI *= inertiaScale;
         link.CoM.x *= lengthScale;
         link.CoM.y *= lengthScale;
+        // The stored along/across offset is in model lengths too; re-read it
+        // from the correctly scaled point, or the next rebuild would derive
+        // the CoM from a stale offset and throw it lengthScale times as far.
+        if (link.comIsCustom) link.captureComOffset();
         link.subset.forEach(updateLink);
         link.updateLengthAndAngle();
         link.updateCoMDs();
@@ -242,34 +1583,31 @@ export class MechanismService {
       force.updateInternalValues();
     });
 
+    // Every anchor was taken in the old unit. Its seed is a set of joint
+    // positions and, for a slide, its coordinate is a length -- so after the
+    // rescale above the anchor described a mechanism a hundred times the size
+    // of the one on the grid. The lookup then refused it as a different branch,
+    // the start-pose ghost fell back to the copy it had held from before the
+    // change, and the reader was shown a start pose in the old units beside a
+    // linkage in the new ones.
+    this.rescaleAnchors(lengthScale);
     this.updateMechanism(true);
-    // this.settingsService.lengthUnit.subscribe((val) => {
-    //For each jo
-    // let unit = this.settingsService.lengthUnit.value;
-    // if (unit !== this.lengthUnit) {
-    //   this.mechanismService.joints.forEach((joint) => {
-    //     this.activeSrv.updateSelectedObj(joint);
-    //     this.activeSrv.fakeUpdateSelectedObj();
-    //     this.gridUtils.dragJoint(
-    //       this.activeSrv.selectedJoint,
-    //       new Coord(
-    //         this.nup.convertLength(joint.x, this.lengthUnit, unit),
-    //         this.nup.convertLength(joint.y, this.lengthUnit, unit)
-    //       )
-    //     );
-    //     this.jointForm.controls['input'].patchValue(wasInput);
-    //   });
-    //   this.lengthUnit = this.settingsService.lengthUnit.value;
-    //   this.activeSrv.fakeUpdateSelectedObj();
-    // }
-    // });
+    // And back to where they were looking. The cycle takes the same time in
+    // either unit -- a crank's rpm is scale-free, and a slider's speed was
+    // rescaled with the geometry above -- so the seconds still mean the same
+    // place in the motion.
+    heldEach.forEach((seconds, index) => {
+      if (seconds > 0 && this.mechanisms[index]?.isMechanismValid()) {
+        this.seekMechanism(index, seconds);
+      }
+    });
   }
 
   getLinkProp(l: Link, propType: string) {
-    if (l instanceof Piston) {
+    if (!(l instanceof RealLink)) {
       return;
     }
-    const link = l as RealLink;
+    const link = l;
     switch (propType) {
       case 'mass':
         return link.mass;
@@ -283,7 +1621,8 @@ export class MechanismService {
       case 'd':
         return link.d;
       case 'fill':
-        return link.fill;
+        // Painted, not stored: the canvas is the only reader of this case.
+        return paintOf(link.fill);
       case 'CoM_d1':
         return link.CoM_d1;
       case 'CoM_d2':
@@ -297,31 +1636,409 @@ export class MechanismService {
     }
   }
 
+  /**
+   * The traced path of one joint across every solved sample.
+   *
+   * Every lookup here is guarded, and none of the guards is theoretical. This
+   * runs from a template binding, so a throw does not fail one path — it aborts
+   * the whole change-detection pass, and the frame that would have drawn the
+   * rest of the mechanism never renders. Asked for a joint that has just been
+   * added, or during the window where a structural edit has emptied the solved
+   * frames, it dereferenced `undefined` and took the canvas down with it.
+   * Nothing to draw yet is an ordinary state; the honest answer is no path.
+   */
   getJointPath(joint: Joint) {
-    if (this.mechanisms[0].joints[0].length === 0) {
+    const solved = this.mechanismContaining(joint);
+    if (!solved || solved.joints.length === 0 || solved.joints[0].length === 0) {
       return '';
     }
-    let string = 'M';
-    const jointIndex = this.joints.findIndex((j) => j.id === joint.id);
-    string +=
-      this.mechanisms[0].joints[0][jointIndex].x.toString() +
-      ' , ' +
-      this.mechanisms[0].joints[0][jointIndex].y.toString();
-    for (let j_index = 1; j_index < this.mechanisms[0].joints.length; j_index++) {
-      string +=
-        'L' +
-        this.mechanisms[0].joints[j_index][jointIndex].x.toString() +
-        ' , ' +
-        this.mechanisms[0].joints[j_index][jointIndex].y.toString();
+    // Once per solve, not once per change-detection pass: the canvas binds
+    // this straight into a path's `d`, and a pointer move runs a dozen passes,
+    // so a drawing with its traces shown was concatenating every joint's few
+    // hundred points dozens of times per move for a string that changes once.
+    // The machine is the key: a new sweep is a new object, and a machine kept
+    // across a rebuild has the same paths as before.
+    let paths = this.jointPaths.get(solved);
+    if (!paths) {
+      paths = new Map();
+      this.jointPaths.set(solved, paths);
     }
+    const kept = paths.get(joint.id);
+    if (kept !== undefined) return kept;
+    let string = '';
+    if (solved.joints[0].some((candidate) => candidate.id === joint.id)) {
+      const at = (step: number) => {
+        const sample = solved.joints[step].find((candidate) => candidate.id === joint.id)!;
+        return `${sample.x} , ${sample.y}`;
+      };
+      string = 'M' + at(0);
+      for (let j_index = 1; j_index < solved.joints.length; j_index++) {
+        string += 'L' + at(j_index);
+      }
+    }
+    paths.set(joint.id, string);
     return string;
   }
 
+  /** Each solved machine's joint paths, built on first read. */
+  private jointPaths = new WeakMap<Mechanism, Map<string, string>>();
+
+  /**
+   * Can anything in this drawing be simulated?
+   *
+   * "Any" rather than "all" on purpose: one half-built chain in the corner must
+   * not lock a finished linkage out of analysis. Where the question is really
+   * about a particular part, ask `isPartSimulatable` instead.
+   */
   oneValidMechanismExists() {
-    if (this.mechanisms.length == 0 || this.mechanisms[0] === undefined) {
-      return false;
+    return this.mechanisms.some((mechanism) => mechanism?.isMechanismValid());
+  }
+
+  /** Every mechanism in the drawing is ready. The stricter question. */
+  allMechanismsValid(): boolean {
+    return this.mechanisms.length > 0 && this.mechanisms.every((m) => m.isMechanismValid());
+  }
+
+  // -------------------------------------------------------- vector traces
+
+  /**
+   * Which parts carry which vector, as `${quantity}:${part id}`.
+   *
+   * Held here rather than on the part, and deliberately not written into the
+   * URL. The codec is a compatibility surface -- every shared link ever
+   * produced decodes through it -- and a switch about how the mechanism is
+   * *looked at* is not worth spending a flag bit on in the pass that
+   * introduces it. Keyed by id, it also survives undo and redo, which rebuild
+   * every Joint and Link from the URL: a field on the part would not.
+   */
+  private vectorTraceKeys = new Set<string>();
+
+  /** True where anything at all is switched on, for the canvas's own guard. */
+  get anyVectorTrace(): boolean {
+    return this.vectorTraceKeys.size > 0 && this.vectorTracePaths().length > 0;
+  }
+
+  private vectorKey(part: Joint | Link, quantity: VectorQuantity): string {
+    return `${quantity}:${part.id}`;
+  }
+
+  isVectorTraceOn(part: Joint | Link, quantity: VectorQuantity): boolean {
+    return this.vectorTraceKeys.has(this.vectorKey(part, quantity));
+  }
+
+  toggleVectorTrace(part: Joint | Link, quantity: VectorQuantity): void {
+    const key = this.vectorKey(part, quantity);
+    if (!this.vectorTraceKeys.delete(key)) this.vectorTraceKeys.add(key);
+    this.vectorTraceRevision++;
+  }
+
+  /**
+   * Forget every vector switch, for a drawing that is not this one any more.
+   *
+   * The keys are joint and link *ids*, which is what lets them survive undo and
+   * redo — those rebuild every part from the URL, so a flag stored on the part
+   * would not come back. The same property is a bug across documents: open a
+   * template while a velocity vector is on joint B and the new drawing's own
+   * B inherits it, having never been asked for. Undo still keeps its switches,
+   * because undo is the same drawing a moment ago; opening a project is a
+   * different drawing that happens to spell its joints with the same letters.
+   */
+  clearVectorTraces(): void {
+    this.injector.get(LinkTraceService).clear();
+    if (this.vectorTraceKeys.size === 0) return;
+    this.vectorTraceKeys.clear();
+    this.vectorTraceRevision++;
+  }
+
+  /**
+   * Bumped whenever the switch set changes.
+   *
+   * The drawn lists are cached, and switching a trace on moves nothing else:
+   * the pose is where it was, the solve is the one it was, the mode and the tab
+   * have not changed. So without a revision of its own the cache answered with
+   * the list from before the switch was touched, and a trace appeared or
+   * disappeared only once something *else* happened to invalidate it -- which
+   * is exactly the "does not update when toggled, works inconsistently" this
+   * fixes.
+   *
+   * Not bumped by the prune inside `buildVectorTraces`: that runs *during* a
+   * rebuild, and a bump there would make the list it is about to store stale
+   * on arrival and rebuild it forever.
+   */
+  private vectorTraceRevision = 0;
+
+  /** The switch set's revision, for a view that caches what it draws from it. */
+  get vectorTraceVersion(): number {
+    return this.vectorTraceRevision;
+  }
+
+  /**
+   * Why this part will not take this vector, in the model's own words.
+   *
+   * Only the reasons this module owns. Whether the part's machine can be
+   * analyzed at all is the readiness list's answer and the menu asks that
+   * separately, because it is the same answer for every row on the card.
+   */
+  vectorTraceRefusal(part: Joint | Link, quantity: VectorQuantity): VectorTraceRefusal | undefined {
+    const solved = this.mechanismSolving(part);
+    if (!solved?.isMechanismValid()) return undefined;
+    if (quantity === 'force') {
+      // Not before Force Analysis could be entered: a reaction drawn from an
+      // analysis the setup drawer still refuses is a number nobody has been
+      // allowed to read yet, and the same rule grays the mode's own tab.
+      const unmet = this.forceSetupIssues().find((one) => one.severity === 'blocker');
+      if (unmet) {
+        return { short: 'force analysis not ready', long: issueText(unmet) };
+      }
+      const series = solved.getForceAnalysis(this.settingsService.forceAnalysisMode.value);
+      if (series.successfulFrames === 0) {
+        return {
+          short: 'no force solution',
+          long: series.diagnostic ?? "Force analysis can't model this kind of mechanism yet.",
+        };
+      }
+      if (!this.jointHasReactionVector(part)) {
+        return this.isFramePart(part)
+          ? { short: 'on the frame', long: this.noReactionSentence(part, 'this joint') }
+          : {
+              short: 'one part meets it',
+              long: 'Only one part meets this joint, so there is no second body for it to react against and no force to draw.',
+            };
+      }
+      // A pin that carries nothing all cycle -- the load sits on the crank
+      // and the follower rides along unloaded -- has a reaction of zero at
+      // every sample, and a switch that lights for an arrow of no length is a
+      // switch that lies. Zero against the largest reaction anywhere in the
+      // cycle, so round-off does not count as a load.
+      if (this.reactionIsZeroAllCycle(series, part.id)) {
+        return {
+          short: 'carries no load',
+          long: 'The reaction at this joint is zero throughout the cycle, so there is no vector to draw.',
+        };
+      }
+      return undefined;
     }
-    return this.mechanisms[0].isMechanismValid();
+    // A pin bolted to the frame stands still all cycle, so its arrow would be
+    // a point. Answered from the geometry rather than by solving the cycle:
+    // opening a menu should not cost an analysis.
+    if (part instanceof RealJoint && this.groundedInPlace(part)) {
+      return {
+        short: 'fixed joint',
+        long: `This joint is grounded, so its ${quantity} is always zero.`,
+      };
+    }
+    return undefined;
+  }
+
+  /** Whether the reaction at a joint is nothing, at every solved sample, next to the cycle's largest. */
+  private reactionIsZeroAllCycle(series: ForceAnalysisSeries, jointId: string): boolean {
+    let largest = 0;
+    let atJoint = 0;
+    for (const frame of series.frames) {
+      if (frame.status !== 'ok') continue;
+      for (const [id, [x, y]] of frame.jointReactions) {
+        const size = Math.hypot(x, y);
+        largest = Math.max(largest, size);
+        if (id === jointId) atJoint = Math.max(atJoint, size);
+      }
+    }
+    return largest > 0 && atJoint <= largest * 1e-9;
+  }
+
+  /** Fixed to the frame, and not a slider whose *guide* is what is fixed. */
+  private groundedInPlace(joint: RealJoint): boolean {
+    return joint.ground && !this.gridUtils.isAttachedToSlider(joint);
+  }
+
+  /**
+   * Whether a reaction vector is solved *at* this joint.
+   *
+   * Not `jointHasForceToGraph`, which also answers yes for the driven joint:
+   * what that one has is the effort driving it, and an input torque is not a
+   * vector anything can draw at a point.
+   */
+  jointHasReactionVector(part: Joint | Link): boolean {
+    if (!(part instanceof RealJoint)) return false;
+    const solved = this.mechanismSolving(part);
+    if (!solved?.isMechanismValid()) return false;
+    const series = solved.getForceAnalysis(this.settingsService.forceAnalysisMode.value);
+    return (series.reactionIndex.linksByJoint.get(part.id) ?? []).length > 0;
+  }
+
+  /**
+   * The arrows spaced along each switched-on part's cycle.
+   *
+   * Cached on `solveRevision`, like the readiness list beside it: every input
+   * is written by an edit, and a cycle of arrows costs one solve per sample.
+   * The mode and the force-analysis kind are in the key because they change
+   * which traces are drawn and what a force one reads. While dragging, keep
+   * the sampled paths until release; live arrows still follow the current pose.
+   */
+  vectorTracePaths(): DrawnVectorTrace[] {
+    const tab = this.tabs.getCurrentTab();
+    const mode = this.settingsService.forceAnalysisMode.value;
+    const held = this.vectorTraceCache;
+    if (
+      !held ||
+      (held.revision !== this.solveRevision && !this.injector.get(DragStateService).isDragging) ||
+      held.switches !== this.vectorTraceRevision ||
+      held.tab !== tab ||
+      held.mode !== mode
+    ) {
+      this.vectorTraceCache = {
+        revision: this.solveRevision,
+        switches: this.vectorTraceRevision,
+        tab,
+        mode,
+        ...this.buildVectorTraces(tab, mode),
+      };
+    }
+    return this.vectorTraceCache!.list;
+  }
+
+  private vectorTraceCache?: {
+    revision: number;
+    switches: number;
+    tab: TabID;
+    mode: ForceAnalysisMode;
+    list: DrawnVectorTrace[];
+    scales: Map<string, number>;
+  };
+
+  private buildVectorTraces(
+    tab: TabID,
+    mode: ForceAnalysisMode
+  ): { list: DrawnVectorTrace[]; scales: Map<string, number> } {
+    const list: DrawnVectorTrace[] = [];
+    const scales = new Map<string, number>();
+    for (const key of [...this.vectorTraceKeys]) {
+      const quantity = key.slice(0, key.indexOf(':')) as VectorQuantity;
+      const part = this.partById(key.slice(key.indexOf(':') + 1));
+      // The part is gone -- deleted, or cleared with the drawing. A switch on
+      // nothing is not state worth keeping.
+      if (!part || part instanceof Force) {
+        this.vectorTraceKeys.delete(key);
+        continue;
+      }
+      // A trace describes the solved drawing, whichever working mode is open.
+      // Its numerical readiness is checked by vectorShapeOf below.
+      const shownIn: TabID[] = [TabID.EDIT, TabID.ANALYZE, TabID.FORCE];
+      if (!shownIn.includes(tab)) continue;
+      const shape = this.vectorShapeOf(part, quantity, mode);
+      if (!shape) continue;
+      list.push({ key, quantity, ink: VECTOR_INK[quantity], d: shape.d });
+      scales.set(key, shape.scale);
+    }
+    return { list, scales };
+  }
+
+  private vectorShapeOf(
+    part: Joint | Link,
+    quantity: VectorQuantity,
+    mode: ForceAnalysisMode
+  ): VectorTraceShape | undefined {
+    const solved = this.mechanismContaining(part);
+    if (!solved?.isMechanismValid()) return undefined;
+    const vectorAt = this.vectorSamplerFor(solved, part, quantity, mode);
+    if (!vectorAt) return undefined;
+    return buildVectorTrace(
+      solved.joints.length,
+      this.positionSamplerFor(solved, part),
+      vectorAt,
+      sweptSpanOf(solved.joints, MODEL_SCALE)
+    );
+  }
+
+  /** Where the arrow's tail sits at one sample: the joint, or the link's CoM. */
+  private positionSamplerFor(solved: Mechanism, part: Joint | Link) {
+    if (part instanceof Joint) {
+      return (index: number) => solved.joints[index]?.find((one) => one.id === part.id);
+    }
+    return (index: number) => {
+      const link = selectableLinks(solved.links[index] ?? []).find((one) => one.id === part.id);
+      return link instanceof RealLink ? link.CoM : undefined;
+    };
+  }
+
+  /**
+   * What the quantity reads at one sample, through the same service the graphs
+   * plot from — so an arrow and a curve of the same thing cannot disagree.
+   */
+  private vectorSamplerFor(
+    solved: Mechanism,
+    part: Joint | Link,
+    quantity: VectorQuantity,
+    mode: ForceAnalysisMode
+  ): ((index: number) => { x: number; y: number } | undefined) | undefined {
+    if (quantity === 'force') {
+      // A reaction is carried at a joint. A link has no single one.
+      if (!(part instanceof Joint)) return undefined;
+      return (index) =>
+        planar(this.samples.sampleAt(solved, index, 'force', mode, 'Joint Forces', part.id));
+    }
+    const property =
+      part instanceof Joint
+        ? quantity === 'velocity'
+          ? 'Linear Joint Vel'
+          : 'Linear Joint Acc'
+        : quantity === 'velocity'
+          ? "Linear Link's CoM Vel"
+          : "Linear Link's CoM Acc";
+    return (index) =>
+      planar(this.samples.sampleAt(solved, index, 'kinematic', '', property, part.id));
+  }
+
+  /**
+   * One arrow per switched-on part, at the pose on screen.
+   *
+   * Cached against the pose rather than the solve, because this is the one
+   * thing here that does move every animation frame — and against the path
+   * list's identity too, so a change of mode rebuilds it even though no pose
+   * moved.
+   */
+  liveVectorArrows(): LiveVectorArrow[] {
+    const paths = this.vectorTracePaths();
+    const held = this.liveVectorCache;
+    if (!held || held.revision !== this.poseRevision || held.from !== paths) {
+      this.liveVectorCache = {
+        revision: this.poseRevision,
+        from: paths,
+        list: this.buildLiveVectors(paths),
+      };
+    }
+    return this.liveVectorCache!.list;
+  }
+
+  private liveVectorCache?: {
+    revision: number;
+    from: DrawnVectorTrace[];
+    list: LiveVectorArrow[];
+  };
+
+  private buildLiveVectors(paths: DrawnVectorTrace[]): LiveVectorArrow[] {
+    const mode = this.settingsService.forceAnalysisMode.value;
+    const scales = this.vectorTraceCache?.scales ?? new Map<string, number>();
+    return paths.flatMap((trace) => {
+      const part = this.partById(trace.key.slice(trace.key.indexOf(':') + 1));
+      if (!part || part instanceof Force) return [];
+      const index = this.indexOfMechanismContaining(part);
+      const solved = this.mechanisms[index];
+      const scale = scales.get(trace.key);
+      if (!solved || scale === undefined) return [];
+      const value = this.vectorSamplerFor(
+        solved,
+        part,
+        trace.quantity,
+        mode
+      )?.(this.currentSampleOf(index));
+      // The tail rides the drawn part, not the sample: between samples the
+      // pose is blended, and an arrow left at the last solved position would
+      // detach from the joint it belongs to.
+      const tail = part instanceof Joint ? part : part instanceof RealLink ? part.CoM : undefined;
+      if (!value || !tail) return [];
+      const arrow = { x: tail.x, y: tail.y, dx: value.x * scale, dy: value.y * scale };
+      return [{ key: trace.key, ink: trace.ink, x: tail.x, y: tail.y, d: arrowPath([arrow]) }];
+    });
   }
 
   mergeToJoints(joints: Joint[]) {
@@ -336,22 +2053,177 @@ export class MechanismService {
     });
   }
 
-  determineNextLetter(additionalLetters?: string[]) {
-    let lastLetter = '';
-    if (this.joints.length === 0 && additionalLetters === undefined) {
-      return 'A';
+  /**
+   * A free-standing bar between two points — what `Add Link` on bare grid
+   * commits when the drag is released.
+   *
+   * Here rather than in the canvas because it is a creation, and every other
+   * one lives here; the canvas has the same recipe inline because it also has a
+   * ghost to draw and a drag to end. Anything that wants a bar without a
+   * gesture — the tutorial doing a step for the student — asks for one here.
+   */
+  addBar(from: Coord, to: Coord): RealLink | undefined {
+    const first = this.createRevJoint(from.x.toString(), from.y.toString());
+    const second = this.createRevJoint(to.x.toString(), to.y.toString(), first.id);
+    return this.joinWithBar(first, second, [first, second]);
+  }
+
+  /**
+   * A bar hung off a joint that is already there, as `Attach Link` makes.
+   *
+   * The anchor is not created and not re-merged: it is already in the drawing,
+   * and pushing it a second time gives it two entries and one very confusing
+   * delete.
+   */
+  addBarFrom(anchor: RealJoint, to: Coord): RealLink | undefined {
+    const far = this.createRevJoint(to.x.toString(), to.y.toString());
+    return this.joinWithBar(anchor, far, [far]);
+  }
+
+  /**
+   * Why nothing new may be built onto this joint, or `undefined` when something
+   * may — `model/joint-operation-permission.ts`, asked of the drawing.
+   *
+   * The one door every *mutation* goes through, as against the menu's copy,
+   * which only decides what to gray. A rule enforced where it is drawn is a
+   * rule a gesture walks around: a bar begun on bare grid finishes wherever it
+   * is released, and released on a cylinder's seal it welds itself into the rod
+   * — which leaves two bars answering to "the rod", so the lookup finds neither
+   * and the part stops being a cylinder at all.
+   */
+  attachRefusal(part: Joint | Link | undefined): OperationRefusal | undefined {
+    if (!(part instanceof Joint)) return undefined;
+    return refuseAttach(part, { cylinders: this.sealedStructures() });
+  }
+
+  /** Say what a door refused, in the model's own words rather than its own. */
+  private sayRefused(refusal: OperationRefusal): void {
+    this.notify.refusal(refusal.code, refusal.long);
+  }
+
+  /** The wiring both of the above share: connect, name, merge, re-solve. */
+  private joinWithBar(first: RealJoint, second: RealJoint, fresh: Joint[]): RealLink | undefined {
+    // Before a single array is touched. Wiring it *is* the damage: once the
+    // bar is on the joint's `links` the cylinder is already gone, and
+    // `finishStructuralEdit` has nothing left to recognize.
+    const closed = this.attachRefusal(first) ?? this.attachRefusal(second);
+    if (closed) {
+      this.sayRefused(closed);
+      return undefined;
     }
-    this.joints.forEach((j) => {
-      if (j.id > lastLetter) {
-        lastLetter = j.id;
-      }
+    first.connectedJoints.push(second);
+    second.connectedJoints.push(first);
+    const link = this.gridUtils.createRealLink(first.id + second.id, [first, second]);
+    first.links.push(link);
+    second.links.push(link);
+    this.mergeToJoints(fresh);
+    this.mergeToLinks([link]);
+    this.updateMechanism(true);
+    return link;
+  }
+
+  /**
+   * Everything on the grid, gone, as one undo entry.
+   *
+   * The joints go one at a time because deleting a joint is what takes its
+   * links with it, but none of them saves — otherwise clearing a four-bar
+   * would cost four presses of Undo to take back.
+   */
+  deleteAll(): void {
+    if (this.joints.length === 0 && this.links.length === 0 && this.forces.length === 0) return;
+    [...this.joints].forEach((joint) => {
+      // The snapshot is a list of what was there when this started, and
+      // deleting a joint cascades: a sealed cylinder takes its other joints
+      // with it. Asking for one of those afterwards used to fall into
+      // the generic path, look its index up as -1, and throw part-way through
+      // -- leaving the drawing half cleared.
+      if (!this.joints.some((live) => live.id === joint.id)) return;
+      this.activeObjService.updateSelectedObj(joint);
+      this.deleteJoint(false);
     });
-    additionalLetters?.forEach((l) => {
-      if (l > lastLetter) {
-        lastLetter = l;
-      }
+    this.activeObjService.updateSelectedObj(null);
+    this.finishStructuralEdit(true);
+  }
+
+  /**
+   * One whole machine, gone, as one undo entry.
+   *
+   * Deleting its joints takes the links with them, which is what "delete this
+   * mechanism" means: nothing of it is left, and nothing else is touched.
+   *
+   * The joints go one at a time, but the gesture is a single press: none of
+   * them saves, and the removal is minted as one undo entry below. Otherwise
+   * restoring the mechanism would cost one undo per joint it happened to have.
+   * Locks are passed by here, as they are when the whole drawing is cleared:
+   * this is a wholesale act aimed at the machine rather than at one of its
+   * parts. Left guarded, the loop deleted every unlocked joint and stopped at
+   * the locked ones, leaving a half-machine of orphans behind -- a worse
+   * outcome than either honoring the locks or ignoring them.
+   *
+   * Lives here rather than on the panel that used to own it because the
+   * right-click menu offers the same act on any part of the machine, and two
+   * copies of a cascade this destructive is one copy too many.
+   */
+  deleteMechanism(index: number): void {
+    // Identity-addressed (plan §6.2): this applies to the design and says
+    // nothing about the pose, so any staging a gesture left open is closed
+    // first -- held mid-drag, the staged machine stayed seeded from the display
+    // and a neighbor came out at the provisional coordinate rather than its own.
+    this.cancelPosedEdit();
+    const partition = this.partitions[index];
+    if (!partition) return;
+    // A joint another machine is also built on is not this machine's to take:
+    // deleting one machine wholesale must not leave another hanging off
+    // nothing. Two cranks on one pivot are one machine now, so this is a guard
+    // rather than the usual case.
+    const shared = new Set(
+      this.partitions
+        .filter((other) => other !== partition)
+        .flatMap((other) => other.ownJoints.map((joint) => joint.id))
+    );
+    [...partition.ownJoints].forEach((joint) => {
+      if (shared.has(joint.id)) return;
+      // A cylinder's joint takes its four siblings with it, and the snapshot
+      // above still lists them -- same trap `deleteAll` guards against.
+      if (!this.joints.some((live) => live.id === joint.id)) return;
+      this.activeObjService.updateSelectedObj(joint);
+      this.deleteJoint(false);
     });
-    return String.fromCharCode(lastLetter.charCodeAt(0) + 1);
+    this.activeObjService.updateSelectedObj(null);
+    this.finishStructuralEdit(true);
+  }
+
+  /**
+   * The next name for a joint: A, B, C ... Z, then a, b, c ... z.
+   *
+   * The rule itself is `model/joint-letters.ts`, because the URL reader hands
+   * out letters too and two copies of it drifted apart once. This is the rule
+   * asked of *the drawing*: which ids the grid is already using.
+   *
+   * `additionalLetters` are treated as already used, for callers handing out
+   * several at once. `freedLetters` are treated as free although the joints
+   * holding them are still on the grid: a caller that is about to take those
+   * joints away wants the ids they will release, not the ids that would be
+   * left if they stayed.
+   */
+  determineNextLetter(additionalLetters?: string[], freedLetters?: string[]) {
+    const taken = new Set<string>(this.joints.map((joint) => joint.id));
+    freedLetters?.forEach((letter) => taken.delete(letter));
+    additionalLetters?.forEach((letter) => taken.add(letter));
+    return nextFreeLetter(taken);
+  }
+
+  /**
+   * Names for the joints inside a part, which nothing ever shows.
+   *
+   * `alsoTaken` is for a caller building joints that are not on the grid yet --
+   * a duplicated cylinder's copies, which are named before any of them is
+   * pushed into `joints`.
+   */
+  determineInteriorNames(base: string, count: number, alsoTaken?: Iterable<string>): string[] {
+    const taken = new Set(this.joints.map((joint) => joint.id));
+    for (const id of alsoTaken ?? []) taken.add(id);
+    return interiorNames(base, count, taken);
   }
 
   createRevJoint(x: string, y: string, prevID?: string) {
@@ -366,16 +2238,400 @@ export class MechanismService {
     return new RevJoint(id, x_num, y_num);
   }
 
-  toggleWeldedJoint() {
-    const joint = this.joints.find(
-      (j) => j.id === this.activeObjService.selectedJoint.id
-    ) as RealJoint;
+  /**
+   * Toggle the Lock mark on a joint, link, or force.
+   *
+   * A lock is an edit: it enters the URL, so it survives undo and travels in a
+   * shared link — an instructor can lock everything but the one joint a class
+   * is meant to drag. Geometry is untouched, so the rebuild is cheap and the
+   * undo entry is the mark itself.
+   */
+  toggleLock(target: RealJoint | Link | Force): void {
+    const wasLocked = this.isLockedTarget(target);
+    // One kind of lock: a mark on a joint (a force, having none, marks
+    // itself). Locking a link is a shortcut that marks all of its joints, so
+    // unlocking one of those joints afterwards frees exactly that joint —
+    // there is no second, link-level ledger to keep in agreement.
+    this.lockMarksOf(target).forEach((mark) => (mark.locked = !wasLocked));
+    this.updateMechanism(true);
+    // The panel's position fields gray out against the frozen set, and that
+    // set just changed under the same selection — re-announce it so they ask.
+    this.activeObjService.fakeUpdateSelectedObj();
+  }
 
-    if (!joint.isWelded) {
-      this.weldJoint();
-    } else if (joint.isWelded) {
-      this.unweldSelectedJoint();
+  /**
+   * Give several selected parts one lock state as one edit.
+   *
+   * This is the batch counterpart of `toggleLock`: it intentionally reuses the
+   * same semantic lock marks, including the single mark that represents a
+   * sealed cylinder, then rebuilds and saves only after every target agrees.
+   */
+  setLocks(targets: readonly (RealJoint | Link | Force)[], locked: boolean): void {
+    const marks = new Set<RealJoint | Force>();
+    targets.forEach((target) => this.lockMarksOf(target).forEach((mark) => marks.add(mark)));
+    marks.forEach((mark) => (mark.locked = locked));
+    this.updateMechanism(true);
+    this.activeObjService.fakeUpdateSelectedObj();
+  }
+
+  /** The joint (or force) marks a Lock on this target sets and clears. */
+  private lockMarksOf(target: RealJoint | Link | Force): (RealJoint | Force)[] {
+    if (target instanceof Force) return [target];
+    const sealed = this.sealedPartOf(target);
+    if (sealed) {
+      // One sealed part, one mark: the seal, where the assembly's other
+      // permanent bit (isSealed) already lives, and whose hold the closure
+      // spreads to all four joints (decision S8).
+      return [sealed.seal];
     }
+    if (target instanceof RealJoint) return [target];
+    return target.joints.filter((joint): joint is RealJoint => joint instanceof RealJoint);
+  }
+
+  /**
+   * The sealed cylinder a Lock on this target should mark — its body or an
+   * interior joint. A *mount* is deliberately not the part: locking a mount
+   * pins that one point and leaves the ram free to re-pose and swing about
+   * it, which is the useful thing a locked attachment point means.
+   */
+  private sealedPartOf(target: RealJoint | Link | Force): Cylinder | undefined {
+    if (target instanceof Force) return undefined;
+    // A body is asked whether it *is* the ram. Asked whether it is carrying
+    // one, a bracket welded to a mount answered yes, and locking the bracket
+    // put the mark on the ram instead of on the bracket.
+    const sealed = target instanceof Link ? this.cylinderOfBar(target) : this.cylinderAt(target);
+    if (!sealed) return undefined;
+    const isMount =
+      target instanceof RealJoint &&
+      (target.id === sealed.mountA.id || target.id === sealed.mountB.id);
+    return isMount ? undefined : sealed;
+  }
+
+  /**
+   * Clear a specific set of Lock marks — what the refusal's Unlock button
+   * carries: exactly the marks that held the refused gesture, nothing else.
+   */
+  unlock(marks: (RealJoint | Force)[]): void {
+    if (marks.length === 0) return;
+    marks.forEach((mark) => (mark.locked = false));
+    this.updateMechanism(true);
+    this.activeObjService.fakeUpdateSelectedObj();
+  }
+
+  /**
+   * Whether the Lock item for this object should read as "on".
+   *
+   * A Lock says where a part is, and nothing else. Deletion used to be refused
+   * on the strength of one -- and a mark meaning "this cannot move" was then
+   * also meaning "this cannot go", which is a second rule the reader never
+   * asked for and no wording on the row could teach. Locked parts delete like
+   * any other; what a lock still refuses is every gesture that would *move*
+   * one.
+   */
+  isLockedTarget(target: RealJoint | Link | Force): boolean {
+    const marks = this.lockMarksOf(target);
+    return marks.length > 0 && marks.every((mark) => mark.locked);
+  }
+
+  /**
+   * Lock the whole drawing, or let all of it go.
+   *
+   * Marks land on every joint and every force — the same marks the per-object
+   * controls set — so Unlock on any one object, or on any one joint, frees
+   * exactly that much and no bookkeeping disagrees about the rest.
+   */
+  setAllLocks(locked: boolean): void {
+    this.joints.forEach((joint) => {
+      if (joint instanceof RealJoint) joint.locked = locked;
+    });
+    this.forces.forEach((force) => (force.locked = locked));
+    this.updateMechanism(true);
+    this.activeObjService.fakeUpdateSelectedObj();
+  }
+
+  /**
+   * The joints a reader can see: all of them but the one end a cylinder
+   * derives.
+   *
+   * Every number the app shows about "how many joints" is checked against the
+   * screen, so it has to count what is on the screen (D14). A cylinder's inner
+   * end has no marker, no letter and no hitbox — it is where the barrel's length
+   * puts it, for the solver alone — so a count including it is a count the
+   * reader can only read as wrong. Its seal is a different case and is counted:
+   * the square is drawn, lettered and selectable (decision S11).
+   *
+   * Defaults to the whole drawing; a partition's `ownJoints` is the other
+   * caller.
+   */
+  visibleJoints(joints: readonly Joint[] = this.joints): RealJoint[] {
+    const derived = new Set(this.sealedStructures().map((cylinder) => cylinder.inner.id));
+    return joints.filter(
+      (joint): joint is RealJoint => joint instanceof RealJoint && !derived.has(joint.id)
+    );
+  }
+
+  /**
+   * How much of the drawing is held, for the counts beside Lock All and
+   * Unlock All.
+   *
+   * A "part" here is a thing that carries a Lock mark -- every joint and every
+   * force -- because that is what Lock All actually sets. Counting links
+   * instead would let the menu say "3 locked" while five marks were down.
+   *
+   * Marks the reader can see, though: Lock All still sets the flag on a
+   * cylinder's derived inner end, because unlocking one joint has to free
+   * exactly that joint and no bookkeeping may disagree about the rest. It is
+   * simply not counted, the way it is not drawn.
+   */
+  lockCounts(): { locked: number; open: number; total: number } {
+    const marks: { locked: boolean }[] = [...this.visibleJoints(), ...this.forces];
+    const locked = marks.filter((mark) => mark.locked).length;
+    return { locked, open: marks.length - locked, total: marks.length };
+  }
+
+  /** The hold this link is under: its length, its angle, or nothing. */
+  holdOf(link: Link | undefined): LinkHold {
+    // With the drawing, so a cylinder is recognized: the model's own answer is
+    // about bars, and a cylinder's barrel is a bar in its own right that would
+    // otherwise report about its own two ends rather than about the part.
+    return holdOf(link, this.joints, this.sealedStructures());
+  }
+
+  /**
+   * Fix or release one of a bar's two numbers, leaving the other as it was.
+   *
+   * What a padlock and a menu row press: each is about one value. A bar may
+   * hold both, keeping its length and its direction while it can still slide
+   * sideways -- which a Lock does not allow (#309). A cylinder's member goes to
+   * `setMemberHold`, whose table knows the part has one angle between two
+   * members. A hold is an edit like a lock is -- it rides the URL, so it
+   * survives undo and travels in a shared link.
+   */
+  setBarHold(link: Link, which: HeldValue, on: boolean): void {
+    if (this.cylinderOfBar(link)) {
+      this.setMemberHold(link, which, on);
+      return;
+    }
+    if (holdableBar(link)) this.setHold(link, holdWith(link.hold, which, on));
+  }
+
+  /**
+   * Put a bar under exactly this hold, or none. One undo entry.
+   *
+   * For a caller that has the whole value: an undo action, a release. On a
+   * cylinder's member a bare `undefined` is ambiguous -- a member can read held
+   * on two rows, its own length and the part's angle carried by the other --
+   * and the angle wins, because that is the hold both rows show and the one a
+   * reader pressing Release on either member means.
+   */
+  setHold(link: Link, hold: LinkHold): void {
+    const sealed = this.cylinderOfBar(link);
+    if (sealed) {
+      const which =
+        hold === 'both' || hold === undefined
+          ? memberHoldReads(sealed, link, 'angle')
+            ? 'angle'
+            : 'length'
+          : hold;
+      this.setMemberHold(link, which, hold !== undefined);
+      return;
+    }
+    if (!holdableBar(link) || link.hold === hold) return;
+    link.hold = hold;
+    this.updateMechanism(true);
+    this.activeObjService.fakeUpdateSelectedObj();
+  }
+
+  /**
+   * Whether one of a cylinder member's two rows reads as held (decision S5).
+   *
+   * `holdOf` answers with one value and a member can be under two: its own
+   * fixed length, and the cylinder's fixed angle, which is written on whichever
+   * member got it and shown on both. False for anything that is not a member,
+   * so a caller may ask without knowing.
+   */
+  memberHoldOf(link: Link | undefined, which: 'length' | 'angle'): boolean {
+    const sealed = this.cylinderOfBar(link);
+    return !!link && !!sealed && memberHoldReads(sealed, link, which);
+  }
+
+  /** Fix or release one *named* value on a cylinder member. One undo entry. */
+  setMemberHold(link: Link, which: 'length' | 'angle', on: boolean): void {
+    const sealed = this.cylinderOfBar(link);
+    if (!sealed) return;
+    const next = memberHoldTransition(sealed, link, which, on);
+    if (!next) return;
+    const { barrel, rod } = cylinderMemberLinks(sealed);
+    if (barrel) barrel.hold = next.barrel;
+    rod.hold = next.rod;
+    this.updateMechanism(true);
+    this.activeObjService.fakeUpdateSelectedObj();
+  }
+
+  /** Let these bars go, as one edit: what a refusal's Release button carries. */
+  releaseHolds(links: readonly Link[]): void {
+    const held = links.filter((link) => holdOf(link) !== undefined);
+    if (held.length === 0) return;
+    held.forEach((link) => ((link as RealLink).hold = undefined));
+    this.updateMechanism(true);
+    this.activeObjService.fakeUpdateSelectedObj();
+  }
+
+  /**
+   * The joints deleting this link would sweep up with it.
+   *
+   * `deleteLink` keeps a joint only while some *other* link still holds it, so
+   * this is that rule asked in advance -- what the menu row needs to be able to
+   * name the cascade before the click rather than after it.
+   */
+  jointsOrphanedByDeleting(link: Link): RealJoint[] {
+    return orphanedByLinkRemoval(
+      link,
+      this.links,
+      this.visibleJoints(),
+      this.cylindersOfLink(link)
+    );
+  }
+
+  /**
+   * The links deleting this joint would take with it.
+   *
+   * `deleteJoint` removes every link the joint sits on that has fewer than
+   * three joints, because a bar with one end left is not a bar. Asked here in
+   * advance, so the row can say so before the click rather than after it.
+   *
+   * A welded compound is asked leaf by leaf, because that is what the deletion
+   * does to it: the joint comes out of each sub-link it is on, and a sub-link
+   * left with a single end goes the same way a bare bar would. Asking only the
+   * compound's own joint count let the row promise `Delete Joint` and then take
+   * a leaf with it -- the compound has four joints, so nothing looked doomed,
+   * while the two-joint leaf inside it was.
+   */
+  linksRemovedByDeleting(joint: RealJoint): Link[] {
+    const doomed: Link[] = [];
+    for (const link of joint.links) {
+      const parts = link instanceof RealLink && link.subset.length > 0 ? link.subset : [link];
+      for (const part of parts) {
+        if (!part.joints.some((member) => member.id === joint.id)) continue;
+        if (part.joints.length < 3) doomed.push(part);
+      }
+    }
+    return doomed;
+  }
+
+  /**
+   * Copy a bar and the two joints it stands on, a little to one side.
+   *
+   * Free-standing, deliberately: the copy shares no joint with the original,
+   * carries none of its forces and none of its locks, and is not welded to
+   * anything. A duplicate that arrived already attached would be a different
+   * mechanism rather than a second copy of the same bar, and there is no
+   * reading of "duplicate" that says which of the original's neighbors the
+   * copy should have inherited.
+   */
+  duplicateLink(link: RealLink): void {
+    // A compound is several links and the welds between them, and a cylinder
+    // part belongs to an assembly; neither copies as one link. The menu grays
+    // the row for both rather than accepting the click and doing nothing.
+    if (!this.canDuplicate(link)) return;
+    const source = link.joints.filter((joint): joint is RealJoint => joint instanceof RealJoint);
+
+    // Set beside the link rather than diagonally away from it: a copy that
+    // lands along the bar's own direction overlaps it and reads as nothing
+    // having happened, which is exactly how the first cut of this was
+    // reported. Across the bar, the two are plainly two.
+    const step = this.sideStepFor(source);
+    // `determineNextLetter` reads the drawing, and none of these are in it
+    // yet, so the letters handed out so far are passed back in explicitly.
+    const taken: string[] = [];
+    const made = source.map((joint) => {
+      const id = this.determineNextLetter(taken);
+      taken.push(id);
+      return new RevJoint(id, joint.x + step.x, joint.y + step.y);
+    });
+    const copy = this.gridUtils.createRealLink(
+      made
+        .map((joint) => joint.id)
+        .sort()
+        .join(''),
+      made
+    );
+    // A copy of the body, not of its outline: a bar carrying seven grams and a
+    // hand-set moment of inertia is that bar because of those numbers, and a
+    // duplicate that quietly dropped them handed back a shape with a force
+    // analysis that no longer agreed with the original. The name is not
+    // copied -- two links answering to "Crank" is a drawing nobody can talk
+    // about -- and neither is the lock, which is a statement about the part
+    // that was settled rather than about the one just made.
+    //
+    // The *custom* flags come too, and they are the half that matters: without
+    // them the next rebuild treats the copy as an ordinary body and computes
+    // both back over -- a hand-set inertia of 123.456 was landing as 0.005
+    // before the reader had done anything. And everything the offsets are held
+    // against is a joint letter, so those letters are the source's and have to
+    // be re-read as the copy's or the point rides a bar it is not on.
+    const renamed = new Map(source.map((joint, index) => [joint.id, made[index].id]));
+    const rename = (id: string): string => renamed.get(id) ?? made[0].id;
+    copy.mass = link.mass;
+    copy.massMoI = link.massMoI;
+    copy.moiIsCustom = link.moiIsCustom;
+    copy.fill = link.fill;
+    copy.isCircle = link.isCircle;
+    copy.hold = link.hold;
+    copy.comIsCustom = link.comIsCustom;
+    copy.comAnchor =
+      typeof link.comAnchor === 'object' ? { joint: rename(link.comAnchor.joint) } : link.comAnchor;
+    copy.comAnchorOffset = link.comAnchorOffset ? { ...link.comAnchorOffset } : undefined;
+    copy.comOffset = link.comOffset
+      ? {
+          along: link.comOffset.along,
+          across: link.comOffset.across,
+          frame: [rename(link.comOffset.frame[0]), rename(link.comOffset.frame[1])],
+        }
+      : undefined;
+    made.forEach((joint) => {
+      joint.links.push(copy);
+      made.forEach((other) => {
+        if (other.id !== joint.id) joint.connectedJoints.push(other);
+      });
+    });
+    // A disc's offset is measured from its ground pin, and the copy is
+    // ungrounded and so a bar: the same offset from its middle put the point
+    // half a bar away. The source's point, carried by the step, is the copy's.
+    if (link.comIsCustom && link.comAnchor === 'centroid') {
+      copy.placeCustomCoM({ x: link.CoM.x + step.x, y: link.CoM.y + step.y });
+    }
+    this.joints.push(...made);
+    this.links.push(copy);
+    this.activeObjService.updateSelectedObj(copy);
+    this.finishStructuralEdit(true);
+  }
+
+  /** Whether Duplicate has a single link to copy — the menu's enable rule. */
+  canDuplicate(link: Link): boolean {
+    if (!(link instanceof RealLink) || link.subset.length > 0) return false;
+    if (this.cylinderOfBar(link)) return false;
+    return link.joints.filter((joint) => joint instanceof RealJoint).length >= 2;
+  }
+
+  /**
+   * Where a copy is set down: one part-width to the side of the link's own
+   * direction, so the copy sits beside the original rather than along it.
+   */
+  private sideStepFor(joints: RealJoint[]): { x: number; y: number } {
+    const gap = 0.9 * this.settingsService.objectScale;
+    const span = { x: joints[1].x - joints[0].x, y: joints[1].y - joints[0].y };
+    const length = Math.hypot(span.x, span.y);
+    if (length < 1e-6) return { x: gap, y: -gap };
+    return { x: (-span.y / length) * gap, y: (span.x / length) * gap };
+  }
+
+  /** Whether any Lock mark is set at all — what enables Unlock All. */
+  anythingLocked(): boolean {
+    return (
+      this.joints.some((joint) => joint instanceof RealJoint && joint.locked) ||
+      this.forces.some((force) => force.locked)
+    );
   }
 
   private createNewCompoundLink(linksToWeld: RealLink[]): RealLink {
@@ -384,10 +2640,41 @@ export class MechanismService {
         ? (link.subset.filter((item) => item instanceof RealLink) as RealLink[])
         : [link]
     );
-    return this.createNewCompoundLinkFromSubset(leaves);
+    // A weld that absorbs more members into an existing body is that body
+    // carrying on, so it keeps what somebody chose for it -- its paint, its
+    // name, its typed mass properties. Rebuilt without a predecessor it took
+    // an arbitrary leaf's color and lost the rest.
+    //
+    // Welding two bodies that were both already compounds joins two
+    // identities, and one of them has to win: the one with more members, and
+    // the earlier id when they have the same number. Arbitrary, but stated,
+    // and stable against the order the links were handed over in.
+    const predecessors = linksToWeld
+      .filter((link) => link.subset.length > 0)
+      .sort(
+        (left, right) => right.subset.length - left.subset.length || left.id.localeCompare(right.id)
+      );
+    return this.createNewCompoundLinkFromSubset(leaves, predecessors[0]);
   }
 
-  private createNewCompoundLinkFromSubset(subset: RealLink[]): RealLink {
+  /**
+   * Build the body a set of leaves make, optionally as the continuation of one
+   * that already existed.
+   *
+   * `continues` is the difference between a body being rebuilt and a body
+   * being born. A compound that gains or loses a member is the same body: it
+   * keeps its paint, its name, and any mass, inertia or center of mass
+   * somebody typed onto the *root* -- with the anchor those were placed
+   * against, or the point walks the next time the drawing moves. Without it, a
+   * bracket that lost a ram came back in another color, under a generated
+   * name, with its typed inertia replaced by a sum and its placed center of
+   * mass moved.
+   *
+   * Nothing is inherited when there is no predecessor, and a genuine split
+   * into several bodies has at most one continuation -- copying a root's typed
+   * aggregate onto every child would describe material that is not in either.
+   */
+  private createNewCompoundLinkFromSubset(subset: RealLink[], continues?: RealLink): RealLink {
     const leaves = subset.filter(
       (link, index) => subset.findIndex((candidate) => candidate.id === link.id) === index
     );
@@ -413,16 +2700,53 @@ export class MechanismService {
             leaves.reduce((sum, link) => sum + link.CoM.x, 0) / Math.max(1, leaves.length),
             leaves.reduce((sum, link) => sum + link.CoM.y, 0) / Math.max(1, leaves.length)
           );
+    // The parallel-axis term measures distances in model coordinates, which
+    // are MODEL_SCALE user units, and mass and inertia live in different
+    // prefixes per unit system. Unconverted, welding two 1 g bars produced
+    // tens of thousands of kg·cm² — off by MODEL_SCALE² times the unit ratio.
+    const parallelAxis = this.storedMoiFactor(this.currentUnitStr());
     const massMoI = leaves.reduce(
       (sum, link) =>
         sum +
         link.massMoI +
-        link.mass * (Math.pow(link.CoM.x - CoM.x, 2) + Math.pow(link.CoM.y - CoM.y, 2)),
+        link.mass *
+          (Math.pow(link.CoM.x - CoM.x, 2) + Math.pow(link.CoM.y - CoM.y, 2)) *
+          parallelAxis,
       0
     );
 
     const newLink = new RealLink(id, newLinkJoints, totalMass, massMoI, CoM, leaves);
-    newLink.fill = leaves[0]?.fill ?? ColorService.instance?.getNextLinkColor() ?? '#555555';
+    // Custom is an override of *this body*, not a summary of its members. It
+    // used to be set whenever any member had one, which locked the aggregate
+    // against the derivation in `derivedBodyOf` -- and that derivation is the
+    // only thing that reads a member's shape rather than whatever number was
+    // last stored on it. A body of one typed bar and one automatic bar came
+    // out with the automatic one's contribution frozen at a stale value, and
+    // in one case dropped entirely.
+    //
+    // So a body assembled from members stays derived, and the numbers above
+    // are a seed the next property pass will replace. Only a root that was
+    // itself overridden carries that override forward.
+    newLink.moiIsCustom = continues?.moiIsCustom ?? false;
+    newLink.comIsCustom = continues?.comIsCustom ?? false;
+    if (continues?.moiIsCustom) newLink.massMoI = continues.massMoI;
+    if (continues?.comIsCustom) {
+      // The anchor as well as the point. A center of mass placed against the
+      // grid keeps its world coordinate while the body moves, and one placed
+      // against the centroid rides the shape -- so a rebuild that kept the
+      // coordinate and dropped the anchor moved the point the next time
+      // anything else did.
+      newLink.comAnchor = continues.comAnchor;
+      newLink.comAnchorOffset = continues.comAnchorOffset
+        ? { ...continues.comAnchorOffset }
+        : undefined;
+      newLink.fixedLocation = { ...continues.fixedLocation };
+      newLink.CoM = new Coord(continues.CoM.x, continues.CoM.y);
+      newLink.captureComOffset();
+    }
+    if (continues && continues.name !== continues.id) newLink.name = continues.name;
+    newLink.fill =
+      continues?.fill ?? leaves[0]?.fill ?? ColorService.instance?.getNextLinkColor() ?? '#555555';
     return newLink;
   }
 
@@ -449,7 +2773,11 @@ export class MechanismService {
     });
   }
 
-  private attachForceToLink(force: Force, link: RealLink): void {
+  private attachForceToLink(
+    force: Force,
+    link: RealLink,
+    owner: RealLink = (this.rootLinkOwning(link) as RealLink | undefined) ?? link
+  ): void {
     this.links.forEach((candidate) => {
       candidate.forces = candidate.forces.filter((item) => item !== force && item.id !== force.id);
       if (candidate instanceof RealLink) {
@@ -458,8 +2786,13 @@ export class MechanismService {
         });
       }
     });
-    force.link = link;
-    if (!link.forces.some((candidate) => candidate.id === force.id)) link.forces.push(force);
+    force.link = owner;
+    // A leaf is a body somebody can point at; a compound is what a weld makes
+    // of several. So the *member* is what is remembered, and welding onto a
+    // compound leaves that memory alone -- it is what an unweld will need.
+    if (link.subset.length === 0) force.anchoredTo = link.id;
+    if (!force.link.forces.some((candidate) => candidate.id === force.id))
+      force.link.forces.push(force);
   }
 
   private detachForce(force: Force): void {
@@ -480,14 +2813,648 @@ export class MechanismService {
     );
   }
 
-  private finishStructuralEdit(save: boolean = true): void {
+  /**
+   * The single point every structural edit passes through: re-derive the joint
+   * graph, then repair or retire anything the edit invalidated.
+   *
+   * Public because it is the seam, not an implementation detail — a caller that
+   * changes topology and does not come through here leaves the slot and weld
+   * reconcilers unrun, which is exactly how `toggleSlider` came to leave a
+   * Slide's RevJoint flagged with nothing behind it.
+   */
+  //
+  // Creating a link is a structural edit like any other, and the six creation
+  // gestures on the canvas used to end at `updateMechanism` instead. That runs
+  // the sealed-cylinder normalizer without running the repair passes first, so
+  // a bar attached to a joint that was already welded left the joint flagged
+  // welded with a loose bar beside it -- welded and pinned at once, which the
+  // repair below has an answer for and never got to give.
+  public finishStructuralEdit(save: boolean = true): void {
     this.rebuildJointGraph();
+    this.settleTopology();
+    this.activeObjService.reconcilePartSelection(this.joints, this.links, this.forces);
     PositionSolver.setUpSolvingForces(this.forces);
     this.updateMechanism(save);
     this.onMechUpdateState.next(3);
   }
 
-  deleteJoint() {
+  /**
+   * The one door for writing a body's mass, wherever the field lives.
+   *
+   * A compound has one mass, spread evenly through its material, so it is set
+   * on the compound and its members' shares follow (`weld-density.ts`, #279).
+   * A member welded into a compound has no mass of its own to set, and is
+   * refused: answered `false`, with nothing changed. Unwelding later hands each
+   * member the share it carried.
+   */
+  assignBodyMass(body: Link, value: number): boolean {
+    if (!(value >= 0)) return false;
+    const root = this.rootLinkOwning(body);
+    if (root && root !== body) return false;
+    body.mass = value;
+    if (body instanceof RealLink) this.shareCompoundMass(body);
+    return true;
+  }
+
+  /** Whether `link` is welded into a compound, whose mass it shares. */
+  isWeldedMember(link: Link | undefined): boolean {
+    if (!link) return false;
+    const root = this.rootLinkOwning(link);
+    return root !== undefined && root !== link;
+  }
+
+  /**
+   * Write each member's share of a compound's mass onto the member.
+   *
+   * The shares are derived, never typed; they are stored so an unweld, and a
+   * URL read by an older reader, carry what the member weighed.
+   */
+  private shareCompoundMass(compound: RealLink): void {
+    const members = weldedMembers(compound);
+    memberMasses(compound).forEach((mass, index) => {
+      members[index].mass = mass;
+      this.shareCompoundMass(members[index]);
+    });
+  }
+
+  /**
+   * The root link that owns `link`, following welds. A carrier absorbed into a
+   * compound keeps existing as a member of that compound's subset, so the
+   * pointer stays valid while no longer naming a body any solver iterates.
+   *
+   * Public: the cylinder panel writes part masses and must keep a welded
+   * compound's aggregate true.
+   */
+  rootLinkOwning(link: Link): Link | undefined {
+    const contains = (candidate: Link): boolean =>
+      candidate.id === link.id ||
+      (candidate instanceof RealLink && candidate.subset.some(contains));
+    return this.links.find(contains);
+  }
+
+  /**
+   * Make sure no slot has outlived what defines it (§2.8a).
+   *
+   * A carrier can be deleted, welded into a compound, or lose one of the two
+   * joints that cut the slot -- to a deletion, or to a Phase 1.2 snap that
+   * merges it away. Option A stores all three outside `links` and
+   * `connectedJoints`, so nothing that rebuilds those structures notices. Left
+   * alone the slider keeps a pointer to a link that is no longer a body, and
+   * the next solve reads geometry from an object nothing else updates.
+   *
+   * A weld is recoverable: remap to the compound that swallowed the carrier.
+   * Anything else is not, so the slider keeps its block and loses its
+   * direction — it dangles, and the canvas draws it red until a carrier arrives
+   * or the user grounds it.
+   *
+   * Phase 2 re-grounded it at its last angle instead, to keep the slider the
+   * user drew. That kept the object and quietly invented the one thing about it
+   * nobody had chosen: where it points. A slot's direction is geometry, and the
+   * honest answer to losing it is to say so rather than to pick one.
+   */
+  /**
+   * Run the repairs until they stop changing anything.
+   *
+   * Slots first, because weld recognition reads a well-formed slot: a Slide is
+   * only a Slide while its block still has a bore to ride. But a weld repair
+   * *rebuilds a compound* -- new object, new id -- and a slot may have just
+   * been pointed at the one it replaced. One pass each left the bore naming a
+   * body that was no longer in the drawing: nothing downstream noticed, the
+   * mechanism solved, and the next save wrote a carrier reference that could
+   * not be decoded. Reopening the file threw.
+   *
+   * So they go round until nothing moves. Each pass either changes nothing or
+   * repairs a joint whose flag had outrun its compound, and there are finitely
+   * many of those; the cap is there because a fixed point that needs more than
+   * a couple of passes is a bug in one of them, and looping forever would hide
+   * it rather than report it.
+   */
+  private settleTopology(): void {
+    this.reconcileSlots();
+    for (let pass = 0; pass < 4 && this.reconcileAssemblyWelds(); pass++) {
+      this.rebuildJointGraph();
+      this.reconcileSlots();
+    }
+  }
+
+  private reconcileSlots(): void {
+    this.joints.forEach((joint) => {
+      if (!(joint instanceof PrisJoint) || !joint.isFloating) return;
+      const carrier = joint.carrier!;
+      const slotJointA = joint.slotJointA!;
+      const slotJointB = joint.slotJointB!;
+      // A slot names its carrier by reference, and a compound is rebuilt --
+      // new object, new id -- whenever a weld is taken apart or a leaf removed
+      // from it. So a carrier that nothing owns any more is not necessarily a
+      // slot with no body: it is usually the same body under a new name.
+      // Stripping without asking is what made a ram silently lose its bore
+      // when the *other* ram sharing its mount was deleted.
+      const root =
+        this.rootLinkOwning(carrier) ?? this.rootCarrying(carrier, slotJointA, slotJointB);
+      if (root && root.id !== carrier.id) {
+        joint.slideOn(root, slotJointA, slotJointB);
+      }
+      if (!root || !joint.isSlotWellFormed) {
+        joint.detach();
+      }
+    });
+  }
+
+  /**
+   * The live body a rebuilt carrier's own members ended up inside, when there
+   * is exactly one it could be.
+   *
+   * Two things have to hold at once, and asking only one of them is how each
+   * half of this went wrong in turn.
+   *
+   * *Continuity*: the candidate must own one of the carrier's own members. A
+   * live link that merely holds the slot's two end pins is not evidence -- two
+   * separate bodies can share a pair of pins, and a slot cut into one of them
+   * was handed to the other when the first was deleted, with a slot line that
+   * came out geometrically right and an owner the reader never cut it into.
+   *
+   * *Capability*: the candidate must hold the slot's two ends. Stopping at the
+   * first surviving member finds whichever one the compound happens to list
+   * first, and unwelding a barrel mount from a bracket that was listed first
+   * handed the bore to the bracket -- which cannot define it, so the slider was
+   * detached and a ram lost its bore depending on the order of a subset array.
+   *
+   * Every member is searched and the answer must be unambiguous: two different
+   * surviving bodies that both qualify is not a recovery, it is a guess, and
+   * the caller detaches instead. A carrier that was genuinely deleted takes its
+   * members with it, nothing owns them, and the caller detaches then too.
+   */
+  private rootCarrying(carrier: Link, a: Joint, b: Joint): Link | undefined {
+    const members =
+      carrier instanceof RealLink && carrier.subset.length > 0 ? carrier.subset : [carrier];
+    const found = new Set<Link>();
+    for (const member of members) {
+      const root = this.rootLinkOwning(member);
+      if (root && root.joints.includes(a) && root.joints.includes(b)) found.add(root);
+    }
+    return found.size === 1 ? [...found][0] : undefined;
+  }
+
+  /**
+   * Make sure no weld is left describing something that is not there.
+   *
+   * Repair before you strip, in that order, which is the rule `reconcileSlots`
+   * already set for slots. A weld says "everything here is rigid"; the compound
+   * link is only how that is normally *represented*, so a flag that has outrun
+   * its compound should be given one rather than thrown away. `mergeJoints`
+   * takes a weld apart and rebuilds it, and a deletion that collapses a
+   * compound leaves the flag behind, so both states are reachable from ordinary
+   * edits.
+   *
+   * Stripping is for what cannot be repaired: a joint flagged welded with no
+   * compound behind it has nothing left to be rigid about.
+   *
+   * There is no orphan flag to strip for a *Slide* any more. `isWelded` records
+   * the compound and only the compound; a Slide is `rotates` on the sliding
+   * joint (Stage 1 of `docs/joint-type-and-cylinder-plan.md`), so a slider with
+   * nothing riding it is a Prismatic joint waiting for a rider rather than a
+   * flag describing something that is not there.
+   */
+  private reconcileAssemblyWelds(): boolean {
+    let changed = false;
+    this.joints.forEach((joint) => {
+      if (!(joint instanceof RealJoint)) return;
+      // A Slide holding more than one rider is one rigid body, and a compound
+      // is how that is represented. The statement can outrun the compound three
+      // ways: `mergeJoints` takes a weld apart and rebuilds it around the
+      // survivor, a deletion can leave a second rider behind, and a decoded URL
+      // arrives with `rotates` set and nothing built at all. Built rather than
+      // refused, which is what this pass has always done for a weld whose
+      // compound had gone missing.
+      if ((slideAssemblyAt(joint)?.riders.length ?? 0) > 1 && !joint.isWelded) {
+        if (this.weldJointTopology(joint)) {
+          this.rebuildJointGraph();
+          changed = true;
+        }
+        return;
+      }
+      // A Slide whose riders are already one compound, arriving from a URL.
+      //
+      // The prismatic record spends its weld bit on `rotates`, so `isWelded` is
+      // not written for a slider at all and comes back false however the
+      // drawing was left -- and every undo and redo is a decode. The compound
+      // still round-trips, so the two bars stay fused while the joint denies
+      // holding them together; choosing Pin-in-slot then returns at once from
+      // `unweldJointTopology` and flips `rotates` back with the bars still
+      // fused and nothing left that can part them. Read off the drawing
+      // instead: a slot that does not rotate, with the bodies meeting at it
+      // already fused, is welded whatever the record was able to say. Asked of
+      // the compound's *members through this joint*, not of the compound: a
+      // slider can sit inside a body some other joint's weld built, and only
+      // what meets at this slot says anything about this slot. Not a topology
+      // change, so it does not ask for another pass.
+      if (joint instanceof PrisJoint && !joint.rotates && !joint.isWelded) {
+        const compound = this.compoundAt(joint);
+        if (compound && memberBarsTouching(compound, joint) >= 2) joint.isWelded = true;
+      }
+      if (!joint.isWelded) return;
+      const compound = this.compoundAt(joint);
+      if (!compound) {
+        joint.isWelded = false;
+        return;
+      }
+
+      // A weld that only got half way. A welded joint is rigid, so every body
+      // meeting it belongs to one compound; here it is in two, or in one with a
+      // loose bar beside it. The joint then draws its weld marker while one of
+      // the links through it is still free to turn — welded and pinned at the
+      // same time, which is not a state the model has an answer for and not one
+      // a user can see the shape of.
+      //
+      // Repaired the same way the branch above repairs a Slide: take the flag
+      // off (both weld guards refuse an already-welded joint, since they exist
+      // to stop a *second* weld) and let the ordinary weld run, which fuses
+      // everything at the joint into one body. Restore the flag if it will not.
+      //
+      // Nothing in the app builds this any more — welding a joint already in a
+      // compound absorbs that compound — but a URL can carry it in, and a URL
+      // is a compatibility surface: mechanisms saved by earlier versions have
+      // to keep opening, and they have to open as something coherent.
+      const bodiesAtJoint = this.links.filter(
+        (link): link is RealLink => link instanceof RealLink && link.joints.includes(joint)
+      );
+      if (bodiesAtJoint.length > 1) {
+        joint.isWelded = false;
+        if (this.weldJointTopology(joint)) {
+          this.rebuildJointGraph();
+          changed = true;
+        } else if (
+          bodiesAtJoint.some(
+            (body) => body.subset.length > 0 && memberBarsTouching(body, joint) >= 2
+          )
+        ) {
+          joint.isWelded = true;
+        }
+        return;
+      }
+
+      // Only one body meets here, and it is a compound — so this flag only
+      // describes a real weld if at least two of the compound's leaves meet at
+      // this joint. At the loose end of a body welded somewhere else (such as a
+      // Prismatic joint whose slot was just taken off), only one leaf reaches
+      // here, so the flag describes nothing and has to come off.
+      if (memberBarsTouching(compound, joint) < 2) {
+        joint.isWelded = false;
+      }
+    });
+    return changed;
+  }
+
+  /**
+   * Fold `source` into `target`: every link that used `source` now uses
+   * `target`, and `source` stops existing. This is the release half of a
+   * joint-onto-joint drag.
+   *
+   * Returns the refusal reason when the merge is illegal, so the caller can say
+   * which rule it hit — a joint that silently declines to merge reads as a
+   * broken drag rather than as a rule.
+   */
+  mergeJoints(source: RealJoint, target: RealJoint): MergeRefusal | undefined {
+    // A cylinder's interior joints are not attachment points, which
+    // `refuseJointMerge` now says for itself: this used to carry its own copy
+    // of that rule, and the live drop ring — which asks that function and not
+    // this one — did not know it.
+    const cylinders = this.sealedStructures();
+    const refusal = refuseJointMerge(source, target, cylinders);
+    if (refusal) {
+      return refusal;
+    }
+
+    // A weld is a joint flag plus a compound link built around it, so the two
+    // have to be taken apart before the topology moves and rebuilt afterwards.
+    // Going through the weld path rather than editing compounds by hand is what
+    // makes the result a real compound instead of a joint merely flagged welded
+    // with a stray link beside it.
+    const shouldWeld = source.isWelded || target.isWelded;
+    // Asked before anything comes apart. Rebuilding the weld afterwards can be
+    // refused -- the survivor inherits both joints' `input`, and a driven joint
+    // cannot be welded -- and by then the weld the reader had is simply gone,
+    // with the merge reported as having worked. A loose driven joint dropped
+    // onto a welded one is the reachable case: it adds no second body, so the
+    // driven-joint rule lets it through.
+    if (shouldWeld && !this.weldWouldSurviveMerge(source, target)) {
+      return 'weld-cannot-survive';
+    }
+    if (source.isWelded) this.unweldTopology(source);
+    if (target.isWelded) this.unweldTopology(target);
+
+    // Ground and input are things the user set deliberately. A merge that
+    // dropped one would quietly change what the mechanism is, so the survivor
+    // inherits both.
+    //
+    // A slot is a legal target now that only the source is refused, and `ground`
+    // written straight onto one leaves it both carried and grounded -- the
+    // state `PrisJoint`'s three setters exist to make unreachable.
+    // `slideAssemblyAt` then reports it grounded, so `hasFixedOrientation`
+    // freezes a rider's world orientation on a moving bar, which is a wrong
+    // number rather than a refusal; the canvas draws ground rails on a slot cut
+    // into a link; and a reload quietly undoes all of it, because
+    // `resolveSlots` calls `slideOn`, which clears `ground`. A carried slot
+    // already takes its direction from its carrier, which is what the ground
+    // would have been standing in for, so it keeps the carrier.
+    if (target instanceof PrisJoint) {
+      if (source.ground && !target.ground && !target.isFloating) {
+        target.groundAt(target.slotAngle);
+      }
+    } else {
+      target.ground = target.ground || source.ground;
+    }
+    target.input = target.input || source.input;
+
+    this.links.forEach((link) => this.replaceJointInLink(link, source, target));
+
+    // A slot names two joints on its carrier, and those names are references
+    // rather than lookups — so a slot whose endpoint was just merged away still
+    // pointed at a joint that no longer exists in any link. `isSlotWellFormed`
+    // then answered no, and everything downstream agreed: the slider stopped
+    // being floating, its cylinder stopped resolving, and the skin disappeared
+    // with nothing said. Attaching a ram to the rest of a linkage is exactly
+    // what this gesture is for, so it was deleting the part in the one case it
+    // most needed to survive.
+    this.joints.forEach((joint) => {
+      if (!(joint instanceof PrisJoint) || !joint.isFloating) return;
+      const a = joint.slotJointA!;
+      const b = joint.slotJointB!;
+      if (a.id !== source.id && b.id !== source.id) return;
+      joint.slideOn(
+        joint.carrier!,
+        a.id === source.id ? target : a,
+        b.id === source.id ? target : b
+      );
+    });
+
+    this.joints = this.joints.filter((joint) => joint.id !== source.id);
+
+    // Only link membership has moved so far. Everything below reads joint.links
+    // or joint.connectedJoints, so connectivity has to be re-derived first.
+    this.rebuildJointGraph();
+
+    if (this.activeObjService.selectedJoint?.id === source.id) {
+      this.activeObjService.updateSelectedObj(target);
+    }
+
+    // A refusal here is not silent: canBeWelded declines a grounded, driven, or
+    // slider-carrying joint, and the caller reports the survivor's actual weld
+    // state rather than assuming the weld took.
+    //
+    // Whether the bodies meeting here are fused is one question; whether they
+    // may turn against a slot is another. `weldTopology`'s prismatic branch
+    // answers both, so carrying a compound onto a slot ended `rotates = false`
+    // and a Pin-in-slot slider came out a Prismatic Slide -- a change of type
+    // from a gesture that reads as "attach these two". A drag attaches; it does
+    // not retype what it lands on, so the compound comes across and the slot
+    // keeps the type it had.
+    if (shouldWeld) {
+      const slot = target instanceof PrisJoint ? target : undefined;
+      const turnedInItsSlot = slot?.rotates;
+      this.weldTopology(target);
+      if (slot) slot.rotates = turnedInItsSlot!;
+    }
+
+    // No save here: a merge is the tail of a drag gesture, and the gesture owns
+    // the single undo entry it earns (see DragStateService.release).
+    this.finishStructuralEdit(false);
+    return undefined;
+  }
+
+  private replaceJointInLink(link: Link, source: RealJoint, target: RealJoint): void {
+    if (link instanceof RealLink) {
+      link.subset.forEach((sub) => this.replaceJointInLink(sub, source, target));
+    }
+    const index = link.joints.findIndex((joint) => joint.id === source.id);
+    if (index === -1) {
+      return;
+    }
+
+    link.joints[index] = target;
+    // Link ids are the sorted concatenation of their joint letters, which is
+    // what createNewCompoundLinkFromSubset builds and what the URL codec reads.
+    const was = link.id;
+    link.id = link.joints
+      .map((joint) => joint.id)
+      .sort()
+      .join('');
+    renameAnchors(this.forces, was, link.id);
+    link.fixedLocations = link.fixedLocations.map((location) =>
+      location.id === source.id ? { id: target.id, label: target.id } : location
+    );
+    if (link.fixedLocation.fixedPoint === source.id) {
+      link.fixedLocation.fixedPoint = target.id;
+    }
+
+    if (link instanceof RealLink) {
+      if (!link.comIsCustom) {
+        link.CoM = derivedCenterOfMass(link);
+      }
+      link.reComputeDPath();
+    }
+  }
+
+  /**
+   * Exchange one joint for another of a different kind, keeping its letter.
+   *
+   * A slider is a `PrisJoint` and a plain pin is a `RevJoint`, so gaining or
+   * losing a slot is not a flag being flipped: the object has to be replaced.
+   * What must not change is the letter. Link ids are built from their joints'
+   * letters, and forces, locks, colors, slot references, the URL and the
+   * reader's own memory of the drawing all name it -- so the replacement takes
+   * the id and everything else the old joint was carrying, and every link that
+   * held the old one is pointed at the new one.
+   *
+   * Beside `replaceJointInLink` because it is the same surgery seen the other
+   * way round: that one folds two joints into one, this one swaps a joint for
+   * itself. It is also exactly what the codec's own fold does to a slider
+   * arriving as three objects, and for the same reason.
+   */
+  private retypeJoint(from: RealJoint, to: RealJoint): void {
+    // `name` answers with the id when nobody has set one, so a rename is
+    // carried and an unnamed joint is left unnamed rather than being given its
+    // own letter as a name.
+    if (from.name !== from.id) to.name = from.name;
+    to.showCurve = from.showCurve;
+    to.driveSpeed = from.driveSpeed;
+    to.machineName = from.machineName;
+    to.locked = from.locked;
+    to.colorFamily = from.colorFamily;
+    to.r = from.r;
+
+    const swap = (link: Link) => {
+      if (link instanceof RealLink) link.subset.forEach(swap);
+      const at = link.joints.findIndex((joint) => joint.id === from.id);
+      if (at >= 0) link.joints[at] = to;
+    };
+    this.links.forEach(swap);
+
+    const where = this.joints.findIndex((joint) => joint.id === from.id);
+    if (where >= 0) this.joints[where] = to;
+    else this.joints.push(to);
+
+    // A slot whose line was drawn through the joint that has just been replaced
+    // still points at the old object. The id it names belongs to the new joint
+    // too, so it rebinds by id rather than being repaired case by case.
+    this.joints.forEach((joint) => {
+      if (joint instanceof PrisJoint && joint.isFloating) joint.rebindSlot(this.links, this.joints);
+    });
+  }
+
+  /**
+   * What each joint's slot was, by joint id, so Slider off and on again restores
+   * it (§4.1).
+   *
+   * Keyed by id rather than held on the joint, because undo is a stack of URL
+   * strings: every undo rebuilds the mechanism from scratch and the objects that
+   * come back are new ones. A stash on the object would be destroyed by an undo
+   * and a redo that visibly changed nothing, so toggling Slider on afterwards
+   * would dangle instead of restoring what the panel promised to remember.
+   *
+   * Ids are reused after a deletion, so `deleteJoint` clears the entry -- a
+   * stale stash inheriting a letter would hand a new joint someone else's slot.
+   *
+   * Deliberately not serialized: a convenience within one editing session, not
+   * state a shared URL should carry.
+   */
+  private readonly slotStashes = new Map<
+    string,
+    {
+      ground: boolean;
+      angleRad: number;
+      carrierId?: string;
+      slotJointAId?: string;
+      slotJointBId?: string;
+      /** What the reader typed for the ram's weight, which only a slot carries. */
+      mass: number;
+    }
+  >();
+
+  /**
+   * Drop everything remembered about the mechanism that is being replaced.
+   *
+   * The slot stashes are keyed by joint letter, which is unique within a
+   * mechanism and says nothing across two of them. Loading a different project
+   * in place would otherwise hand its joint B whatever the last project's
+   * joint B happened to remember -- a grounded guide at 45 degrees appearing
+   * on a joint that never had one.
+   *
+   * Undo does not call this: continuing one mechanism's history is exactly the
+   * case these maps exist to survive.
+   */
+  forgetSessionPreferences(): void {
+    this.slotStashes.clear();
+  }
+
+  /**
+   * A tracer point: a pin on one plain body that nothing else uses, so it can
+   * go without removing any constraint of the motion.
+   */
+  isTracerPoint(joint: RealJoint): boolean {
+    if (!(joint instanceof RevJoint) || joint.ground || joint.input || joint.isWelded) return false;
+    if (joint.links.length !== 1 || this.cylinderAt(joint)) return false;
+    const link = joint.links[0];
+    if (!(link instanceof RealLink) || link.subset.length > 0 || link.joints.length < 3)
+      return false;
+    if (
+      this.joints.some(
+        (other) =>
+          other instanceof PrisJoint &&
+          (other.slotJointA?.id === joint.id || other.slotJointB?.id === joint.id)
+      )
+    )
+      return false;
+    return true;
+  }
+
+  /** A tracer point whose body has a known motion back to the start. */
+  canDeleteTracerAtPose(joint: RealJoint): boolean {
+    return this.isTracerPoint(joint) && this.canAttachAtPose(joint.links[0] as RealLink);
+  }
+
+  /**
+   * @param save mints the undo entry. Only a caller that deletes several joints
+   * as one gesture passes `false`, and it owes a `finishStructuralEdit(true)`
+   * of its own once the last one is gone — see `deleteMechanism`.
+   */
+  deleteJoint(save: boolean = true) {
+    // Identity-addressed (plan §6.2): this applies to the design and says
+    // nothing about the pose, so any staging a gesture left open is closed
+    // first -- held mid-drag, the staged machine stayed seeded from the display
+    // and a neighbor came out at the provisional coordinate rather than its own.
+    this.cancelPosedEdit();
+    // A joint some earlier cascade already took. The generic path below indexes
+    // into `this.joints` without re-checking, so -1 there is a TypeError on one
+    // line and a `splice(-1, 1)` -- which removes the *last* element, not none
+    // -- on several others.
+    const selected = this.activeObjService.selectedJoint;
+    if (!selected || !this.joints.some((joint) => joint.id === selected.id)) return;
+    if (!this.isAtStartPose() && this.canDeleteTracerAtPose(selected)) {
+      this.editingAtStartPose(() => this.deleteJoint(save));
+      return;
+    }
+    // Deleting a mount (or, defensively, any member joint) of a sealed cylinder
+    // takes the whole assembly with it (§ cylinder 5) — and then goes on to
+    // delete the joint itself.
+    //
+    // It used to stop at the cylinder. A mount held by some other link survived
+    // its own deletion, and so did that link: asked to delete joint K, the app
+    // removed the ram and left K sitting on the bar it shared with M. "Delete
+    // Cylinder" on the joint's own menu still means only the cylinder, and says
+    // so; this is the generic Delete, which has one meaning everywhere else —
+    // the joint goes, and so does any link that cannot stand without it.
+    // *Every* cylinder this joint belongs to, worked out before anything is
+    // removed. A mount is an ordinary attachment point, so two rams can share
+    // one -- and asking `cylinderAt` for the first match took one of them
+    // away and left the other's mount gone with its interior joints still in
+    // the drawing: joints belonging to a part that no longer has anywhere to
+    // hang. The whole casualty set, then one rebuild.
+    const doomedCylinders = this.cylindersAt(this.activeObjService.selectedJoint);
+    if (doomedCylinders.length > 0) {
+      const doomed = this.activeObjService.selectedJoint;
+      // By pin id, so a set enumerated in either order removes the same parts.
+      for (const sealed of [...doomedCylinders].sort((left, right) =>
+        left.seal.id.localeCompare(right.seal.id)
+      )) {
+        this.deleteCylinderTopology(sealed);
+      }
+      // The cascade may already have taken it: a mount no other link holds is
+      // removed as orphaned, and there is nothing left to delete.
+      if (!this.joints.some((joint) => joint.id === doomed.id)) {
+        this.activeObjService.updateSelectedObj(undefined);
+        this.finishStructuralEdit(save);
+        return;
+      }
+    }
+    // Deleting a joint of a NEIGHBOR welded to a mount must not take the
+    // cylinder with it, and must not take the *bracket* with it either. This
+    // used to unweld the mount first, so the compound dissolved back into
+    // separate bars and the deletion operated on those -- which does leave the
+    // cylinder standing, and silently unwelds everything else that was welded
+    // there. A bracket of two bars and a ram is one body of three; removing
+    // one bar's far joint should leave a body of two.
+    //
+    // Nothing special is needed for the ram: `removeCompoundJoints` prunes
+    // only the leaves the doomed joint is on, and its weld-stripping loop
+    // keeps a slide-assembly weld, which is what the sealed pin's is.
+    const doomed = this.activeObjService.selectedJoint;
+    // Prune every leaf before asking which welds still connect the survivors.
+    // The old per-leaf loop saw already-pruned and untouched leaves together,
+    // leaving disconnected bodies fused (and keeping the removed leaves' mass).
+    this.links = this.links.flatMap((link) =>
+      link instanceof RealLink && link.subset.length > 0 && link.joints.includes(doomed)
+        ? this.removeCompoundJoints(link, new Set([doomed.id]))
+        : [link]
+    );
+    this.rebuildJointGraph();
+
+    // A gesture in flight targets a joint that is about to stop existing. The
+    // pointer keeps sending moves after the delete -- from the keyboard, or a
+    // second pointer -- and the drag then writes through a link whose joint
+    // list no longer holds what it is looking for.
+    this.injector.get(DragStateService).cancel();
+    this.slotStashes.delete(this.activeObjService.selectedJoint.id);
     const jointIndex = this.gridUtils.findJointIDIndex(
       this.activeObjService.selectedJoint.id,
       this.joints
@@ -556,7 +3523,10 @@ export class MechanismService {
         if (!(l instanceof RealLink)) {
           return;
         }
-        const subsetNum = l.subset.length;
+        // Captured as a const so the narrowing to RealLink survives into the
+        // closures below.
+        const subsets = l.subset;
+        const subsetNum = subsets.length;
         if (subsetNum === 0) {
           return;
         }
@@ -591,9 +3561,19 @@ export class MechanismService {
           const selectedJoint = this.activeObjService.selectedJoint;
           deleteJointFromLink(l, selectedJoint);
           deleteJointFromLink(sub, selectedJoint);
-          const tempIdSubs = idSubs.filter((str) => str !== sub.id);
-          // sub contains id that is not shared with any other subset
-          if (!sub.id.split('').some((char) => tempIdSubs.some((str) => str.includes(char)))) {
+          // Whether this subset still shares a joint with another one, asked of
+          // the joints rather than of the letters in their ids. A link id is
+          // its joints' names run together, so comparing characters says AA1
+          // and A2B share something because both contain an "A" -- and a
+          // cylinder's interior joints, or any drawing past its fifty-second,
+          // have ids longer than a character.
+          const sharesAJoint = sub.joints.some((joint) =>
+            subsets.some(
+              (other) =>
+                other !== sub && other.joints.some((candidate) => candidate.id === joint.id)
+            )
+          );
+          if (!sharesAJoint) {
             // This link will be pushed to this.links
             if (sub.joints.length > 1) {
               sub.joints.forEach((childJoint) => {
@@ -619,7 +3599,6 @@ export class MechanismService {
                     childJoint.connectedJoints.push(jt);
                   });
                 });
-                // childSub.link.forEach(jt => childJoint.connectedJoints.push(jt));
               });
               this.links.push(sub);
               // This is an orphaned joint
@@ -705,79 +3684,51 @@ export class MechanismService {
               }
             });
             l_subset_index = l_subset_index - 1;
-          } else if (sub.id.length === 1) {
-            // special case, can slice this subset
+          } else if (sub.joints.length === 1) {
+            // special case, can slice this subset: one joint left, counted
+            // rather than read off the length of a name that may not be one
+            // character per joint.
             l.subset.splice(l_subset_index, 1);
             l_subset_index = l_subset_index - 1;
           }
         }
-        // Now that all subsets have been gone over, do the final check
+        // Now that all subsets have been gone over, do the final check.
+        //
+        // A compound down to one leaf stops being a compound: the leaf takes
+        // its place as an ordinary link.
+        //
+        // Both branches used to look the surviving link up *after* reassigning
+        // `l` to the leaf, so they searched `links` for the leaf's id and got
+        // -1 whenever the leaf was not already top-level — and `splice(-1, 1)`
+        // does not do nothing. It removes the *last* link in the mechanism.
+        // Deleting one joint quietly deleted an unrelated body somewhere else
+        // on the grid, and left the emptied compound standing beside the leaf
+        // it was supposed to become. It only ever went unnoticed because the
+        // id rewriting above usually leaves the compound and its last leaf
+        // sharing a name, and then the wrong lookup happens to find the right
+        // link.
+        const removeLink = (id: string) => {
+          const at = this.links.findIndex((li) => li.id === id);
+          if (at >= 0) this.links.splice(at, 1);
+        };
         if (l.subset.length === 1) {
-          l = l.subset[0];
-          const delLinkIndex = this.links.findIndex((li) => li.id === l.id);
-          this.links.splice(delLinkIndex, 1);
-          this.links.push(l);
-          l.joints.forEach((jt) => {
+          const compoundId = l.id;
+          const survivor = l.subset[0];
+          removeLink(compoundId);
+          removeLink(survivor.id);
+          this.links.push(survivor);
+          survivor.joints.forEach((jt) => {
             if (!(jt instanceof RealJoint)) {
               return;
             }
             jt.isWelded = false;
             jt.links = [];
-            jt.links.push(l);
+            jt.links.push(survivor);
           });
+          l = survivor;
         } else if (l.subset.length === 0) {
-          const sliceIndex = this.links.findIndex((li) => li.id === l.id);
-          this.links.splice(sliceIndex, 1);
+          removeLink(l.id);
         }
-      }
-
-      if (l instanceof Piston) {
-        //Special case, remove the other joint on a pistion
-        l.joints.forEach((j) => {
-          if (j.id !== this.activeObjService.selectedJoint.id) {
-            this.joints.splice(this.gridUtils.findJointIDIndex(j.id, this.joints), 1);
-          }
-        });
-      }
-
-      // for any forces that are outside of the link, move them to the closest point on the hull
-      if (l instanceof RealLink) {
-        l.forces.forEach((f) => {
-          if (!(l instanceof RealLink)) {
-            return;
-          }
-          let fx = f.startCoord.x;
-          let fy = f.startCoord.y;
-
-          // if force is already inside hull, do nothing
-          if (l.isPointInsideHull(fx, fy)) {
-            return;
-          }
-
-          // go through hull and find closest point
-          let hull = l.getHullPoints();
-          let closestDistance = -1;
-          let cx, cy;
-          for (let i = 0; i < hull.length - 1; i++) {
-            let x1 = hull[i][0];
-            let y1 = hull[i][1];
-            let x2 = hull[i + 1][0];
-            let y2 = hull[i + 1][1];
-
-            [cx, cy] = point_on_line_segment_closest_to_point(fx, fy, x1, y1, x2, y2);
-            let distance = distance_points(fx, fy, cx, cy);
-
-            if (closestDistance === -1 || distance < closestDistance) {
-              closestDistance = distance;
-              fx = cx;
-              fy = cy;
-            }
-          }
-
-          // (fx, fy) is now the closest point on the hull to the force start position
-          // move force there
-          f.moveForceTo(fx, fy);
-        });
       }
     });
 
@@ -817,10 +3768,15 @@ export class MechanismService {
       });
     }
     this.joints.splice(jointIndex, 1);
-    // if (this.activeObjService.selectedLink !== undefined) {
-    //   this.activeObjService.selectedLink.d = this.activeObjService.selectedLink.getPathString();
-    // }
-    this.updateMechanism();
+    // Through the shared path, so a slot whose defining joint was just deleted
+    // gets reconciled. Deleting a joint by itself is the one way to strand a
+    // slot that does not go through mergeJoints or deleteLink.
+    //
+    // Saving here is what makes the deletion undoable. This read `false` for as
+    // long as the tail read `updateMechanism()`, whose save flag defaults off —
+    // so a joint deleted on its own left no history at all, while the very same
+    // deletion routed through the cylinder branch above did.
+    this.finishStructuralEdit(save);
     setTimeout(() => {
       this.onMechUpdateState.next(3);
     });
@@ -841,6 +3797,11 @@ export class MechanismService {
   }
 
   deleteForce(force: Force = this.activeObjService.selectedForce) {
+    // Identity-addressed (plan §6.2): this applies to the design and says
+    // nothing about the pose, so any staging a gesture left open is closed
+    // first -- held mid-drag, the staged machine stayed seeded from the display
+    // and a neighbor came out at the provisional coordinate rather than its own.
+    this.cancelPosedEdit();
     if (!force) return;
     this.detachForce(force);
     this.updateMechanism(true);
@@ -848,13 +3809,29 @@ export class MechanismService {
   }
 
   changeForceDirection() {
-    this.activeObjService.selectedForce.reverseDirection();
-    this.updateMechanism(true);
-    this.onMechUpdateState.next(2);
+    const force = this.activeObjService.selectedForce;
+    this.editForcesAtPose([force], () => force.flipForce());
   }
 
   changeForceLocal() {
-    this.activeObjService.selectedForce.setLocal(!this.activeObjService.selectedForce.local);
+    const force = this.activeObjService.selectedForce;
+    this.editForcesAtPose([force], () => force.setLocal(!force.local));
+  }
+
+  /**
+   * Draw the selected link as the disc it sweeps, or as a bar again.
+   *
+   * The editable link's own outline is rebuilt here rather than left to the
+   * next update: the drawing on screen in Edit mode is this object, not a
+   * solved copy of it, so nothing else would redraw it until the mechanism
+   * moved. Saved, because it is a change to the drawing a person would expect
+   * to be able to undo.
+   */
+  toggleLinkCircular() {
+    const link = this.activeObjService.selectedLink;
+    if (!link.canBeCircular()) return;
+    link.isCircle = !link.isCircle;
+    link.reComputeDPath();
     this.updateMechanism(true);
     this.onMechUpdateState.next(2);
   }
@@ -873,8 +3850,8 @@ export class MechanismService {
     let perpAngle = angle + Math.PI / 2;
     //Get the perpendicular vector
     let perpVector = new Coord(Math.cos(perpAngle), Math.sin(perpAngle));
-    //Scale this vector to be 0.01
-    perpVector = perpVector.normalize().scale(0.01);
+    //Scale this vector to be 0.01 of a user unit (in model units)
+    perpVector = perpVector.normalize().scale(0.01 * MODEL_SCALE);
     //Add this vector to the com
     com = com.add(perpVector);
 
@@ -882,194 +3859,1352 @@ export class MechanismService {
   }
 
   addJointAt(coord: Coord) {
+    // An attachment does not change the old body's motion. Place it directly
+    // in that body's authored frame instead of approximately recovering the
+    // old cycle's anchor from a fresh solve seeded at the displayed pose.
+    if (!this.seedFromDisplay && !this.isAtStartPose()) {
+      const frame = this.attachmentFrame(this.activeObjService.selectedLink);
+      if (!frame) return;
+      const authored = frame.point(coord);
+      this.editingAtStartPose(() => this.addJointAt(authored));
+      return;
+    }
     const newId = this.determineNextLetter();
     const newJoint = new RevJoint(newId, coord.x, coord.y);
-    this.activeObjService.selectedLink.joints.forEach((j) => {
-      if (!(j instanceof RealJoint)) {
-        return;
-      }
-      j.connectedJoints.push(newJoint);
-      newJoint.connectedJoints.push(j);
-    });
-    if (
-      this.activeObjService.selectedLink.isWelded &&
-      this.activeObjService.selectedLink.lastSelectedSublink
-    ) {
-      this.activeObjService.selectedLink.lastSelectedSublink.id =
-        this.activeObjService.selectedLink.lastSelectedSublink?.id.concat(newJoint.id);
-      this.activeObjService.selectedLink.lastSelectedSublink.fixedLocations.push({
-        id: newJoint.id,
-        label: newJoint.id,
-      });
-      this.activeObjService.selectedLink.lastSelectedSublink.joints.push(newJoint);
-    }
-    newJoint.links.push(this.activeObjService.selectedLink);
-    this.activeObjService.selectedLink.joints.push(newJoint);
-    this.activeObjService.selectedLink.id += newJoint.id;
-    this.activeObjService.selectedLink.d = this.activeObjService.selectedLink.getPathString();
+    // A tracer exists to show the point's path. Starting it with that path off
+    // made the completed gesture look identical to adding an ordinary point
+    // and required a second trip through its menu to reveal the result.
+    newJoint.showCurve = true;
+    this.settingsService.isShowTraces.next(true);
+    this.graftJointOnto(newJoint, this.activeObjService.selectedLink);
     this.joints.push(newJoint);
     this.onMechUpdateState.next(3);
     this.updateMechanism(true);
   }
 
+  /**
+   * Make an existing joint a member of `link`: the body grows to include it and
+   * turns as one rigid piece from then on.
+   *
+   * Lifted out of `addJointAt` so a cylinder's mount can arrive the same way a
+   * tracer point does. Neither pushes the joint onto `this.joints` or saves —
+   * a mount is created as part of a larger assembly that has its own single
+   * undo entry, and grafting is one step of building it rather than an edit of
+   * its own.
+   */
+  private graftJointOnto(joint: RealJoint, link: RealLink): void {
+    graftJoint(joint, link, (this.rootLinkOwning(link) as RealLink) ?? link);
+  }
+
   deleteLink() {
+    // Identity-addressed (plan §6.2): this applies to the design and says
+    // nothing about the pose, so any staging a gesture left open is closed
+    // first -- held mid-drag, the staged machine stayed seeded from the display
+    // and a neighbor came out at the provisional coordinate rather than its own.
+    this.cancelPosedEdit();
     const link = this.activeObjService.selectedLink;
+    // Deleting any member of a sealed cylinder -- barrel, rod, block, or a
+    // compound that swallowed one -- takes the whole assembly (§ cylinder 5).
+    //
+    // What it must *also* take is the rest of the body. A compound can now
+    // hold a ram and a bracket at once, and stopping at the ram left the
+    // bracket standing: the reader asked to delete this body and half of it
+    // was still on the grid. So the ram is the whole answer only when the body
+    // is nothing but the ram.
+    const owned = this.cylindersOfLink(link);
+    if (owned.length > 0) {
+      const leaves = link instanceof RealLink && link.subset.length > 0 ? link.subset : [link!];
+      const ramParts = new Set(owned.flatMap((sealed) => [sealed.barrel.id, sealed.rod.id]));
+      const rest = leaves.filter((leaf) => !ramParts.has(leaf.id));
+      if (rest.length > 0) {
+        const doomed = new Set(rest.map((leaf) => leaf.id));
+        this.forces
+          .filter((force) => doomed.has(force.link.id))
+          .forEach((force) => this.detachForce(force));
+        this.releaseFromCompounds(doomed);
+      }
+      // By pin id, so a body holding two rams loses the same two whichever
+      // order they were found in.
+      for (const sealed of [...owned].sort((left, right) =>
+        left.seal.id.localeCompare(right.seal.id)
+      )) {
+        this.deleteCylinderTopology(sealed);
+      }
+      this.joints = pruneUnlinkedJoints(this.joints, this.links, link.joints);
+      this.activeObjService.updateSelectedObj(undefined);
+      this.finishStructuralEdit(true);
+      return;
+    }
     const linkIndex = this.links.findIndex((candidate) => candidate === link);
-    if (linkIndex === -1) return;
+    if (linkIndex === -1 && !this.rootLinkOwning(link)) return;
 
     const ownedLinkIDs = new Set([
       link.id,
       ...(link instanceof RealLink ? link.subset.map((subset) => subset.id) : []),
     ]);
     this.forces
-      .filter((force) => ownedLinkIDs.has(force.link.id))
+      .filter(
+        (force) => ownedLinkIDs.has(force.link.id) || ownedLinkIDs.has(force.anchoredTo ?? '')
+      )
       .forEach((force) => this.detachForce(force));
-    this.links.splice(linkIndex, 1);
-    this.joints = this.joints.filter(
-      (joint) =>
-        !(joint instanceof RealJoint) ||
-        this.links.some((candidate) => candidate.joints.includes(joint))
-    );
+    if (linkIndex === -1) this.releaseFromCompounds(ownedLinkIDs);
+    else this.links.splice(linkIndex, 1);
+    this.joints = pruneUnlinkedJoints(this.joints, this.links, link.joints);
     this.activeObjService.updateSelectedObj(undefined);
     this.finishStructuralEdit(true);
   }
 
+  /** Bumped by updateMechanism; consumers key caches on it. */
+  cylinderRevision = 0;
+  /**
+   * Bumped whenever the drawn pose changes — by a rebuild, and by every
+   * animation frame.
+   *
+   * Structure and pose need separate counters. A sealed cylinder's *drawing*
+   * is a function of where its joints are, and keying it on the structure
+   * revision alone left the skin painted at the pose the mechanism was built
+   * in: correct until Phase 5 made a cylinder something that could be driven,
+   * at which point the boom animated and the cylinder sat still on top of it.
+   * Reusing the structure counter here instead would rebuild the assembly walk
+   * on every frame to answer a question whose answer cannot have changed.
+   */
+  poseRevision = 0;
+  /**
+   * Bumped when the *solved cycle* changes, rather than the pose being drawn.
+   *
+   * `poseRevision` moves on every frame of playback, because the pose is what
+   * playback changes. Anything cached against the numbers themselves — the
+   * export's sampled tables, for one — has to key on this instead, or watching
+   * a mechanism run rebuilds it sixty times a second.
+   */
+  solveRevision = 0;
+  private structuresCache?: { revision: number; list: Cylinder[] };
+
+  /**
+   * The sealed cylinders, by structure, cached per revision. The structural
+   * walk is O(joints) with an assembly resolution per joint, and it was being
+   * re-run by every guard, label, mark list and hover check on every change
+   * detection pass — dozens of times per pointer move. One list per revision
+   * is the same answer at none of the cost.
+   */
+  sealedStructures(): Cylinder[] {
+    if (this.structuresCache?.revision !== this.cylinderRevision) {
+      const list = cylindersIn(this.joints);
+      this.structuresCache = { revision: this.cylinderRevision, list };
+      this.tellEachBarHowItIsDrawn(list);
+    }
+    return this.structuresCache.list;
+  }
+
+  /**
+   * Tell each member bar how it is drawn: that a cylinder's skin stands in for
+   * it, and with which silhouette a body holding it has to draw it.
+   *
+   * A compound holding a barrel or a rod must not draw it as a plain bar: the
+   * skin knows its shape, and a compound repeating the two-joint capsule put
+   * the bracket's color under the part with a seam where the copy ended. Since
+   * decision S16 the answer is not "leave it out" but "draw it the way the skin
+   * does", so the union fillets the join and the two come out one body. The
+   * leaf cannot answer either question itself -- see
+   * `RealLink.drawnByACylinderSkin` -- and this is the one place the structures
+   * are resolved, so it is the one place that can say.
+   *
+   * Cleared over whatever was marked last time rather than over the drawing:
+   * deleting a ram takes its bars out of `links` before this runs, so a pass
+   * over the drawing would leave them marked forever -- and a bar that keeps
+   * the flag is a bar that stops drawing itself the moment it is welded into
+   * anything.
+   */
+  private barsDrawnBySkins: RealLink[] = [];
+
+  private tellEachBarHowItIsDrawn(cylinders: Cylinder[]): void {
+    this.barsDrawnBySkins.forEach((bar) => {
+      bar.drawnByACylinderSkin = false;
+      bar.skinSilhouette = undefined;
+    });
+    const r = 0.15 * SettingsService.objectScale;
+    this.barsDrawnBySkins = cylinders.flatMap((cylinder) =>
+      (['barrel', 'rod'] as const).flatMap((role) => {
+        const bar = role === 'barrel' ? cylinder.barrel : cylinder.rod;
+        if (!(bar instanceof RealLink)) return [];
+        bar.drawnByACylinderSkin = true;
+        bar.skinSilhouette = memberSilhouette(cylinder, role, r);
+        return [bar];
+      })
+    );
+  }
+
+  /**
+   * The same pass again, once the interiors have been derived.
+   *
+   * The two answers above go stale for different reasons. *Which* bars a skin
+   * draws only changes when the structure does, which is what
+   * `sealedStructures` caches on; *where* they are changes whenever a joint
+   * moves, and `deriveCylinderInteriors` runs after that cache was filled and
+   * may have just put N and S somewhere else. A silhouette one rebuild behind
+   * is a body whose outline does not fit the part it fused with.
+   */
+  private refreshSkinSilhouettes(): void {
+    this.tellEachBarHowItIsDrawn(this.sealedStructures());
+  }
+
+  /**
+   * Why this mechanism will not run, in its own terms (§6).
+   *
+   * "This linkage is not valid" is true of every failure and useful for none of
+   * them. An excavator boom is three cylinders and therefore three degrees of
+   * freedom, and the plan named that as the single most likely source of
+   * disappointment once cylinders existed — so the number it actually has is
+   * the thing to say, not a checklist to read against.
+   *
+   * Returns nothing when the mechanism is fine.
+   */
+  readinessOfEachMechanism(): MechanismReadiness[] {
+    if (this.gestureIsSettling() && this.readinessCache) return this.readinessCache.list;
+    if (this.readinessCache?.revision !== this.solveRevision) {
+      this.readinessCache = { revision: this.solveRevision, list: this.buildReadiness() };
+    }
+    return this.readinessCache.list;
+  }
+
+  /**
+   * Whether an answer about readiness should wait for the hand to come up.
+   *
+   * A drag re-solves on every pointer move, so `solveRevision` counts frames
+   * while one is in flight and every reader keyed on it recomputes at 60Hz.
+   * That is right for the graphs, which are the point of dragging, and wrong
+   * for the mode chips: the reader is told "Ready", "1 to check", "Ready" as
+   * their hand passes through poses they are not stopping at, in a chip four
+   * characters wide at the top of the window. It reads as the app being unsure.
+   *
+   * So these two are held at whatever they last said and recomputed at the
+   * commit -- which is when the question was actually asked. Held rather than
+   * suppressed: a chip that empties mid-drag is the same flicker with a blank
+   * frame in it.
+   *
+   * Nothing is held before the first answer exists; a gesture begun on a
+   * drawing that has never been assessed falls through and assesses it.
+   */
+  private gestureIsSettling(): boolean {
+    return this.injector.get(DragStateService).isPointerDown;
+  }
+
+  /**
+   * Cached on `solveRevision` because the always-mounted top bar asks for this
+   * four or five times per change-detection pass -- once per mode chip, once
+   * for the analysis gate, once more when it re-measures its labels -- and
+   * playback runs change detection every frame. Each rebuild runs a 360-frame
+   * stroke sweep per sealed cylinder and a per-sample scan for reciprocation,
+   * so the uncached version paid a full cycle's arithmetic several times over
+   * to answer a question whose inputs cannot have moved.
+   *
+   * `solveRevision` and not `poseRevision`: none of this is about where the
+   * mechanism is drawn, and keying on the pose would rebuild it every frame.
+   * Everything it reads -- geometry, drive speeds, gravity, units -- is only
+   * written by an edit, and every edit ends in `updateMechanism`.
+   */
+  private readinessCache?: { revision: number; list: MechanismReadiness[] };
+
+  private buildReadiness(): MechanismReadiness[] {
+    // Nothing can be said about a machine that has not been solved yet, and on
+    // a large drawing in Edit that is every machine: `shouldDeferSolving` puts
+    // the work off and empties `mechanisms`, leaving `partitions` full. This
+    // indexed the two together and read `.failure` off `undefined`.
+    //
+    // It threw, and because the always-mounted top bar asks for this list once
+    // per mode chip per change-detection pass, it threw again on every pass --
+    // so a 45-joint drawing did not open at all. What the reader saw was the
+    // loading cover staying up forever, which is the app being honest about a
+    // render that never completed and useless about why.
+    //
+    // Guarded per entry rather than only on the flag, because the invariant
+    // that makes indexing safe -- one mechanism per partition, same order --
+    // lives at the other end of `updateMechanism`, and a list that quietly
+    // comes up short is better than a top bar that cannot draw itself.
+    if (this.solvingDeferred) return [];
+    return this.partitions.flatMap((partition, index) => {
+      const mechanism = this.mechanisms[index];
+      if (!mechanism) return [];
+      return readinessOf(partition, mechanism, {
+        strokeWarning: (part) => this.strokeWarningFor(part),
+        drawing: () => ({ joints: this.joints, links: this.links }),
+        describeSpeed: (part) => {
+          // Its own drive, not one borrowed along with a shared frame piece.
+          const driven = part.ownJoints.find(
+            (joint) => joint instanceof RealJoint && joint.input
+          ) as RealJoint | undefined;
+          if (!driven) {
+            return 'Not set';
+          }
+          const signed = this.driveSpeedOf(driven);
+          const magnitude = Math.abs(signed).toFixed(2);
+          // The same table the transport's note and the Edit panel's button
+          // read. A linear drive used to state no direction at all here, so the
+          // one fact a reader checks before pressing play said which way a
+          // crank turned and nothing about which way a ram went.
+          const way = driveDirectionWord(
+            driveKindOf(driven instanceof PrisJoint, !!this.cylinderAt(driven)),
+            turnsClockwise(signed)
+          );
+          return driven instanceof PrisJoint
+            ? `${magnitude} ${this.nup.unitLabel(this.settingsService.lengthUnit.value)}/s ${way}`
+            : `${magnitude} RPM ${way}`;
+        },
+      });
+    });
+  }
+
+  /**
+   * Re-derive every auto link's mass properties from its own skeleton.
+   *
+   * Runs at the one funnel every mutation passes through, for the same reason
+   * the cylinder invariant does: whatever moved a joint — a drag, a panel
+   * field, an undo — an auto link's centroid and moment of inertia follow the
+   * geometry, and a custom one holds whatever its author typed.
+   *
+   * MoI = mass × k², with k² from the skeleton in model units. The unit
+   * factor converts (stored-mass × user-length²) into the stored inertia unit
+   * exactly — derived from the same siUnitFactors the solver converts with,
+   * so the identity survives every unit system rather than being tuned to one.
+   */
+  private applyUniformBodyProperties(unitStr: string): void {
+    const factor = this.storedMoiFactor(unitStr);
+    for (const link of this.links) {
+      if (!(link instanceof RealLink)) continue;
+      // A compound's shares follow its shape, so a drag that lengthens one
+      // member moves weight onto it.
+      this.shareCompoundMass(link);
+      // A body with no mass has no moment of inertia, full stop: the solver
+      // applies I·α regardless of mass, so a leftover typed inertia on a
+      // weightless bar would quietly steer every dynamic answer. Zeroing the
+      // mass zeroes the inertia and hands the field back to the shape, which
+      // is also what the panel shows (the field disables and reads 0).
+      if (!(link.mass > 0) && (link.massMoI !== 0 || link.moiIsCustom)) {
+        link.massMoI = 0;
+        link.moiIsCustom = false;
+      }
+      // A link drawn as a disc that has since lost the pin the disc was centered
+      // on -- or been given one back. Nothing else would notice: an outline is
+      // only rebuilt when something asks it to, and grounding a joint asks
+      // about the joint. Left alone, a crank kept its disc after its ground was
+      // removed, and the panel and the canvas disagreed about what it was.
+      if (link.isCircle && link.drawnAsDisc !== link.canBeCircular()) {
+        link.reComputeDPath();
+      }
+      if (link.comIsCustom) {
+        // A placed point rides the link: re-derived from its stored offset
+        // against the centroid, so drags, turns and deformations carry it.
+        const placed = link.customCoMFromOffset();
+        if (placed) {
+          link.CoM = placed;
+          link.updateCoMDs();
+        } else {
+          // Decoded from a URL that only carries the world coordinate:
+          // capture the offset once, against today's geometry.
+          link.captureComOffset();
+        }
+      }
+      if (link.moiIsCustom && link.comIsCustom) continue;
+      const derived = derivedBodyOf(link, factor);
+      if (!link.comIsCustom) {
+        link.CoM = new Coord(derived.com.x, derived.com.y);
+        link.updateCoMDs();
+      }
+      if (!link.moiIsCustom) {
+        link.massMoI = derived.moi;
+      }
+    }
+  }
+
+  /**
+   * Converts mass × (model length)² into the stored inertia unit, exactly:
+   * derived from the same siUnitFactors the force solver converts with, so
+   * MoI = m·k² survives every unit system instead of being tuned to one.
+   */
+  private storedMoiFactor(unitStr: string): number {
+    const units = siUnitFactors(unitStr);
+    return (units.massToKg * units.distanceToM ** 2) / units.inertiaToKgM2 / MODEL_SCALE ** 2;
+  }
+
+  private currentUnitStr(): string {
+    switch (this.settingsService.lengthUnit.value) {
+      case LengthUnit.INCH:
+        return 'in';
+      case LengthUnit.METER:
+        return 'm';
+      default:
+        return 'cm';
+    }
+  }
+
+  /**
+   * What force analysis still needs, asked of the force solver rather than
+   * guessed at, and only what is outstanding.
+   *
+   * The solver already refuses precisely and says why -- an unsupported
+   * topology, mass properties that are not numbers, an equilibrium that is
+   * singular. Restating those conditions here would be a second opinion free to
+   * drift from the first, and the drift would show as a tab that says Ready
+   * above a panel that says it cannot solve.
+   */
+  forceSetupIssues(): SetupIssue[] {
+    if (this.gestureIsSettling() && this.forceIssuesCache) return this.forceIssuesCache.list;
+    if (this.forceIssuesCache?.revision !== this.solveRevision) {
+      this.forceIssuesCache = { revision: this.solveRevision, list: this.buildForceIssues() };
+    }
+    return this.forceIssuesCache.list;
+  }
+
+  /** Cached for the same reason readiness is, and against the same counter. */
+  private forceIssuesCache?: { revision: number; list: SetupIssue[] };
+
+  private buildForceIssues(): SetupIssue[] {
+    const runnable = this.mechanisms.filter((mechanism) => mechanism.isMechanismValid());
+    // Ask for the analysis the panel would show. It is memoised per mechanism,
+    // so this costs nothing after the first time.
+    const series = runnable.map((mechanism) => mechanism.getForceAnalysis('static'));
+    const refused = series.find((one) => one.successfulFrames === 0);
+
+    // Only the links of machines that could actually be analyzed. A massless
+    // bar in some unrelated -- or unassigned -- corner of the drawing used to
+    // block force analysis for a perfectly good mechanism.
+    const valid = this.partitions.filter((_, index) => this.mechanisms[index]?.isMechanismValid());
+    const analysable = new Set(
+      valid.flatMap((partition) => partition.links.map((link) => link.id))
+    );
+    const analysableJoints = new Set(
+      valid.flatMap((partition) => partition.joints.map((joint) => joint.id))
+    );
+    // Something has to load the linkage, but weight counts: with gravity on,
+    // a link with mass hangs from it, and that is a complete static problem.
+    // Any body's mass counts, and a slider's is the sliding joint's own now:
+    // the solver hangs its weight from gravity exactly as it hung the block's.
+    // (The massless *warning* stays about links -- every slider starts
+    // massless, and naming them all would be noise.)
+    const weighted =
+      this.links.some(
+        (link) => link instanceof RealLink && analysable.has(link.id) && link.mass > 0
+      ) ||
+      this.joints.some(
+        (joint) => joint instanceof PrisJoint && analysableJoints.has(joint.id) && joint.mass > 0
+      );
+    return forceIssues({
+      runs: runnable.length > 0,
+      refused: refused
+        ? {
+            status: refused.frames[0]?.status ?? 'unsupported-topology',
+            message: refused.diagnostic,
+          }
+        : undefined,
+      sharedSupport: series.some((one) => one.sharedSupportFrames > 0),
+      massless: this.links.filter(
+        (link) => link instanceof RealLink && analysable.has(link.id) && !(link.mass > 0)
+      ),
+      cylinders: this.sealedStructures(),
+      forces: this.forces.filter((force) => analysable.has(force.link?.id)).length,
+      gravityOn: this.settingsService.isGravity.value,
+      weighted,
+    });
+  }
+
+  /** Can the Force tab show anything worth reading? */
+  forceAnalysisReady(): boolean {
+    return this.forceSetupIssues().every((issue) => issue.severity !== 'blocker');
+  }
+
+  /** What to say about geometry that is in no mechanism. */
+  unassignedReports(): SetupIssue[] {
+    return unassignedIssues(this.unassigned, this.joints);
+  }
+
+  /**
+   * How many things stand between the drawing and being analyzed.
+   *
+   * Geometry that is in no mechanism counts. Without it a drawing of two
+   * joints and a bar -- which is in no mechanism, has no input and cannot be
+   * analyzed at all -- reported nothing to fix, because there was no mechanism
+   * for anything to be wrong with, and the chip read "Ready".
+   */
+  blockerCount(): number {
+    const inMechanisms = this.readinessOfEachMechanism().reduce(
+      (total, readiness) =>
+        total + readiness.checks.filter((check) => check.severity === 'blocker').length,
+      0
+    );
+    return inMechanisms + this.unassignedReports().length;
+  }
+
+  /**
+   * How many things are worth a look but stop nothing.
+   *
+   * The counterpart to `blockerCount`, so a chip can tell "nothing to fix" from
+   * "nothing to fix, but read this first". Both are needed to color one:
+   * green means clear, amber means it will run and something is odd, red means
+   * it will not run.
+   */
+  warningCount(): number {
+    return this.readinessOfEachMechanism().reduce(
+      (total, readiness) =>
+        total + readiness.checks.filter((check) => check.severity === 'warning').length,
+      0
+    );
+  }
+
+  /**
+   * The first thing standing between the drawing and any mechanism running, as
+   * one line: the setup drawer's own first blocker, not a second copy of its
+   * sentences free to drift from the first.
+   */
+  invalidReason(): string | undefined {
+    if (this.oneValidMechanismExists() || this.joints.length === 0) return undefined;
+    const first =
+      this.readinessOfEachMechanism()
+        .flatMap((readiness) => readiness.checks)
+        .find((issue) => issue.severity === 'blocker') ?? this.unassignedReports()[0];
+    return first ? issueText(first) : undefined;
+  }
+
+  /**
+   * What a mechanism that *does* run still cannot do, in its own terms.
+   *
+   * Separate from `invalidReason` because the mechanism is not invalid: it
+   * solves, it animates, and every number it reports is right. It simply cannot
+   * use the whole of a cylinder it contains, because the linkage binds \u2014 or
+   * reaches a toggle \u2014 before the ram runs out of barrel. The stroke is the
+   * cylinder's own property and nothing constrains it to what the mechanism
+   * around it can follow, so this can only be found by running the thing.
+   *
+   * Warned about rather than clamped, deliberately. Clamping would silently
+   * resize a part the user sized, and the interesting information \u2014 *this ram
+   * is bigger than this machine needs* \u2014 is exactly what clamping would hide.
+   */
+  cylinderReachWarning(): { cylinder: Cylinder; percent: number } | undefined {
+    // A template getter, so this is asked on every change-detection pass while
+    // the answer only changes when the mechanism is rebuilt. `cylinderRevision`
+    // is bumped exactly once per rebuild and never by an animation frame, which
+    // is the difference that matters: keyed on the pose instead, the sweep
+    // below would run against all 360 samples on every frame of playback.
+    if (this.reachWarningRevision === this.cylinderRevision) {
+      return this.reachWarningCache;
+    }
+    this.reachWarningRevision = this.cylinderRevision;
+    this.reachWarningCache = this.computeCylinderReachWarning();
+    return this.reachWarningCache;
+  }
+
+  private reachWarningRevision = -1;
+  private reachWarningCache: { cylinder: Cylinder; percent: number } | undefined;
+
+  private computeCylinderReachWarning(): { cylinder: Cylinder; percent: number } | undefined {
+    return this.strokeWarningFor();
+  }
+
+  /**
+   * The first cylinder in `only` -- or in the whole drawing -- that the linkage
+   * stops before the barrel does.
+   */
+  private strokeWarningFor(
+    only?: MechanismPartition
+  ): { cylinder: Cylinder; percent: number } | undefined {
+    for (const cylinder of this.sealedStructures()) {
+      if (only && !only.joints.some((joint) => joint.id === cylinder.seal.id)) {
+        continue;
+      }
+      // A cylinder frozen inside one body uses none of its travel because it
+      // cannot, which is not the linkage binding on it (decision S25).
+      // `readinessOf` says what is actually true of one instead.
+      if (isFrozenCylinder(cylinder)) continue;
+      // Each ram is measured against the frames of its own machine. Read from
+      // another mechanism's cycle -- a different length, a different motion --
+      // the travel below is a measurement of the wrong thing entirely.
+      const solved = this.mechanismContaining(cylinder.seal);
+      if (!solved?.isMechanismValid()) continue;
+      const frames = solved.joints.length;
+      if (frames < 2) continue;
+
+      const r = 0.15 * SettingsService.cylinderObjectScale;
+      const barrelLength = getDistance(cylinder.mountA, cylinder.inner);
+      const travel = cylinderStrokeAlong(barrelLength, r);
+      if (!travel.usable) continue;
+      const stroke = travel.max - travel.min;
+
+      const indexOf = (id: string) => solved.joints[0].findIndex((joint) => joint.id === id);
+      const anchor = indexOf(cylinder.mountA.id);
+      const pin = indexOf(cylinder.seal.id);
+      if (anchor < 0 || pin < 0) continue;
+
+      let low = Infinity;
+      let high = -Infinity;
+      for (let t = 0; t < frames; t++) {
+        const along = getDistance(solved.joints[t][anchor], solved.joints[t][pin]);
+        low = Math.min(low, along);
+        high = Math.max(high, along);
+      }
+      const used = high - low;
+      // A clean reversal touches both stops, so anything short of the whole
+      // stroke by more than the solver's own tolerance is the linkage stopping
+      // the ram rather than the ram stopping itself.
+      // Three sample steps of slack, and the number comes from the sampling
+      // rather than from taste. A reversing drive turns round at whichever
+      // sample first fails, not at the limit itself, so even a ram the linkage
+      // follows perfectly comes up about one step short at each end -- a fixed
+      // tolerance in model units either cried wolf on every cylinder or went
+      // deaf on small ones, because the shortfall scales with the stroke.
+      if (used >= stroke - (3 * stroke) / SAMPLES_PER_STROKE) continue;
+      return { cylinder, percent: Math.round((used / stroke) * 100) };
+    }
+    return undefined;
+  }
+
+  /**
+   * The one reaction a slider has that an ordinary pin does not.
+   *
+   * A slider meets the world twice: at the joint, where the force is the pin
+   * reaction already carried under the name of the bar it holds, and at the
+   * slot, where it presses on whatever the slot is cut into. The second is the
+   * force that sizes a slide, and it is reported here or nowhere -- a slot has
+   * no marker, no hitbox and no panel of its own.
+   *
+   * `againstId` is the body the solver wrote that reaction on, which is what a
+   * caller matches a solved reaction against, and `on` is what to call the
+   * thing being pressed. They are two different bodies, and conflating them is
+   * what broke this: the reaction used to be solved for the block -- a
+   * zero-length link binding the pin to the slot -- so naming the block and
+   * matching it were the same lookup. A slider is one joint now (Stage 1 of
+   * `docs/joint-type-and-cylinder-plan.md`) and the solver gives it a point
+   * body of its own, named by the joint's own letter (`pointBodies` in
+   * `force-solver.ts`), so the reaction is written there whether the guide is
+   * grounded or cut into a moving bar. Matching the carrier instead found
+   * nothing at all on a grounded guide -- there is no body on that side -- and
+   * the slot force came out labeled after the joint's bare letter, which is a
+   * body no reader has been shown.
+   */
+  slotReactionOf(
+    pin: Joint | undefined
+  ): { slot: PrisJoint; againstId: string; on: string } | undefined {
+    const slot = this.sliderFor(pin);
+    if (!slot) return undefined;
+    const carrier = slot.isFloating && slot.isSlotWellFormed ? slot.carrier : undefined;
+    return { slot, againstId: slot.id, on: carrier ? this.bodyLabel(carrier) : 'the ground' };
+  }
+
+  /**
+   * What to call a reaction that acts at a slot.
+   *
+   * The slider it belongs to, because that is the pin a reader can point at: a
+   * slot has no name anyone has ever been shown.
+   */
+  slotName(jointId: string): string | undefined {
+    const slot = this.joints.find((joint) => joint.id === jointId);
+    if (!(slot instanceof PrisJoint)) return undefined;
+    // The slider's own letter. It used to be read off the coincident pin,
+    // because that was the joint a reader had ever been shown; the slider keeps
+    // that letter now (Stage 1 of `docs/joint-type-and-cylinder-plan.md`).
+    return `the slider at ${slot.name || slot.id}`;
+  }
+
+  /** The sealed cylinder a joint or link belongs to, if any. */
+  cylinderAt(obj: Joint | Link | undefined): Cylinder | undefined {
+    if (obj instanceof Joint) return cylinderOfJointIn(this.sealedStructures(), obj);
+    if (obj instanceof Link) return cylinderOfLinkIn(this.sealedStructures(), obj);
+    return undefined;
+  }
+
+  /**
+   * The ram this body *is* a bar of, as opposed to one it is carrying.
+   *
+   * Two different questions, and a body has to be asked the right one. "Does
+   * anything under here belong to a ram" is what a delete, a drag or a
+   * selection has to know, because missing one tears it. "Is this body the ram"
+   * is what every caller that *names* a body has to know, and answering it with
+   * the first question is how a bracket welded to a rod mount came to open the
+   * cylinder's panel, wear the cylinder's title in the menu, and offer a delete
+   * row that took the ram and left the bracket standing.
+   *
+   * `cylinderAt` remains the carrying question. This one is the identity.
+   */
+  cylinderOfBar(link: Link | undefined): Cylinder | undefined {
+    return cylinderOfBarIn(this.sealedStructures(), link);
+  }
+
+  /**
+   * Whether this body's inertia and center of mass are derived from its shape
+   * and cannot be typed (decision S14) — the one predicate every door quotes.
+   *
+   * The Barrel and Rod panels, the linkage table, the analysis setup's table
+   * and the center-of-mass drag on the canvas each used to decide for
+   * themselves what a body would take, which is four chances to offer a
+   * control the decode is going to throw away.
+   */
+  memberInertiaIsDerived(link: Link | undefined): boolean {
+    return memberInertiaIsDerived(this.sealedStructures(), link);
+  }
+
+  /**
+   * What the panels call a body: a cylinder part by its role in the machine,
+   * a block by the joint it rides on, an ordinary bar by its name — never the
+   * internal concatenated id, which names joints a reader cannot even click.
+   *
+   * Always a complete noun phrase, so a caller can drop it into a sentence
+   * without having to know which kind of body came back.
+   */
+  bodyLabel(body: Link): string {
+    return labelForBody(body, this.cylinderOfBar(body), this.sealedStructures());
+  }
+
+  /**
+   * The same name without the noun in front of it, for a surface that has one
+   * of its own -- a canvas tag, a table column, a Rename field.
+   *
+   * Every reader-facing name of a body comes from here or from `bodyLabel`, so
+   * a cylinder's buried inner end is left out of all of them at once (D14,
+   * S11): a bracket welded to a barrel mount reads `AD`, not `AA1D`.
+   */
+  visibleBodyName(body: Link): string {
+    return nameOfBody(body, this.sealedStructures());
+  }
+
+  /**
+   * Every sealed cylinder a joint belongs to, not just the first.
+   *
+   * Two rams can share a mount — an excavator's boom and stick meet that way,
+   * and it is the natural thing to draw. `cylinderAt` answers with whichever
+   * one happens to come first, which is right for "what am I looking at" and
+   * wrong for "what has to move": dragging a shared mount re-posed one ram
+   * parametrically and left the other to be straightened afterwards by the
+   * normalizer, which holds the mounts and can only move the interior — so the
+   * second ram silently changed size to absorb a drag meant for the first.
+   */
+  /** Every sealed cylinder this body owns a bar of, not just the first. */
+  cylindersOfLink(link: Link | undefined): Cylinder[] {
+    return cylindersOfLinkIn(this.sealedStructures(), link);
+  }
+
+  cylindersAt(joint: Joint | undefined): Cylinder[] {
+    if (!joint) return [];
+    return this.sealedStructures().filter((cylinder) =>
+      cylinderJoints(cylinder).some((member) => member.id === joint.id)
+    );
+  }
+
+  /** Build the cylinder a two-point gesture drew, its base where `cylinderGestureEnds` puts it. */
+  createCylinderFromGesture(start: CylinderGestureEnd, end: CylinderGestureEnd): void {
+    const ends = cylinderGestureEnds(start, end, SettingsService.cylinderObjectScale);
+    const { base, rodEnd } = ends;
+    if (!ends.rodHeld) {
+      this.createCylinderFrom(base.at, rodEnd.at, base.link, base.joint, rodEnd.joint);
+      return;
+    }
+    this.createCylinderFrom(base.at, rodEnd.at, base.link, base.joint, undefined, {
+      at: rodEnd.joint,
+      on: rodEnd.link,
+    });
+  }
+
+  /**
+   * Build a complete cylinder from two points (§ cylinder 2): `start` is the
+   * barrel-side mount, `end` is where the rod finishes. Which end of the
+   * gesture is which is `cylinderGestureEnds`'s to say (#366). The drawn span sets the member lengths (fixture-gallery
+   * proportions, minimum span clamped in `cylinderCreationLayout` so a
+   * zero-length click cannot make a degenerate part); the four joints — A, N,
+   * S, B — are exactly collinear along the drawn axis by construction.
+   *
+   * `mountAt` is the joint version of `mountOn`: started from a joint's own
+   * menu, the barrel's mount *is* that joint rather than a new one beside it,
+   * so the ram hangs off everything already meeting there. A second joint at
+   * the same point would look identical and behave like neither.
+   *
+   * `rodEnd` is `mountOn` and `mountAt` for the rod's far end, which is
+   * where a gesture started on a part puts it: on a link, that end joins the
+   * link's body; on a joint, it is that joint, reused rather than merged into,
+   * so a joint a merge would refuse -- a driven one -- still takes the ram.
+   *
+   * One `finishStructuralEdit(true)` at the end makes creation one undo entry.
+   */
+  createCylinderFrom(
+    start: Coord,
+    end: Coord,
+    mountOn?: RealLink,
+    mountAt?: RealJoint,
+    endAt?: RealJoint,
+    rodEnd?: { on?: RealLink; at?: RealJoint }
+  ): void {
+    // Both ends, before anything is built. `endAt` is folded in through
+    // `mergeJoints` further down, which refuses a cylinder's interior in its
+    // own words -- but by then the new part exists and a refusal leaves it
+    // standing with a free end, which is a half-done gesture rather than a
+    // refused one. Asked here, both ends are one answer and nothing is made.
+    const rodAt = rodEnd?.at;
+    const closed =
+      this.attachRefusal(mountAt) ?? this.attachRefusal(endAt) ?? this.attachRefusal(rodAt);
+    if (closed) {
+      this.sayRefused(closed);
+      return;
+    }
+    // A ram may be mounted on a welded joint. The weld says everything meeting
+    // there is one rigid body, and the barrel arriving is one more thing
+    // meeting there -- so it joins that body, which is what the repair pass at
+    // the end of `finishStructuralEdit` makes of it. This used to refuse, on
+    // the grounds that a third body inside one rigid statement is not a state
+    // the model has an answer for; it has one now, and the answer is a
+    // compound with the barrel as a leaf.
+    const creation = cylinderCreationLayout(start, end, SettingsService.cylinderObjectScale);
+
+    // A cylinder is four joints and shows three of them. The two ends and the
+    // seal are what a reader points at, names and reads back out of a panel, so
+    // they take letters -- handed out *along the part* (decision S9, amended):
+    // the barrel's mount, then the slide, then the rod's far end, so
+    // the letters run down the cylinder the way a reader's eye does. The
+    // barrel's near end is buried under the rod, is never drawn, labeled or
+    // listed, and keeps an interior name so `determineNextLetter` walks past it.
+    const aId = mountAt ? mountAt.id : this.determineNextLetter();
+    const cId = this.determineNextLetter([aId]);
+    const dId = rodAt ? rodAt.id : this.determineNextLetter([aId, cId]);
+    const [bId] = this.determineInteriorNames(aId, 1);
+
+    const place = (at: { x: number; y: number }): [number, number] => [
+      roundNumber(at.x, 3),
+      roundNumber(at.y, 3),
+    ];
+    const barrelFar = mountAt ?? new RevJoint(aId, ...place(creation.mountA));
+    const barrelNear = new RevJoint(bId, ...place(creation.inner));
+    const rodFar = rodAt ?? new RevJoint(dId, ...place(creation.mountB));
+    // The seal and the pin the rod hangs on are one joint. They were a
+    // prismatic joint, a coincident `RevJoint` and a zero-length block joining
+    // the two until Stage 1 of `docs/joint-type-and-cylinder-plan.md`; the rod
+    // is pinned straight to the slider now.
+    const slider = new PrisJoint(cId, ...place(creation.seal));
+    slider.isSealed = true;
+    // What the weld on that coincident pin said: the rod cannot turn against
+    // the barrel's slot, which is what makes the ram one rigid part.
+    slider.rotates = false;
+
+    // Link ids are their joints' letters in order, and an existing mount's
+    // letter is whatever it already was — not necessarily before the new one.
+    const barrel = this.gridUtils.createRealLink([aId, bId].sort().join(''), [
+      barrelFar,
+      barrelNear,
+    ]);
+    const rod = this.gridUtils.createRealLink([cId, dId].sort().join(''), [slider, rodFar]);
+    // A cylinder starts as one color (S15). Creation hands every new link the
+    // next palette color, so the rod arrived with one of its own that the skin
+    // then ignored; written down here instead, the number on file agrees with
+    // what is drawn, and the palette's next color is still consumed so two
+    // cylinders drawn in a row are not the same color.
+    rod.fill = barrel.fill;
+    // Mount first, inner end second: the slot's order is what says which barrel
+    // joint is which, and every later reading of this cylinder quotes it (S1).
+    slider.slideOn(barrel, barrelFar, barrelNear);
+
+    barrelFar.links.push(barrel);
+    barrelNear.links.push(barrel);
+    rodFar.links.push(rod);
+    slider.links.push(rod);
+
+    // Anchored on a link: that end joins the link's body and the ram swings
+    // with it. A gesture started on a link anchors the rod's end there and
+    // leaves the base free for the user to attach (#366) -- a ram fixed at both
+    // ends before it exists would be a ram with nowhere to go.
+    if (mountOn) this.graftJointOnto(barrelFar, mountOn);
+    if (rodEnd?.on) this.graftJointOnto(rodFar, rodEnd.on);
+
+    // Started from a joint, that joint is already in the mechanism and already
+    // holds its own links; it has just gained one more.
+    if (!mountAt) this.joints.push(barrelFar);
+    this.joints.push(barrelNear, ...(rodAt ? [] : [rodFar]), slider);
+    this.links.push(barrel, rod);
+    // Ended on a joint, the rod's far end is folded into it through the same
+    // door a mount dragged onto a joint goes through, so every rule that
+    // refuses a merge -- a cylinder's interior, a joint of the same bar --
+    // refuses this too, in the same words. Refused, the rod's end stays free
+    // where it was clicked, a ram whose far end has yet to be attached.
+    if (endAt && endAt !== mountAt) {
+      const refusal = this.mergeJoints(rodFar, endAt);
+      if (refusal) this.notify.refusal(`merge.${refusal}`, MERGE_REFUSAL_MESSAGES[refusal]);
+    }
+    // The body is what a click on the skin selects; select it on creation so
+    // the edit panel opens on the cylinder.
+    this.activeObjService.updateSelectedObj(barrel);
+    this.finishStructuralEdit(true);
+  }
+
+  /**
+   * Delete a whole cylinder in one undoable step (§ cylinder 5): both member
+   * links and the two joints the part places itself — N and S — always go; a
+   * mount survives only while some other link still holds it, the same rule
+   * deleteLink applies to any orphaned joint.
+   */
+  deleteCylinder(target?: Cylinder): void {
+    const sealed =
+      target ??
+      this.cylinderAt(this.activeObjService.selectedJoint) ??
+      this.cylinderOfBar(this.activeObjService.selectedLink);
+    if (!sealed) return;
+    this.deleteCylinderTopology(sealed);
+    this.activeObjService.updateSelectedObj(undefined);
+    this.finishStructuralEdit(true);
+  }
+
+  /**
+   * Take a cylinder out of the mechanism. Pure topology — no rebuild, no save,
+   * and the selection is left alone.
+   *
+   * Split from `deleteCylinder` for the same reason `weldTopology` is split
+   * from `weldJoint`: two callers want the same removal and different endings.
+   * Deleting the *cylinder* ends here; deleting a *joint* that happens to be
+   * one of its mounts carries on to remove the joint too, and wants one undo
+   * entry covering both.
+   */
+  private deleteCylinderTopology(sealed: Cylinder): void {
+    // A gesture in flight targets objects about to stop existing.
+    this.injector.get(DragStateService).cancel();
+
+    const memberLinkIds = new Set([sealed.barrel.id, sealed.rod.id]);
+    // A mount welded into a neighboring compound has to give the ram's leaves
+    // back before they can be removed. Taking the *weld* apart to do it was
+    // the obvious way and is a second, silent edit: a mount holding a bracket
+    // of two bars and a ram is one body of three, and dissolving it to remove
+    // one leaf leaves the two bars pinned where they had been welded. So the
+    // leaves are taken out and whatever is still welded together is rebuilt --
+    // the same thing `removeCompoundJoints` does when a *joint* goes.
+    this.releaseFromCompounds(memberLinkIds);
+    this.forces
+      .filter((force) => memberLinkIds.has(force.link.id))
+      .forEach((force) => this.detachForce(force));
+    this.links = this.links.filter((link) => !memberLinkIds.has(link.id));
+
+    const interior = new Set([sealed.seal.id, sealed.inner.id]);
+    [...interior, sealed.mountA.id, sealed.mountB.id].forEach((id) => this.slotStashes.delete(id));
+    this.joints = this.joints.filter((joint) => !interior.has(joint.id));
+    this.joints = pruneUnlinkedJoints(this.joints, this.links, [sealed.mountA, sealed.mountB]);
+
+    // Scrub what survived of what did not.
+    //
+    // A surviving mount keeps its own `links` and `connectedJoints` arrays, and
+    // they still name the ram's links and its interior joints. Nothing noticed
+    // while this was the last step of a deletion — the rebuild reads the link
+    // list, not the joint's copy of it — but any code that walks a joint's own
+    // neighbors afterwards is walking to objects that no longer exist. The
+    // generic joint deletion does exactly that, and looked up a joint that had
+    // been removed a moment earlier.
+    const liveLinks = new Set(this.links.map((link) => link.id));
+    const liveJoints = new Set(this.joints.map((joint) => joint.id));
+    this.joints.forEach((joint) => {
+      if (!(joint instanceof RealJoint)) return;
+      joint.links = joint.links.filter((link) => liveLinks.has(link.id));
+      joint.connectedJoints = joint.connectedJoints.filter((other) => liveJoints.has(other.id));
+    });
+  }
+
+  /**
+   * The sliding joint, when this joint is one.
+   *
+   * There were two ends to hop between while a slider was a prismatic joint and
+   * a coincident pin joined by a block: the panel only ever selected the pin,
+   * so everything acting on "the slider" had to find its other half. One joint
+   * is both ends now, and this is kept because every caller asks it this way.
+   */
+  sliderFor(joint: Joint | undefined): PrisJoint | undefined {
+    return this.sliderOf(joint);
+  }
+
+  private sliderOf(joint: Joint | undefined): PrisJoint | undefined {
+    return joint instanceof PrisJoint ? joint : undefined;
+  }
+
   toggleGround() {
     //Should be called toggleGround
-    if (this.activeObjService.selectedJoint instanceof PrisJoint) {
-      const revJoint = this.activeObjService.selectedJoint.connectedJoints.find(
-        (j) => j instanceof RevJoint
-      )!;
-      if (!(revJoint instanceof RevJoint)) {
-        return;
-      }
-
-      this.activeObjService.selectedJoint.connectedJoints.forEach((j) => {
-        if (!(j instanceof RealJoint)) {
-          return;
-        }
-        const removeIndex = j.connectedJoints.findIndex(
-          (jt) => jt.id === this.activeObjService.selectedJoint.id
-        );
-        j.connectedJoints.splice(removeIndex, 1);
-      });
-      const piston = this.links.find((l) => l instanceof Piston)!;
-      piston.joints.forEach((j) => {
-        if (!(j instanceof RealJoint)) {
-          return;
-        }
-        const removeIndex = j.links.findIndex((l) => l.id === piston.id);
-        j.links.splice(removeIndex, 1);
-      });
-      const prismaticJointIndex = this.joints.findIndex(
-        (j) => j.id == this.activeObjService.selectedJoint.id
-      );
-      const pistonIndex = this.links.findIndex((l) => l.id === piston.id);
-      this.joints.splice(prismaticJointIndex, 1);
-      this.links.splice(pistonIndex, 1);
-
-      revJoint.ground = true;
-      // let joint = this.activeObjService.selectedJoint as RevJoint;
-      // // TODO: Be sure to remove connected joints and links that are ImagJoint and ImagLinks
-      // joint = new RevJoint(joint.id, joint.x, joint.y, joint.input, joint.ground, joint.links, joint.connectedJoints);
-      // const selectedJointIndex = this.findJointIDIndex(this.activeObjService.selectedJoint.id, this.joints);
-      // this.joints[selectedJointIndex] = joint;
-    } else {
-      this.activeObjService.selectedJoint.ground = !this.activeObjService.selectedJoint.ground;
-      this.activeObjService.selectedJoint.input = false;
+    //
+    // A cylinder is bolted to the world at the joints at its ends, never at the
+    // seal in the middle of it. The model says so and this quotes it, so the
+    // row the menu grays is the row this declines — and a route that reaches
+    // here without passing the menu says why rather than doing nothing.
+    const refusedGround = this.gridUtils.groundRefusal(this.activeObjService.selectedJoint);
+    if (refusedGround) {
+      this.notify.refusal(refusedGround.code, refusedGround.long);
+      return;
     }
-    this.updateMechanism(true);
+    //
+    // Resolved from the selection rather than tested against it: the panel
+    // selects a slider by its pin, never by its PrisJoint, so an `instanceof`
+    // on the selected joint alone sends every panel click down the plain-joint
+    // branch and grounds the pin instead of the slot. `adjustInput` already
+    // resolves the pair this way.
+    const slider = this.sliderOf(this.activeObjService.selectedJoint);
+    if (slider) {
+      // Ground and Slider are independent controls (§4.1), so this only ever
+      // moves the slot's direction between "fixed in the world" and "not yet
+      // decided". It never adds or removes the slider itself.
+      //
+      // Grounding a floating slot pins the direction it is already pointing, so
+      // the geometry does not move. Un-grounding cannot invent a carrier -- one
+      // is geometry, not a boolean -- so the slot dangles, drawn red, until the
+      // drop-on-link gesture gives it one. The last angle stays on the joint,
+      // which is what lets grounding it again restore the guide it had rather
+      // than silently rebuilding one at zero.
+      if (slider.ground) slider.detach();
+      else slider.groundAt(slider.slotAngle);
+      this.finishStructuralEdit(true);
+      return;
+    }
+    this.activeObjService.selectedJoint.ground = !this.activeObjService.selectedJoint.ground;
+    this.activeObjService.selectedJoint.input = false;
+    this.finishStructuralEdit(true);
   }
 
   adjustInput() {
-    let jointToToggleInput: RealJoint;
-    if (this.gridUtils.isAttachedToSlider(this.activeObjService.selectedJoint)) {
-      //Find the prismatic joint and toggle ground
-      jointToToggleInput = this.gridUtils.getSliderJoint(
-        this.activeObjService.selectedJoint
-      ) as RealJoint;
-    } else {
-      //Normal joint case
-      jointToToggleInput = this.activeObjService.selectedJoint;
-    }
+    // The joint itself. A slider was driven through the prismatic half of a
+    // coincident pair while the panel and the menu were pointed at the pin, so
+    // this began by finding that half; one joint carries the drive now.
+    const jointToToggleInput: RealJoint = this.activeObjService.selectedJoint;
 
-    //If we are about to enable input, we need to check to see if there is an existing input joint
+    // Turning a joint *on* has to name the two bodies it drives between
+    // (§2.9). Three bodies meet at some joints, and then "driven" says nothing
+    // about which pair moves -- every answer the solvers could pick is a guess
+    // the user never made. Refused here with the reason, rather than accepted
+    // and guessed at downstream. Turning one off is always allowed.
+    //
+    // What this press took the drive away from, for the message at the end.
+    let displaced: string[] = [];
+    // Asked *before* anything is changed. The old input used to be cleared
+    // first and the refusal returned after, which left the mechanism with no
+    // driven joint at all -- a click that was refused still took the input
+    // away, and there was no undo entry to get it back.
+    // A drive being switched on is the one moment a fitted speed is wanted: the
+    // press that creates it, and never again. Asked here rather than decided
+    // here, because how long a cycle takes is a fact about a motion that has
+    // not been solved yet.
+    if (!jointToToggleInput.input) this.askForFittedSpeed(jointToToggleInput);
     if (!jointToToggleInput.input) {
-      //Go through all other joints and disable input
-      this.joints.forEach((j) => {
-        if (!(j instanceof RealJoint)) {
-          return;
-        }
-        if (j.input) {
-          j.input = false;
-        }
-      });
+      const refusal = describeActuator(jointToToggleInput);
+      if (typeof refusal === 'string') {
+        // Silently: this is unreachable from either surface. Both the menu item
+        // and the panel's button are disabled on `canToggleInput`, which is
+        // `input || canDrive` -- and `canDrive` is exactly "describeActuator
+        // did not refuse", asked of this same joint. Checked across all 25
+        // templates: 147 presses of every enabled control, no refusal. Kept as
+        // a guard so a third caller cannot drive what the model will not.
+        return;
+      }
+      // One input per mechanism, so the joint taking the job displaces the old
+      // one -- in its own machine only.
+      displaced = this.clearInputsSharingMechanismWith(jointToToggleInput);
     }
 
     //Toggle the input joint
     jointToToggleInput.input = !jointToToggleInput.input;
 
-    this.updateMechanism();
+    // Saved, like every other edit that changes what the mechanism is. Moving
+    // the input from one joint to another is one of the larger things a user
+    // can do to a mechanism, and it was the one edit undo could not reach.
+    this.updateMechanism(true);
     this.onMechUpdateState.next(3);
+    // After the rebuild: the sentence names a mobility, and the mobility worth
+    // naming is the one the drawing has now.
+    this.sayOneInputPerMechanism(displaced, jointToToggleInput);
+  }
+
+  /**
+   * Put every floating block back on the slot it rides, after something moved
+   * the slot out from under it.
+   *
+   * A floating slider is deliberately *not* a member of its carrier -- that is
+   * what makes it a slot rather than a pin -- so nothing that drags the carrier,
+   * or one of the two joints defining the slot, touches the block. It stayed
+   * where it was while the channel rotated away from it, which reads as the
+   * block having come loose.
+   *
+   * Its position along the slot is preserved, measured from the slot's midpoint,
+   * so reseating does not also move s0: one drag still changes one quantity.
+   *
+   * A block that is also a cylinder's end joint is the one that cannot simply
+   * be written (decision S22). It is one end of a rigid part, so putting it
+   * back on its channel is an edit to the whole cylinder — the part has to be
+   * re-laid between its two ends, as it is whenever a neighbor moves one of
+   * them. Written straight, the mount went to the channel and the barrel and
+   * rod stayed the lengths they were: `deriveCylinderInteriors` then put N and
+   * S back on the new axis at those lengths and drew a head outside its own
+   * barrel. So those moves are collected, taken as far along the channel as the
+   * part can follow (`reseatEndJoint`), and handed to the planner, which
+   * resizes the members to reach. A Lock is left alone outright: a lock says
+   * the joint does not move, and this is nobody's gesture.
+   */
+  reseatFloatingSliders(): void {
+    const rams = this.sealedStructures();
+    const mountIds = new Set(rams.flatMap((one) => [one.mountA.id, one.mountB.id]));
+    const frozen = this.frozenJoints();
+    const mountMoves = new Map<string, { x: number; y: number }>();
+    for (const slider of this.joints) {
+      if (!(slider instanceof PrisJoint) || !slider.isFloating) continue;
+      if (!slider.isSlotWellFormed) continue;
+      const a = slider.slotJointA!;
+      const b = slider.slotJointB!;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const length = Math.hypot(dx, dy);
+      if (length < 1e-9) continue;
+
+      const ux = dx / length;
+      const uy = dy / length;
+      const midX = (a.x + b.x) / 2;
+      const midY = (a.y + b.y) / 2;
+      const offset = (slider.x - midX) * ux + (slider.y - midY) * uy;
+      const onLine = { x: midX + offset * ux, y: midY + offset * uy };
+      // Below this, leave it exactly where it is. Joint coordinates come back
+      // out of the URL at a fixed precision, so a slider is already a hair off
+      // its own line the moment a mechanism loads -- and correcting that here
+      // would mean dragging any joint anywhere silently moved every other
+      // slider. The breakage this exists for measures 0.17 and 0.41.
+      //
+      // The clamp below is inside this guard for the same reason: a mechanism
+      // can arrive with its block already outside the drawn channel, and
+      // hauling it in because some unrelated joint moved would be editing a
+      // slot nobody touched.
+      if (Math.hypot(onLine.x - slider.x, onLine.y - slider.y) < 1e-4 * MODEL_SCALE) continue;
+
+      // Clamped to the channel, not merely projected onto its line. A slot is a
+      // hole of a definite length, and dragging the carrier -- or either joint
+      // that defines it -- can carry that hole right off the block. Projection
+      // alone put the block back on the line and left it out past the end of
+      // the bar, which is a block riding on nothing.
+      const half = slotHalfLength(0.15 * SettingsService.objectScale, length);
+      const along = Math.max(-half, Math.min(half, offset));
+      const x = midX + along * ux;
+      const y = midY + along * uy;
+
+      if (mountIds.has(slider.id)) {
+        if (!frozen.has(slider.id)) {
+          const end = (at: number) => ({ x: midX + at * ux, y: midY + at * uy });
+          mountMoves.set(slider.id, reseatEndJoint(rams, slider, end(-half), end(half), { x, y }));
+        }
+        continue;
+      }
+      slider.x = x;
+      slider.y = y;
+    }
+    // Planned rather than written, and without a rebuild: every caller of this
+    // runs `updateMechanism` straight afterwards, and asking for one here would
+    // come back through this same pass.
+    if (mountMoves.size > 0) this.gridUtils.runEdit({ moves: mountMoves }, false);
+  }
+
+  /**
+   * Cut a slot into a link, giving `pin` a block that rides it (§4.3).
+   *
+   * The release half of the drop-on-link gesture. A pin that already carries a
+   * block keeps it and just gains a carrier — which is how a dangling slider is
+   * repaired — and a plain pin grows one first, so the same drag reads the same
+   * way whichever state the joint was in.
+   *
+   * Rebuilds but does not save, the same contract `mergeJoints` follows: the
+   * release path saves exactly once for the whole gesture, so saving here too
+   * costs the user two presses of undo to take back one drag.
+   *
+   * Returns false when the joint cannot take a slot at all, so the caller can
+   * leave the drag looking refused rather than silently inert.
+   */
+  cutSlotOn(
+    joint: RealJoint,
+    slot: { carrier: Link; a: Joint; b: Joint; x: number; y: number }
+  ): boolean {
+    // A cylinder's inside -- N or S -- is not somewhere a slot can be cut or
+    // moved to. Asked here, before any coordinate is written, because this is
+    // the commit: half of it had already run by the time anything downstream
+    // could object, and what it does at the seal is point it at a bar
+    // somewhere else in the drawing -- a seal riding a link that is not its
+    // barrel, which is not a cylinder any more.
+    //
+    // A mount is not covered by this and must not be: reassigning the block on
+    // a mount is exactly how a carriage is dropped onto a new rail.
+    if (cylindersEnclosing(this.sealedStructures(), joint).length > 0) return false;
+    // Nor is a body that already holds the other end of this joint's own ram:
+    // the drop pulls the mount onto that body's line and there is nowhere for
+    // the part to go but shorter. The preview does not offer it, and this is
+    // the commit, so it is asked here too -- before any coordinate is written,
+    // because writing first is how a refusal comes to have half happened.
+    if (slotWouldFoldACylinder(joint, slot.carrier, this.sealedStructures())) return false;
+
+    // A joint that already slides keeps its slider and only gains a carrier,
+    // which is how a dangling one is repaired; a plain pin becomes one first.
+    // This used to refuse a `PrisJoint` outright, because the prismatic joint
+    // had no hitbox and the thing a reader could drag was the pin beside it.
+    let slider = joint instanceof PrisJoint ? joint : undefined;
+    if (!slider) {
+      this.activeObjService.updateSelectedObj(joint);
+      this.sliderTopology();
+      // By letter: gaining a slot exchanges the joint for a `PrisJoint` with the
+      // same id, so the object handed in is not the one in the drawing any more.
+      slider = this.joints.find(
+        (candidate): candidate is PrisJoint =>
+          candidate instanceof PrisJoint && candidate.id === joint.id
+      );
+      if (!slider) return false;
+    }
+
+    // The joint lands on the slot line, where the preview already put it.
+    slider.x = slot.x;
+    slider.y = slot.y;
+    slider.slideOn(slot.carrier, slot.a, slot.b);
+    this.finishStructuralEdit(false);
+    return true;
+  }
+
+  /**
+   * Take a block out of the channel it is riding in, mid-drag (§4.4).
+   *
+   * The inverse of `cutSlotOn`, and deliberately the same shape: it rebuilds
+   * but does not save, because the release at the end of the drag is the one
+   * thing that mints an undo entry. What is left is a dangling slider — a block
+   * with nowhere to slide — which the canvas draws red until it is dropped onto
+   * a link again.
+   *
+   * The slot is stashed on the way out, so putting the block back on the same
+   * bar is a drop rather than a rebuild.
+   */
+  detachSlider(slider: PrisJoint): void {
+    // A sealed cylinder's block never leaves its bore (§ cylinder 4). The
+    // drag pipeline never offers the gesture — the pin has no hitbox — so
+    // this is the defensive backstop, not the UI rule.
+    if (slider.isSealed) return;
+    if (!slider.isFloating) return;
+    this.stashSlot(slider);
+    slider.detach();
+    this.finishStructuralEdit(false);
+  }
+
+  /**
+   * Remember a slot before the joint stops being a slider, so turning Slider
+   * back on restores the guide the user had rather than building a new one.
+   *
+   * Keyed by the slider's own letter, which is the letter the reader has always
+   * seen: it was the coincident pin's until Stage 1 of
+   * `docs/joint-type-and-cylinder-plan.md`, and the surviving joint keeps it.
+   */
+  private stashSlot(slider: PrisJoint): void {
+    this.slotStashes.set(slider.id, {
+      ground: slider.ground,
+      angleRad: slider.slotAngle,
+      carrierId: slider.carrier?.id,
+      slotJointAId: slider.slotJointA?.id,
+      slotJointBId: slider.slotJointB?.id,
+      // A pin has no weight to keep this on, so the exchange dropped it and the
+      // slot came back at zero. That was true of the block too, but the block
+      // was not something the reader typed into a field: D6 of the plan moved
+      // the ram's mass into the panel, and the stash is where the rest of what
+      // a slot is already waits to come back.
+      mass: slider.mass,
+    });
+  }
+
+  /**
+   * Put a remembered slot back. A carrier that has been deleted or welded away
+   * in the meantime simply does not resolve, and the slider is left dangling --
+   * the same answer `reconcileSlots` gives, rather than a second policy.
+   */
+  private restoreStashedSlot(slider: PrisJoint): void {
+    const stash = this.slotStashes.get(slider.id);
+    if (!stash) return;
+    const carrier = stash.carrierId
+      ? this.links.find((link) => link.id === stash.carrierId)
+      : undefined;
+    const a = this.joints.find((joint) => joint.id === stash.slotJointAId);
+    const b = this.joints.find((joint) => joint.id === stash.slotJointBId);
+    if (carrier && a && b) {
+      slider.slideOn(carrier, a, b);
+    } else if (stash.ground) {
+      slider.groundAt(stash.angleRad);
+    }
+    slider.mass = stash.mass;
   }
 
   toggleSlider() {
-    if (!this.gridUtils.isAttachedToSlider(this.activeObjService.selectedJoint)) {
-      // Create Prismatic Joint
-      const selectedJointInput = this.activeObjService.selectedJoint.input;
-      this.activeObjService.selectedJoint.input = false;
-      this.activeObjService.selectedJoint.ground = false;
-      const prismaticJointId = this.determineNextLetter();
-      const inputJointIndex = this.findInputJointIndex();
-      const connectedJoints: Joint[] = [this.activeObjService.selectedJoint];
-      // this.joints.forEach((j) => {
-      //   if (!(j instanceof RealJoint)) {
-      //     return;
-      //   }
-      //   if (j.ground) {
-      //     connectedJoints.push(j);
-      //   }
-      // });
-      const prisJoint = new PrisJoint(
-        prismaticJointId,
-        this.activeObjService.selectedJoint.x,
-        this.activeObjService.selectedJoint.y,
-        selectedJointInput,
-        true,
-        [],
-        connectedJoints
-      );
-      this.activeObjService.selectedJoint.connectedJoints.push(prisJoint);
-      const piston = new Piston(this.activeObjService.selectedJoint.id + prisJoint.id, [
-        this.activeObjService.selectedJoint,
-        prisJoint,
-      ]);
-      prisJoint.links.push(piston);
-      this.activeObjService.selectedJoint.links.push(piston);
-      this.joints.push(prisJoint);
-      this.links.push(piston);
-    } else {
-      // delete Prismatic Joint
-      const piston = this.activeObjService.selectedJoint.links.find((l) => l instanceof Piston)!;
-      const pistonIndex = this.links.findIndex((l) => l.id === piston.id);
-      const prismaticJointID = piston.joints.find((j) => j instanceof PrisJoint)!.id;
-      this.activeObjService.selectedJoint.connectedJoints =
-        this.activeObjService.selectedJoint.connectedJoints.filter(
-          (j) => j.id !== prismaticJointID
-        );
-
-      this.activeObjService.selectedJoint.links = this.activeObjService.selectedJoint.links.filter(
-        (l) => l.id !== piston.id
-      );
-      const prismaticJointIndex = this.joints.findIndex((j) => j.id === prismaticJointID);
-      this.joints.splice(prismaticJointIndex, 1);
-      this.links.splice(pistonIndex, 1);
-
-      this.activeObjService.selectedJoint.ground = false;
+    // No member of a sealed cylinder can gain or lose a block: the slider IS
+    // the cylinder (§ cylinder 4). The panel and menu gray the control on the
+    // mounts; this is the rule they are both fronting.
+    const joint = this.activeObjService.selectedJoint;
+    const refused = this.gridUtils.sliderRefusal(joint, !this.gridUtils.isAttachedToSlider(joint));
+    if (refused) {
+      this.notify.refusal('cylinder.sealed-slider', refused.long);
+      return;
     }
-    this.updateMechanism(true);
-    console.log(this.joints);
-    console.log(this.links);
+    // Adding a slider puts a block at the pin *as drawn*, with a guide through
+    // it -- geometry read off the pose, so at a displaced pose it captures
+    // that pose and is staged like a weld. Rebuilt directly, the pin went home
+    // on the restore and the block stayed where the pin had been drawn, and
+    // the machine came up "dangling-slider" from one click of the toggle.
+    if (!this.seedFromDisplay && !this.isAtStartPose()) {
+      this.capturingPose(this.activeObjService.selectedJoint, () => this.toggleSlider());
+      return;
+    }
+    this.sliderTopology();
+    // Through finishStructuralEdit rather than straight to updateMechanism: it
+    // is what runs the reconcile passes, and a change of type can leave a weld
+    // describing a compound that is no longer there -- taking the slot off a
+    // Slide that held two riders is the case.
+    this.finishStructuralEdit(true);
+  }
+
+  /**
+   * Add or remove the selected joint's block, without rebuilding or saving.
+   *
+   * Split out so the drop-on-link gesture can grow a slider and bind its slot
+   * inside a single structural edit. Undo is a stack of URL strings and a drag
+   * has to leave exactly one entry, so a gesture that called toggleSlider and
+   * then finished again would cost the user two presses of undo to take back
+   * one drag.
+   */
+  private sliderTopology(): void {
+    const joint = this.activeObjService.selectedJoint;
+    if (!this.gridUtils.isAttachedToSlider(joint)) {
+      // The pin *becomes* the slider, keeping its letter. A slider used to be
+      // three objects -- a prismatic joint, a coincident pin and a zero-length
+      // block joining them -- and the reader only ever saw one of them, so the
+      // letter they know is the pin's, and it is the letter every link id,
+      // force, lock and color already names. A fresh one for the joint that
+      // replaces it would rename the drawing underneath them.
+      const slider = new PrisJoint(joint.id, joint.x, joint.y, joint.input);
+      // The weld travels with the type. A Slide is `rotates` on the sliding
+      // joint where a compound weld is `isWelded` on a pin, and Welded to
+      // Prismatic is a single step (`stepsBetween`) -- so the bit has to cross
+      // here, or that one press would quietly unweld the joint.
+      slider.rotates = !joint.isWelded;
+      // The compound it fused, if it fused one, stays fused. `isWelded` is the
+      // record that a compound stands at this joint, and that link is still in
+      // the drawing whatever class of joint is holding it now -- so dropping
+      // the flag here would leave a fused link nothing accounts for, which the
+      // reconcile pass would later take apart under the reader.
+      slider.isWelded = joint.isWelded;
+      this.retypeJoint(joint, slider);
+      // Born dangling on an ungrounded pin: a floating slot needs a carrier,
+      // which is geometry the drop gesture supplies and no toggle can invent.
+      // A slider with a stash gets its old slot back instead, which is what
+      // makes Slider off/on a round trip.
+      this.restoreStashedSlot(slider);
+      // Ground carried across from the pin, deterministically: toggling Slider
+      // on a grounded joint always yields a grounded slider. Before this it
+      // depended on history — a joint whose earlier slider had been grounded
+      // came back grounded through the stash, while a freshly grounded joint
+      // lost its ground and dangled — the same two clicks giving two different
+      // mechanisms. The angle kept is whatever the slider already remembers
+      // (the stash's, or zero on a first slider), the same angle grounding via
+      // the Ground toggle would pin.
+      if (joint.ground && !slider.isFloating) {
+        slider.groundAt(slider.slotAngle);
+      }
+      this.activeObjService.updateSelectedObj(slider);
+      return;
+    }
+    // And back: taking the slot away leaves an ordinary pin with the same
+    // letter. The slot is remembered first, so putting it back is a restore
+    // rather than a rebuild.
+    const slider = joint as PrisJoint;
+    this.stashSlot(slider);
+    const pin = new RevJoint(slider.id, slider.x, slider.y, slider.input);
+    // The same bit the other way round: Prismatic to Welded is one step too, so
+    // what `rotates` was saying has to arrive as `isWelded`.
+    pin.isWelded = !slider.rotates;
+    this.retypeJoint(slider, pin);
+    this.activeObjService.updateSelectedObj(pin);
   }
 
   findInputJointIndex() {
@@ -1081,9 +5216,17 @@ export class MechanismService {
     });
   }
 
-  /** Sample times (seconds) of the solved mechanism, empty when nothing is solved. */
+  /**
+   * Sample times (seconds) of the mechanism the shared clock follows, empty
+   * when nothing is solved.
+   *
+   * Every machine runs on the same wall clock, so the scrubber has to span the
+   * longest cycle in the drawing; a shorter one wraps inside it. Measuring the
+   * timeline against whichever mechanism happened to be built first would cut
+   * playback off partway through the slowest one.
+   */
   private sampleTimes(): number[] {
-    return this.mechanisms[0]?.timeNum ?? [];
+    return this.masterMechanism()?.timeNum ?? [];
   }
 
   /** Simulation time of a sample index. */
@@ -1096,9 +5239,9 @@ export class MechanismService {
     return times[clamped];
   }
 
-  /** Seconds spanned by one full traversal of the motion. */
+  /** Seconds spanned by one full traversal of the longest motion in the drawing. */
   cyclePeriod(): number {
-    return this.mechanisms[0]?.cyclePeriod ?? 0;
+    return this.masterMechanism()?.cyclePeriod ?? 0;
   }
 
   /** Nearest sample index to a simulation time. Sample times strictly increase. */
@@ -1140,9 +5283,7 @@ export class MechanismService {
    * it was blended from.
    */
   currentTimeSeconds(): number {
-    return AnimationBarComponent.animate
-      ? this.playbackTimeSeconds
-      : this.timeAtStep(this.mechanismTimeStep);
+    return this.isPlaying ? this.playbackTimeSeconds : this.timeAtStep(this.mechanismTimeStep);
   }
 
   /** Fold a time back into [0, period) so playback and re-seeks loop cleanly. */
@@ -1160,35 +5301,70 @@ export class MechanismService {
     progress = Math.round(progress);
     // Sample counts change whenever the mechanism is rebuilt at a new input speed;
     // never index past them.
-    const sampleCount = this.mechanisms[0]?.joints.length ?? 0;
+    const sampleCount = this.masterMechanism()?.joints.length ?? 0;
     progress = Math.min(Math.max(progress, 0), Math.max(sampleCount - 1, 0));
 
-    // Set the step before announcing it: subscribers read the drawn time back off
-    // the service, so it has to be current by the time they are notified.
+    // Set the step *and the running flag* before announcing it: subscribers
+    // read the drawn time back off the service, so both have to be current by
+    // the time they are notified.
+    //
+    // The flag used to be applied twenty lines further down, which meant a
+    // caller stopping playback -- leaving an analysis mode does exactly that,
+    // with animate(0, false) -- notified its subscribers while the service
+    // still believed it was playing. currentTimeSeconds() then answered with
+    // the playback clock instead of the time of sample zero, and the readout
+    // kept showing the time the mechanism had been left at while the mechanism
+    // itself had rewound.
     this.mechanismTimeStep = progress;
-    this.onMechPositionChange.next(progress);
-    this.showPathHolder = !(this.mechanismTimeStep === 0 && !animationState);
+    // The pose applier reads each machine's own clock now, so a seek has to put
+    // those clocks where the caller asked. A seek through here means the whole
+    // drawing -- a rewind, a URL restore, the shared scrubber -- so every
+    // machine goes. The playback loop has already moved them and says so; so
+    // does a row being scrubbed on its own.
+    if (!this.advancingPlayback && !this.seekingOneMechanism) {
+      this.seekAllTo(this.timeAtStep(progress));
+    }
     if (animationState !== undefined) {
-      AnimationBarComponent.animate = animationState;
+      this.isPlaying = animationState;
+      if (!animationState) {
+        this.playbackTimeSeconds = this.timeAtStep(progress);
+      }
     }
-    if (sampleCount === 0 || this.mechanisms[0].joints[progress].length === 0) {
+    this.onMechPositionChange.next(progress);
+    // Paths are drawn whenever there is a solved cycle to draw them from,
+    // including at rest.
+    //
+    // They used to be hidden while the mechanism was parked at its start pose,
+    // on the grounds that nothing had been traced yet. That reasoning belonged
+    // to a time when every joint traced by default: the path was a by-product,
+    // so showing one before anything had moved was a claim about motion that
+    // had not happened. A path is asked for a joint at a time now, and the
+    // whole cycle is precomputed the moment the mechanism is valid — so the
+    // answer to "show me where this joint goes" is available immediately, and
+    // hiding it until the user presses play is hiding the thing they just
+    // switched on.
+    this.showPathHolder = this.oneValidMechanismExists();
+    if (sampleCount === 0 || this.masterMechanism()!.joints[progress].length === 0) {
       this.playbackClockMs = null;
       return;
     }
 
-    // Samples are one degree of crank rotation apart, so at a low input speed a
-    // sample can span a tenth of a second and stepping between them reads as
-    // stutter. Blend toward the next sample by where playback actually sits
-    // between the two.
-    this.applyPose(progress, this.blendToNextSample(progress));
+    this.applyPose();
 
-    if (!AnimationBarComponent.animate) {
+    if (!this.isPlaying) {
       this.playbackClockMs = null;
       return;
     }
-    // Anything other than the playback loop itself (slider, time field, URL restore)
-    // is a seek: re-anchor the clock to the sample the caller asked for.
-    if (!this.advancingPlayback) {
+    // Anything other than the playback loop itself (a scrubber, a URL restore)
+    // is a seek of the whole drawing: re-anchor the clock to the sample the
+    // caller asked for.
+    //
+    // Except a seek of one machine, which must leave the frame clock alone.
+    // Clearing it says "the next frame has no previous frame to measure from",
+    // so a drag -- which seeks sixty times a second -- measured zero elapsed
+    // every frame and every other machine stood still for as long as the drag
+    // lasted.
+    if (!this.advancingPlayback && !this.seekingOneMechanism) {
       this.playbackTimeSeconds = this.timeAtStep(this.mechanismTimeStep);
       this.playbackClockMs = null;
     }
@@ -1200,21 +5376,150 @@ export class MechanismService {
    * blended toward the next sample. These objects are what the grid renders — and
    * also what a rebuild treats as t = 0, so see restoreStartPose.
    */
-  private applyPose(step: number, blend: number) {
-    const nextStep = blend > 0 ? step + 1 : step;
-    const frames = this.mechanisms[0];
+  private applyPose() {
+    // This is the one place a solved sample becomes the drawn pose, so it is
+    // where anything cached against the pose has to be let go of.
+    this.poseRevision++;
 
-    this.joints.forEach((j, j_index) => {
-      const from = frames.joints[step][j_index];
-      const to = frames.joints[nextStep][j_index];
+    // Each machine finds its own clock's time among its own samples, so a
+    // mechanism with a shorter cycle wraps inside the master one rather than
+    // running out (applyMechanismPose interpolates between samples by time).
+    this.mechanisms.forEach((frames, index) => {
+      this.applyMechanismPose(frames, this.partitions[index], this.poseSecondsOf(index));
+    });
+  }
+
+  /**
+   * The sample one machine is showing right now, in its own sample array.
+   *
+   * Not `mechanismTimeStep`: that indexes the shared clock's cycle, and while
+   * the machines are unsynced each of them is somewhere else. Anything asking
+   * "what does this quantity read at the pose on screen" has to ask the
+   * machine that quantity belongs to.
+   */
+  /**
+   * The time to read a *pose* at, which is not always the time on the clock.
+   *
+   * Reversing turns the drive round without re-solving: the frames still climb
+   * the way they were solved, and the machine walks them the other way. The
+   * clock keeps counting up from zero, because zero is the pose the drawing was
+   * made in and Stop returns there whichever way the input is turning -- so the
+   * pose at t seconds is the frame at `period - t`.
+   *
+   * The clock used to be turned round instead. Pressing reverse sent the
+   * reading to the end of the cycle and counted it down, so the transport said
+   * 5.44 s over a machine that had not moved and the travelled part of the bar
+   * was nearly full before anything had been played.
+   */
+  private poseSecondsOf(index: number): number {
+    const seconds = this.secondsOf(index);
+    const mechanism = this.mechanisms[index];
+    if (!mechanism?.framesRunBackwards || seconds === 0) return seconds;
+    const period = mechanism.cyclePeriod;
+    return period > 0 ? period - seconds : seconds;
+  }
+
+  currentSampleOf(index: number): number {
+    const frames = this.mechanisms[index];
+    const times = frames?.timeNum ?? [];
+    if (!frames || times.length === 0) return 0;
+    const period = frames.cyclePeriod;
+    let local = this.poseSecondsOf(index);
+    if (period > 0 && Number.isFinite(local) && local !== period) {
+      // Exactly the period is the last sample, not a wrap back to the first.
+      local = ((local % period) + period) % period;
+    }
+    let step = 0;
+    // Reflection and modulo can round an exact sample a few ulps below its
+    // timestamp. Keep every readout on that sample, not the preceding one.
+    const epsilon = Math.max(1, period) * 1e-12;
+    while (step + 1 < times.length && times[step + 1] <= local + epsilon) step++;
+    return step;
+  }
+
+  /**
+   * Where each id sits in one machine's frames, worked out once per machine.
+   *
+   * The editable arrays hold the whole drawing while a Mechanism holds only its
+   * own component, so the two are not the same list in the same order and the
+   * pairing has to be by id. But the pairing is *constant* -- a Mechanism's
+   * frames are all built from its own frame zero, in that order -- so it is a
+   * lookup, not a search. Rediscovering it with `find` cost a 45-joint machine
+   * some four thousand id comparisons on every sixteen-millisecond frame.
+   *
+   * Held in a WeakMap keyed by the Mechanism, exactly as the drive profiles
+   * are: a rebuild makes new Mechanism objects, so the index cannot outlive the
+   * frames it describes.
+   */
+  private frameIndexOf(frames: Mechanism): {
+    joints: Map<string, number>;
+    links: Map<string, number>;
+    forces: Map<string, number>;
+  } {
+    let found = this.frameIndices.get(frames);
+    if (!found) {
+      const index = <T extends { id: string }>(list: T[]) =>
+        new Map(list.map((item, position) => [item.id, position] as const));
+      found = {
+        joints: index(frames.joints[0] ?? []),
+        links: index(frames.links[0] ?? []),
+        forces: index(frames.forces[0] ?? []),
+      };
+      this.frameIndices.set(frames, found);
+    }
+    return found;
+  }
+
+  private frameIndices = new WeakMap<
+    Mechanism,
+    { joints: Map<string, number>; links: Map<string, number>; forces: Map<string, number> }
+  >();
+
+  /**
+   * Draw one machine's solved sample onto its own editable objects.
+   *
+   * Matched by id rather than by position. The editable arrays hold the whole
+   * drawing while a Mechanism holds only its own component, so the two are no
+   * longer the same list in the same order -- and pairing them positionally
+   * would quietly move one mechanism's joint to another's coordinates.
+   */
+  private applyMechanismPose(frames: Mechanism, partition: MechanismPartition, seconds: number) {
+    const times = frames.timeNum ?? [];
+    if (!frames.isMechanismValid() || times.length === 0) {
+      return;
+    }
+    const period = frames.cyclePeriod;
+    let local = seconds;
+    if (period > 0 && Number.isFinite(seconds)) {
+      local = seconds % period;
+      if (local < 0) local += period;
+    }
+    let step = 0;
+    // Reflection and modulo can round an exact sample a few ulps below its
+    // timestamp. Keep every readout on that sample, not the preceding one.
+    const epsilon = Math.max(1, period) * 1e-12;
+    while (step + 1 < times.length && times[step + 1] <= local + epsilon) step++;
+    const nextStep = Math.min(step + 1, times.length - 1);
+    const span = times[nextStep] - times[step];
+    const blend = span > 0 ? Math.min(Math.max((local - times[step]) / span, 0), 1) : 0;
+
+    const jointFrom = frames.joints[step];
+    const jointTo = frames.joints[nextStep];
+    const where = this.frameIndexOf(frames);
+    partition.joints.forEach((j) => {
+      const from = at(jointFrom, where.joints, j.id);
+      const to = at(jointTo, where.joints, j.id);
+      if (!from || !to) {
+        return;
+      }
       j.x = from.x + (to.x - from.x) * blend;
       j.y = from.y + (to.y - from.y) * blend;
     });
-    this.links.forEach((l, l_index) => {
+    partition.links.forEach((l) => {
       if (!(l instanceof RealLink)) {
         return;
       }
-      const link = frames.links[step][l_index];
+      const link = at(frames.links[step], where.links, l.id);
       if (!(link instanceof RealLink)) {
         return;
       }
@@ -1231,13 +5536,17 @@ export class MechanismService {
       }
       this.placeLinkGeometry(l, link, blend);
     });
-    this.forces.forEach((f, f_index) => {
-      const from = frames.forces[step][f_index];
-      const to = frames.forces[nextStep][f_index];
+    partition.forces.forEach((f) => {
+      const from = at(frames.forces[step], where.forces, f.id);
+      const to = at(frames.forces[nextStep], where.forces, f.id);
+      if (!from || !to) {
+        return;
+      }
       f.startCoord.x = from.startCoord.x + (to.startCoord.x - from.startCoord.x) * blend;
       f.startCoord.y = from.startCoord.y + (to.startCoord.y - from.startCoord.y) * blend;
       f.endCoord.x = from.endCoord.x + (to.endCoord.x - from.endCoord.x) * blend;
       f.endCoord.y = from.endCoord.y + (to.endCoord.y - from.endCoord.y) * blend;
+      f.arrowOutward = from.arrowOutward;
       f.local = from.local;
       f.mag = from.mag + (to.mag - from.mag) * blend;
       f.angleRad = blendAngle(from.angleRad, to.angleRad, blend);
@@ -1258,32 +5567,169 @@ export class MechanismService {
   private restoreStartPose() {
     // While playing, the drawn pose is blended past its sample, so step 0 alone
     // does not mean the joints hold the start pose — only paused-at-0 does.
-    const atStartPose = this.mechanismTimeStep === 0 && !AnimationBarComponent.animate;
-    if (atStartPose || !this.mechanisms[0]?.joints[0]?.length) {
+    if (this.atStartPose() || !this.masterMechanism()?.joints[0]?.length) {
       return;
     }
-    this.applyPose(0, 0);
+    // A posed edit is displaced by definition, so `atStartPose` above has
+    // already let it through -- the per-machine skip is below.
+    // Every machine at *its own* time zero, bypassing the clocks entirely.
+    // Going through applyPose would have honored the private clocks while
+    // unsynced and left each mechanism wherever its own scrubber was -- and
+    // since this runs immediately before a rebuild deep-copies the editable
+    // joints as t = 0, that silently redefines the start pose as wherever
+    // playback happened to be. The pose then ratchets forward on every edit.
+    this.poseRevision++;
+    const staged = this.stagedMachineIndex();
+    this.mechanisms.forEach((frames, index) => {
+      // Except the one machine whose displayed pose *is* its design pose right
+      // now -- a gesture editing at a displaced pose. Restoring it would put
+      // the drag back where it started on every pointer move; restoring
+      // nothing would turn every other displaced machine's shown pose into its
+      // provisional t = 0, corrupting machines the edit never touched.
+      if (index === staged) return;
+      this.applyMechanismPose(frames, this.partitions[index], 0);
+    });
   }
 
   /**
-   * How far playback sits past sample `step`, as a 0..1 fraction of the way to the
-   * next one. Zero for any seek and at the last sample, where there is nothing to
-   * blend toward.
+   * Are the editable objects holding the pose a rebuild may treat as t = 0?
+   *
+   * Every clock has to be at zero, not just the shared one: a row can be
+   * scrubbed away from the start with the shared step still reading zero, and
+   * that combination used to answer yes.
+   *
+   * Synced included, which this used to exempt. `seekMechanism` writes the
+   * shared step only for the *master* machine, so any machine but the longest
+   * one can be parked mid-cycle with the shared step at zero -- which is
+   * exactly where a posed edit's closing re-seek leaves it. The answer here is
+   * what `restoreStartPose` asks before a rebuild, so that drawing's
+   * second-longest machine had its displayed pose written down as t = 0 by
+   * whatever edit came next: its start moved most of a turn, its ghost was not
+   * drawn at all (the canvas hides it at the start pose), and the URL saved
+   * the pose the reader happened to have left it at. `edit-permission.ts` has
+   * said "every machine parked at its own start" all along; this is that.
    */
-  private blendToNextSample(step: number): number {
-    if (!this.advancingPlayback) {
-      return 0;
+  private atStartPose(): boolean {
+    if (this.isPlaying) {
+      return false;
     }
-    const times = this.sampleTimes();
-    if (step + 1 >= times.length) {
-      return 0;
+    if (this.ownSeconds.some((seconds) => seconds !== 0)) {
+      return false;
     }
-    const span = times[step + 1] - times[step];
-    if (!(span > 0)) {
-      return 0;
+    return this.mechanismTimeStep === 0;
+  }
+
+  /** The same question, for a control that has to say when it would do nothing. */
+  isAtStartPose(): boolean {
+    return this.atStartPose();
+  }
+
+  /**
+   * Stop playback and draw the start of the cycle.
+   *
+   * For callers about to replace the mechanism wholesale. `restoreStartPose`
+   * does the same job as part of a rebuild, but a rebuild that swaps in a
+   * different linkage is too late for it: the joints and the solved samples it
+   * pairs off by index no longer describe the same mechanism by then. This runs
+   * while they still do, and leaves that call nothing to undo.
+   */
+  rewindToStart(): void {
+    if (this.atStartPose()) return;
+    this.animate(0, false);
+  }
+
+  /**
+   * Draw the way back to the start of the cycle rather than cutting to it.
+   *
+   * Leaving an analysis mode rewinds the mechanism, and doing that in one frame
+   * teleports a linkage the user was just watching move -- the pose they had
+   * paused on is replaced by a different one with nothing in between, which
+   * reads as the drawing breaking rather than as playback ending.
+   *
+   * This is a seek per frame, not playback: it never runs the solver and it
+   * lands on exactly the same pose the cut landed on. If anything else moves
+   * the mechanism while it is running -- another seek, a rebuild, playback
+   * starting again -- it stops where it is and leaves that caller alone.
+   */
+  easeToStart(durationMs = 220): void {
+    if (this.atStartPose()) return;
+    // Each machine goes back to its own start, on its own clock, by whichever
+    // way round is shorter for it. Driving this off the shared sample index
+    // pulled every machine onto the master's time on the first frame -- so
+    // three machines at three different places in their cycles all jumped to
+    // one place and then eased down together, which is the bounce.
+    const from = this.mechanisms.map((_, index) => this.secondsOf(index));
+    const periods = this.mechanisms.map((mechanism) => mechanism.cyclePeriod);
+    const deltas = from.map((seconds, index) => {
+      const period = periods[index];
+      if (!(period > 0) || !(seconds > 0)) return 0;
+      return seconds > period / 2 ? period - seconds : -seconds;
+    });
+    if (deltas.every((delta) => delta === 0)) {
+      this.rewindToStart();
+      return;
     }
-    const fraction = (this.playbackTimeSeconds - times[step]) / span;
-    return Math.min(Math.max(fraction, 0), 1);
+
+    this.isPlaying = false;
+    this.ownPlaying = this.ownPlaying.map(() => false);
+    let startedAt: number | null = null;
+    let lastDrawn = from.slice();
+
+    const frame = (now: number) => {
+      // Someone else has taken a machine somewhere since the last frame.
+      // Whatever they wanted, it is newer than this.
+      if (this.mechanisms.some((_, index) => this.secondsOf(index) !== lastDrawn[index])) {
+        return;
+      }
+      startedAt ??= now;
+      const t = Math.min(1, (now - startedAt) / durationMs);
+      // Ease out: quick off the pose being left, gentle into the start.
+      const eased = 1 - (1 - t) ** 3;
+      // The last frame lands on the start exactly. Eased and wrapped, it came
+      // to rest a few tenths of a microsecond short -- the eased curve is flat
+      // there, so the final steps were each under the threshold below and
+      // never drawn -- and a clock that is not exactly zero is a machine the
+      // edit gate calls parked away from its start, which is how a Reset came
+      // to be followed by "Return every mechanism to edit."
+      const arrived = t >= 1;
+      const next = from.map((seconds, index) => {
+        if (arrived) return deltas[index] === 0 ? seconds : 0;
+        const period = periods[index];
+        const ahead = seconds + eased * deltas[index];
+        return period > 0 ? ((ahead % period) + period) % period : ahead;
+      });
+      // The first frame is the pose already on screen; drawing it again is a
+      // frame's worth of nothing. A microsecond, not exact equality: wrapping
+      // into the period puts float noise on a value that has not moved.
+      if (arrived || next.some((seconds, index) => Math.abs(seconds - lastDrawn[index]) > 1e-6)) {
+        lastDrawn = next;
+        lastDrawn.forEach((seconds, index) => (this.ownSeconds[index] = seconds));
+        this.drawOwnClocks();
+      }
+      if (t < 1) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  }
+
+  /**
+   * Draw every machine where its own clock says, without moving any of them.
+   *
+   * `animate` treats an outside call as a seek of the whole drawing, which is
+   * right for a scrubber and wrong for anything that has already decided where
+   * each machine goes.
+   */
+  private drawOwnClocks(playing = false): void {
+    const master = this.masterMechanismIndex();
+    // The master's *pose* time, not its clock: a reversed machine walks its
+    // frames the other way while its clock still counts up (`poseSecondsOf`).
+    const step =
+      master === -1 ? this.mechanismTimeStep : this.stepAtTime(this.poseSecondsOf(master));
+    this.seekingOneMechanism = true;
+    try {
+      this.animate(step, playing);
+    } finally {
+      this.seekingOneMechanism = false;
+    }
   }
 
   /**
@@ -1329,7 +5775,7 @@ export class MechanismService {
    * many samples the cycle was solved into.
    */
   private advancePlayback() {
-    if (!AnimationBarComponent.animate) {
+    if (!this.isPlaying) {
       this.playbackClockMs = null;
       return;
     }
@@ -1338,8 +5784,31 @@ export class MechanismService {
     const elapsedSeconds = this.playbackClockMs === null ? 0 : (now - this.playbackClockMs) / 1000;
     this.playbackClockMs = now;
     this.playbackTimeSeconds = this.wrapTime(
-      this.playbackTimeSeconds + elapsedSeconds * this.animationSpeedMultiplier
+      this.playbackTimeSeconds +
+        elapsedSeconds * this.animationSpeedMultiplier * this.directionOf(0)
     );
+
+    // Every running machine carries its own time forward, off the same wall
+    // clock. Synced means they are started and stopped together, not that they
+    // share a variable -- two machines at different speeds have no shared
+    // position to share.
+    this.mechanisms.forEach((mechanism, index) => {
+      if (!this.isMechanismPlaying(index) || !mechanism.isMechanismValid()) {
+        return;
+      }
+      const period = mechanism.cyclePeriod;
+      const next =
+        (this.ownSeconds[index] ?? 0) +
+        elapsedSeconds * this.animationSpeedMultiplier * this.directionOf(index);
+      this.ownSeconds[index] = period > 0 ? ((next % period) + period) % period : next;
+    });
+
+    // The shared readout follows the master machine, which is the one the
+    // sample index and the graphs have always meant.
+    const master = this.masterMechanismIndex();
+    if (master !== -1) {
+      this.playbackTimeSeconds = this.ownSeconds[master] ?? this.playbackTimeSeconds;
+    }
 
     this.advancingPlayback = true;
     try {
@@ -1350,20 +5819,1551 @@ export class MechanismService {
     }
   }
 
+  /**
+   * Turn one machine's drive round without moving it, and without moving the
+   * cycle under the reader.
+   *
+   * Nothing about the loop of poses changes: the machine walks the same loop
+   * the other way. So the frames stay exactly where they are, the pose on
+   * screen stays exactly where it is. The phase clock reflects to measure that
+   * same pose in the new direction, while zero remains the authored start.
+   *
+   * That is the whole reason this does not re-solve or mirror. Either of those
+   * puts every pose at a different time, so the curve a reader was following
+   * slides end for end and the peak they were reading jumps across the chart,
+   * for a machine that has not moved at all.
+   */
+  reverseDrive(index: number): boolean {
+    const driven = this.partitions[index]?.ownJoints.find(
+      (joint): joint is RealJoint => joint instanceof RealJoint && joint.input
+    );
+    if (!driven) return false;
+
+    // `setDriveSpeed` pins every other machine's speed before it moves the
+    // document-wide default, so reversing this one leaves the rest alone.
+    this.setDriveSpeed(driven, -this.driveSpeedOf(driven));
+
+    // Not saved. Reversing is done from the transport, which is a way of
+    // watching the drawing rather than of changing it, and nothing else a
+    // reader does in an analysis mode lands in the undo history. The drive
+    // still carries its new sign, so the next real edit writes it out.
+    const reversed = this.mechanisms[index]?.withReversedDrive();
+    if (reversed) {
+      this.mechanisms[index] = reversed;
+      // A solved cycle has been replaced without going through
+      // `updateMechanism`, so say so. The graphs notice by object identity,
+      // but the export's sampled tables are cached against this counter --
+      // without the bump an export taken after reversing served the rates it
+      // had sampled before, every angular velocity still carrying the sign it
+      // had turned round from.
+      this.solveRevision++;
+      // Reflect only this machine's phase: the reversed frame reader must
+      // still resolve to the pose already on screen. Zero stays zero, so a
+      // reversal at rest never sends the clock to the end of the cycle.
+      const seconds = this.secondsOf(index);
+      const period = reversed.cyclePeriod;
+      this.seekMechanism(index, seconds === 0 || !(period > 0) ? seconds : period - seconds);
+    } else {
+      this.updateMechanism(false);
+    }
+
+    // Every rate on screen has just turned round, and a graph only redraws when
+    // it is told. Geometry is locked in the analysis modes, so this is the one
+    // thing a reader can do there that changes what the graphs say.
+    this.onMechUpdateState.next(2);
+    return true;
+  }
+
+  /**
+   * Where one machine's input sits, out of everything it can do, 0..1.
+   *
+   * The transport's own coordinate. Cached against the solved Mechanism, so it
+   * is rebuilt exactly when the cycle is.
+   */
+  travelOf(index: number): number | undefined {
+    const mechanism = this.mechanisms[index];
+    const profile = this.driveProfileOf(index);
+    if (!mechanism || !profile) return undefined;
+    const period = mechanism.cyclePeriod;
+    const last = profile.along.length - 1;
+    if (!(period > 0) || last <= 0) return profile.along[0] ?? 0;
+    return profile.along[this.currentSampleOf(index)];
+  }
+
+  /**
+   * Put every machine at one moment of the longest cycle in the drawing.
+   *
+   * The combined handle measures *time*, where a single machine's own handle
+   * measures how far along its input has come. That is the right thing for one
+   * machine -- degrees of crank, centimeters of ram -- but there is no such
+   * thing as the input position of three machines at once, and the leader's own
+   * is worse than useless when the leader rocks: a rocking input passes through
+   * the same position twice per cycle, so "where the handle is" answered with
+   * two different times and a drag across it ran the whole drawing backwards.
+   * Dragged from end to end it jumped back thirty times in two hundred steps.
+   *
+   * Time has one answer everywhere, always increases with the handle, and is
+   * what the machines are actually sharing while they are synced.
+   */
+  seekAllAlong(leader: number, along: number): void {
+    const period = this.mechanisms[leader]?.cyclePeriod;
+    if (!(period > 0)) return;
+    this.seekAllTo(Math.min(Math.max(along, 0), 1) * period);
+    this.drawOwnClocks(this.isPlaying);
+  }
+
+  /**
+   * Is this machine's input going the way its drive speed says, right now?
+   *
+   * Read off the profile's own slope rather than off the half-way point of the
+   * cycle: a ram does not turn around half way through its period, it turns
+   * around when it reaches the end of its stroke, and those are not the same
+   * moment. Playback running backwards flips the answer again.
+   */
+  travelingForward(index: number): boolean {
+    const profile = this.driveProfileOf(index);
+    const mechanism = this.mechanisms[index];
+    const forwardDrive = turnsClockwise(mechanism?.inputAngularVelocities[0] ?? 0);
+    // A continuous drive already carries its new direction in its sign.
+    // A rocking input instead reads the local frame slope, which also needs
+    // the direction in which those frames are being traversed.
+    const rewinding = this.directionOf(index) < 0;
+    if (!profile || !mechanism || profile.continuous) {
+      return forwardDrive !== rewinding;
+    }
+    const period = mechanism.cyclePeriod;
+    const last = profile.along.length - 1;
+    if (!(period > 0) || last <= 0) return forwardDrive !== rewinding;
+    const sample = this.currentSampleOf(index);
+    const before = profile.along[Math.max(sample - 1, 0)];
+    const after = profile.along[Math.min(sample + 1, last)];
+    const rising = after >= before;
+    return rising !== (rewinding !== mechanism.framesRunBackwards);
+  }
+
+  /**
+   * Give every machine a drive speed of its own.
+   *
+   * Until one is set, a driven joint reads the document-wide default, which
+   * means two machines share a number and neither of them knows it.
+   */
+  private pinDriveSpeeds(): void {
+    this.partitions.forEach((partition) => {
+      const driven = partition.ownJoints.find(
+        (joint): joint is RealJoint => joint instanceof RealJoint && joint.input
+      );
+      if (driven && driven.driveSpeed === 0) {
+        driven.driveSpeed = this.driveSpeedOf(driven);
+      }
+    });
+  }
+
+  /**
+   * How long a freshly drawn machine should take to go round: six seconds.
+   *
+   * Long enough to follow a coupler curve, short enough not to wait through.
+   */
+  private static readonly WANTED_CYCLE_SECONDS = 6;
+
+  /**
+   * Give a drive that has never been given a speed one that suits its machine.
+   *
+   * The document-wide default is a single number, and the two kinds of drive it
+   * has to serve are not comparable: a crank's revolution takes 60/rpm seconds
+   * whatever the linkage is, while a ram's stroke at one length-unit a second
+   * takes as many seconds as the stroke is long. So one default gave a
+   * four-bar a reasonable twelve seconds and a short ram a cycle over in one --
+   * and a long one that ran for a minute.
+   *
+   * Once, at the moment the machine first solves, and then never again: it is a
+   * first guess and not a governor, so playing it, editing it or reversing it
+   * leaves the number alone, and the panel shows a number the reader can type
+   * over. Rounded to one of 1, 2 or 5 times a power of ten, because a speed
+   * that reads 13.7 rpm claims to have been calculated from something.
+   */
+  private fitAskedDriveSpeeds(): boolean {
+    if (this.fitSpeedFor.size === 0) return false;
+    let fitted = false;
+    this.partitions.forEach((partition, index) => {
+      const driven = partition.ownJoints.find(
+        (joint): joint is RealJoint => joint instanceof RealJoint && joint.input
+      );
+      if (!driven || !this.fitSpeedFor.has(driven.id)) return;
+      this.fitSpeedFor.delete(driven.id);
+      const solved = this.mechanisms[index];
+      const period = solved?.isMechanismValid() ? solved.cyclePeriod : 0;
+      if (!(period > 0) || !Number.isFinite(period)) return;
+      const was = this.driveSpeedOf(driven);
+      const wanted = niceSpeed((Math.abs(was) * period) / MechanismService.WANTED_CYCLE_SECONDS);
+      if (!(wanted > 0) || wanted === Math.abs(was)) return;
+      this.setDriveSpeed(driven, Math.sign(was) * wanted);
+      fitted = true;
+    });
+    return fitted;
+  }
+
+  /**
+   * Drives switched on a moment ago, waiting for a speed to be fitted to them.
+   *
+   * An ask rather than a memory, and it is the narrow half of the question on
+   * purpose. Everything else that ends with a driven joint -- a shared link
+   * opening, an undo, a template, a fixture in a test -- already has the speed
+   * it is supposed to run at, and a guess made over the top of one of those
+   * would change a mechanism nobody asked to change. Only the press that turns
+   * a drive on adds to this.
+   */
+  private fitSpeedFor = new Set<string>();
+
+  /**
+   * Ask for a speed to be fitted to this drive when its machine next solves.
+   *
+   * The number cannot be chosen here: how long a cycle takes is a fact about
+   * the solved motion, and at the moment of the press there is not one yet.
+   */
+  askForFittedSpeed(joint: RealJoint): void {
+    if (joint.driveSpeed === 0) this.fitSpeedFor.add(joint.id);
+  }
+
+  /**
+   * Which way the input crank is pointing, in degrees from the positive x axis.
+   *
+   * An absolute bearing, not a count of how far round it has come: a reader
+   * comparing the drawing with the readout is looking at where the crank is
+   * pointing, and "0" meaning "wherever it was drawn" is a different question
+   * they did not ask.
+   *
+   * Except on a cycle of several turns — a branch-swapping slide closes after
+   * two — where the bearing repeats every turn and cannot say which one the
+   * machine is on. There the readout is progress round the whole cycle,
+   * 0 to 720.
+   *
+   * "From the positive x axis" is only right when the world is what the input
+   * is measured against, which is to say for a grounded crank. A floating pin
+   * commands the angle between two *moving* bodies, and the solver drives
+   * exactly that (`registerPinDrive`) — so an absolute bearing there reports a
+   * different quantity from the one the transport is scrubbing. The oscillating
+   * fan is the case: its input goes right round relative to the head while the
+   * head itself only rocks, and the two readouts disagreed all cycle.
+   */
+  inputAngleDegrees(index: number): number | undefined {
+    const partition = this.partitions[index];
+    const driven = partition?.ownJoints.find(
+      (joint): joint is RealJoint => joint instanceof RealJoint && joint.input
+    );
+    if (!driven) return undefined;
+    const samples = this.mechanisms[index]?.joints.length ?? 0;
+    const turns = samples > 1 ? Math.round((samples - 1) / 360) : 1;
+    const profile = this.driveProfileOf(index);
+    if (turns > 1 && profile?.continuous && !profile.linear) {
+      return (this.currentSampleOf(index) * (turns * 360)) / (samples - 1);
+    }
+    const bearings = this.actuatorBearings(driven);
+    if (!bearings) return undefined;
+    const degrees = ((bearings.driven - bearings.reference) * 180) / Math.PI;
+    return ((degrees % 360) + 360) % 360;
+  }
+
+  /**
+   * The two directions an angular input is measured between, in radians.
+   *
+   * The same pair `registerPinDrive` resolves, so the readout and the drive are
+   * describing one quantity. Ground supplies its own direction without a joint,
+   * and there the reference is the x axis — which is what makes a grounded
+   * crank read as the bearing it has always read as.
+   */
+  private actuatorBearings(driven: RealJoint): { reference: number; driven: number } | undefined {
+    const bearing = (joint: Joint) => Math.atan2(joint.y - driven.y, joint.x - driven.x);
+    const actuator = resolveActuator(driven);
+    if (actuator && actuator.kind === 'angle') {
+      const end = angleReference(actuator.drivenBody, driven);
+      if (end) {
+        const from = angleReference(actuator.referenceBody, driven);
+        return { reference: from ? bearing(from) : 0, driven: bearing(end) };
+      }
+    }
+    // No actuator record -- a joint driven before some later edit added a third
+    // body to it, which the panel reports as a blocker rather than hiding. The
+    // end of the crank still points somewhere; the input joint itself is
+    // usually pinned to the frame and points nowhere.
+    const end = driven.connectedJoints.find((joint) => !(joint as RealJoint).ground);
+    return end ? { reference: 0, driven: bearing(end) } : undefined;
+  }
+
+  /** Put one machine at a place along its input's travel. */
+  seekMechanismTo(index: number, along: number): void {
+    const mechanism = this.mechanisms[index];
+    const profile = this.driveProfileOf(index);
+    if (!mechanism || !profile) return;
+    const period = mechanism.cyclePeriod;
+    const last = profile.along.length - 1;
+    if (!(period > 0) || last <= 0) return;
+    const sample = fractionalSampleAlong(
+      profile,
+      Math.min(Math.max(along, 0), 1),
+      this.currentSampleOf(index)
+    );
+    const before = Math.floor(sample);
+    const after = Math.min(before + 1, last);
+    const seconds =
+      mechanism.timeNum[before] +
+      (mechanism.timeNum[after] - mechanism.timeNum[before]) * (sample - before);
+    this.seekMechanism(
+      index,
+      mechanism.framesRunBackwards && seconds !== 0 ? period - seconds : seconds
+    );
+  }
+
+  driveProfileOf(index: number): DriveProfile | undefined {
+    const mechanism = this.mechanisms[index];
+    if (!mechanism) return undefined;
+    if (!this.profiles.has(mechanism)) {
+      // A ram is measured by its own extension, so the profile is told which
+      // two joints that is between. Everything else linear is measured along
+      // its own slot, in the slot's own forward sense -- which is a question
+      // about the *drawing*, so the profile is handed the same coordinate rule
+      // the anchor is taken against rather than re-deriving it from frames
+      // that are copies.
+      // The joint as the drawing holds it: a solved frame's copy has positions
+      // and no carrier, and which way a floating slot points is its carrier's
+      // to say.
+      const driven = mechanism.joints[0]?.find((joint) => (joint as RealJoint).input);
+      const block = driven && this.joints.find((joint) => joint.id === driven.id);
+      const sealed = block && this.cylinderAt(block);
+      const ram = sealed ? { from: sealed.mountA.id, to: sealed.mountB.id } : undefined;
+      this.profiles.set(mechanism, buildDriveProfile(mechanism, ram, block) ?? null);
+    }
+    return this.profiles.get(mechanism) ?? undefined;
+  }
+
+  private profiles = new WeakMap<Mechanism, DriveProfile | null>();
+
+  /** Which way this machine's playback is running: +1 forward, -1 backward. */
+  directionOf(index: number): number {
+    return this.playbackDirection[index] === -1 ? -1 : 1;
+  }
+
+  /**
+   * Turn a reversing machine's playback round without moving it.
+   *
+   * It keeps its place in the cycle and keeps running; only the way it is
+   * headed changes.
+   */
+  setPlaybackDirection(index: number, direction: number): void {
+    this.playbackDirection[index] = direction < 0 ? -1 : 1;
+    // The clock measures from the last frame, and this frame is not late.
+    this.playbackClockMs = null;
+  }
+
+  /** Where one machine is in its own cycle. */
+  secondsOf(index: number): number {
+    return this.ownSeconds[index] ?? 0;
+  }
+
+  /**
+   * Is this machine parked on its own start?
+   *
+   * The clock's answer, as the playback bar's "from start" chip asks it, and
+   * for one machine where `isAtStartPose` asks it of the whole drawing. A part
+   * no machine owns has no clock to be away from, so it is always at its start.
+   */
+  isMachineAtStart(index: number): boolean {
+    if (index === -1) return true;
+    return !this.isMechanismPlaying(index) && this.secondsOf(index) === 0;
+  }
+
+  /**
+   * Remember the paused pose for a history step.
+   *
+   * A fraction of the cycle survives a rebuild whose solver produces a
+   * different number of samples. Mechanism ids keep independent clocks paired
+   * with the same mechanism when more than one is on the drawing.
+   */
+  capturePausedPose(): PausedPlaybackPose {
+    return {
+      mechanisms: this.partitions.map((partition, index) => {
+        const period = this.mechanisms[index]?.cyclePeriod ?? 0;
+        const fraction = period > 0 ? this.secondsOf(index) / period : 0;
+        return { id: partition.id, fraction: Math.min(Math.max(fraction, 0), 1) };
+      }),
+    };
+  }
+
+  /** Put a rebuilt drawing back at the paused pose captured before history ran. */
+  restorePausedPose(pose: PausedPlaybackPose): void {
+    const byId = new Map(pose.mechanisms.map((one) => [one.id, one.fraction]));
+    this.isPlaying = false;
+    this.ownPlaying = this.mechanisms.map(() => false);
+    this.playbackClockMs = null;
+    this.partitions.forEach((partition, index) => {
+      const fraction = byId.get(partition.id);
+      const period = this.mechanisms[index]?.cyclePeriod ?? 0;
+      if (fraction !== undefined && period > 0) this.ownSeconds[index] = fraction * period;
+    });
+    this.drawOwnClocks(false);
+    this.settingsService.animating.next(!this.isAtStartPose());
+  }
+
+  /** Put one machine at a place in its own cycle, and leave the others alone. */
+  seekMechanism(index: number, seconds: number): void {
+    const period = this.mechanisms[index]?.cyclePeriod ?? 0;
+    // Exactly the period is the end of the cycle, not the start: dragging the
+    // handle to the track's right edge should read 24.00 s, not 0.00 s.
+    const local =
+      period > 0 ? (seconds === period ? period : ((seconds % period) + period) % period) : seconds;
+    this.ownSeconds[index] = local;
+    // The sample index is the master machine's, and half the app reads it --
+    // the graphs, the URL, and the rule that says the editor is only open at
+    // the start pose. Moving the master without it left the drawing mid-cycle
+    // while everything else believed it was parked.
+    const step =
+      index === this.masterMechanismIndex() ? this.stepAtTime(local) : this.mechanismTimeStep;
+    this.seekingOneMechanism = true;
+    try {
+      this.animate(step, this.isPlaying);
+    } finally {
+      this.seekingOneMechanism = false;
+    }
+  }
+
+  /**
+   * Put every machine at the same moment of the shared clock.
+   *
+   * Each in its own cycle: a machine whose cycle is shorter than the one the
+   * sample index is measured in wraps inside it rather than running out.
+   */
+  private seekAllTo(seconds: number): void {
+    this.mechanisms.forEach((mechanism, index) => {
+      if (!mechanism.isMechanismValid()) return;
+      const period = mechanism.cyclePeriod;
+      this.ownSeconds[index] = period > 0 ? ((seconds % period) + period) % period : seconds;
+    });
+  }
+
+  /**
+   * Is this machine running?
+   *
+   * Synced, one flag answers for all of them -- that is what synced means. Set
+   * them apart and each row answers for itself, and stopping one of them says
+   * nothing about the rest.
+   */
+  isMechanismPlaying(index: number): boolean {
+    if (this.syncMechanisms) {
+      return this.isPlaying && (this.mechanisms[index]?.isMechanismValid() ?? false);
+    }
+    return !!this.ownPlaying[index];
+  }
+
+  toggleMechanismPlaying(index: number): void {
+    this.ownPlaying[index] = !this.isMechanismPlaying(index);
+    // The frame loop is shared, so it has to be running for any machine to move
+    // -- and there is no reason for it to be running when none of them are. The
+    // transport's own button reads this flag, so leaving it set with every row
+    // stopped showed a pause button over a drawing that was not moving.
+    this.isPlaying = this.ownPlaying.some(Boolean);
+    this.drawOwnClocks(this.isPlaying);
+  }
+
+  /**
+   * Start or stop everything at once, from the transport's own button.
+   *
+   * Unsynced, the rows are what actually run, so the master has to move them
+   * rather than a flag they do not read.
+   */
+  /**
+   * Stop the show without moving anything.
+   *
+   * The bookkeeping `easeToStart` does, minus the motion: every machine's play
+   * flag down, the frame clock cleared so the next resume measures from the
+   * resume rather than from whenever this happened, and the queued frame
+   * allowed to expire against `isPlaying`.
+   *
+   * Arriving in Edit with the mechanism still running would invite exactly the
+   * fight the mode boundary exists to prevent -- a reader reaching for a joint
+   * that is moving -- so the pose is kept and the motion is not.
+   */
+  pauseInPlace(): void {
+    if (!this.isPlaying) return;
+    this.setAllPlaying(false);
+    this.playbackClockMs = null;
+  }
+
+  // ---- where each machine's cycle starts (docs/edit-mode-playback-plan.md §3)
+
+  /**
+   * The anchor for each machine, keyed by everything it owns.
+   *
+   * Keyed on the whole owned-joint set rather than on `partitionKey`, which is
+   * the lowest owned moving-joint id: that survives reordering and deletion,
+   * which is all a held *clock* needs, but says nothing about lineage. Fuse two
+   * machines and the union usually inherits one parent's key. A wrong resume
+   * point is a nuisance; an anchor inherited across a fusion is a corrupted
+   * design, so a change to the set drops the anchor and it is taken again from
+   * whatever the fused machine now starts at.
+   */
+  private anchors = new Map<string, MachineAnchor>();
+
+  /**
+   * Carry every anchor into the unit the drawing has just been rescaled into.
+   *
+   * An anchor names a pose in two ways: a driven coordinate, and a seed of
+   * joint positions that tells one assembly branch from another. Both are
+   * lengths for a slide, and the seed is lengths for anything -- so a change of
+   * units leaves them describing a drawing of the wrong size unless they come
+   * along. An angle is scale-free and is left alone.
+   */
+  private rescaleAnchors(lengthScale: number): void {
+    if (!(lengthScale > 0) || lengthScale === 1) return;
+    this.anchors.forEach((anchor, key) => {
+      const seed = new Map(
+        [...anchor.seed].map(([id, at]) => [id, { x: at.x * lengthScale, y: at.y * lengthScale }])
+      );
+      this.anchors.set(key, {
+        ...anchor,
+        coordinate: anchor.kind === 'length' ? anchor.coordinate * lengthScale : anchor.coordinate,
+        seed,
+      });
+    });
+    // Drawn from the old anchors, so it describes the old size too.
+    this.lastGoodGhost.clear();
+    this.ghostCache = undefined;
+  }
+
+  /**
+   * The machine whose *displayed* pose is currently also its design pose.
+   *
+   * Editing at a displaced pose means, for exactly one machine and for exactly
+   * the length of one gesture, that the drawn pose is what the rebuild should
+   * treat as t = 0. Every other machine is still restored to its own start
+   * first -- which is the invariant the whole design stands on: no machine's
+   * canonical pose is ever seeded from its displayed one except the one being
+   * edited, and that one is put back on its anchor at the commit.
+   *
+   * A rebuild is global, so without this the restore would be skipped for
+   * *every* displaced machine and an edit to one would silently redefine the
+   * start pose of the others.
+   */
+  private seedFromDisplay: string | null = null;
+
+  /** Which machine, if any, is mid-gesture at a displaced pose. */
+  get posedEditKey(): string | null {
+    return this.seedFromDisplay;
+  }
+
+  /** That machine's index, or -1 when nothing is staged. */
+  private stagedMachineIndex(): number {
+    // Resolved by joints as well as by key: the gesture that staged this
+    // machine may have drawn it a new part or merged two of its joints, and
+    // it is the same machine under a new key -- the one whose restore has to
+    // be skipped and whose clock has to be zeroed, exactly as before the key
+    // changed. Compared by key alone, the rebuild after a tracer point was
+    // added restored the machine from the provisional cycle's sample 0, which
+    // was the displaced pose, and that pose became the design.
+    if (!this.seedFromDisplay) return -1;
+    return this.stagedPartitionIndex(this.seedFromDisplay);
+  }
+
+  /** The anchor a machine's cycle starts at, for the surfaces that draw it. */
+  anchorOf(index: number): MachineAnchor | undefined {
+    const partition = this.partitions[index];
+    return partition ? this.anchors.get(topologyOf(partition.ownJoints)) : undefined;
+  }
+
+  /**
+   * Take an anchor for every machine that has just been solved and has none.
+   *
+   * From the solved sample 0 rather than from the editable arrays: sample 0
+   * *is* t = 0 by construction, where the editable joints may already have been
+   * re-seeked to wherever the reader was looking.
+   */
+  private refreshAnchors(): void {
+    const alive = new Set<string>();
+    const staged = this.stagedMachineIndex();
+    this.partitions.forEach((partition, index) => {
+      const key = topologyOf(partition.ownJoints);
+      // Alive means "this machine still exists", not "this machine can be
+      // solved right now". A single edit is several steps -- `JointTypeService`
+      // un-grounds a pin, makes it Prismatic and grounds it again -- and in
+      // between them the machine counts a freedom it will not have a moment
+      // later. Judged by the solve, the anchor was dropped for that one
+      // rebuild and the next valid one took a fresh one from sample 0, which
+      // while the edit is staged is the pose under the reader's hand: a
+      // grounded pin retyped a third of the way round the cycle quietly made
+      // that pose the start.
+      alive.add(key);
+      const frames = this.mechanisms[index];
+      if (!frames?.isMechanismValid()) return;
+      // The owned set is not the whole identity. Move the drive from one joint
+      // to another and the set is unchanged, while the anchor's coordinate now
+      // names a joint that is no longer driven -- so it would be read against
+      // the wrong quantity and the start would land anywhere. The stored rule
+      // has to still be the rule this machine is measured by.
+      const held = this.anchors.get(key);
+      if (held && !this.ruleStillHolds(index, held)) {
+        this.anchors.delete(key);
+      }
+      if (!this.anchors.has(key)) {
+        const taken = this.carriedAnchorFor(index) ?? this.anchorFor(index);
+        if (taken) this.anchors.set(key, taken);
+      }
+      if (index !== staged) this.reanchorIfStartMoved(index, key);
+    });
+    this.anchors.forEach((_, key) => {
+      if (!alive.has(key)) this.anchors.delete(key);
+    });
+  }
+
+  /**
+   * Put an anchor back on the start when the start has moved out from under it.
+   *
+   * An anchor is *held* across a rebuild on purpose: that is what carries a
+   * machine's start through an edit made at some other pose. Held
+   * unconditionally, it also outlived the ordinary case -- an edit made at the
+   * start pose, where the pose the reader is looking at and changing simply
+   * *is* the new start. Drag the driven crank's pin, or the ground it turns
+   * about, and the design's t = 0 is the drawing as edited while the anchor
+   * still names the angle the crank used to stand at. Nothing looked wrong
+   * until playback moved: the ghost then drew that old angle, most of a turn
+   * from where stop-to-start actually lands, and every surface that asks where
+   * the start is -- the ghost, its warning, a graph's phase offset -- was
+   * reading a pose the design had left behind.
+   *
+   * Only for a machine this rebuild did not stage. For one of those,
+   * `restoreStartPose` has just put the editable arrays on the machine's own
+   * t = 0, so the sample 0 just solved *is* its start pose, by the same
+   * construction `anchorFor` relies on. `anchorStillNames` is where the
+   * comparison itself lives, and says why it is made against the seed.
+   */
+  private reanchorIfStartMoved(index: number, key: string): void {
+    const anchor = this.anchors.get(key);
+    const start = this.mechanisms[index]?.joints[0];
+    if (!anchor || !start || anchorStillNames(anchor, start)) return;
+    const taken = this.anchorFor(index);
+    if (taken) this.anchors.set(key, taken);
+    else this.anchors.delete(key);
+    // The ghost drawn from the old anchor described the start that has just
+    // been left behind, so neither the cache nor the held warning pose may
+    // survive it.
+    this.ghostCache = undefined;
+    this.lastGoodGhost.delete(key);
+  }
+
+  /**
+   * The anchor a reshaped machine brings with it, if it is the same machine.
+   *
+   * The key is the owned-joint set, so a machine that gains a tracer point, a
+   * link drawn from one of its joints, or a cylinder, or loses a joint to a
+   * merge, arrives here under a new key with no anchor -- and taking a fresh
+   * one from sample 0 is exactly wrong while that edit is staged, because
+   * sample 0 is then the pose under the reader's hand. That is how adding a
+   * point to a coupler a third of the way round the cycle quietly made that
+   * pose the start.
+   *
+   * Same machine means: still driven at the joint the anchor names, measured
+   * the same way, and the only held anchor whose driven joint this machine
+   * owns. Two anchors' joints in one machine is a fusion, which the plan (§6.3)
+   * says must not inherit either -- and a machine at its start pose loses
+   * nothing by being read fresh, so the carry is only ever a correction.
+   */
+  private carriedAnchorFor(index: number): MachineAnchor | undefined {
+    const partition = this.partitions[index];
+    if (!partition) return undefined;
+    const owned = new Set(partition.ownJoints.map((joint) => joint.id));
+    const held = [...this.anchors.values()].filter((anchor) => owned.has(anchor.jointId));
+    if (held.length !== 1 || !this.ruleStillHolds(index, held[0])) return undefined;
+    return { ...held[0], topology: topologyOf(partition.ownJoints) };
+  }
+
+  /**
+   * Which machine a staging opened under `key` is now, after the gesture.
+   *
+   * By the key itself where it still exists, and otherwise by the joints: a
+   * drop that merged two joints, or a gesture that drew a new part, leaves the
+   * machine under a different key, and the machine that owns most of the old
+   * one's joints is it.
+   */
+  private stagedPartitionIndex(key: string): number {
+    const exact = this.partitions.findIndex((partition) => topologyOf(partition.ownJoints) === key);
+    if (exact !== -1) return exact;
+    const was = new Set(key.split(','));
+    let best = -1;
+    let shared = 0;
+    this.partitions.forEach((partition, index) => {
+      const common = partition.ownJoints.filter((joint) => was.has(joint.id)).length;
+      if (common > shared) {
+        best = index;
+        shared = common;
+      }
+    });
+    return best;
+  }
+
+  /**
+   * The displayed pose of any machine whose input is about to be measured
+   * differently, so the rebuild can find that pose again instead of trusting a
+   * clock that has stopped meaning what it meant.
+   *
+   * A rebuild holds each machine's elapsed seconds and lays them back on
+   * afterwards, which keeps the pose on screen exactly as long as the machine
+   * is parameterized the same way on both sides of it. Move the drive from one
+   * joint to another and that stops being true: t = 0.7 s meant "0.7 s of A
+   * turning" and now means "0.7 s of B turning", which is a different pose
+   * entirely. Held anyway, a four-bar parked mid-swing jumped 800 model units
+   * the moment its input changed -- while its *start* pose, which the anchor
+   * looks after, stayed correctly put. The design was never in danger; the
+   * thing the reader was looking at was.
+   *
+   * So the pose is carried across instead, and the clock is what jumps -- the
+   * same trade `reverseDrive` makes, for the same reason.
+   *
+   * The staged machine is excluded: a gesture editing at a pose already owns
+   * where its display lands, and settles it against the anchor at the commit.
+   */
+  private posesAcrossReparameterization(): Map<string, HeldPose> {
+    const held = new Map<string, HeldPose>();
+    const staged = this.stagedMachineIndex();
+    this.partitions.forEach((partition, index) => {
+      const key = topologyOf(partition.ownJoints);
+      if (index === staged) return;
+      // The anchor is the record of how this machine was measured when it was
+      // last solved. Without one it has never been solved, so there is no
+      // reparameterization to notice and nothing on screen worth holding.
+      const was = this.anchors.get(key);
+      if (!was) return;
+      const rule = this.currentRuleFor(index);
+      // Compared whole, like `ruleStillHolds` and for the same reason: a
+      // comparison that lists its fields stops checking whatever is added next.
+      if (!rule || JSON.stringify(rule) === JSON.stringify(was.rule)) return;
+      // Measured in the *new* rule, off the pose as it is drawn right now --
+      // which is the last moment it exists, since `restoreStartPose` is about
+      // to put the arrays back on sample 0.
+      const drawn = new Map(partition.joints.map((joint) => [joint.id, joint]));
+      const coordinate = coordinateIn(rule, (id) => drawn.get(id));
+      if (coordinate === undefined) return;
+      held.set(key, {
+        rule,
+        coordinate,
+        seed: new Map([...drawn].map(([id, joint]) => [id, { x: joint.x, y: joint.y }])),
+      });
+    });
+    return held;
+  }
+
+  /** Put each of those machines back on the pose it was showing. */
+  private restoreHeldPoses(held: Map<string, HeldPose>): void {
+    held.forEach((pose, key) => {
+      const index = this.partitions.findIndex(
+        (partition) => topologyOf(partition.ownJoints) === key
+      );
+      const frames = this.mechanisms[index];
+      if (index === -1 || !frames?.isMechanismValid()) return;
+      // The rule has to be the one the coordinate was measured in. A rebuild
+      // can change the drive again on its way through -- `reconcileOneInputPerMechanism`
+      // drops a second input when two driven machines fuse -- and a coordinate
+      // read against one rule means nothing against another.
+      const rule = this.currentRuleFor(index);
+      if (!rule || JSON.stringify(rule) !== JSON.stringify(pose.rule)) return;
+      const reach = findPose(
+        coordinatesAcross(rule, frames.joints),
+        { coordinate: pose.coordinate, kind: rule.kind, seed: pose.seed },
+        frames.joints
+      );
+      // Not every pose survives the change: drive a crank-rocker from its
+      // rocker and the half of the circuit past the toggle is no longer
+      // reachable. The held clock stands in that case, which is where the
+      // machine already is -- no worse than before, and nothing to explain.
+      if (!reach) return;
+      this.seekMechanism(index, this.secondsAt(frames, reach));
+    });
+  }
+
+  /** When in a cycle a reach falls, blended between its two samples. */
+  private secondsAt(frames: Mechanism, reach: AnchorReach): number {
+    const times = frames.timeNum ?? [];
+    const here = times[reach.index];
+    const next = times[Math.min(reach.index + 1, times.length - 1)];
+    return here + (next - here) * reach.blend;
+  }
+
+  /** Whether this machine is still measured the way its anchor was taken. */
+  private ruleStillHolds(index: number, anchor: MachineAnchor): boolean {
+    const rule = this.currentRuleFor(index);
+    // Every part of it, compared as one. Naming the fields here was how the
+    // floating-actuator halves went missing in the first place: a comparison
+    // that lists what it checks silently stops checking whatever is added next.
+    return rule !== undefined && JSON.stringify(rule) === JSON.stringify(anchor.rule);
+  }
+
+  /** How this machine's input is measured right now, from the drawing. */
+  private currentRuleFor(index: number): CoordinateRule | undefined {
+    const driven = this.partitions[index]?.ownJoints.find(
+      (joint): joint is RealJoint => joint instanceof RealJoint && joint.input
+    );
+    return driven ? coordinateRuleFor(driven) : undefined;
+  }
+
+  /**
+   * Read one machine's anchor off its solved cycle.
+   *
+   * Through the same `currentRuleFor` every other question about this
+   * machine's input goes through: written out again here, the two answers
+   * could differ, and an anchor taken against one rule and read back against
+   * the other names a quantity the drive does not control.
+   */
+  private anchorFor(index: number): MachineAnchor | undefined {
+    const partition = this.partitions[index];
+    const frames = this.mechanisms[index];
+    const rule = this.currentRuleFor(index);
+    if (!partition || !rule || !frames?.isMechanismValid()) return undefined;
+    return anchorFrom(rule, topologyOf(partition.ownJoints), frames.joints);
+  }
+
+  /**
+   * Whether this machine could still start where it was drawn to start.
+   *
+   * A lookup into frames the preview has already solved, not a second solve --
+   * which is what lets the ghost warn *during* a drag rather than a snackbar
+   * explaining afterwards.
+   */
+  anchorIsReachable(index: number): boolean {
+    // Validity first. A machine that cannot be solved at all certainly cannot
+    // reach its start -- and losing the drive is one of the ways to get there,
+    // which also loses the anchor, so asking about the anchor first answered
+    // "not a question" for the very case the warning exists for.
+    if (!this.mechanisms[index]?.isMechanismValid()) return false;
+    // A machine that runs and has nothing anchored is not unreachable; there is
+    // simply nothing being asked.
+    if (!this.anchorOf(index)) return true;
+    const ghost = this.startPoseGhosts().find((one) => one.index === index);
+    // Otherwise the ghost's own answer, so the thing on screen and the thing a
+    // caller asks cannot come from two different lookups.
+    return ghost ? ghost.reachable : false;
+  }
+
+  /** The rule the anchor was taken in, whole -- not rebuilt from parts of it. */
+  private ruleFor(anchor: MachineAnchor): CoordinateRule {
+    return anchor.rule;
+  }
+
+  /**
+   * Begin a gesture that edits this part at a pose other than its machine's
+   * start, or answer that there is nothing to stage.
+   *
+   * Nothing to stage covers the ordinary cases: parked at the start, where the
+   * displayed pose already *is* the design; and a drawing whose solve has been
+   * deferred, which has no cycle to anchor against and for which "solve twice
+   * per commit" is the exact cost the deferral exists to refuse.
+   */
+  beginPosedEdit(part: Joint | Link | Force): boolean {
+    if (this.seedFromDisplay || this.isAtStartPose()) return false;
+    // Not merely "is the solve deferred right now". Pressing Play works a large
+    // drawing's motion out, which clears the flag -- and then the next rebuild
+    // in Edit defers again and takes the cycle away, leaving a posed edit with
+    // nothing to re-anchor against. The question is whether this drawing is one
+    // that Edit solves at all.
+    if (this.solvingDeferred || this.editWouldDeferSolving()) return false;
+    const index = this.indexOfMechanismContaining(part);
+    if (index === -1 || !this.mechanisms[index]?.isMechanismValid()) return false;
+    this.seedFromDisplay = topologyOf(this.partitions[index].ownJoints);
+    this.stagedRebuilt = false;
+    this.stagedByPointer = this.injector.get(DragStateService).isPointerDown;
+    return true;
+  }
+
+  /**
+   * While set, `save()` does nothing: a gesture is mid-flight and will save at
+   * its end. One gesture earns one undo entry.
+   */
+  private savesHeld = false;
+
+  /**
+   * Run several edits as one entry in the history.
+   *
+   * Every one-part edit ends by saving, which is right when it *is* the edit
+   * and wrong when a group action runs it once per part: the reader then has to
+   * press Undo eight times to take back one press of a toggle. The saves are
+   * held for the duration and one is written at the end.
+   *
+   * Nested calls are the outer one's: a batch inside a `capturingPose`, or one
+   * batch inside another, still leaves exactly one entry.
+   */
+  batched<T>(work: () => T): T {
+    if (this.savesHeld) return work();
+    this.savesHeld = true;
+    let result: T;
+    try {
+      result = work();
+    } finally {
+      this.savesHeld = false;
+    }
+    this.save();
+    return result;
+  }
+
+  /**
+   * Run a structural edit that captures the pose it is made at.
+   *
+   * Adding a link, welding, dropping a cylinder: §6.2 of the plan calls these
+   * *capturing* rather than identity-addressed, because what they record is the
+   * relative geometry at the pose they were made at. They rebuilt directly, so
+   * at a displaced pose the restore ran over them -- a link attached a third of
+   * the way round the cycle moved its own mount a thousand model units and came
+   * out half as long again as the gesture that drew it.
+   *
+   * Staged like a drag, then settled onto the anchor. The inner save is held so
+   * the whole thing is still one entry in the history.
+   */
+  capturingPose<T>(near: Joint | Link | Force | undefined, work: () => T): T {
+    const staged = near !== undefined && this.beginPosedEdit(near);
+    if (!staged) return work();
+    const key = this.seedFromDisplay!;
+    // Whoever was holding the saves goes on holding them. Clearing the flag
+    // outright dropped an enclosing `batched`'s hold, so a group edit that
+    // staged per part -- one `capturingPose` per joint inside one batch --
+    // minted an entry for every part after the first. Restoring it makes one
+    // entry per gesture true by construction rather than by nobody nesting.
+    const held = this.savesHeld;
+    this.savesHeld = true;
+    let result: T;
+    try {
+      result = work();
+    } finally {
+      this.savesHeld = held;
+    }
+    this.seedFromDisplay = null;
+    // A settle that re-anchors saves on its way through, as the rebuild it runs
+    // is the one that makes the anchored pose t = 0. One that cannot -- a weld
+    // that fused the driven joint's body measures the drive against something
+    // else, so the old anchor is dropped rather than carried -- runs no rebuild
+    // and so no save, and the edit was left out of the history entirely: it had
+    // happened, and Undo would not take it back.
+    const outcome = this.settleToAnchor(key, true);
+    // And narrated, exactly as a drag's release narrates it. A menu row or a
+    // panel field can move a start as surely as a hand can -- retype a
+    // grounded pin as Prismatic while the machine is parked mid-cycle and the
+    // travel its anchor measures stops existing -- and this read only
+    // `reanchored`, so the one edit that could not be undone by eye was also
+    // the one nothing said a word about.
+    if (outcome.lost) this.sayStartMoved(outcome.lost);
+    if (!outcome.reanchored && !held) this.save();
+    return result;
+  }
+
+  /**
+   * Abandon a staged posed edit, and put the machine back where it was.
+   *
+   * Forgetting the key is not enough, and that is the whole subtlety. Every
+   * pointer move of the gesture has already solved a provisional cycle whose
+   * sample 0 is the pose under the reader's hand -- so a machine merely
+   * unstaged is a machine whose canonical t = 0 *is* the displaced pose, and
+   * the next rebuild writes it down. Escape mid-drag reached exactly that.
+   *
+   * So a cancel is a commit without the save: the anchored pose is found in the
+   * provisional cycle and made t = 0 again, which is where the machine was
+   * before the gesture started.
+   */
+  cancelPosedEdit(): void {
+    const key = this.seedFromDisplay;
+    this.seedFromDisplay = null;
+    // Only where a rebuild actually ran while staged. Until one does, nothing
+    // has been solved from the displayed pose and the machine is exactly where
+    // it was -- so settling would be work with nothing to undo, and its closing
+    // re-seek would move the reader off the pose they were looking at. A click
+    // that selects and releases without moving anything reached that: it
+    // staged, cancelled, and rewound the drawing.
+    if (!key || !this.stagedRebuilt) return;
+    this.stagedRebuilt = false;
+    this.settleToAnchor(key, false);
+  }
+
+  /** Whether a rebuild has run since the current gesture staged its machine. */
+  private stagedRebuilt = false;
+
+  /** Set while a commit or a cancel is itself rebuilding, so it is left alone. */
+  private settling = false;
+
+  /**
+   * Whether a gesture is still holding the staging it opened.
+   *
+   * A pointer that is down, or a commit the canvas has said it is in the middle
+   * of. Anything else means the gesture is over and nobody closed it.
+   */
+  private gestureIsLive(): boolean {
+    if (this.settling || this.committingPosedEdit) return true;
+    // Staged with no pointer involved at all -- a menu action, or a caller in a
+    // test -- closes itself and is nobody's abandoned gesture.
+    if (!this.stagedByPointer) return true;
+    return this.injector.get(DragStateService).isPointerDown;
+  }
+
+  /** Whether the staging was opened by a pointer that has since to come up. */
+  private stagedByPointer = false;
+
+  private closeStaleStaging(): void {
+    if (!this.seedFromDisplay || this.gestureIsLive()) return;
+    const key = this.seedFromDisplay;
+    this.seedFromDisplay = null;
+    const rebuilt = this.stagedRebuilt;
+    this.stagedRebuilt = false;
+    // Nothing was solved from the displayed pose, so there is nothing to put
+    // back -- and settling would re-seek the reader off the pose they are on.
+    if (!rebuilt) return;
+    this.settling = true;
+    try {
+      this.settleToAnchor(key, false);
+    } finally {
+      this.settling = false;
+    }
+  }
+
+  /**
+   * Set by the canvas while it closes a posed edit on purpose.
+   *
+   * The commit runs after the drop is wholly resolved, which is after the
+   * pointer is up -- so without this the guard above would read that as an
+   * abandoned gesture and settle it early, taking the commit's own snackbar and
+   * its re-seek with it.
+   */
+  committingPosedEdit = false;
+
+  /**
+   * Close a posed edit: put the design back on the machine's anchor.
+   *
+   * By the time this runs the gesture is wholly resolved -- a drop that merged
+   * two joints or cut a slot has already changed the topology -- and the
+   * rebuild has solved the new geometry from the pose under the reader's hand.
+   * What is left is to find the anchored input value in that new cycle and make
+   * *that* pose t = 0, then put the display back where the hand was.
+   *
+   * The edit always lands. An anchor that cannot be reached is reported, never
+   * a reason to refuse or revert what the reader just did: the old start pose
+   * belongs to the old geometry, and the way back to both of them is Undo.
+   */
+  finishPosedEdit(): { reanchored: boolean; lost?: string } {
+    const key = this.seedFromDisplay;
+    this.seedFromDisplay = null;
+    this.stagedRebuilt = false;
+    if (!key) return { reanchored: false };
+    return this.settleToAnchor(key, true);
+  }
+
+  /**
+   * Put a staged machine back on its anchor, with or without minting an entry.
+   *
+   * The one body a commit and a cancel share. They differ in exactly two
+   * things: whether the rebuild saves, and whether an unreachable anchor is
+   * worth telling the reader about -- a cancel has nothing to narrate, because
+   * nothing was committed.
+   */
+  private settleToAnchor(key: string, committing: boolean): { reanchored: boolean; lost?: string } {
+    const wasSettling = this.settling;
+    this.settling = true;
+    try {
+      return this.settleToAnchorNow(key, committing);
+    } finally {
+      this.settling = wasSettling;
+    }
+  }
+
+  private settleToAnchorNow(
+    key: string,
+    committing: boolean
+  ): { reanchored: boolean; lost?: string } {
+    const index = this.stagedPartitionIndex(key);
+    const frames = this.mechanisms[index];
+    // Under the machine's key as it is *now*: a gesture that changed the
+    // owned-joint set carried the anchor to the new key (`carriedAnchorFor`).
+    const anchor =
+      index === -1 ? undefined : this.anchors.get(topologyOf(this.partitions[index].ownJoints));
+    if (index === -1 || !anchor || !frames?.isMechanismValid()) {
+      // The machine this gesture belonged to is not there any more -- fused,
+      // split, or no longer able to run. Whatever exists now starts where it
+      // stands, which is what `refreshAnchors` will take on the next rebuild.
+      this.anchors.delete(key);
+      // And take a fresh one straight away rather than waiting for whatever
+      // rebuild happens next. Between the two the machine has no anchor at all,
+      // which draws no ghost and answers "reachable" to a question that has no
+      // subject -- a gap with nothing in it, for no reason.
+      this.refreshAnchors();
+      this.startWhereItStands(index);
+      return { reanchored: false };
+    }
+    const rule = this.ruleFor(anchor);
+    const coordinates = coordinatesAcross(rule, frames.joints);
+    const reach = reachAnchor(coordinates, anchor, frames.joints);
+    if (!reach) {
+      this.anchors.delete(key);
+      this.refreshAnchors();
+      this.startWhereItStands(index);
+      return committing
+        ? { reanchored: false, lost: this.partitions[index]?.id ?? `M${index + 1}` }
+        : { reanchored: false };
+    }
+    // Where the reader's hand is, so the display can be put back on it. Taken
+    // before the arrays move, because it is a property of the pose they hold --
+    // and taken whole: the coordinate says *where* along the input's travel,
+    // and the heading and the pose say which of the two legs that passes
+    // through it the reader was actually on.
+    const commitPose: CommitPose | undefined =
+      coordinates[0] === undefined
+        ? undefined
+        : {
+            coordinate: coordinates[0],
+            heading: (coordinates[1] !== undefined && coordinates[1] < coordinates[0] ? -1 : 1) as
+              1 | -1,
+            seed: new Map(frames.joints[0].map((joint) => [joint.id, { x: joint.x, y: joint.y }])),
+          };
+    this.applyMechanismPose(frames, this.partitions[index], this.secondsAt(frames, reach));
+    // The anchored pose is now what the arrays hold, so it is what the rebuild
+    // must keep -- the same staging flag, for one more rebuild.
+    this.seedFromDisplay = key;
+    this.updateMechanism(committing);
+    this.seedFromDisplay = null;
+    // The anchor's seed is the pose the start was last known to hold, and it
+    // has just been re-solved: the design changed under it. Left as the pose
+    // the drawing first arrived in, it drifts away from every crossing as
+    // edits accumulate, until the lookup cannot tell the start from the other
+    // branch -- or refuses the start for being too far from a pose that no
+    // longer exists.
+    this.reseedAnchor(key);
+    this.seekToCoordinate(key, commitPose);
+    return { reanchored: true };
+  }
+
+  /**
+   * The pose under the reader's hand is this machine's start now: say so
+   * everywhere the app keeps that fact.
+   *
+   * A staged gesture solves its provisional cycle from the displayed pose, so
+   * when the old start is out of reach that cycle's sample 0 *is* the drawing
+   * -- but the clocks still said the machine was parked a third of the way
+   * round, and the ghost cache still held the amber "unreachable" ghost the
+   * drag had raised. Nothing rebuilt after the anchor was dropped, so nothing
+   * put either right. The reader saw "Letting go moves the start here" over a
+   * drawing they had already let go of, a transport reading two seconds over
+   * a machine standing at its start, and a redo that carried that stale step
+   * into the history and landed a different pose.
+   */
+  private startWhereItStands(index: number): void {
+    this.ghostCache = undefined;
+    if (index === -1) return;
+    // Through the ordinary seek: it writes the machine's own clock and, for
+    // the master, the shared step, and it draws sample 0 -- which is the pose
+    // already on screen, so nothing visibly moves.
+    this.seekMechanism(index, 0);
+  }
+
+  /** Give a machine's anchor the pose its start holds now. */
+  private reseedAnchor(key: string): void {
+    const index = this.stagedPartitionIndex(key);
+    if (index === -1) return;
+    const now = topologyOf(this.partitions[index].ownJoints);
+    const anchor = this.anchors.get(now);
+    const start = this.mechanisms[index]?.joints[0];
+    if (!anchor || !start) return;
+    this.anchors.set(now, {
+      ...anchor,
+      seed: new Map(start.map((joint) => [joint.id, { x: joint.x, y: joint.y }])),
+    });
+  }
+
+  /** Put a machine back at the input value the reader was editing at. */
+  private seekToCoordinate(key: string, where: CommitPose | undefined): void {
+    if (where === undefined) return;
+    const index = this.stagedPartitionIndex(key);
+    const frames = this.mechanisms[index];
+    const anchor = this.anchors.get(key) ?? this.anchorFor(index);
+    if (index === -1 || !anchor || !frames?.isMechanismValid()) return;
+    const rule = this.ruleFor(anchor);
+    const coordinates = coordinatesAcross(rule, frames.joints);
+    // The *edited* leg, not the anchor's. A reversing input passes every value
+    // in its range twice, and reusing the anchor's heading and seed picked
+    // whichever occurrence t = 0 sits on -- so a small edit on a screw jack's
+    // return leg came back re-anchored and correct, and then jumped the input
+    // to the far side of its stroke. Which leg the reader was on is a property
+    // of the pose they were editing at, so it is measured from that pose.
+    const reach = reachAnchor(coordinates, { ...anchor, ...where }, frames.joints);
+    if (!reach) return;
+    this.seekMechanism(index, this.secondsAt(frames, reach));
+  }
+
+  /**
+   * Promote the pose on screen to this machine's start.
+   *
+   * The honest counterpart of the automatic fallback, and what makes the anchor
+   * a thing the reader can see and control rather than a rule they have to
+   * infer from where the mechanism lands after an edit.
+   *
+   * Refused, quietly, where it would turn a fixed angle: the control that
+   * offers it is grayed with `startMoveRefusal`'s reason, so nothing reaches
+   * this to be refused but a caller that did not ask.
+   */
+  setCurrentPoseAsStart(part: Joint | Link | Force): boolean {
+    const index = this.indexOfMechanismContaining(part);
+    if (index === -1 || !this.mechanisms[index]?.isMechanismValid()) return false;
+    if (this.startMoveRefusal(index)) return false;
+    const key = topologyOf(this.partitions[index].ownJoints);
+    this.anchors.delete(key);
+    this.seedFromDisplay = key;
+    // Not a pointer gesture, so the stale-staging guard must not read the
+    // pointer being up as this having been abandoned -- it would close the
+    // staging before the rebuild that is the whole point of the call.
+    this.stagedByPointer = false;
+    this.stagedRebuilt = false;
+    this.updateMechanism(true);
+    this.seedFromDisplay = null;
+    // And the clock with it. The rebuild holds each machine's elapsed seconds
+    // and lays them back on afterwards, which is right for every other rebuild
+    // and wrong for this one: the pose the reader just promoted would be
+    // rebuilt as t = 0 and then immediately scrubbed a third of a cycle past
+    // it, so the drawing would still not be showing its own start.
+    this.seekMechanism(
+      this.partitions.findIndex((partition) => topologyOf(partition.ownJoints) === key),
+      0
+    );
+    return true;
+  }
+
+  /**
+   * Why this machine's start may not move to the pose on screen, or nothing.
+   *
+   * Asked of the chips rather than of the solver's bars: what may not change
+   * is what the reader sees as fixed, and for a cylinder that is the angle
+   * mount to mount, however many members carry the flag.
+   */
+  startMoveRefusal(index: number): StartMoveRefusal | undefined {
+    const start = this.mechanisms[index]?.joints[0];
+    if (!start) return undefined;
+    // A bar welded into a body is in no partition's list, its body is: ask
+    // the body, or a welded bar's Fixed Angle would be dropped here.
+    const own = holdChips(this.links, this.sealedStructures()).filter(
+      (chip) =>
+        this.indexOfMechanismContaining(this.rootLinkOwning(chip.link) ?? chip.link) === index
+    );
+    return refuseMovingStart(
+      anglesTurnedSince(own, start).map((chip) => chip.link),
+      this.joints
+    );
+  }
+
+  /**
+   * How far this machine's cycle is currently turned away from its anchor.
+   *
+   * Mid-gesture at a displaced pose the machine is staged, which means sample 0
+   * of the provisional cycle is *the pose under the reader's hand* rather than
+   * the pose the design starts at. A curve plotted from it is the same curve
+   * cyclically rotated by wherever the reader happened to pause -- so laid over
+   * the one taken before the gesture, every comparison is nonsense.
+   *
+   * The commit settles this at the end by putting the design back on the
+   * anchor. A plot needs the same answer every frame, and the ghost has already
+   * worked it out: its `at` is where the anchored pose falls in the cycle as it
+   * currently stands. Nothing to undo where the machine is not staged, and
+   * nothing to undo where the anchor is out of reach -- that is the case the
+   * ghost's own warning covers, and a graph should not narrate it twice.
+   */
+  phaseOffsetOf(index: number): number {
+    if (!this.seedFromDisplay || this.stagedMachineIndex() !== index) return 0;
+    const ghost = this.startPoseGhosts().find((one) => one.index === index);
+    return ghost?.reachable ? ghost.at : 0;
+  }
+
+  /** Drop every anchor. A history step or a URL load is authoritative. */
+  forgetAnchors(): void {
+    this.anchors.clear();
+    this.ghostCache = undefined;
+    this.lastGoodGhost.clear();
+  }
+
+  /**
+   * The ghosts, held against everything that changes what they look like.
+   *
+   * The solve revision alone was not enough. A ghost's bodies are link
+   * outlines, and an outline's width is a fraction of the object scale -- so
+   * changing the scale, or changing units (which rescales the drawing and the
+   * marks with it), left the ghost drawn at the size it was first built at
+   * while the mechanism under it moved to the new one. The reader saw a start
+   * pose in the wrong size beside a linkage in the right one.
+   */
+  private ghostCache?: { revision: number; scale: number; list: StartPoseGhost[] };
+
+  /**
+   * The last pose each machine's ghost could actually be drawn at.
+   *
+   * Kept so the warning state has something to show. Cleared with the anchors,
+   * because a drawing that has just arrived has no history worth holding.
+   */
+  private lastGoodGhost = new Map<
+    string,
+    {
+      at: number;
+      bodies: GhostBody[];
+      bars: { x1: number; y1: number; x2: number; y2: number }[];
+      pins: { x: number; y: number }[];
+    }
+  >();
+
+  /**
+   * A faint skeleton of where each machine starts, for the machines that are
+   * not showing it.
+   *
+   * Posed editing without this asks a student to reason about a pose they
+   * cannot see -- and it is also where the reachability warning lives, so that
+   * a crank being dragged past the point where it stops being a crank says so
+   * *during* the gesture rather than in a message afterwards.
+   *
+   * Cached against the solve, because the answer only changes when the frames
+   * do and the canvas asks for it on every change-detection pass.
+   */
+  startPoseGhosts(): StartPoseGhost[] {
+    const scale = SettingsService.objectScale;
+    if (this.ghostCache?.revision !== this.solveRevision || this.ghostCache.scale !== scale) {
+      this.ghostCache = { revision: this.solveRevision, scale, list: this.buildGhosts() };
+    }
+    return this.ghostCache.list;
+  }
+
+  private buildGhosts(): StartPoseGhost[] {
+    return this.partitions.flatMap((partition, index): StartPoseGhost[] => {
+      const frames = this.mechanisms[index];
+      if (!frames?.isMechanismValid()) return [];
+      // The *anchored* pose, not sample 0. While a posed edit is staged, sample
+      // 0 is the pose under the reader's hand -- so a ghost drawn from it drew
+      // the mechanism on top of itself and claimed that was the start. The
+      // anchor's own lookup answers both questions at once, which is what makes
+      // the warning on screen and the outcome at the commit agree by
+      // construction rather than by two pieces of arithmetic being kept in step.
+      const anchor = this.anchorOf(index);
+      const key = topologyOf(partition.ownJoints);
+      if (!anchor) {
+        // Nothing anchored is not "the start is out of reach"; it is no
+        // question at all, which is what `anchorIsReachable` has always
+        // answered. The held ghost below belongs to the anchor that has just
+        // gone -- switch a machine's drive off and it stood there in amber
+        // over a drawing whose start it no longer described, saying a start
+        // was about to be lost that nothing was holding.
+        this.lastGoodGhost.delete(key);
+        return [];
+      }
+      const reach = reachAnchor(
+        coordinatesAcross(this.ruleFor(anchor), frames.joints),
+        anchor,
+        frames.joints
+      );
+      // Out of reach, there is no anchored pose to draw -- and falling back to
+      // sample 0 draws the mechanism on top of itself, so the ghost disappears
+      // at exactly the moment it is warning about. The last pose it *could*
+      // reach is held instead: that is where the start was, which is the thing
+      // the reader is about to lose and the thing dragging back recovers.
+      if (!reach) {
+        const held = this.lastGoodGhost.get(key);
+        return held ? [{ index, ...held, reachable: false }] : [];
+      }
+      const start = blendFrame(frames.joints, reach.index, reach.blend);
+      if (!start?.length) return [];
+      const at = new Map(start.map((joint) => [joint.id, joint]));
+      const bars: { x1: number; y1: number; x2: number; y2: number }[] = [];
+      partition.links.forEach((link) => {
+        // Every pair of the link's own joints, which draws a bar as a line and
+        // a plate as its outline plus its diagonals. Cheap, and it reads as a
+        // skeleton rather than as a second solid linkage competing with the
+        // real one for attention.
+        const own = link.joints.map((joint) => at.get(joint.id)).filter((joint) => !!joint);
+        for (let i = 0; i < own.length; i++) {
+          for (let j = i + 1; j < own.length; j++) {
+            bars.push({ x1: own[i]!.x, y1: own[i]!.y, x2: own[j]!.x, y2: own[j]!.y });
+          }
+        }
+      });
+      const pins = start.map((joint) => ({ x: joint.x, y: joint.y }));
+      // And the real shapes. A link is a rigid body, so its outline at the start
+      // pose is the outline it is wearing now, moved: two of its own joints give
+      // the move, and `transformRigidPath` is the same one `Mechanism` uses to
+      // carry a compound path across the samples it solves.
+      const bodies = partition.links.flatMap((link): GhostBody[] => {
+        if (!(link instanceof RealLink) || !link.d) return [];
+        const [from, to] = link.joints;
+        const there = from && to ? at.get(from.id) : undefined;
+        const thereEnd = from && to ? at.get(to.id) : undefined;
+        if (!there || !thereEnd) return [];
+        return [
+          {
+            d: transformRigidPath(link.d, from, to, there, thereEnd),
+            fill: this.getLinkProp(link, 'fill') as string,
+            transform: '',
+            linkId: link.id,
+            move: {
+              from: { x: from.x, y: from.y },
+              to: { x: to.x, y: to.y },
+              there: { x: there.x, y: there.y },
+              thereEnd: { x: thereEnd.x, y: thereEnd.y },
+            },
+          },
+        ];
+      });
+      this.lastGoodGhost.set(key, { at: reach.index, bodies, bars, pins });
+      return [{ index, at: reach.index, bodies, bars, pins, reachable: true }];
+    });
+  }
+
+  /**
+   * The machine whose start has just moved, by name, or nothing.
+   *
+   * The transport row keeps this until the next transport action. The
+   * notification is the news and is gone in four seconds; the chip is the
+   * record, so the fact survives a reader who looked away -- and it is said in
+   * the one place that has always meant "where this starts".
+   */
+  startMovedOn: string | null = null;
+
+  markStartMoved(id: string): void {
+    this.startMovedOn = id;
+  }
+
+  /**
+   * Both halves at once, for an edit nobody is watching a pointer through.
+   *
+   * Half the words it used to have, and a verb rather than a report: what
+   * happened is that the machine starts here now. Indigo rather than an alarm
+   * color, because nothing failed -- the edit landed exactly as it was asked
+   * for, and this is the consequence that came with it. Undo rides the
+   * message, per the app's rule that a consequence carries its own exit.
+   */
+  sayStartMoved(id: string): void {
+    this.markStartMoved(id);
+    this.notify.news(
+      'anchor.unreachable',
+      `${id} starts here now — its old start is out of reach.`,
+      {
+        actions: [{ label: 'Undo', run: () => this.injector.get(SaveHistoryService).undo() }],
+      }
+    );
+  }
+
+  /** Cleared by the next thing the reader does to the transport. */
+  clearStartMoved(): void {
+    this.startMovedOn = null;
+  }
+
+  setAllPlaying(playing: boolean): void {
+    this.isPlaying = playing;
+    this.ownPlaying = this.mechanisms.map((mechanism) => playing && mechanism.isMechanismValid());
+    this.drawOwnClocks(playing);
+  }
+
+  /**
+   * Switch between one clock and several.
+   *
+   * Leaving sync hands every machine the time it is showing right now, so
+   * nothing jumps at the moment the toggle is pressed; returning to sync puts
+   * them all back on the shared clock, which is where they visibly converge.
+   */
+  setSyncMechanisms(sync: boolean): void {
+    if (sync === this.syncMechanisms) {
+      return;
+    }
+    this.syncMechanisms = sync;
+    // Coming back to one row means one answer about what is running, so the
+    // machines are put back in step with each other -- not with a shared
+    // variable, which no longer exists, but with each other's play state.
+    if (sync) {
+      this.ownPlaying = this.mechanisms.map(
+        (mechanism) => this.isPlaying && mechanism.isMechanismValid()
+      );
+      // And back onto one clock. Synced means one row and one handle, and a
+      // handle standing for machines that are at four different times can only
+      // lie about three of them -- which is what made it jump when dragged
+      // after a spell apart.
+      this.seekAllTo(this.ownSeconds[this.masterMechanismIndex()] ?? 0);
+    } else {
+      // And leaving sync hands each row the running state it was showing a
+      // moment ago. Synced, `isMechanismPlaying` answers off the shared flag
+      // and the per-row flags go unread -- so the transport's own scrub, which
+      // writes the shared flag directly, leaves them saying something else.
+      // Reading those stale flags is what made rows stop, or start, on a toggle
+      // that is meant to change nothing but who owns the clock.
+      this.ownPlaying = this.mechanisms.map(
+        (mechanism) => this.isPlaying && mechanism.isMechanismValid()
+      );
+    }
+    this.drawOwnClocks(this.isPlaying);
+  }
+
+  /**
+   * Locks constrain editing in every drawing mode. Hide their marks only
+   * while playing, when locked parts still move with the simulated mechanism.
+   */
+  lockVisualsOn(): boolean {
+    return !this.isPlaying;
+  }
+
+  private frozenCache?: { revision: number; ids: Set<string> };
+
+  /**
+   * Which joints the Lock marks hold still, cached per structural revision.
+   *
+   * The canvas asks this several times per joint and per link on every change
+   * detection pass, and the closure is a walk over every body plus every sealed
+   * assembly. On a forty-five joint drawing that was a couple of hundred full
+   * closures per pointer move -- paid by readers with no locks at all. Every
+   * write to a lock mark goes through `updateMechanism`, the same funnel
+   * `sealedStructures` keys on, so within a revision the answer cannot change.
+   */
+  frozenJoints(): Set<string> {
+    if (this.frozenCache?.revision !== this.cylinderRevision) {
+      this.frozenCache = {
+        revision: this.cylinderRevision,
+        ids: frozenJointIds(this.joints, this.links, this.sealedStructures()),
+      };
+    }
+    return this.frozenCache.ids;
+  }
+
+  /** Painted as held: the joint itself, wherever its stillness comes from. */
+  isJointLockedVisual(joint: Joint): boolean {
+    return this.lockVisualsOn() && this.frozenJoints().has(joint.id);
+  }
+
+  /** Painted as held: a body whose whole pose is frozen, not one merely touched. */
+  isLinkLockedVisual(link: Link): boolean {
+    if (!this.lockVisualsOn()) return false;
+    const frozen = this.frozenJoints();
+    return link.joints.length > 0 && link.joints.every((joint) => frozen.has(joint.id));
+  }
+
   getJointCSSClass(joint: Joint) {
-    // const j = joint as RealJoint;
+    const lockSuffix = this.isJointLockedVisual(joint) ? ' joint-locked' : '';
+    return this.jointStateClass(joint) + lockSuffix;
+  }
+
+  private jointStateClass(joint: Joint) {
     if (
-      NewGridComponent.debugGetJointState() == jointStates.dragging &&
+      currentJointState() == jointStates.dragging &&
       joint.id === this.activeObjService.selectedJoint.id
     ) {
       return 'joint-dragging';
     }
     if (
-      NewGridComponent.debugGetJointState() !== jointStates.dragging &&
-      this.activeObjService.objType == 'Joint' &&
-      joint.id === this.activeObjService.selectedJoint.id
+      currentJointState() !== jointStates.dragging &&
+      (this.activeObjService.objType == 'Joint' ||
+        this.activeObjService.objType == 'MultiSelection') &&
+      this.activeObjService.containsPart({ kind: 'joint', id: joint.id })
     ) {
       return 'joint-selected';
+    }
+    if (this.isLinkedPart(joint)) {
+      return 'joint-pointed';
+    }
+    if (this.isPartInert(joint)) {
+      return 'joint-inert';
+    }
+    if (this.isMutedBySelectedMechanism(joint)) {
+      return 'joint-muted';
+    }
+    if (this.isHoveredPart(joint)) {
+      return 'joint-pointed';
+    }
+    if (this.isInHoveredMechanism(joint)) {
+      return 'joint-highlight';
     }
     if (joint.showHighlight) {
       return 'joint-highlight';
@@ -1372,12 +7372,256 @@ export class MechanismService {
     }
   }
 
+  /**
+   * Geometry the analysis modes have nothing to say about.
+   *
+   * A machine that cannot be simulated has no cycle, no graphs and no row in
+   * the transport, so in an analysis mode it is scenery: drawn so the reader
+   * can see it is still there, grayed so they can see it is not part of the
+   * question, and not selectable, because every panel behind a selection is
+   * about a machine that runs.
+   */
+  isPartInert(part: Joint | Link): boolean {
+    return this.tabs.isAnalysisMode() && !this.isPartSimulatable(part);
+  }
+
+  /**
+   * The tab service, held after the first ask.
+   *
+   * It is fetched through the injector to break a cycle, and `isPartInert` runs
+   * once per joint and once per link on every change detection pass -- so the
+   * lookup itself was on the redraw path.
+   */
+  private tabsService?: SelectedTabService;
+  private get tabs(): SelectedTabService {
+    return (this.tabsService ??= this.injector.get(SelectedTabService));
+  }
+
+  /**
+   * What a graph plots, one sample at a time. The vector traces read the same
+   * service, so an arrow and a curve of the same quantity cannot disagree.
+   *
+   * Fetched on first use rather than injected, like the tab service above:
+   * every spec that stands this service up in a hand-built injector would
+   * otherwise have to list a provider for something only the traces use.
+   */
+  private sampleService?: AnalysisSampleService;
+  private get samples(): AnalysisSampleService {
+    return (this.sampleService ??= this.injector.get(AnalysisSampleService));
+  }
+
+  /** Is this part of the machine the reader has selected as a whole? */
+  isPartInSelectedMechanism(part: Joint | Link): boolean {
+    return this.isInSelectedMechanism(part);
+  }
+
+  /** Is this part of the machine the reader is pointing at? */
+  isPartInHoveredMechanism(part: Joint | Link): boolean {
+    return this.isInHoveredMechanism(part);
+  }
+
+  /**
+   * Is this part of another machine than the one the reader picked?
+   *
+   * A picked machine used to draw every one of its parts as selected, which
+   * left nothing to show when its panel then pointed at one of them: the part
+   * a link names was already amber. So a picked machine is left as drawn and
+   * the others step back instead, and with one machine on the grid nothing
+   * changes at all -- which machine the panel means is not a question then.
+   */
+  private isMutedBySelectedMechanism(part: Joint | Link): boolean {
+    return (
+      this.activeObjService.objType === 'Mechanism' &&
+      this.partitions.length > 1 &&
+      !this.isInSelectedMechanism(part)
+    );
+  }
+
+  /** The same, for a mark drawn apart from its joint: a slider's block, a motor. */
+  isMutedJointId(id: string): boolean {
+    if (this.activeObjService.objType !== 'Mechanism' || this.partitions.length < 2) return false;
+    const joint = this.joints.find((candidate) => candidate.id === id);
+    return !!joint && this.isMutedBySelectedMechanism(joint);
+  }
+
+  /** Name a machine, or clear its name with an empty one; one undo entry. */
+  renameMechanism(index: number, name: string): void {
+    const partition = this.partitions[index];
+    if (!partition) return;
+    writeMechanismName(partition, name);
+    this.updateMechanism(true);
+  }
+
+  /** Is this part of the machine the reader has selected as a whole? */
+  private isInSelectedMechanism(part: Joint | Link): boolean {
+    if (this.activeObjService.objType !== 'Mechanism') {
+      return false;
+    }
+    return this.isInPartition(part, this.activeObjService.selectedMechanismIndex);
+  }
+
+  /**
+   * Which machine the reader is pointing at without having picked it yet.
+   *
+   * The transport names machines M1, M2, M3 and there is nothing in those
+   * names to say which is which. Pointing at one lights it up on the canvas,
+   * so the answer is available before committing to a selection.
+   */
+  hoveredMechanismIndex = -1;
+
+  /**
+   * The one part a list elsewhere is pointing at.
+   *
+   * The export drawer lists every joint and link by name, and a name is not a
+   * place: a reader ticking `Joint F` on a Jansen leg has no idea which of
+   * eleven pins that is. Pointing at the row lights it on the canvas.
+   *
+   * Deferred to whatever is selected: a selection is the stronger statement,
+   * and a hover that repainted over it would take the reader's own mark away
+   * while they were reading the list beside it.
+   */
+  hoveredPart: Joint | Link | undefined;
+
+  /**
+   * The part a `part-link` is pointing at: a part named in a sentence, which
+   * the reader is trying to find.
+   *
+   * Unlike `hoveredPart` it is lit whatever is selected, and over the gray a
+   * part wears in an analysis mode when its machine cannot run. Following a
+   * list of fixes, the reader has usually just pressed one part link, and the
+   * next one they point at is the next part to find -- and the parts a setup
+   * drawer names are exactly the ones of a machine that does not run yet.
+   */
+  linkedPart: Joint | Link | undefined;
+
+  private isHoveredPart(part: Joint | Link): boolean {
+    return !!this.hoveredPart && this.hoveredPart.id === part.id && this.nothingIsChosen();
+  }
+
+  /** Whether a part link is pointing at this part. */
+  private isLinkedPart(part: Joint | Link): boolean {
+    return !!this.linkedPart && this.linkedPart.id === part.id;
+  }
+
+  /**
+   * Whether the canvas is free to answer a pointed-at row.
+   *
+   * The canvas carries one mark because it holds one selection, and a hover
+   * that added a second while a joint, a link, a force or a whole machine was
+   * already chosen made the drawing say two things at once.
+   */
+  private nothingIsChosen(): boolean {
+    const chosen = this.activeObjService.objType;
+    return (
+      chosen !== 'Joint' &&
+      chosen !== 'Link' &&
+      chosen !== 'MultiSelection' &&
+      chosen !== 'Force' &&
+      chosen !== 'Mechanism'
+    );
+  }
+
+  /**
+   * Whether the canvas's current selection is this joint.
+   *
+   * The selection *type* decides, not the remembered object: clicking the grid
+   * sets the type to `Grid` and leaves `selectedJoint` holding whatever was
+   * chosen before, so a list reading that field alone went on marking a row
+   * after the reader had let go of the thing it names.
+   */
+  isSelectedJoint(joint: Joint | undefined): boolean {
+    return (
+      !!joint &&
+      (this.activeObjService.objType === 'Joint' ||
+        this.activeObjService.objType === 'MultiSelection') &&
+      this.activeObjService.containsPart({ kind: 'joint', id: joint.id })
+    );
+  }
+
+  /**
+   * Whether the canvas's current selection is this body.
+   *
+   * A sealed cylinder answers for all of its pieces, as it does everywhere
+   * else: the list offers the ram as one part, and clicking it on the canvas
+   * lands on whichever of the barrel, the block or the rod the pointer was
+   * over.
+   */
+  isSelectedBody(body: Link | undefined): boolean {
+    if (!body) return false;
+    const choices = this.activeObjService.selectedParts.filter(
+      (part): part is RealLink => part instanceof RealLink
+    );
+    if (choices.some((chosen) => chosen.id === body.id)) return true;
+    // Barrel and rod light up together because they are one part. A bracket
+    // welded to a mount is not, and lighting the ram with it said the
+    // selection reached further than it does.
+    const cylinder = this.cylinderOfBar(body);
+    return !!cylinder && choices.some((chosen) => this.cylinderOfBar(chosen) === cylinder);
+  }
+
+  /**
+   * Whether this body is the one a list is pointing at.
+   *
+   * A sealed cylinder answers for all of its pieces: the list offers the ram
+   * as one part, and the canvas draws it as a barrel, a block and a rod under
+   * one silhouette — so pointing at the row has to light that silhouette
+   * whichever piece the mark happens to be built around.
+   */
+  isPointedAtBody(body: Link | undefined): boolean {
+    // A part link's part first, which is lit whatever is selected.
+    const pointed =
+      this.linkedPart && !(this.linkedPart instanceof Joint)
+        ? this.linkedPart
+        : this.nothingIsChosen()
+          ? this.hoveredPart
+          : undefined;
+    if (!body || !pointed || pointed instanceof Joint) return false;
+    if (pointed.id === body.id) return true;
+    const cylinder = this.cylinderOfBar(pointed);
+    return !!cylinder && cylinder === this.cylinderOfBar(body);
+  }
+
+  private isInHoveredMechanism(part: Joint | Link): boolean {
+    return this.hoveredMechanismIndex >= 0
+      ? this.isInPartition(part, this.hoveredMechanismIndex)
+      : false;
+  }
+
+  private isInPartition(part: Joint | Link, index: number): boolean {
+    const partition = this.partitions[index];
+    if (!partition) {
+      return false;
+    }
+    return (
+      partition.ownJoints.some((joint) => joint.id === part.id) ||
+      partition.links.some((link) => link.id === part.id)
+    );
+  }
+
   getLinkCSSClass(link: Link) {
-    if (
-      this.activeObjService.objType == 'Link' &&
-      link.id === this.activeObjService.selectedLink.id
-    ) {
+    const lockSuffix = this.isLinkLockedVisual(link) ? ' link-locked' : '';
+    return this.linkStateClass(link) + lockSuffix;
+  }
+
+  private linkStateClass(link: Link) {
+    const chosen = this.activeObjService.containsPart({ kind: 'link', id: link.id });
+    if (this.isLinkedPart(link) && !chosen) {
+      return 'link-pointed';
+    }
+    if (this.isPartInert(link)) {
+      return 'link-inert';
+    }
+    if (chosen) {
       return 'link-selected';
+    }
+    if (this.isMutedBySelectedMechanism(link)) {
+      return 'link-muted';
+    }
+    if (this.isHoveredPart(link)) {
+      return 'link-pointed';
+    }
+    if (this.isInHoveredMechanism(link)) {
+      return 'link-hovered';
     }
     return 'link-default';
   }
@@ -1388,7 +7632,7 @@ export class MechanismService {
     subset: Link[],
     subsetBuilder: Link[]
   ): Link[] {
-    //Recursively find all connected links to a given link, making sure not to include the block link
+    //Recursively find all connected links to a given link
     (link.joints as RealJoint[]).forEach((joint) => {
       joint.links.forEach((l) => {
         if (
@@ -1407,18 +7651,208 @@ export class MechanismService {
 
   isJointOrphan(joint: Joint) {
     //Return true if the given joint is an orphan (not part of a link).
+    if (this.jointsOnALink) return !this.jointsOnALink.has(joint);
     return this.links.every((l) => !l.joints.includes(joint));
   }
 
   public weldJoint(joint: RealJoint = this.activeObjService.selectedJoint): void {
-    if (!joint || !this.weldJointTopology(joint)) return;
+    // A weld records the angle the bodies are at when it is made, so at a
+    // displaced pose it captures *that* angle -- which is the feature, and is
+    // also why it has to be staged like a drag rather than rebuilt directly.
+    if (!this.seedFromDisplay && !this.isAtStartPose()) {
+      this.capturingPose(joint, () => this.weldJoint(joint));
+      return;
+    }
+    if (!joint) return;
+
+    // A weld fuses what meets at a joint, so a joint connecting fewer than two
+    // links has nothing to fuse. `weldTopology` refuses this shape too (via
+    // `canBeWelded`), but that refusal is one layer down and shared with other
+    // rules; this guard is the mutation's own front door, so no caller — the
+    // panel grays its toggle, but a stray programmatic call cannot be grayed —
+    // can reach the restructure with a degenerate joint.
+    //
+    // A slider counts one link where it used to count two: what it holds is its
+    // riders, and the block that was the second of them is gone. One rider is
+    // enough for a Slide -- the slot is the other half of what is held, which
+    // is the rule `weldNeedsLinks` states -- so the count is asked of every
+    // other kind of joint.
+    if (!(joint instanceof RealJoint)) return;
+    if (!(joint instanceof PrisJoint) && joint.links.length < 2) return;
+
+    // Clicking Weld on a named joint is a deliberate act, so this warns rather
+    // than refuses. The linkage still moves and still solves; only its forces
+    // lose a unique solution, and the analysis panel says so in its own right.
+    // A drag that lands on the same geometry is refused instead, because
+    // dropping a joint somewhere is far more easily done by accident.
+    const created = this.weldWouldPinTwice(joint);
+    const bars = this.realLinksAt(joint).filter((link) => link.subset.length === 0);
+    // A cylinder's barrel and rod are still selected on their own, padlocks
+    // and all, so a hold on one has not gone anywhere that needs saying. Asked
+    // before the weld, while each member is still a link of its own.
+    const members = new Set(bars.filter((bar) => this.cylinderAt(bar)));
+
+    if (!this.weldTopology(joint)) return;
+    const kept = weldHoldNotice(
+      bars.filter((bar) => this.rootLinkOwning(bar) !== bar && !members.has(bar)),
+      (bar) => nameOfBody(bar, this.sealedStructures())
+    );
+    if (kept) this.notify.news('weld.holds-kept', kept);
+    if (created) {
+      this.notify.warning(
+        'weld.pinned-twice',
+        `${created[0]} and ${created[1]} are now pinned together twice. The mechanism still ` +
+          'moves, but its forces have no unique solution.'
+      );
+    }
     this.finishStructuralEdit(true);
   }
 
-  private weldJointTopology(joint: RealJoint): boolean {
+  /**
+   * The joints a weld at this joint would newly leave held twice, if any.
+   *
+   * Compares the redundancies before the edit with the ones after it, rather
+   * than asking whether anything is redundant afterwards. A mechanism may
+   * legitimately already contain a redundant pin — this branch is what makes
+   * those simulate — and reporting the total would blame every later weld for a
+   * condition it did not cause, naming joints nowhere near the one clicked.
+   *
+   * Predicted rather than measured after the fact, because the compound has
+   * absorbed forces and rewritten link ids by the time it exists. The
+   * prediction needs only its joint set: the union of the links at that joint.
+   */
+  private weldWouldPinTwice(joint: RealJoint): [string, string] | undefined {
     const linksAtJoint = this.links.filter(
       (link): link is RealLink => link instanceof RealLink && link.joints.includes(joint)
     );
+    if (linksAtJoint.length < 2) return undefined;
+
+    const compound = {
+      id: 'compound',
+      joints: linksAtJoint
+        .flatMap((link) => link.joints)
+        .filter((candidate, index, all) => all.findIndex((j) => j.id === candidate.id) === index),
+    };
+    const untouched = this.links.filter((link) => !linksAtJoint.includes(link as RealLink));
+
+    const before = redundantlyHeldJointSets(this.links);
+    const appeared = [...redundantlyHeldJointSets([compound, ...untouched])].find(
+      (held) => !before.has(held)
+    );
+    if (!appeared) return undefined;
+    const [first, second] = appeared.split('|');
+    return [first, second];
+  }
+
+  /**
+   * Make a weld at this joint, whatever kind of weld it is.
+   *
+   * Pure topology — no rebuild, no save. Four callers need this and they do not
+   * all want the same wrapper: `weldJoint`, `unWeldJoint` and `unweldAll` earn
+   * an undo entry, while `mergeJoints` is the tail of a drag and the gesture
+   * owns the single entry it earns. Putting the choice inside the public
+   * actions instead would leave `mergeJoints` on the compound-only path, where
+   * whether a Slide survives a drag depends on what was dropped onto it.
+   */
+  private weldTopology(joint: RealJoint): boolean {
+    // A Slide is `rotates` on the sliding joint: its riders stop turning
+    // against the slot. Asked before `canBeWelded`, which counts the links
+    // meeting here -- a slider had its block among them and has only its riders
+    // now, so a Slide on a single rider would be refused for having nothing to
+    // fuse. `isSlideCandidate` is the same structural test the resolver applies,
+    // so a shape the resolver rejects cannot produce a weld nothing downstream
+    // recognizes and the reconcile would then strip.
+    if (joint instanceof PrisJoint) {
+      if (!isSlideCandidate(joint)) return false;
+      // Two or more riders fuse into a compound exactly as an ordinary weld
+      // does -- every body at the joint becomes rigid, which is what the type
+      // means -- and `isWelded` is the record of that compound. One rider needs
+      // none: the slot is the other half of what is being held.
+      if (this.realLinksAt(joint).length >= 2) this.weldJointTopology(joint);
+      joint.rotates = false;
+      return true;
+    }
+    if (!joint.canBeWelded()) return false;
+    return this.weldJointTopology(joint);
+  }
+
+  /** The bodies that meet at a joint, which is what a compound weld fuses. */
+  private realLinksAt(joint: RealJoint): RealLink[] {
+    return this.links.filter(
+      (link): link is RealLink => link instanceof RealLink && link.joints.includes(joint)
+    );
+  }
+
+  /** Undo a weld at this joint, whatever kind of weld it is. Pure topology. */
+  private unweldTopology(joint: RealJoint): boolean {
+    // The sealed slider's Slide is what makes a cylinder one part; it never
+    // comes off (§ cylinder 4). Only the sealed joint resolves here — a welded
+    // *mount* is an ordinary joint inside a neighboring compound, and taking it
+    // back out stays legal.
+    if (cylinderAtSeal(joint)) return false;
+    if (joint instanceof PrisJoint) {
+      if (joint.rotates) return false;
+      // The compound goes first where this weld built one, and then the riders
+      // are free to turn. A Slide on a single rider holds no compound at all,
+      // so there is nothing there to take apart.
+      if (this.compoundAt(joint)) this.unweldJointTopology(joint);
+      joint.rotates = true;
+      return true;
+    }
+    if (!joint.isWelded) return false;
+    if (this.compoundAt(joint)) {
+      return this.unweldJointTopology(joint);
+    }
+    // Nothing to take apart, and `unweldJointTopology` would report failure
+    // after already clearing the flag -- leaving the weld dropped with no
+    // rebuild and no undo entry.
+    joint.isWelded = false;
+    return true;
+  }
+
+  /**
+   * Take some leaves out of whatever compounds hold them, keeping the rest
+   * welded exactly as it was.
+   *
+   * The compound is rebuilt from what survives rather than dissolved, so a
+   * weld holding two survivors together goes on holding them. A joint left
+   * with nothing to be rigid about keeps its flag until
+   * `reconcileAssemblyWelds` runs, which is where that decision belongs and
+   * where it is already made.
+   */
+  private releaseFromCompounds(doomedLinkIds: ReadonlySet<string>): void {
+    this.links = this.links.flatMap((link) => {
+      if (!(link instanceof RealLink) || link.subset.length === 0) return [link];
+      if (!link.subset.some((leaf) => doomedLinkIds.has(leaf.id))) return [link];
+      link.subset = link.subset.filter((leaf) => !doomedLinkIds.has(leaf.id));
+      if (link.subset.length === 0) return [];
+      return this.splitCompoundAtRemainingWelds(link);
+    });
+  }
+
+  /**
+   * Whether the joint a merge would leave behind could carry the weld one of
+   * its halves is carrying now.
+   *
+   * The same question `canBeWelded` asks, put to a joint that does not exist
+   * yet: the survivor inherits `input` from either side, and holds the union
+   * of their bodies.
+   */
+  private weldWouldSurviveMerge(source: RealJoint, target: RealJoint): boolean {
+    if (source.input || target.input) return false;
+    const bodies = new Set([...source.links, ...target.links].map((link) => link.id));
+    return bodies.size >= 2;
+  }
+
+  private compoundAt(joint: RealJoint): RealLink | undefined {
+    return this.links.find(
+      (link): link is RealLink =>
+        link instanceof RealLink && link.subset.length > 0 && link.joints.includes(joint)
+    );
+  }
+
+  private weldJointTopology(joint: RealJoint): boolean {
+    const linksAtJoint = this.realLinksAt(joint);
     if (!joint.canBeWelded() || joint.isWelded || linksAtJoint.length < 2) return false;
 
     const affectedLinkIDs = new Set(
@@ -1435,7 +7869,7 @@ export class MechanismService {
   }
 
   public unWeldJoint(joint: RealJoint): void {
-    if (!this.unweldJointTopology(joint)) return;
+    if (!this.unweldTopology(joint)) return;
     this.finishStructuralEdit(true);
   }
 
@@ -1446,13 +7880,35 @@ export class MechanismService {
     if (joint instanceof RealJoint) this.unWeldJoint(joint);
   }
 
-  public unweldAll(): void {
+  /**
+   * Take one compound apart: every weld holding *this* body together, and no
+   * others.
+   *
+   * The control that calls this lives inside a selected link's own Compound
+   * Link Settings, so "all" has always meant "all of this one". It was reading
+   * as "all in the mechanism": pressing it on a two-leaf compound dissolved
+   * every other compound on the grid, which is a large, silent, and entirely
+   * unrelated edit.
+   *
+   * With no link it still means the whole mechanism, because that is what a
+   * caller with nothing selected can only mean.
+   */
+  public unweldAll(link: Link | undefined = this.activeObjService.selectedLink): void {
+    // A Slide counts as welded here. It says so in `rotates` on the sliding
+    // joint rather than in `isWelded` -- and a Slide on a single rider builds no
+    // compound, so it sets no flag at all and this walk used to pass it by.
+    const welded = (joint: Joint): joint is RealJoint =>
+      joint instanceof PrisJoint ? !joint.rotates : joint instanceof RealJoint && joint.isWelded;
+    const scope =
+      link instanceof RealLink && link.subset.length > 0
+        ? this.joints.filter(
+            (joint): joint is RealJoint => welded(joint) && link.joints.includes(joint)
+          )
+        : this.joints.filter(welded);
+
     let changed = false;
-    const weldedJoints = this.joints.filter(
-      (joint): joint is RealJoint => joint instanceof RealJoint && joint.isWelded
-    );
-    weldedJoints.forEach((joint) => {
-      changed = this.unweldJointTopology(joint) || changed;
+    scope.forEach((joint) => {
+      changed = this.unweldTopology(joint) || changed;
     });
     if (changed) this.finishStructuralEdit(true);
   }
@@ -1468,11 +7924,71 @@ export class MechanismService {
       return false;
     }
 
-    const leaves = compound.subset.filter((link) => link instanceof RealLink) as RealLink[];
     joint.isWelded = false;
-    const remaining = [...leaves];
-    const components: RealLink[][] = [];
+    const replacementLinks = this.splitCompoundAtRemainingWelds(compound);
+    const compoundIndex = this.links.indexOf(compound);
+    this.links.splice(compoundIndex, 1, ...replacementLinks);
+    return true;
+  }
 
+  /** Delete joints from a welded body, then rebuild only its surviving weld components. */
+  removeCompoundJoints(compound: RealLink, ids: ReadonlySet<string>): RealLink[] {
+    compound.subset = compound.subset.filter((leaf) => {
+      if (!leaf.joints.some((joint) => ids.has(joint.id))) return leaf.joints.length >= 2;
+      leaf.joints = leaf.joints.filter((joint) => !ids.has(joint.id));
+      const was = leaf.id;
+      leaf.id = leaf.joints
+        .map((joint) => joint.id)
+        .sort()
+        .join('');
+      renameAnchors(this.forces, was, leaf.id);
+      leaf.fixedLocations = [
+        { id: 'com', label: 'com' },
+        ...leaf.joints.map((joint) => ({ id: joint.id, label: joint.id })),
+      ];
+      if (ids.has(leaf.fixedLocation.fixedPoint)) leaf.fixedLocation.fixedPoint = 'com';
+      if (leaf.joints.length < 2) return false;
+      if (leaf instanceof RealLink) {
+        if (!leaf.comIsCustom) leaf.CoM = derivedCenterOfMass(leaf);
+        leaf.reComputeDPath();
+      }
+      return true;
+    });
+    for (const joint of compound.joints) {
+      if (!(joint instanceof RealJoint) || !joint.isWelded || ids.has(joint.id)) continue;
+      const members = compound.subset.filter((leaf) => leaf.joints.includes(joint));
+      // A former seam at the end of a surviving component is no longer a
+      // weld. Keep slide-assembly welds, whose second member is a block.
+      if (members.length < 2 && !slideAssemblyAt(joint)) joint.isWelded = false;
+    }
+    return this.splitCompoundAtRemainingWelds(compound);
+  }
+
+  /**
+   * A welded body that came apart took the center of mass or inertia somebody
+   * set on it with it: no piece is that body, so none can inherit the number.
+   * Dropping it is right; dropping it without a word is not, because the CoM
+   * mark jumps and a student copying the number would not know why (#156).
+   */
+  private sayBodyValuesDropped(compound: RealLink): void {
+    const dropped = [
+      compound.comIsCustom ? 'center of mass' : undefined,
+      compound.moiIsCustom ? 'mass moment of inertia' : undefined,
+    ].filter((value): value is string => value !== undefined);
+    if (dropped.length === 0) return;
+    this.notify.news(
+      'weld.split-values',
+      `${this.bodyLabel(compound)} was split, so its custom ${dropped.join(' and ')} ` +
+        `no longer applies. Each link now uses its own.`,
+      {
+        actions: [{ label: 'Undo', run: () => this.injector.get(SaveHistoryService).undo() }],
+      }
+    );
+  }
+
+  private splitCompoundAtRemainingWelds(compound: RealLink): RealLink[] {
+    const remaining = compound.subset.filter((link): link is RealLink => link instanceof RealLink);
+    const components: RealLink[][] = [];
     while (remaining.length > 0) {
       const component: RealLink[] = [];
       const queue = [remaining.shift()!];
@@ -1481,40 +7997,60 @@ export class MechanismService {
         component.push(current);
         for (let index = remaining.length - 1; index >= 0; index--) {
           const candidate = remaining[index];
-          const sharesAnotherWeld = current.joints.some(
-            (currentJoint) =>
-              currentJoint instanceof RealJoint &&
-              currentJoint !== joint &&
-              currentJoint.isWelded &&
-              candidate.joints.includes(currentJoint)
+          const sharesWeld = current.joints.some(
+            (joint) =>
+              joint instanceof RealJoint && joint.isWelded && candidate.joints.includes(joint)
           );
-          if (sharesAnotherWeld) queue.push(...remaining.splice(index, 1));
+          if (sharesWeld) queue.push(...remaining.splice(index, 1));
         }
       }
       components.push(component);
     }
-
-    const replacementLinks = components.map((component) =>
-      component.length === 1 ? component[0] : this.createNewCompoundLinkFromSubset(component)
+    // Which of the pieces, if any, is the body carrying on. One compound left
+    // and the rest coming out as single bars is a body that lost members; two
+    // compounds is a body that split, and neither of them is the original --
+    // handing a typed inertia to both would describe material twice.
+    const stillABody = components.filter((component) => component.length > 1);
+    const continuation = stillABody.length === 1 ? stillABody[0] : undefined;
+    if (!continuation) this.sayBodyValuesDropped(compound);
+    const replacements = components.map((component) =>
+      component.length === 1
+        ? component[0]
+        : this.createNewCompoundLinkFromSubset(
+            component,
+            component === continuation ? compound : undefined
+          )
     );
-    const compoundIndex = this.links.indexOf(compound);
-    this.links.splice(compoundIndex, 1, ...replacementLinks);
-
-    const forcesToReassign = this.forces.filter(
-      (force) => force.link === compound || force.link.id === compound.id
-    );
+    const forces = this.forces.filter((force) => force.link === compound);
     compound.forces = [];
-    forcesToReassign.forEach((force) => {
-      const owner = [...replacementLinks]
-        .filter((link): link is RealLink => link instanceof RealLink)
-        .sort((left, right) => {
-          const distanceDifference =
+    for (const force of forces) {
+      // The body that holds the bar this force was put on, if that bar is
+      // still in the drawing. Distance cannot answer this: a force anchored
+      // where two leaves meet is exactly as far from both, and the tie-break
+      // that followed handed a bracket's load to a cylinder's rod without
+      // anything moving.
+      const remembered = force.anchoredTo;
+      const kept =
+        remembered === undefined
+          ? undefined
+          : replacements.find(
+              (candidate) =>
+                candidate.id === remembered ||
+                candidate.subset.some((leaf) => leaf.id === remembered)
+            );
+      const owner =
+        kept ??
+        [...replacements].sort((left, right) => {
+          const distance =
             this.distanceFromForceToLink(force, left) - this.distanceFromForceToLink(force, right);
-          return distanceDifference === 0 ? left.id.localeCompare(right.id) : distanceDifference;
+          return distance === 0 ? left.id.localeCompare(right.id) : distance;
         })[0];
-      if (owner) this.attachForceToLink(force, owner);
-    });
-    return true;
+      // The replacements are not in `this.links` yet: looking up ownership
+      // there would reattach a leaf to the compound being removed.
+      if (owner) this.attachForceToLink(force, owner, owner);
+      else this.detachForce(force);
+    }
+    return replacements;
   }
 
   private distanceFromForceToLink(force: Force, link: RealLink): number {
@@ -1547,48 +8083,110 @@ export class MechanismService {
 
   createForceAtCOM() {
     const com = this.activeObjService.selectedLink.CoM;
-    this.createForce(new Coord(com.x, com.y), new Coord(com.x + 1, com.y + 3));
+    // Pointing where it always did -- up and to the right, 1 across to 3 up --
+    // and as long as the drawing is big, which it was not.
+    //
+    // The length used to be a fixed three-and-a-bit *user units*, so the first
+    // force on a four-bar whose bars are one and a half centimeters came out
+    // twice the length of the whole mechanism and ran off the top of the
+    // window. It looked right on the library's cranes only because they happen
+    // to be that size. `objectScale` is the app's own answer to how big this
+    // drawing is -- it is what every mark is drawn against -- and the ratio
+    // below is the one the library's own forces are drawn at.
+    const reach = 1.5 * this.settingsService.objectScale;
+    const away = Math.atan2(3, 1);
+    this.createForce(
+      new Coord(com.x, com.y),
+      new Coord(com.x + Math.cos(away) * reach, com.y + Math.sin(away) * reach)
+    );
   }
 
-  createForce(startCoord: Coord, endCoord: Coord): Force | undefined {
-    const selectedLink = this.activeObjService.selectedLink;
+  /**
+   * `onLink` is handed in by the gesture that started this, because the force
+   * row is on a joint's menu as well as a link's and the selection there is
+   * the joint. Falls back to the selected link for the callers that have one.
+   */
+  /**
+   * Move any force whose anchor has left the region its link's joints span, or
+   * that sits on a joint a force may not sit on.
+   *
+   * The second is how a force that was legal when it was placed stops being
+   * legal: a tracer point carrying one is merged onto another joint, a link is
+   * attached to it, it is grounded or made a slider -- or a URL or a library
+   * drawing arrived with a load on a pin (issue #138). The edit is what the
+   * reader asked for, so it stands; the force is moved a short way along its
+   * link, and the reader is told where it went.
+   */
+  private keepForcesOnTheirLinks(): void {
+    const { within, margin } = this.forceJointMargins();
+    for (const force of this.forces) {
+      if (!(force.link instanceof RealLink)) continue;
+      const kept = constrainForceAnchor(force.link, force.startCoord, 0);
+      if (Math.hypot(kept.x - force.startCoord.x, kept.y - force.startCoord.y) > 1e-9) {
+        force.moveAnchor(kept);
+      }
+      const off = forceOffRefusedJoint(force.link, force.startCoord, within, margin);
+      if (!off) continue;
+      if (Math.hypot(off.to.x - force.startCoord.x, off.to.y - force.startCoord.y) <= 1e-9) {
+        continue;
+      }
+      force.moveAnchor(off.to);
+      const why = refuseForceOnJoint(off.joint)?.because;
+      this.notify.news(
+        `force.moved-off-joint.${force.id}`,
+        `Force ${force.name || force.id} moved off joint ${off.joint.id} onto link ${this.visibleBodyName(force.link)}: ${why}.`
+      );
+    }
+  }
+
+  /**
+   * How near a joint's center a force counts as on it -- the pin's own radius,
+   * a joint being 0.15 object scales across -- and how far off it one is put.
+   * In object scales rather than the drawing style's scale, because a rebuild
+   * is about the mechanism and not about how it is drawn.
+   */
+  private forceJointMargins(): { within: number; margin: number } {
+    const scale = this.settingsService.objectScale;
+    return { within: 0.075 * scale, margin: 0.3 * scale };
+  }
+
+  createForce(startCoord: Coord, endCoord: Coord, onLink?: RealLink): Force | undefined {
+    const selectedLink = onLink ?? this.activeObjService.selectedLink;
     if (!(selectedLink instanceof RealLink)) return undefined;
     startCoord = new Coord(startCoord.x, startCoord.y);
     endCoord = new Coord(endCoord.x, endCoord.y);
-    // TODO: utilize dot product to find point that is closest to the line
-    if (selectedLink.joints.length === 2) {
-      const lineVector: Coord = new Coord(
-        selectedLink.joints[0].x - selectedLink.joints[1].x,
-        selectedLink.joints[0].y - selectedLink.joints[1].y
+    // Where the click landed, kept to the region the link's joints span: the
+    // line between a bar's two joints, the inside of a plate. A right-click
+    // out at a plate's drawn edge is a load on its skin, not on the linkage.
+    // And off a joint where a second body meets the link, quietly: a new force
+    // has nowhere it "was", so there is nothing to tell the reader it moved
+    // from (`model/force-on-joint.ts`).
+    const { within, margin } = this.forceJointMargins();
+    const onBody = constrainForceAnchor(selectedLink, startCoord, 0);
+    const kept = forceOffRefusedJoint(selectedLink, onBody, within, margin)?.to ?? onBody;
+    endCoord.x += kept.x - startCoord.x;
+    endCoord.y += kept.y - startCoord.y;
+    startCoord = kept;
+    // Its application point rides the body, but a new force's direction is
+    // global. Map the projected tail back, then translate without rotating.
+    if (!this.seedFromDisplay && !this.isAtStartPose()) {
+      const frame = this.attachmentFrame(selectedLink);
+      if (!frame) return undefined;
+      const start = frame.point(startCoord);
+      const end = new Coord(
+        start.x + endCoord.x - startCoord.x,
+        start.y + endCoord.y - startCoord.y
       );
-
-      // Calculate the vector from the first point on the line to the given point
-      const givenPointVector: Coord = new Coord(
-        startCoord.x - selectedLink.joints[0].x,
-        startCoord.y - selectedLink.joints[0].y
-      );
-
-      // Calculate the dot product of the line vector and the given point vector
-      const dotProduct: number =
-        givenPointVector.x * lineVector.x + givenPointVector.y * lineVector.y;
-
-      // Calculate the length of the line vector squared
-      const lineLengthSquared: number = lineVector.x * lineVector.x + lineVector.y * lineVector.y;
-
-      if (lineLengthSquared > 0) {
-        // Calculate the parameter t for the projection onto the line
-        const t: number = dotProduct / lineLengthSquared;
-
-        // Calculate the projected point on the line
-        startCoord.x = selectedLink.joints[0].x + t * lineVector.x;
-        startCoord.y = selectedLink.joints[0].y + t * lineVector.y;
-      }
+      return this.editingAtStartPose(() => this.createForce(start, end, selectedLink));
     }
     let maxNumber = 1;
     if (this.forces.length !== 0) {
       maxNumber = Math.max(...this.forces.map((f) => parseInt(f.id.replace(/\D/g, '')))) + 1;
     }
     const force = new Force('F' + maxNumber.toString(), selectedLink, startCoord, endCoord);
+    // In whichever palette color stands out most against the link it is on:
+    // the shared default is a navy, and on a navy link the arrow disappeared.
+    force.color = ColorService.instance?.contrastingForceColor(selectedLink.fill) ?? '';
     this.forces.push(force);
     this.attachForceToLink(force, selectedLink);
     PositionSolver.setUpSolvingForces(this.forces);

@@ -11,27 +11,87 @@ interface PointLike {
 }
 
 const ARC_STEP = Math.PI / 24;
+const QUADRATIC_STEPS = 12;
 const CORNER_THRESHOLD = Math.PI / 12;
 const EPSILON = 1e-9;
 
-export function buildCompoundPath(
-  leafPaths: string[],
-  filletRadius: number
-): CompoundPathGeometry {
+/**
+ * The grids a union's vertices are snapped to, finest first.
+ *
+ * polygon-clipping is exact about coincidence and nothing else: two vertices a
+ * hair apart are two vertices, and a pair of edges that cross between them can
+ * leave it unable to close a ring. Two bars welded at a pin both end in a cap
+ * on the same circle, and flattened at the same angular step their vertices
+ * land within 1e-14 of each other -- the Bell Crank's right-angled weld threw
+ * "Unable to complete output ring" and drew as two loose bars (#291). Snapping
+ * makes those vertices one vertex. The grid is in drawing units, where a joint
+ * is tens of units across, so the finest step is far below anything drawn;
+ * the coarser ones are only tried if a finer one still fails.
+ */
+const SNAP_GRIDS = [1e-6, 1e-4, 1e-2];
+
+export function buildCompoundPath(leafPaths: string[], filletRadius: number): CompoundPathGeometry {
+  let flattened: Ring[];
   try {
-    const polygons = leafPaths.map((path) => [flattenPath(path)] as Polygon);
-    if (polygons.length === 0) return { path: '', rings: [] };
-    const result = polygonClipping.union(polygons[0], ...polygons.slice(1));
-    const rings = result.flatMap((polygon) => polygon);
-    if (rings.length === 0) return { path: leafPaths.join(' '), rings: [] };
-    return {
-      path: rings.map((ring) => roundedRingPath(ring, filletRadius)).join(' '),
-      rings,
-    };
+    flattened = leafPaths.map(flattenPath);
   } catch {
     // A malformed legacy leaf must not prevent the mechanism from rendering.
     return { path: leafPaths.join(' '), rings: [] };
   }
+  if (flattened.length === 0) return { path: '', rings: [] };
+  for (const grid of SNAP_GRIDS) {
+    const rings = unionRings(flattened, grid);
+    if (rings === undefined) continue;
+    if (rings.length === 0) break;
+    return {
+      path: rings.map((ring) => roundedRingPath(ring, filletRadius)).join(' '),
+      rings,
+    };
+  }
+  return { path: leafPaths.join(' '), rings: [] };
+}
+
+/** The union of these rings snapped to `grid`, or undefined where the library gives up. */
+function unionRings(flattened: Ring[], grid: number): Ring[] | undefined {
+  const polygons = flattened.map((ring) => [snapRing(ring, grid)] as Polygon);
+  try {
+    return polygonClipping.union(polygons[0], ...polygons.slice(1)).flatMap((polygon) => polygon);
+  } catch {
+    return undefined;
+  }
+}
+
+function snapRing(ring: Ring, grid: number): Ring {
+  const snapped: Ring = [];
+  ring.forEach((point) =>
+    appendPoint(snapped, [Math.round(point[0] / grid) * grid, Math.round(point[1] / grid) * grid])
+  );
+  // Snapping can merge the closing point into its neighbor; keep the ring closed.
+  const first = snapped[0];
+  const last = snapped[snapped.length - 1];
+  if (first && last && distance(first, last) > EPSILON) snapped.push([first[0], first[1]]);
+  return snapped;
+}
+
+/**
+ * Several holes as one subtractable outline.
+ *
+ * A carrier subtracts its channels by appending them to its own path and
+ * filling even-odd, which is exactly right for one channel and wrong for two
+ * that cross: the crossing is inside both, so it is wound three times, comes
+ * out odd, and fills back in — a carrier-colored diamond sitting in the middle
+ * of the X with both capsule outlines stroked straight through it. Unioning
+ * first turns the pair into a single ring, which even-odd then subtracts whole.
+ *
+ * One channel is returned untouched, so the ordinary case keeps its exact arcs
+ * instead of the polygon a union would flatten it to.
+ */
+export function mergedChannels(channels: string[]): string {
+  if (channels.length < 2) return channels.join(' ');
+  // No fillet: a slot is a machined hole, and rounding the corners where two
+  // cross would invent a radius the geometry does not have.
+  const merged = buildCompoundPath(channels, 0).path;
+  return merged || channels.join(' ');
 }
 
 /**
@@ -46,33 +106,39 @@ export function transformRigidPath(
   targetStart: PointLike,
   targetEnd: PointLike
 ): string {
-  const tokens = path.match(/[MLQAZ]|[-+]?(?:\d*\.?\d+)(?:e[-+]?\d+)?/gi) ?? [];
+  const tokens = path.match(/[MLHVQAZ]|[-+]?(?:\d*\.?\d+)(?:e[-+]?\d+)?/gi) ?? [];
   const output: string[] = [];
   const rotation = rigidRotation(sourceStart, sourceEnd, targetStart, targetEnd);
   let index = 0;
+  // Tracked because the shorthand is relative to it, and because a rotation
+  // turns a horizontal line into a sloped one: H and V have to come out as L.
+  let current: PointLike = { x: 0, y: 0 };
 
   const number = (): number => {
     const value = Number(tokens[index++]);
     if (!Number.isFinite(value)) throw new Error('Invalid SVG path number');
     return value;
   };
-  const point = (): string => {
-    const transformed = transformRigidPoint(
-      { x: number(), y: number() },
-      sourceStart,
-      targetStart,
-      rotation
-    );
+  const place = (at: PointLike): string => {
+    current = at;
+    const transformed = transformRigidPoint(at, sourceStart, targetStart, rotation);
     return `${formatNumber(transformed.x)} ${formatNumber(transformed.y)}`;
   };
+  const point = (): string => place({ x: number(), y: number() });
 
   while (index < tokens.length) {
     const command = tokens[index++].toUpperCase();
-    output.push(command);
+    output.push(command === 'H' || command === 'V' ? 'L' : command);
     switch (command) {
       case 'M':
       case 'L':
         output.push(point());
+        break;
+      case 'H':
+        output.push(place({ x: number(), y: current.y }));
+        break;
+      case 'V':
+        output.push(place({ x: current.x, y: number() }));
         break;
       case 'Q':
         output.push(point(), point());
@@ -147,7 +213,7 @@ function transformRigidPoint(
 }
 
 function flattenPath(path: string): Ring {
-  const tokens = path.match(/[MLAZ]|[-+]?(?:\d*\.?\d+)(?:e[-+]?\d+)?/gi) ?? [];
+  const tokens = path.match(/[MLHVQAZ]|[-+]?(?:\d*\.?\d+)(?:e[-+]?\d+)?/gi) ?? [];
   const ring: Ring = [];
   let index = 0;
   let current: [number, number] = [0, 0];
@@ -164,6 +230,26 @@ function flattenPath(path: string): Ring {
     if (command === 'M' || command === 'L') {
       current = [number(), number()];
       appendPoint(ring, current);
+      continue;
+    }
+    // Every rectangle and capsule in the mark system is written with the
+    // shorthand, so refusing it meant any union involving one silently fell
+    // back to emitting its inputs side by side -- which under an even-odd fill
+    // subtracts their overlap instead of joining them.
+    if (command === 'H' || command === 'V') {
+      current = command === 'H' ? [number(), current[1]] : [current[0], number()];
+      appendPoint(ring, current);
+      continue;
+    }
+    // Quadratics are what this module's own output uses for a filleted corner,
+    // so refusing them made a compound link impossible to feed back in — and
+    // the weld plate does exactly that, unioning a rider that may itself be a
+    // welded body with the block it is fused to.
+    if (command === 'Q') {
+      const control: [number, number] = [number(), number()];
+      const end: [number, number] = [number(), number()];
+      flattenQuadratic(current, control, end).forEach((point) => appendPoint(ring, point));
+      current = end;
       continue;
     }
     if (command === 'A') {
@@ -191,6 +277,25 @@ function flattenPath(path: string): Ring {
   return ring;
 }
 
+/** A quadratic Bézier as a polyline, at the resolution arcs are flattened to. */
+function flattenQuadratic(
+  start: [number, number],
+  control: [number, number],
+  end: [number, number]
+): Ring {
+  // A fillet never turns more than a right angle, so the same step an arc uses
+  // bounds the error: twelve segments is finer than that everywhere.
+  const count = QUADRATIC_STEPS;
+  return Array.from({ length: count }, (_, step) => {
+    const t = (step + 1) / count;
+    const inverse = 1 - t;
+    return [
+      inverse * inverse * start[0] + 2 * inverse * t * control[0] + t * t * end[0],
+      inverse * inverse * start[1] + 2 * inverse * t * control[1] + t * t * end[1],
+    ] as [number, number];
+  });
+}
+
 function flattenArc(
   start: [number, number],
   end: [number, number],
@@ -211,9 +316,7 @@ function flattenArc(
   const halfY = (start[1] - end[1]) / 2;
   const transformedX = cos * halfX + sin * halfY;
   const transformedY = -sin * halfX + cos * halfY;
-  const scale = Math.sqrt(
-    transformedX ** 2 / radiusX ** 2 + transformedY ** 2 / radiusY ** 2
-  );
+  const scale = Math.sqrt(transformedX ** 2 / radiusX ** 2 + transformedY ** 2 / radiusY ** 2);
   if (scale > 1) {
     radiusX *= scale;
     radiusY *= scale;
@@ -225,8 +328,7 @@ function flattenArc(
       radiusX ** 2 * transformedY ** 2 -
       radiusY ** 2 * transformedX ** 2
   );
-  const denominator =
-    radiusX ** 2 * transformedY ** 2 + radiusY ** 2 * transformedX ** 2;
+  const denominator = radiusX ** 2 * transformedY ** 2 + radiusY ** 2 * transformedX ** 2;
   const direction = largeArc === sweep ? -1 : 1;
   const coefficient = direction * Math.sqrt(numerator / Math.max(denominator, EPSILON));
   const centerXPrime = coefficient * ((radiusX * transformedY) / radiusY);
@@ -274,11 +376,7 @@ function roundedRingPath(ring: Ring, filletRadius: number): string {
     const tangent =
       Math.abs(turn) < CORNER_THRESHOLD
         ? 0
-        : Math.min(
-            filletRadius * Math.tan(Math.abs(turn) / 2),
-            previousLength / 2,
-            nextLength / 2
-          );
+        : Math.min(filletRadius * Math.tan(Math.abs(turn) / 2), previousLength / 2, nextLength / 2);
     return {
       point,
       before: [point[0] - incoming[0] * tangent, point[1] - incoming[1] * tangent] as [

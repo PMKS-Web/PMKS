@@ -13,7 +13,7 @@
 
   #outerBox {
     display: flex;
-    background-color: #ffebee;
+    background-color: var(--refusal-bg);
     //border-radius: var(--border-radius);
     align-items: center;
     justify-content: center;
@@ -21,7 +21,7 @@
     gap: 15px;
 
     @include mat.m2-typography-level($typography-config, 'caption');
-    color: rgba(0, 0, 0, 0.6);
+    color: var(--text-secondary);
 
     img {
       width: 30px;

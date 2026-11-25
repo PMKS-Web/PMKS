@@ -1,0 +1,187 @@
+{
+ "schema": "pmks-oracle-problem/1",
+ "id": "template.shaper-quick-return.m1",
+ "title": "Template Shaper_Quick_Return, M1",
+ "source": {
+  "kind": "published",
+  "case": "template.shaper-quick-return",
+  "machine": "M1"
+ },
+ "gravity": 9.80665,
+ "bodies": [
+  {
+   "id": "AB",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.05,
+    0
+   ]
+  },
+  {
+   "id": "CD",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.07905694150420947,
+    -0.06282917548737155
+   ]
+  },
+  {
+   "id": "DR",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.24705788748993812,
+    0.26217082451262846
+   ]
+  }
+ ],
+ "joints": [
+  {
+   "id": "A",
+   "kind": "pin",
+   "at": [
+    0,
+    0
+   ],
+   "bodies": [
+    "AB"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "B",
+   "kind": "slider",
+   "at": [
+    0.1,
+    0
+   ],
+   "guide": "CD",
+   "linePoint": [
+    0,
+    -0.3
+   ],
+   "axis": [
+    0.31622776601683794,
+    0.9486832980505138
+   ],
+   "riders": [
+    "AB"
+   ],
+   "rotates": true,
+   "blockMass": 0,
+   "limits": [
+    0.0284,
+    0.4716
+   ]
+  },
+  {
+   "id": "C",
+   "kind": "pin",
+   "at": [
+    0,
+    -0.3
+   ],
+   "bodies": [
+    "CD"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "D",
+   "kind": "pin",
+   "at": [
+    0.15811388300841894,
+    0.17434164902525692
+   ],
+   "bodies": [
+    "CD",
+    "DR"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "R",
+   "kind": "slider",
+   "at": [
+    0.33600189197145724,
+    0.35000000000000003
+   ],
+   "guide": "ground",
+   "linePoint": [
+    0.33600189197145724,
+    0.35000000000000003
+   ],
+   "axis": [
+    1,
+    0
+   ],
+   "riders": [
+    "DR"
+   ],
+   "rotates": true,
+   "blockMass": 0
+  }
+ ],
+ "driver": {
+  "joint": "A",
+  "kind": "rotation",
+  "speed": -1.0471975511965976,
+  "bodies": [
+   "ground",
+   "AB"
+  ]
+ },
+ "loads": [],
+ "points": [
+  {
+   "id": "A",
+   "body": "ground",
+   "at": [
+    0,
+    0
+   ]
+  },
+  {
+   "id": "B",
+   "body": "AB",
+   "at": [
+    0.1,
+    0
+   ]
+  },
+  {
+   "id": "C",
+   "body": "ground",
+   "at": [
+    0,
+    -0.3
+   ]
+  },
+  {
+   "id": "D",
+   "body": "CD",
+   "at": [
+    0.15811388300841894,
+    0.17434164902525692
+   ]
+  },
+  {
+   "id": "R",
+   "body": "DR",
+   "at": [
+    0.33600189197145724,
+    0.35000000000000003
+   ]
+  }
+ ],
+ "sweep": {
+  "step": 0.017453292519943295,
+  "maxSamples": 2000
+ },
+ "unsupported": []
+}

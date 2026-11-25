@@ -1,0 +1,189 @@
+@use './segmented.look' as look;
+
+@mixin css($theme) {
+  segmented-block {
+    display: block;
+    min-width: 0;
+  }
+
+  // A fitted pill at the end of a row takes only its own width.
+  segmented-block:has(> .segmented.fit) {
+    flex: 0 0 auto;
+  }
+
+  // The parts selected disagree, so no option is chosen: said at the end of
+  // the label row, in the words and ink toggle-block uses for the same state.
+  segmented-block .mixed-state {
+    @include look.mixed-ink($theme);
+  }
+
+  // A track with a pill. The pill is as wide as one option and slides to the
+  // chosen one; the options sit over it, and only their ink changes.
+  segmented-block .segmented {
+    @include look.track;
+    --height: 28px;
+    position: relative;
+
+    &.compact {
+      --height: 26px;
+    }
+
+    .thumb {
+      position: absolute;
+      top: var(--pad);
+      bottom: var(--pad);
+      left: var(--thumb-left, var(--pad));
+      width: var(--thumb-width, 0);
+      border-radius: 6px;
+      @include look.chosen-surface;
+      transition:
+        left 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+        width 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    // Nothing chosen, so nothing under any option.
+    &.unchosen .thumb {
+      visibility: hidden;
+    }
+
+    // What the pointer lands on: the button, or around a grayed one, the cell
+    // that carries its reason.
+    .cell {
+      display: flex;
+      flex: 1 1 0;
+      min-width: 0;
+    }
+
+    button {
+      @include look.cell;
+      position: relative;
+      z-index: 1;
+      justify-content: center;
+      flex: 1 1 auto;
+      min-width: 0;
+      height: var(--height);
+      border: none;
+      background: transparent;
+      font-family: inherit;
+      line-height: 1;
+      cursor: pointer;
+      transition: color 0.18s ease-in-out;
+
+      &.chosen {
+        @include look.chosen-ink($theme);
+      }
+
+      // Only a segment that can be pressed answers the pointer. Left as
+      // `:not(.chosen)` alone this outranked the `:disabled` rule below --
+      // more classes in the selector -- so a grayed option darkened under the
+      // cursor and read as pressable right up until the click did nothing.
+      &:not(.chosen):not(:disabled):hover {
+        color: var(--text-primary);
+      }
+
+      // Out of the pointer's way as well as grayed, so the hover reaches the
+      // cell and its reason.
+      &:disabled {
+        color: var(--text-disabled);
+        cursor: default;
+        pointer-events: none;
+      }
+
+      // Chosen, and not valid as it stands.
+      &.invalid {
+        color: var(--refusal-text);
+      }
+    }
+
+    // The label clips itself rather than the button clipping it, now that a
+    // glyph may share the button.
+    .text {
+      @include look.label-text;
+    }
+
+    // A glyph stays out of the way until its option is the chosen one, and
+    // takes the same gray and the same refusal ink as its label.
+    .glyph {
+      @include look.glyph;
+    }
+
+    button.chosen .glyph {
+      @include look.chosen-glyph($theme);
+    }
+
+    button:disabled .glyph {
+      color: var(--text-disabled);
+    }
+
+    button.invalid .glyph {
+      color: var(--refusal-text);
+    }
+
+    &.compact button {
+      padding: 0 7px;
+      font-size: 12px;
+    }
+
+    // Each option as wide as its label, and the track as wide as its options.
+    &.fit {
+      display: inline-flex;
+
+      .cell {
+        flex: 0 0 auto;
+      }
+    }
+
+    // Still the row's full width, but each option starts from its label's
+    // width and only the room left over is shared.
+    &.weighted .cell {
+      flex: 1 1 auto;
+    }
+
+    // Two columns of taller cells, the glyph and label reading from the left.
+    // The pill now moves down a row as well as across, so it is placed and
+    // slid on both axes.
+    &.wrap {
+      @include look.wrapped;
+      --height: 32px;
+
+      .cell {
+        flex: 1 1 calc(50% - var(--gap) / 2);
+      }
+
+      button {
+        justify-content: flex-start;
+      }
+
+      .thumb {
+        top: var(--thumb-top, var(--pad));
+        bottom: auto;
+        height: var(--thumb-height, var(--height));
+        transition:
+          left 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+          top 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+          width 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+    }
+
+    // Grayed, not gone: the choice that was made is still readable.
+    &.disabled {
+      opacity: 0.5;
+
+      button {
+        cursor: default;
+      }
+    }
+  }
+
+  // Put in place rather than slid: a control that has just appeared, or been
+  // rebuilt with the value it had.
+  segmented-block.settling .segmented .thumb {
+    transition: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    segmented-block .segmented .thumb {
+      transition: none;
+    }
+  }
+}

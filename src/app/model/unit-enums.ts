@@ -19,10 +19,21 @@ export enum ForceUnit {
   LBF = 20,
   NEWTON = 21,
   NULL = 22,
+  /**
+   * A metric *display* unit, appended rather than ordered beside NEWTON: the
+   * URL codec writes an enum as its key's index, so anything inserted ahead of
+   * NULL renames the value every circulating link already carries.
+   *
+   * Storage stays lbf under English and newtons otherwise -- what the solver's
+   * unit factors and every URL are written against -- so this unit, like
+   * InertiaUnit.G_CM2, exists only at the input/label boundary.
+   */
+  KGF = 23,
 }
 
-// Mass and inertia are shown in whichever unit pairs with the current length
-// unit, so these mirror LengthUnit's inch/cm/meter ordering.
+// Stored in whichever unit pairs with the current length unit, which is why
+// these mirror LengthUnit's inch/cm/meter ordering; shown in the reader's
+// choice under the metric lengths (model/mass-units.ts).
 export enum MassUnit {
   LBM = 40,
   GRAM = 41,
@@ -35,6 +46,19 @@ export enum InertiaUnit {
   KG_CM2 = 51,
   KG_M2 = 52,
   NULL = 53,
+  /**
+   * The metric *display* unit: g pairs with g·cm², where g beside kg·cm² read
+   * as two different systems in one panel. Storage stays KG_CM2 — the solver's
+   * unit factors and every URL in circulation are written against it — so this
+   * unit exists only at the input/label boundary.
+   */
+  G_CM2 = 54,
+  /**
+   * Grams beside meters: mass times length squared, for a reader who measures
+   * in meters and weighs in grams. Display only, like G_CM2; storage under
+   * meters stays KG_M2.
+   */
+  G_M2 = 55,
 }
 
 export enum TimeUnit {

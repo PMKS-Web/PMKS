@@ -1,7 +1,28 @@
-import { Component, ChangeDetectionStrategy } from '@angular/core';
-import { trigger, state, style, animate, transition } from '@angular/animations';
+import {
+  Component,
+  ChangeDetectionStrategy,
+  DoCheck,
+  afterNextRender,
+  inject,
+} from '@angular/core';
 import { MatIconRegistry } from '@angular/material/icon';
 import { DomSanitizer } from '@angular/platform-browser';
+import { NewGridComponent } from './component/new-grid/new-grid.component';
+import { TopBarComponent } from './component/top-bar/top-bar.component';
+import { BottombarComponent } from './component/bottombar/bottombar.component';
+import { LeftTabsComponent } from './component/left-tabs/left-tabs.component';
+import { PlaybackBarComponent } from './component/playback-bar/playback-bar.component';
+import { RightPanelComponent } from './component/right-panel/right-panel.component';
+import { NotificationComponent } from './component/notification/notification.component';
+import { LoadingOverlayComponent } from './component/loading-overlay/loading-overlay.component';
+import { AnalysisCompareService } from './services/analysis-compare.service';
+import { SvgGridService } from './services/svg-grid.service';
+
+/**
+ * The longest the boot splash waits for the canvas to be framed. Far past any
+ * real decode, a Jansen leg's included; it only has to be finite.
+ */
+const SPLASH_LONGEST_MS = 10_000;
 
 @Component({
   selector: 'app-root',
@@ -11,13 +32,35 @@ import { DomSanitizer } from '@angular/platform-browser';
     // animation triggers go here
   ],
   changeDetection: ChangeDetectionStrategy.Eager,
-  standalone: false,
+  imports: [
+    NewGridComponent,
+    TopBarComponent,
+    BottombarComponent,
+    LeftTabsComponent,
+    PlaybackBarComponent,
+    RightPanelComponent,
+    NotificationComponent,
+    LoadingOverlayComponent,
+  ],
 })
-export class AppComponent {
-  constructor(
-    private matIconRegistry: MatIconRegistry,
-    private domSanitizer: DomSanitizer
-  ) {
+export class AppComponent implements DoCheck {
+  private matIconRegistry = inject(MatIconRegistry);
+  private domSanitizer = inject(DomSanitizer);
+  private comparison = inject(AnalysisCompareService);
+  private grid = inject(SvgGridService);
+
+  /**
+   * The tuning gesture is polled, and polled here first: the status strip, the
+   * analysis panel and every open graph read the same record, and a reader
+   * checked before the record was brought up to date sees one pass's stale
+   * answer -- which Angular reports as NG0100 against whichever it was. The
+   * shell is checked before all of them.
+   */
+  ngDoCheck(): void {
+    this.comparison.sync();
+  }
+
+  constructor() {
     this.matIconRegistry.addSvgIcon(
       'com',
       this.domSanitizer.bypassSecurityTrustResourceUrl('assets/icons/com.svg')
@@ -49,6 +92,10 @@ export class AppComponent {
     this.matIconRegistry.addSvgIcon(
       'add_slider',
       this.domSanitizer.bypassSecurityTrustResourceUrl('assets/icons/add_slider.svg')
+    );
+    this.matIconRegistry.addSvgIcon(
+      'add_cylinder',
+      this.domSanitizer.bypassSecurityTrustResourceUrl('assets/icons/add_cylinder.svg')
     );
     this.matIconRegistry.addSvgIcon(
       'remove_slider',
@@ -103,6 +150,14 @@ export class AppComponent {
       this.domSanitizer.bypassSecurityTrustResourceUrl('assets/icons/unweld_joint.svg')
     );
     this.matIconRegistry.addSvgIcon(
+      'make_circular',
+      this.domSanitizer.bypassSecurityTrustResourceUrl('assets/icons/make_circular.svg')
+    );
+    this.matIconRegistry.addSvgIcon(
+      'make_bar',
+      this.domSanitizer.bypassSecurityTrustResourceUrl('assets/icons/make_bar.svg')
+    );
+    this.matIconRegistry.addSvgIcon(
       'github',
       this.domSanitizer.bypassSecurityTrustResourceUrl('assets/icons/github.svg')
     );
@@ -111,8 +166,105 @@ export class AppComponent {
       this.domSanitizer.bypassSecurityTrustResourceUrl('assets/icons/edit.svg')
     );
     this.matIconRegistry.addSvgIcon(
+      'background_image',
+      this.domSanitizer.bypassSecurityTrustResourceUrl('assets/icons/background_image.svg')
+    );
+    this.matIconRegistry.addSvgIcon(
       'synthesis',
       this.domSanitizer.bypassSecurityTrustResourceUrl('assets/icons/synthesis.svg')
     );
+    this.matIconRegistry.addSvgIcon(
+      'lock',
+      this.domSanitizer.bypassSecurityTrustResourceUrl('assets/icons/lock.svg')
+    );
+    this.matIconRegistry.addSvgIcon(
+      'unlock',
+      this.domSanitizer.bypassSecurityTrustResourceUrl('assets/icons/unlock.svg')
+    );
+    // The two fit buttons. Material's `crop_free` and `all_out` are a pair of
+    // brackets and a pair of arrows, which said "frame something" and "spread
+    // out" and left which one framed the drawing and which framed its whole
+    // travel to be worked out from the tooltip. These say it: the same
+    // brackets on both, closed on a single point for the pose as it sits, and
+    // opened around the dashed ring that point sweeps through for the cycle.
+    this.matIconRegistry.addSvgIcon(
+      'fit_linkage',
+      this.domSanitizer.bypassSecurityTrustResourceUrl('assets/icons/fit_linkage.svg')
+    );
+    this.matIconRegistry.addSvgIcon(
+      'fit_motion',
+      this.domSanitizer.bypassSecurityTrustResourceUrl('assets/icons/fit_motion.svg')
+    );
+    // The right-click menu's last four glyphs, which were Material ligatures
+    // (call_made, double_arrow, compare_arrows, delete_sweep) in a menu drawn
+    // otherwise entirely in the app's own family. Velocity and acceleration
+    // are a quantity leaving a joint -- one open head, then two on the same
+    // shaft -- and force is a load arriving at one, so its arrow is turned
+    // round. Delete Entire Mechanism is a ternary body with the trash where
+    // `new_link` and the `add_*` glyphs put their plus.
+    const menuGlyphs = [
+      'vector_velocity',
+      'vector_acceleration',
+      'vector_force',
+      'delete_mechanism',
+    ];
+    for (const name of menuGlyphs) {
+      this.matIconRegistry.addSvgIcon(
+        name,
+        this.domSanitizer.bypassSecurityTrustResourceUrl(`assets/icons/${name}.svg`)
+      );
+    }
+    // A joint's four types, each drawn floating and standing on the frame, for
+    // the Joint Type choice in the Edit panel and the right-click menu: the
+    // Grounded switch decides which set the reader sees. `joint_split` is the
+    // action beside Add Input and in the joint menu's Actions footer.
+    const jointGlyphs = [
+      'joint_revolute',
+      'joint_prismatic',
+      'joint_pin_in_slot',
+      'joint_welded',
+      'joint_revolute_grounded',
+      'joint_prismatic_grounded',
+      'joint_pin_in_slot_grounded',
+      'joint_welded_grounded',
+      'joint_split',
+    ];
+    for (const name of jointGlyphs) {
+      this.matIconRegistry.addSvgIcon(
+        name,
+        this.domSanitizer.bypassSecurityTrustResourceUrl(`assets/icons/${name}.svg`)
+      );
+    }
+
+    // Take down the splash `index.html` painted before any of this existed.
+    //
+    // Not on Angular's first render: the canvas is built then, and decodes the
+    // address while it is, but the view it is built with is svg-pan-zoom's own,
+    // fitted to the whole SVG, hundreds of times too close. The fit that frames
+    // the drawing lands a task or more later -- over a second on a large one --
+    // so the splash waits for it, and the first frame the reader sees is the
+    // drawing already framed. The timer is for a canvas that never frames at
+    // all, which would otherwise leave the splash over the app for good.
+    afterNextRender(() => {
+      const giveUp = new Promise<void>((resolve) => setTimeout(resolve, SPLASH_LONGEST_MS));
+      void Promise.race([this.grid.firstFramed, giveUp]).then(() => this.hideBootSplash());
+    });
+  }
+
+  /** Fade it out, then let it go. Idempotent: it can only be removed once. */
+  private hideBootSplash(): void {
+    const splash = document.getElementById('bootSplash');
+    if (!splash) return;
+    splash.style.transition = 'opacity 180ms ease-out';
+    splash.style.opacity = '0';
+    splash.style.pointerEvents = 'none';
+    // Not `transitionend`: a reader with reduced motion, or a browser that
+    // never runs the transition because the tab was in the background for it,
+    // would leave a white sheet over the whole app forever. A timer always
+    // fires. Counted from the first frame the fade runs in, not from now: the
+    // fit is often followed by a long task (the grid redrawn at its new zoom,
+    // nearly a second for a Jansen leg), and a timer started before it expired
+    // inside it, taking the splash away in one cut with no fade at all.
+    requestAnimationFrame(() => setTimeout(() => splash.remove(), 220));
   }
 }

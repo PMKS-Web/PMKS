@@ -1,0 +1,636 @@
+@use 'sass:map';
+@use '@angular/material' as mat;
+@use '../BLOCKS/blocks.common.scss' as blocks;
+
+@mixin css($theme) {
+  .quantityHint {
+    margin: 8px 16px;
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+  $color-config: mat.m2-get-color-config($theme);
+  $primary-palette: map.get($color-config, 'primary');
+  $indigo: mat.m2-get-color-from-palette($primary-palette, 500);
+  $indigo-light: mat.m2-get-color-from-palette($primary-palette, 400);
+
+  // Its own card, like every other drawer page: one card per panel, never a
+  // card inside a card. Three bands rather than one scrolling column -- the
+  // question and the decisions stay put, and only the list moves.
+  .exportCard {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    max-height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--card-surface);
+    border-top: 5px solid $indigo;
+    border-radius: var(--border-radius);
+    box-shadow: var(--card-shadow);
+    isolation: isolate;
+    // Something is above, out of sight. Read off the body rather than set on it,
+    // because the band that casts the shadow is not the one that scrolls.
+    &:has(.exportBody.scrolled) .exportHead {
+      box-shadow: var(--scroll-shadow);
+    }
+
+    .spacer {
+      flex: 1 1 auto;
+    }
+
+    .exportHead {
+      flex: 0 0 auto;
+      padding: 8px 15px 0;
+      background: var(--card-surface);
+      // Nothing yet: the shadow only means "there is more above", so it is drawn
+      // when the list underneath has actually been scrolled.
+      box-shadow: var(--scroll-shadow-hidden);
+      transition: box-shadow 0.15s ease-in-out;
+      z-index: 3;
+    }
+
+    .exportTitle {
+      // Clear of the drawer's close button, which shares this line.
+      padding-right: 40px;
+      font-size: 20px;
+      line-height: 32px;
+      font-weight: 500;
+      letter-spacing: 0.0125em;
+      color: var(--text-strong);
+    }
+
+    .exportLead {
+      margin: 0;
+      font-size: 14px;
+      line-height: 18px;
+      letter-spacing: 0.25px;
+      color: var(--text-secondary);
+    }
+
+    .steps {
+      display: flex;
+      align-items: center;
+      // The gap does the separating, so a name never runs up against the one
+      // after it.
+      gap: 8px;
+      padding-top: 12px;
+    }
+
+    // As wide as its own name, not an equal quarter of the rule. Four equal
+    // shares of 380px is 95 apiece, which `2. Kinematics` overruns -- so the
+    // long name crowded the short one beside it while `4. File` sat in a third
+    // of a segment of white.
+    .step {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .stepName {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      border: none;
+      background: transparent;
+      font-family: inherit;
+      font-size: 12px;
+      color: var(--text-tertiary);
+      padding: 0;
+      white-space: nowrap;
+
+      &.current {
+        font-weight: 500;
+        color: $indigo;
+      }
+
+      // A step already answered is the way back to it; one not reached yet is
+      // not, because there is nothing there to answer.
+      &.done {
+        color: $indigo;
+        cursor: pointer;
+      }
+
+      mat-icon {
+        width: 14px;
+        height: 14px;
+        font-size: 14px;
+        line-height: 14px;
+      }
+    }
+
+    .stepBar {
+      height: 3px;
+      border-radius: 2px;
+      background: var(--border-rule);
+
+      &.current {
+        background: $indigo;
+      }
+
+      &.done {
+        background: var(--brand-pale);
+      }
+    }
+
+    .countRow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 0 10px;
+    }
+
+    .count {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .linkButton {
+      border: none;
+      background: transparent;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      color: $indigo;
+      cursor: pointer;
+      padding: 0;
+
+      &.small {
+        font-size: 12px;
+      }
+    }
+
+    // Drawn rather than typed: a middot at this size renders as a ring in some
+    // faces and takes the ink of whatever it sits between.
+    //
+    // Named for this panel, and saying `border: none` out loud. It was called
+    // `.dot`, which the mass table's legend also calls its own marks -- so this
+    // one came out as a gray pip inside that legend's lavender ring, and the
+    // two ends of the same row disagreed about what a dot looks like.
+    .pickSep {
+      flex: 0 0 auto;
+      width: 3px;
+      height: 3px;
+      border: none;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.3);
+    }
+
+    .exportBody.busy {
+      pointer-events: none;
+      opacity: 0.55;
+    }
+
+    .exportBody {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-bottom: 8px;
+    }
+
+    // The machine whose rows are passing, named while they pass.
+    .mechHead {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 15px;
+      background: var(--card-surface);
+    }
+
+    .mechName {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    // Wraps. It used to ellipse, and the drawer was widened for it; at the
+    // view controls' width, which the drawer shares now, the direction was
+    // the half that got cut, and "10.00 RPM ..." says nothing.
+    .mechNote {
+      flex: 1 1 auto;
+      min-width: 0;
+      font-size: 12px;
+      line-height: 1.3;
+      color: var(--text-tertiary);
+    }
+
+    // Quieter than the machine's own name directly above it, and quieter than
+    // the rows it heads: it is a divider that happens to be a word, and a
+    // second bold line under `M1` would read as a second machine.
+    .partKind {
+      padding: 8px 15px 2px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      color: var(--text-tertiary);
+    }
+
+    // Except the first, which already has the machine's head above it.
+    .mechHead + .partKind {
+      padding-top: 2px;
+    }
+
+    .rows {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .pickRow {
+      display: flex;
+      align-items: center;
+      // Said out loud, because a button's own alignment is not a flex row's:
+      // left to itself the browser centers the name between the box and the note.
+      justify-content: flex-start;
+      gap: 12px;
+      width: 100%;
+      padding: 7px 15px;
+      border: none;
+      background: transparent;
+      font-family: inherit;
+      text-align: left;
+      cursor: pointer;
+
+      &:hover:not(:disabled) {
+        background: var(--surface-hover);
+      }
+
+      // The part the reader picked on the canvas, so the list opens at the
+      // thing they were already looking at.
+      &.onGrid {
+        background: var(--accent-tint);
+
+        &:hover:not(:disabled) {
+          background: var(--accent-tint-hover);
+        }
+      }
+
+      // Nothing to give, so nothing to tick: grayed rather than hidden, because
+      // a reader looking for Joint A should find out why it is not on offer.
+      &.off {
+        cursor: default;
+
+        .rowName,
+        .rowNote {
+          color: var(--text-muted);
+        }
+      }
+    }
+
+    .box {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(0, 0, 0, 0.54);
+      border-radius: 2px;
+      box-sizing: border-box;
+      flex: 0 0 auto;
+      color: var(--text-on-accent);
+
+      &.ticked {
+        border-color: $indigo;
+        background: $indigo;
+      }
+
+      mat-icon {
+        width: 15px;
+        height: 15px;
+        font-size: 15px;
+        line-height: 15px;
+      }
+    }
+
+    .pickRow.off .box {
+      border-color: rgba(0, 0, 0, 0.2);
+      background: var(--surface-sunken);
+    }
+
+    .rowName {
+      font-size: 14px;
+      color: var(--text-primary);
+    }
+
+    .rowNote {
+      @include blocks.quiet-note(12px);
+    }
+
+    .rowUnit {
+      font-size: 12px;
+      color: var(--text-tertiary);
+      // A fixed column, so the units line up down the list however wide the
+      // components beside them turn out to be.
+      flex: 0 0 auto;
+      min-width: 46px;
+      text-align: right;
+    }
+
+    // What the row writes, in the ink of a fact rather than of a label.
+    .rowComponents {
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-secondary);
+    }
+
+    .groupTitle {
+      padding: 10px 15px 6px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .settingRow {
+      @include blocks.field-row(10px);
+      padding: 2px 15px;
+    }
+
+    .settingName {
+      @include blocks.field-row-label;
+    }
+
+    .hint {
+      margin: 2px 15px 0;
+      font-size: 12px;
+      line-height: 16px;
+      color: var(--text-tertiary);
+    }
+
+    .empty {
+      margin: 10px 15px;
+      font-size: 13px;
+      line-height: 18px;
+      color: var(--text-tertiary);
+    }
+
+    // The pick-one controls are `segmented-block`, which brings its own look.
+
+    .formatBlock {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 14px 15px 0;
+    }
+
+    .formatRow {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .formatPick {
+      display: flex;
+      align-items: flex-start;
+      justify-content: flex-start;
+      gap: 10px;
+      flex: 1 1 auto;
+      padding: 5px 0;
+      border: none;
+      background: transparent;
+      font-family: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .radio {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      margin-top: 2px;
+      border: 2px solid rgba(0, 0, 0, 0.54);
+      border-radius: 50%;
+      box-sizing: border-box;
+      flex: 0 0 auto;
+
+      &.on {
+        border-color: $indigo;
+        background: $indigo;
+      }
+    }
+
+    .pip {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--surface);
+    }
+
+    .formatText {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .formatName {
+      font-size: 14px;
+      color: var(--text-primary);
+    }
+
+    .formatNote {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .settingBlock {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px 0;
+      margin-top: 4px;
+      border-top: 1px solid var(--border-rule);
+    }
+
+    .nameField {
+      height: 30px;
+      width: 170px;
+      padding: 0 8px;
+      border: none;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.42);
+      border-radius: 4px 4px 0 0;
+      background: var(--surface-field);
+      box-sizing: border-box;
+      font-family: inherit;
+      font-size: 14px;
+      color: var(--text-primary);
+
+      &:focus {
+        outline: none;
+        border-bottom-color: $indigo;
+      }
+    }
+
+    .extension {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .summaryCard {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin: 4px 15px 12px;
+      padding: 10px 12px;
+      background: var(--surface-sunken);
+      border-radius: 5px;
+    }
+
+    .summaryGlyph {
+      flex: 0 0 auto;
+      width: 22px;
+      height: 22px;
+      font-size: 22px;
+      line-height: 22px;
+      color: var(--text-secondary);
+    }
+
+    .summaryText {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .summaryName {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .summaryNote {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    // Its own band above the footer, so these read as belonging to the whole
+    // list rather than to the last group in it.
+    .componentsBar {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px 15px;
+      border-top: 1px solid var(--border-rule);
+    }
+
+    .barRow {
+      @include blocks.field-row(10px);
+      // Unlike the rows above, this one may take a second line: its names are
+      // sentences ("Components to export") and the drawer is the view
+      // controls' width.
+      flex-wrap: wrap;
+
+      // When the name and the pill do not share a line -- the drawer is the
+      // view controls' width now -- the pill takes the next one, on the
+      // right, inside the same inset as everything above it, rather than
+      // running out past the card's edge.
+      .segmented {
+        margin-left: auto;
+      }
+    }
+
+    .barRow--components {
+      flex-wrap: nowrap;
+
+      .settingName {
+        white-space: nowrap;
+      }
+    }
+
+    // Both labels have to fit beside their control on a 380px drawer, and
+    // `Static (Equilibrium)` beside `In-motion (Dynamic)` will not do it at the
+    // size the rest of the panel's controls are set in.
+    .exportFoot {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 15px;
+      border-top: 1px solid var(--border-rule);
+      background: var(--surface-subtle);
+    }
+
+    .footNote {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .backButton {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 36px;
+      padding: 0 10px;
+      border: none;
+      border-radius: 4px;
+      background: transparent;
+      color: $indigo;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+
+      &:hover {
+        background: rgba(63, 81, 181, 0.08);
+      }
+    }
+
+    .nextButton {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      height: 36px;
+      padding: 0 18px;
+      border: none;
+      border-radius: 4px;
+      background: $indigo;
+      color: var(--text-on-accent);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+
+      &:disabled {
+        background: var(--surface-disabled);
+        color: var(--text-muted);
+        cursor: default;
+      }
+    }
+
+    // Turning while the cycle is sampled and the file is written. A ring rather
+    // than a bar: it says "still going" without pretending to know how far
+    // along a job whose length nobody has measured is.
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.45);
+      border-top-color: var(--text-on-accent);
+      border-radius: 50%;
+      animation: exportSpin 0.7s linear infinite;
+    }
+
+    @keyframes exportSpin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .backButton mat-icon,
+    .nextButton mat-icon {
+      width: 18px;
+      height: 18px;
+      font-size: 18px;
+      line-height: 18px;
+    }
+  }
+}

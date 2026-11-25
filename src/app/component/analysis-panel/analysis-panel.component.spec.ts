@@ -1,3 +1,6 @@
+import { MechanismPanelComponent } from '../mechanism-panel/mechanism-panel.component';
+import { SelectedTabService, TabID } from '../../selected-tab.service';
+import { AnalysisGraphSectionComponent } from '../analysis-graph-section/analysis-graph-section.component';
 import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ReactiveFormsModule } from '@angular/forms';
@@ -11,29 +14,70 @@ import {
   LOOPLESS_WELDED_MECHANISM,
 } from '../../../tests/fixtures/mechanism-fixtures';
 import { TEMPLATE_LINKAGES } from '../MODALS/templates/template-linkages';
+import { AnalysisPanelStateService } from '../../services/analysis-panel-state.service';
 import { AnalysisPanelComponent } from './analysis-panel.component';
 
-async function createPanel(payload: string, selectedId: string) {
+async function createPanel(payload: string, selectedId: string, mode: TabID = TabID.ANALYZE) {
   const fixtureData = buildMechanismFixture(payload);
-  const selected =
-    fixtureData.service.joints.find((joint) => joint.id === selectedId) ??
-    fixtureData.service.links.find((link) => link.id === selectedId)!;
+  const selected = selectedId
+    ? (fixtureData.service.joints.find((joint) => joint.id === selectedId) ??
+      fixtureData.service.links.find((link) => link.id === selectedId)!)
+    : null;
   fixtureData.active.updateSelectedObj(selected);
 
+  // Which mode the panel is being asked about. Kinematic and force analysis are
+  // separate modes now and the panel shows one at a time, so a spec about force
+  // rows has to be asking the force question.
+  const tabs = { getCurrentTab: () => mode } as unknown as SelectedTabService;
+
   await TestBed.configureTestingModule({
-    declarations: [AnalysisPanelComponent],
-    imports: [ReactiveFormsModule, MatFormFieldModule, NoopAnimationsModule],
+    imports: [
+      ReactiveFormsModule,
+      MatFormFieldModule,
+      NoopAnimationsModule,
+      AnalysisPanelComponent,
+    ],
     providers: [
       { provide: ActiveObjService, useValue: fixtureData.active },
       { provide: MechanismService, useValue: fixtureData.service },
       { provide: SettingsService, useValue: fixtureData.settings },
+      { provide: SelectedTabService, useValue: tabs },
     ],
     schemas: [NO_ERRORS_SCHEMA],
-  }).compileComponents();
+  })
+    // The panel renders its graph sections as inert unknown elements — these
+    // tests read the section labels, not the graphs inside them. As a
+    // standalone component the panel brings the real section along, so it is
+    // removed here to keep the label an attribute the specs can read.
+    .overrideComponent(AnalysisPanelComponent, {
+      // The machine panel likewise: it is its own component with its own specs,
+      // and here it is enough to know which of the two the panel chose.
+      remove: { imports: [AnalysisGraphSectionComponent, MechanismPanelComponent] },
+      add: { schemas: [NO_ERRORS_SCHEMA] },
+    })
+    .compileComponents();
 
   const fixture: ComponentFixture<AnalysisPanelComponent> =
     TestBed.createComponent(AnalysisPanelComponent);
   return { fixture, fixtureData };
+}
+
+/**
+ * What the panel calls each of its graphs, read off the section it renders.
+ *
+ * From the property rather than the attribute: an interpolated binding sets the
+ * property, and this spec stubs the section component, so the attribute holds
+ * only the static half of the string.
+ */
+function sectionLabels(fixture: ComponentFixture<AnalysisPanelComponent>): string[] {
+  return [...fixture.nativeElement.querySelectorAll('app-analysis-graph-section')].map(
+    (section: Element) =>
+      (
+        (section as unknown as { label?: string }).label ??
+        section.getAttribute('label') ??
+        ''
+      ).trim()
+  );
 }
 
 describe('AnalysisPanelComponent welded mechanism regression', () => {
@@ -43,25 +87,26 @@ describe('AnalysisPanelComponent welded mechanism regression', () => {
     TestBed.resetTestingModule();
   });
 
-  it('renders analysis controls for a valid loopless welded link instead of blanking', async () => {
-    const { fixture } = await createPanel(LOOPLESS_WELDED_MECHANISM, 'A');
+  it('renders force controls for a valid loopless welded link instead of blanking', async () => {
+    // Force analysis is its own mode now, so this asks the force question and
+    // counts only what that question answers: a graph per reacting link, plus
+    // the input effort. The kinematic graphs are the other mode's, and the
+    // test below is where they are counted.
+    const { fixture } = await createPanel(LOOPLESS_WELDED_MECHANISM, 'A', TabID.FORCE);
     expect(() => fixture.detectChanges()).not.toThrow();
 
     const rows = fixture.componentInstance.jointForceRows();
     expect(rows.length).toBeGreaterThan(0);
-    Object.assign(fixture.componentInstance.graphExpanded, {
-      JPos: true,
-      JInputForce: true,
-    });
+    fixture.componentInstance.graphExpanded['JInputForce'] = true;
     for (const row of rows) {
       fixture.componentInstance.graphExpanded['JForce_' + row.linkId] = true;
     }
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.textContent).toContain('Analysis for Joint A');
-    expect(fixture.nativeElement.textContent).toContain('Force Analysis');
-    expect(fixture.nativeElement.querySelectorAll('app-analysis-graph').length).toBe(
-      rows.length + 2
+    expect(fixture.nativeElement.textContent).toContain('Forces for Joint A');
+    expect(fixture.nativeElement.textContent).not.toContain('Kinematics');
+    expect(fixture.nativeElement.querySelectorAll('app-analysis-graph-section').length).toBe(
+      rows.length + 1
     );
 
     fixture.destroy();
@@ -82,18 +127,28 @@ describe('AnalysisPanelComponent welded mechanism regression', () => {
     fixture.destroy();
   });
 
-  it('explains that an internal welded joint has no independent pin reaction', async () => {
-    const { fixture } = await createPanel(LOOPLESS_WELDED_MECHANISM, 'B');
+  it('explains a welded-in joint plainly, and shows nothing else to configure', async () => {
+    const { fixture } = await createPanel(LOOPLESS_WELDED_MECHANISM, 'B', TabID.FORCE);
     fixture.detectChanges();
 
     expect(fixture.componentInstance.jointForceRows()).toHaveLength(0);
-    expect(fixture.nativeElement.textContent).toContain('internal to one welded body');
-    expect(fixture.nativeElement.textContent).toContain('no independent pin reaction');
+    const text = fixture.nativeElement.textContent;
+    // "Only one part" covers the tracer on a plain ternary link as well as a
+    // welded-in pin — a joint can have no reaction without a weld anywhere.
+    expect(text).toContain('Only one part meets Joint');
+    expect(text).toContain('Click a joint where separate parts meet');
+    // With no graph to configure, the mode selector and the input-speed
+    // summary would describe things that are not on the panel.
+    expect(text).not.toContain('Force analysis type');
+    expect(text).not.toContain('input speed is set');
+    // And it is the help-card hint pattern, not a boxed banner.
+    expect(fixture.nativeElement.querySelector('.helpHint')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.analysis-message')).toBeNull();
     fixture.destroy();
   });
 
   it('lists one force row per link reacting at an external multi-link pin', async () => {
-    const { fixture } = await createPanel(TEMPLATE_LINKAGES['4-Bar'], 'B');
+    const { fixture } = await createPanel(TEMPLATE_LINKAGES['4-Bar'], 'B', TabID.FORCE);
     fixture.detectChanges();
 
     const rows = fixture.componentInstance.jointForceRows();
@@ -101,29 +156,29 @@ describe('AnalysisPanelComponent welded mechanism regression', () => {
     expect(rows.every((row) => row.jointId === 'B')).toBe(true);
     expect(fixture.nativeElement.querySelector('.reaction-link-selector')).toBeNull();
 
-    const titles = [...fixture.nativeElement.querySelectorAll('mat-panel-title')].map(
-      (title: Element) => title.textContent!.trim()
-    );
+    const titles = sectionLabels(fixture);
     for (const row of rows) {
-      expect(titles).toContain(`Force on Link ${row.linkName}`);
+      // The row already carries the body's noun -- "Link AB", "Rod GC",
+      // "Block at C" -- because what a body is called depends on what kind it
+      // is, and the label is the one place that decides.
+      expect(titles).toContain(`Force on ${row.linkName}`);
     }
     fixture.destroy();
   });
 
   it('lists one force row per external joint on a link, sharing the joint-side dataset', async () => {
-    const { fixture } = await createPanel(TEMPLATE_LINKAGES['4-Bar'], 'BC');
+    const { fixture } = await createPanel(TEMPLATE_LINKAGES['4-Bar'], 'BC', TabID.FORCE);
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.textContent).toContain('Analysis for Link BC');
-    expect(fixture.nativeElement.textContent).not.toContain('Kinematic Analysis for Link');
+    // The panel names the analysis it is showing, which is the heading the
+    // accordion inside it used to carry.
+    expect(fixture.nativeElement.textContent).toContain('Forces for Link BC');
 
     const rows = fixture.componentInstance.linkForceRows();
     expect(rows.map((row) => row.jointId)).toEqual(['B', 'C']);
     expect(rows.every((row) => row.linkId === 'BC')).toBe(true);
 
-    const titles = [...fixture.nativeElement.querySelectorAll('mat-panel-title')].map(
-      (title: Element) => title.textContent!.trim()
-    );
+    const titles = sectionLabels(fixture);
     expect(titles).toContain('Force at Joint B');
     expect(titles).toContain('Force at Joint C');
     fixture.destroy();
@@ -152,8 +207,9 @@ describe('AnalysisPanelComponent welded mechanism regression', () => {
     });
     fixture.detectChanges();
 
-    const graphs = [...fixture.nativeElement.querySelectorAll('app-analysis-graph')];
-    const properties = graphs.map((graph: Element) => graph.getAttribute('mechprop'));
+    const properties = [
+      ...fixture.nativeElement.querySelectorAll('app-analysis-graph-section'),
+    ].map((section: Element) => section.getAttribute('mechprop'));
     expect(properties).toEqual(
       expect.arrayContaining(['Linear Joint Pos', 'Linear Joint Vel', 'Linear Joint Acc'])
     );
@@ -163,20 +219,79 @@ describe('AnalysisPanelComponent welded mechanism regression', () => {
     fixture.destroy();
   });
 
-  it('renders all six link kinematics graphs with valid expansion headers', async () => {
-    const { fixture } = await createPanel(TEMPLATE_LINKAGES['4-Bar'], 'AB');
-    Object.assign(fixture.componentInstance.graphExpanded, {
-      LAng: true,
-      LAngVel: true,
-      LAngAcc: true,
-      LPos: true,
-      LVel: true,
-      LAcc: true,
-    });
-    fixture.detectChanges();
+  it('keeps a folded graph folded in the next mode’s panel', async () => {
+    const { fixture } = await createPanel(TEMPLATE_LINKAGES['4-Bar'], 'B');
+    fixture.componentInstance.setExpanded('JPos', false);
+    fixture.destroy();
+    // A mode switch mounts a new panel; the fold lives in the root service.
+    const next = TestBed.createComponent(AnalysisPanelComponent);
+    next.detectChanges();
+    expect(next.componentInstance.isExpanded('JPos', true)).toBe(false);
+    next.destroy();
+  });
 
-    expect(fixture.nativeElement.querySelectorAll('app-analysis-graph')).toHaveLength(6);
-    expect(fixture.nativeElement.querySelector('mat-panel-title mat-panel-title')).toBeNull();
+  it('separates rotation from CoM, retaining expansion and session tab choices', async () => {
+    const { fixture, fixtureData } = await createPanel(TEMPLATE_LINKAGES['4-Bar'], 'AB');
+    fixture.detectChanges();
+    const panel = fixture.componentInstance;
+    const state = TestBed.inject(AnalysisPanelStateService);
+    expect(sectionLabels(fixture)).toEqual(['Angle', 'Angular Velocity', 'Angular Acceleration']);
+    expect(panel.isExpanded('LAng', true)).toBe(true);
+    expect(fixture.nativeElement.querySelector('.drawingSwitches')).toBeNull();
+    expect(state.previewCoM?.()).toBeNull();
+    panel.highlightCoM(true);
+    expect(state.previewCoM?.()).toBe('AB');
+    panel.highlightCoM(false);
+    expect(state.previewCoM?.()).toBeNull();
+    panel.setExpanded('LAng', false);
+    panel.selectPanelTab(1);
+    fixture.detectChanges();
+    expect(sectionLabels(fixture)).toEqual([
+      'Center of Mass Position',
+      'Center of Mass Velocity',
+      'Center of Mass Acceleration',
+    ]);
+    expect(panel.isExpanded('LPos', true)).toBe(true);
+    expect(state.previewCoM?.()).toBe('AB');
+    panel.setExpanded('LVel', true);
+    panel.selectPanelTab(0);
+    expect(panel.isExpanded('LAng', true)).toBe(false);
+    panel.selectPanelTab(1);
+    expect(panel.isExpanded('LVel')).toBe(true);
+    fixtureData.active.updateSelectedObj(
+      fixtureData.service.links.find((link) => link.id === 'BC')!
+    );
+    fixture.detectChanges();
+    expect(state.previewCoM?.()).toBe('BC');
+    fixture.destroy();
+    TestBed.inject(SelectedTabService).getCurrentTab = () => TabID.EDIT;
+    expect(state.previewCoM()).toBeNull();
+    TestBed.inject(SelectedTabService).getCurrentTab = () => TabID.ANALYZE;
+    const replacement = TestBed.createComponent(AnalysisPanelComponent);
+    replacement.detectChanges();
+    expect(replacement.componentInstance.panelTabIndex).toBe(1);
+    replacement.destroy();
+  });
+
+  it('remembers force graph expansion separately for Static and In-motion', async () => {
+    const { fixture, fixtureData } = await createPanel(
+      TEMPLATE_LINKAGES['4-Bar'],
+      'B',
+      TabID.FORCE
+    );
+    fixture.detectChanges();
+    const panel = fixture.componentInstance;
+    panel.setExpanded('JForce_AB', false);
+    panel.selectPanelTab(1);
+    fixture.detectChanges();
+    expect(fixtureData.settings.forceAnalysisMode.value).toBe('dynamic');
+    expect(panel.isExpanded('JForce_AB', true)).toBe(true);
+    panel.setExpanded('JForce_BC', true);
+    panel.selectPanelTab(0);
+    expect(panel.isExpanded('JForce_AB', true)).toBe(false);
+    expect(panel.isExpanded('JForce_BC')).toBe(false);
+    panel.selectPanelTab(1);
+    expect(panel.isExpanded('JForce_BC')).toBe(true);
     fixture.destroy();
   });
 
@@ -186,6 +301,351 @@ describe('AnalysisPanelComponent welded mechanism regression', () => {
 
     expect(fixture.nativeElement.textContent).not.toContain('Axial Force');
     expect(fixture.nativeElement.textContent).not.toContain('Axial Stress');
+    fixture.destroy();
+  });
+
+  it('leaves the cylinder stroke warning to the setup drawer', async () => {
+    // A mechanism can be perfectly valid and still be driven by a ram bigger
+    // than it needs. That is a setup fact, and the setup drawer lists it per
+    // mechanism -- repeating it above every graph made the loudest thing on
+    // the panel a remark about numbers that are all correct.
+    const { fixture, fixtureData } = await createPanel(TEMPLATE_LINKAGES['4-Bar'], 'AB');
+    fixtureData.service.cylinderReachWarning = () => ({ cylinder: {} as never, percent: 62 });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('#cylinderReachContainer')).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('62%');
+    fixture.destroy();
+  });
+
+  it('shows the machine, not the empty state, when nothing is selected', async () => {
+    const { fixture } = await createPanel(TEMPLATE_LINKAGES['4-Bar'], '', TabID.ANALYZE);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-mechanism-panel')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.helpPanel')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('offers the empty state the graphs of the mode it is standing in', async () => {
+    // Force mode used to promise position, velocity and acceleration graphs --
+    // the other mode's answer, on the panel that draws reactions. With a
+    // machine on the grid the panel describes that instead, so this asks a grid
+    // holding none.
+    const { fixture, fixtureData } = await createPanel(TEMPLATE_LINKAGES['4-Bar'], '', TabID.FORCE);
+    fixtureData.service.partitions = [];
+    fixture.detectChanges();
+
+    const help = fixture.nativeElement.querySelector('.helpPanel').textContent;
+    expect(help).toContain('reactions');
+    expect(help).not.toContain('velocity and acceleration');
+    fixture.destroy();
+  });
+
+  it('spells out center of mass consistently in labels and prose', async () => {
+    const { fixture } = await createPanel(TEMPLATE_LINKAGES['4-Bar'], 'AB');
+    fixture.componentInstance.selectPanelTab(1);
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent;
+    expect(sectionLabels(fixture).some((label) => label.startsWith('Center of Mass '))).toBe(true);
+    expect(text).not.toContain('CoM');
+    expect(text).not.toContain('COM');
+    fixture.destroy();
+  });
+
+  it('refuses graphs for a part whose own machine cannot be solved', async () => {
+    // Drawing-wide validity is the wrong question with several machines on one
+    // grid: it said yes for a part of a chain that solves nothing, and the
+    // panel answered with a full set of cards reading "—" over null plots.
+    const { fixture, fixtureData } = await createPanel(TEMPLATE_LINKAGES['4-Bar'], 'AB');
+    fixtureData.service.mechanisms[0].isMechanismValid = () => false;
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.selectionIsSimulatable).toBe(false);
+    expect(fixture.nativeElement.querySelectorAll('app-analysis-graph-section').length).toBe(0);
+    expect(fixture.nativeElement.querySelector('.helpPanel').textContent).toContain(
+      'Finish analysis setup on M1'
+    );
+    fixture.destroy();
+  });
+});
+
+describe('AnalysisPanelComponent with a cylinder selected', () => {
+  beforeEach(() => vi.spyOn(console, 'log').mockImplementation(() => undefined));
+  afterEach(() => {
+    vi.restoreAllMocks();
+    TestBed.resetTestingModule();
+  });
+
+  it('names each member the way the Edit panel names it', async () => {
+    // The canvas outlines the member as selected while this panel headed itself
+    // "Analysis for Link GN" -- the two disagreeing about what is selected. It
+    // then headed both members "Cylinder GC", which is the same disagreement
+    // one step on: the barrel and the rod are selected apart and hold different
+    // numbers, and one name for the two of them says the panel has not noticed
+    // which is on screen. Through `bodyLabel`, so there is one rule.
+    for (const [id, expected] of [
+      ['GN', 'Barrel GP'],
+      ['PC', 'Rod PC'],
+      ['OC', 'Link OC'],
+    ]) {
+      // One panel per selection, and the bed is torn down between them: this
+      // is a question about three different selections, not three views of one.
+      TestBed.resetTestingModule();
+      const { fixture, fixtureData } = await createPanel(TEMPLATE_LINKAGES['Cylinder_Boom'], id);
+      fixture.detectChanges();
+
+      const body = fixtureData.service.links.find((link) => link.id === id)!;
+      expect(fixtureData.service.bodyLabel(body)).toBe(expected);
+      expect(fixture.nativeElement.textContent).toContain(`Kinematics for ${expected}`);
+      expect(fixture.nativeElement.textContent).not.toContain('for Cylinder');
+      // And no row under the heading contradicts it: the rows name the quantity
+      // alone, so there is no second place for the body's name to go wrong.
+      expect(sectionLabels(fixture).some((label) => label.includes(id))).toBe(false);
+      fixture.destroy();
+    }
+  });
+
+  it('offers no force row at the buried barrel end, and one at the seal', async () => {
+    // The buried barrel end has no hitbox on the canvas and no row in the Edit
+    // panel; a pin reaction there is internal to a body the user is being shown
+    // as one piece. The seal is not in that class (decision S11): it is a square
+    // a reader can point at, and the force between barrel and rod is a number a
+    // cylinder is worth asking about.
+    const { fixture, fixtureData } = await createPanel(TEMPLATE_LINKAGES['Cylinder_Boom'], 'GN');
+    fixture.detectChanges();
+
+    const cylinder = fixtureData.service.cylinderAt(
+      fixtureData.service.links.find((link) => link.id === 'GN')
+    );
+    expect(cylinder, 'the fixture really is a cylinder').toBeDefined();
+    const shown = fixture.componentInstance.linkForceRows().map((row) => row.jointId);
+    expect(shown).not.toContain(cylinder!.inner.id);
+    expect(shown).toContain(cylinder!.seal.id);
+    fixture.destroy();
+  });
+
+  it('gives each member the forces on that member, and not the whole part s', async () => {
+    // Both members answered with every joint of the cylinder, so either of them
+    // listed the far mount, the near mount and the slide **twice** -- once for
+    // the barrel and once for the rod, under one label, over two different
+    // numbers. What pushes on the barrel is its own end joint and the slide in
+    // its slot; what pushes on the rod is the slide and the rod's end joint.
+    TestBed.resetTestingModule();
+    const barrel = await createPanel(TEMPLATE_LINKAGES['Cylinder_Boom'], 'GN', TabID.FORCE);
+    barrel.fixture.detectChanges();
+    expect(barrel.fixture.componentInstance.linkForceRows().map((row) => row.label)).toEqual([
+      'Force at Joint G',
+      'Force at the slider at P',
+    ]);
+    barrel.fixture.destroy();
+
+    TestBed.resetTestingModule();
+    const rod = await createPanel(TEMPLATE_LINKAGES['Cylinder_Boom'], 'PC', TabID.FORCE);
+    rod.fixture.detectChanges();
+    expect(rod.fixture.componentInstance.linkForceRows().map((row) => row.label)).toEqual([
+      'Force at Joint C',
+      'Force at the slider at P',
+    ]);
+    rod.fixture.destroy();
+  });
+
+  it('offers the drive s effort against the member that stands for the part', async () => {
+    // One number under two headings otherwise, in a panel whose whole point is
+    // that the barrel's readings and the rod's are not the same readings. The
+    // seal's own joint panel carries it as well, as it always has.
+    TestBed.resetTestingModule();
+    const barrel = await createPanel(TEMPLATE_LINKAGES['Cylinder_Boom'], 'GN', TabID.FORCE);
+    barrel.fixture.detectChanges();
+    expect(barrel.fixture.componentInstance.inputEffortJoint()).toBeUndefined();
+    barrel.fixture.destroy();
+
+    TestBed.resetTestingModule();
+    const rod = await createPanel(TEMPLATE_LINKAGES['Cylinder_Boom'], 'PC', TabID.FORCE);
+    rod.fixture.detectChanges();
+    expect(rod.fixture.componentInstance.inputEffortJoint()?.id).toBe('P');
+    rod.fixture.destroy();
+  });
+
+  it('says which body each of the slide s own reactions acts on, once each', async () => {
+    // The seal is a body of its own to the solver -- a point carrying the
+    // joint's mass -- and what stands against it is the normal force in its
+    // slot plus the pin force on the rod. The slot's half is already the
+    // barrel's own row, so the point body repeated "Force on Barrel GP" over a
+    // different number and the reader saw the slide twice.
+    const { fixture } = await createPanel(TEMPLATE_LINKAGES['Cylinder_Boom'], 'P', TabID.FORCE);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.jointForceRows().map((row) => row.label)).toEqual([
+      'Force on Barrel GP',
+      'Force on Rod PC',
+    ]);
+    fixture.destroy();
+  });
+
+  it('leaves an end joint of the cylinder naming the member it holds', async () => {
+    const { fixture } = await createPanel(TEMPLATE_LINKAGES['Cylinder_Boom'], 'C', TabID.FORCE);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.jointForceRows().map((row) => row.label)).toEqual([
+      'Force on Link OC',
+      'Force on Rod PC',
+    ]);
+    fixture.destroy();
+  });
+});
+
+describe('AnalysisPanelComponent with a slider selected', () => {
+  it('gives a pin the force in its bar and the force in its slot', async () => {
+    const { fixture, fixtureData } = await createPanel(
+      TEMPLATE_LINKAGES['Slider_Crank'],
+      pinOfSlider(TEMPLATE_LINKAGES['Slider_Crank']),
+      TabID.FORCE
+    );
+    fixture.detectChanges();
+    const labels = fixture.componentInstance.jointForceRows().map((row) => row.label);
+
+    // A slider is one thing to a reader and three bodies to the solver. The
+    // block's force at the pin is the bar's force negated -- the same number
+    // this panel already shows under the bar's own name -- and what the block
+    // has of its own is the force in its slot, which carries the block's own
+    // weight. Measured: with the block at 1g the slot reads 0.0147N, and with
+    // it at 500g it reads 4.9N, while the force at the pin does not move.
+    expect(labels).toEqual(['Force on Link BC', 'Force on the ground']);
+    expect(labels.some((label) => /Block/.test(label))).toBe(false);
+    expect(fixtureData.service.links.length).toBeGreaterThan(0);
+  });
+
+  it('names a slot after the slider a reader can point at', async () => {
+    const { fixture } = await createPanel(TEMPLATE_LINKAGES['Scotch_Yoke'], 'CD', TabID.FORCE);
+    fixture.detectChanges();
+    const labels = fixture.componentInstance.linkForceRows().map((row) => row.label);
+
+    // The slot cut into this link is a joint with no marker, no hitbox and no
+    // name anyone has been shown.
+    expect(labels.some((label) => label.includes('the slider at'))).toBe(true);
+    expect(labels.some((label) => /Joint [EF]/.test(label))).toBe(false);
+  });
+});
+
+/** The pin of the first slider in a payload, which is what a reader clicks. */
+function pinOfSlider(payload: string): string {
+  const built = buildMechanismFixture(payload);
+  return built.service.joints.find((joint) => !!built.service.sliderFor(joint))!.id;
+}
+
+const CRANK_LOADED_FOUR_BAR =
+  '2v.Fe,1E8.A,5D.1011.6A,A,0mv,0VU,0.GB,B,0e_,E6,0.0C,C,l1,WW,0.4D,D,qD,0Pk,0..MRAB,AB,0,0,0ix,08i,303e9f,A,B,,.MRBC,BC,0,0,32,NJ,26A69A,B,C,,.MRCD,CD,0,0,nd,3P,0d125a,C,D,,..2F1,AB,F1,0iD,04Y,0yP,Hj,Fe..N_.KFF1~26A69AU*2fMxSM';
+
+describe('AnalysisPanelComponent drawing switches', () => {
+  // These are `app-view-button` at its labelled size now, not a hand-drawn
+  // `.drawingChip`: `data-switch` rides the host and the word is
+  // `.viewButtonLabel`. Grayed is `aria-disabled`, not `disabled` -- a
+  // disabled button takes no pointer events, and the reason a switch is gray
+  // is the one tooltip a reader most needs.
+  const switches = (fixture: ComponentFixture<AnalysisPanelComponent>) =>
+    [...fixture.nativeElement.querySelectorAll('app-view-button')].map((host: Element) => {
+      const node = host.querySelector('.viewButton') as HTMLButtonElement | null;
+      return {
+        key: host.getAttribute('data-switch'),
+        label: node?.querySelector('.viewButtonLabel')?.textContent?.trim(),
+        off: node?.getAttribute('aria-disabled') === 'true',
+        on: node?.getAttribute('aria-pressed') === 'true',
+      };
+    });
+  const heading = (fixture: ComponentFixture<AnalysisPanelComponent>) =>
+    fixture.nativeElement.querySelector('.drawingSwitchesHead')?.textContent?.trim();
+
+  it('offers the four chips under a joint’s graphs, in the menu’s order', async () => {
+    const { fixture } = await createPanel(TEMPLATE_LINKAGES['4-Bar'], 'B');
+    fixture.detectChanges();
+    expect(heading(fixture)).toContain('Show Vectors on Drawing');
+    const shown = switches(fixture);
+    expect(shown.map((one) => one.key)).toEqual(['traces', 'velocity', 'acceleration', 'force']);
+    expect(shown.map((one) => one.label)).toEqual(['Path', 'Velocity', 'Acceleration', 'Force']);
+    // A moving pin two links meet at: every chip is available.
+    expect(shown.every((one) => !one.off)).toBe(true);
+    fixture.destroy();
+  });
+
+  it('grays a chip for the reason the menu would, and says it on hover', async () => {
+    // A pin bolted to the frame never moves, so its velocity and acceleration
+    // are refused in the menu's words; the trace and the reaction are not.
+    const { fixture } = await createPanel(TEMPLATE_LINKAGES['4-Bar'], 'A');
+    fixture.detectChanges();
+    const byKey = Object.fromEntries(switches(fixture).map((one) => [one.key, one]));
+    expect(byKey['velocity'].off).toBe(true);
+    expect(byKey['acceleration'].off).toBe(true);
+    expect(byKey['traces'].off).toBe(false);
+    const velocity = fixture.componentInstance.drawingSwitches.find(
+      (one) => one.key === 'velocity'
+    )!;
+    expect(fixture.componentInstance.drawingSwitchTip(velocity)).toContain(
+      'This joint is grounded, so its velocity is always zero.'
+    );
+    expect(fixture.componentInstance.drawingSwitchTip(velocity)).toContain('Velocity Vectors');
+    fixture.destroy();
+  });
+
+  it('offers only CoM drawing chips on the CoM tab', async () => {
+    const { fixture } = await createPanel(TEMPLATE_LINKAGES['4-Bar'], 'BC');
+    fixture.componentInstance.selectPanelTab(1);
+    fixture.detectChanges();
+    const byKey = Object.fromEntries(switches(fixture).map((one) => [one.key, one]));
+    expect(byKey['traces'].off).toBe(false);
+    expect(byKey['force']).toBeUndefined();
+    expect(byKey['velocity'].off).toBe(false);
+    expect(byKey['acceleration'].off).toBe(false);
+    const traces = fixture.componentInstance.drawingSwitches.find((one) => one.key === 'traces')!;
+    expect(fixture.componentInstance.drawingSwitchTip(traces)).toContain('center of mass');
+    fixture.destroy();
+  });
+
+  it('flips the drawing when a chip is pressed, and follows the drawing back', async () => {
+    const { fixture, fixtureData } = await createPanel(TEMPLATE_LINKAGES['4-Bar'], 'B');
+    fixture.detectChanges();
+    const joint = fixtureData.service.joints.find((one) => one.id === 'B')!;
+    expect(fixtureData.service.isVectorTraceOn(joint, 'velocity')).toBe(false);
+    (
+      fixture.nativeElement.querySelector(
+        'app-view-button[data-switch="velocity"] .viewButton'
+      ) as HTMLElement
+    ).click();
+    fixture.detectChanges();
+    expect(fixtureData.service.isVectorTraceOn(joint, 'velocity')).toBe(true);
+    expect(switches(fixture).find((one) => one.key === 'velocity')?.on).toBe(true);
+    // Flipped from the menu instead, the chip follows.
+    fixtureData.service.toggleVectorTrace(joint, 'velocity');
+    fixture.detectChanges();
+    expect(switches(fixture).find((one) => one.key === 'velocity')?.on).toBe(false);
+    fixture.destroy();
+  });
+
+  it('grays Force on a pin that carries nothing all cycle, and says so', async () => {
+    // The load sits on the crank, so the follower rides along unloaded and
+    // the reaction at B is zero at every sample: a lit chip would draw
+    // nothing. The user's own drawing, in which the chip lit and no arrow came.
+    const { fixture } = await createPanel(CRANK_LOADED_FOUR_BAR, 'B', TabID.FORCE);
+    fixture.detectChanges();
+    const byKey = Object.fromEntries(switches(fixture).map((one) => [one.key, one]));
+    expect(byKey['force'].off).toBe(true);
+    const force = fixture.componentInstance.drawingSwitches.find((one) => one.key === 'force')!;
+    expect(fixture.componentInstance.drawingSwitchTip(force)).toContain('carries no load');
+    fixture.destroy();
+  });
+
+  it('does nothing when a gray chip is pressed', async () => {
+    const { fixture, fixtureData } = await createPanel(TEMPLATE_LINKAGES['4-Bar'], 'A');
+    fixture.detectChanges();
+    const joint = fixtureData.service.joints.find((one) => one.id === 'A')!;
+    (
+      fixture.nativeElement.querySelector(
+        'app-view-button[data-switch="velocity"] .viewButton'
+      ) as HTMLElement
+    ).click();
+    fixture.detectChanges();
+    expect(fixtureData.service.isVectorTraceOn(joint, 'velocity')).toBe(false);
     fixture.destroy();
   });
 });

@@ -1,12 +1,13 @@
 // joint.ts must be imported before coord.ts/link.ts/force.ts: those modules
 // form an import cycle that only initializes cleanly when entered here.
-import { Joint, PrisJoint, RevJoint } from '../../app/model/joint';
+import { Joint, PrisJoint, RealJoint, RevJoint } from '../../app/model/joint';
 import { Coord } from '../../app/model/coord';
 import { Force } from '../../app/model/force';
-import { Link, Piston, RealLink } from '../../app/model/link';
+import { Link, RealLink } from '../../app/model/link';
 import { Mechanism } from '../../app/model/mechanism/mechanism';
 import { ColorService } from '../../app/services/color.service';
 import { SettingsService } from '../../app/services/settings.service';
+import { MODEL_SCALE } from '../../app/model/render-scale';
 
 /**
  * Declarative description of a linkage that mirrors the MATLAB models in
@@ -15,22 +16,131 @@ import { SettingsService } from '../../app/services/settings.service';
  */
 export interface MechanismFixture {
   /** Joint ids must be the single letters the dataset uses, in creation order. */
-  joints: { id: string; x: number; y: number; ground?: boolean; input?: boolean }[];
+  joints: {
+    id: string;
+    x: number;
+    y: number;
+    ground?: boolean;
+    input?: boolean;
+    /**
+     * Draw this joint's path. Off everywhere by default, as it is in the app:
+     * a mechanism that traces every joint at once hides itself behind the
+     * thicket. Set it where the path *is* the mechanism — the straight line a
+     * straight-line linkage draws, the ellipse an elliptical crank draws.
+     */
+    trace?: boolean;
+    /**
+     * What this drive is commanded at: rpm for a pin, user length units per
+     * second for a slider, signed for direction. Zero — the default, and what
+     * every URL written before drives had speeds of their own says — means
+     * "follow the document default".
+     *
+     * Per joint rather than per fixture because a drawing can hold several
+     * machines, and the whole point of the multi-machine feature is that they
+     * need not turn at the same rate or the same way.
+     */
+    driveSpeed?: number;
+  }[];
   /**
    * `joints` is the concatenated joint letters (also the link id). List links
    * in the MATLAB free-body-chain order (input crank first): each shared
    * joint's first link then matches the MATLAB reaction-force sign convention.
-   * `com` defaults to the mean of the link's joints, which is both PMKS+'s
+   * `com` defaults to the mean of the link's joints, which is both PMKS's
    * geometric center and the MATLAB Utils.determineCoM default.
    */
   links: FixtureLink[];
   /** Grounds joint `at` into a slider along `angleRad` via a piston link. */
-  slider?: { at: string; prisId: string; angleRad?: number; pistonMass?: number };
-  /** Constant global force applied to a point that rides on `onLink`. */
-  load?: { onLink: string; at: [number, number]; vector: [number, number] };
+  slider?: SliderSpec;
+  /** Several slots at once — an elliptical trammel needs two. */
+  sliders?: SliderSpec[];
+  /**
+   * Joint ids to flag welded. On a slider's pin this makes a Slide (§2.1): the
+   * rider becomes rigid with the block instead of free to turn in it.
+   */
+  welds?: string[];
+  /**
+   * Prismatic joint ids to leave dangling: a block with no carrier and no
+   * ground (§4.1). Applied last, so the slot is built and then taken away —
+   * which is how it actually arises, rather than a state assembled by hand.
+   */
+  detach?: string[];
+  /** A single load. Kept because most fixtures carry exactly one. */
+  load?: FixtureLoad;
+  /**
+   * Several loads at once — a crane carrying a hook load and a rope pull needs
+   * two, and telling a global load from a local one takes at least two to
+   * compare. Appended after `load`, so the ids stay F1, F2, ... in the order
+   * written and a fixture that only ever had one encodes exactly as before.
+   */
+  loads?: FixtureLoad[];
+  /**
+   * Objects that open with a Lock mark: joint letters and link ids. This is
+   * how a published teaching mechanism pins everything except the one handle
+   * a class is meant to drag — the marks ride the URL like every other state.
+   */
+  locks?: { joints?: string[]; links?: string[] };
+  /**
+   * Bars that open holding their length or their angle against edits. A hold
+   * rides the URL like a lock does, and only a two-joint bar can carry one.
+   */
+  holds?: { link: string; hold: 'length' | 'angle' }[];
   /** Input speed in rad/s, using the v1 manifest's exact rpm*pi/30 conversion. */
   inputAngVel: number;
   gravity?: boolean;
+}
+
+/** A constant force applied at a point of `onLink`, in newtons. */
+export interface FixtureLoad {
+  onLink: string;
+  /** Where it acts, in the start pose. The point rides the link from there. */
+  at: [number, number];
+  /** The load itself, as components; its length is the magnitude. */
+  vector: [number, number];
+  /**
+   * Whether the direction is held in the link's own frame rather than the
+   * world's. A local load turns with the body it acts on — a rope pulling
+   * along a jib, a cutting force following a tool — while a global one keeps
+   * pointing the same way whatever the mechanism does, which is what weight
+   * does. Global by default, as it is in the app.
+   */
+  local?: boolean;
+}
+
+export interface SliderSpec {
+  /**
+   * The fixture joint that slides.
+   *
+   * It used to name the *pin* of a three-object slider, which also carried a
+   * `prisId` for the prismatic joint beside it and a block joining the two. A
+   * slider is one joint now (Stage 1 of `docs/joint-type-and-cylinder-plan.md`),
+   * and it keeps this id — the letter the canvas always drew.
+   */
+  at: string;
+  /** World angle of a grounded guide. Ignored when `on` is given. */
+  angleRad?: number;
+  /** The mass of the block that rides the slot, which the joint carries now. */
+  pistonMass?: number;
+  /**
+   * Cuts the slot into a moving link instead of into the world: the line
+   * through carrier joints `a` and `b` (§2.4).
+   */
+  on?: { carrier: string; a: string; b: string };
+  /**
+   * Marks the slider as the sealed heart of an atomic cylinder. Requires a
+   * floating slot (`on`) and a weld at the pin, which is what the resolver
+   * demands of a cylinder; the flag rides the URL, so a sealed fixture opens
+   * skinned.
+   */
+  sealed?: boolean;
+  /**
+   * Drives the mechanism from this prismatic joint (§5.1). The flag has to go
+   * on the slider rather than on a fixture joint: a driven cylinder's commanded
+   * quantity is how far the block has traveled along its slot, and no RevJoint
+   * in the fixture list owns that.
+   */
+  input?: boolean;
+  /** As on a fixture joint: user length units per second, signed, 0 = default. */
+  driveSpeed?: number;
 }
 
 export interface FixtureLink {
@@ -41,17 +151,105 @@ export interface FixtureLink {
   name?: string;
   fill?: string;
   subset?: FixtureLink[];
+  /**
+   * Draw this link as the disc it sweeps rather than as a bar — a flywheel on
+   * a crankshaft, drawn the way an engine draws it (`RealLink.isCircle`).
+   *
+   * A drawing choice only: mass properties still come from the joint skeleton.
+   * Only a link with exactly one revolute ground pin and no subset can honor
+   * it, because the disc is centered on the pin the link turns about, and the
+   * app simply ignores the flag on a link that does not qualify. A fixture is
+   * authored once and read as an example, so here the same request throws
+   * instead — a template that silently opened as a bar would teach the wrong
+   * thing about the feature it exists to show.
+   */
+  circle?: boolean;
 }
 
-export interface BuiltMechanism {
-  mechanism: Mechanism;
+/** The drawing a fixture describes, constructed and not solved. */
+export interface BuiltDrawing {
   joints: Joint[];
   links: Link[];
   forces: Force[];
   fixture: MechanismFixture;
 }
 
-export function buildMechanism(fixture: MechanismFixture): BuiltMechanism {
+export interface BuiltMechanism extends BuiltDrawing {
+  mechanism: Mechanism;
+}
+
+/**
+ * The drawing scale a fixture is solved at unless its caller says otherwise.
+ *
+ * It has to be *some* fixed value rather than whatever the process happens to
+ * be holding. `SettingsService.objectScale` is a process-wide static, and the
+ * solver measures real things against it — a cylinder's stroke, and now the
+ * ends of a slot. Vitest runs spec files unisolated, so left ambient it is
+ * whichever file last set it, and the same mechanism solves differently from
+ * run to run. That is what the intermittent cylinder failures were.
+ */
+const SOLVING_OBJECT_SCALE = 1 * MODEL_SCALE;
+
+export function buildMechanism(
+  fixture: MechanismFixture,
+  sampling: 'adaptive' | 'degree' = 'degree'
+): BuiltMechanism {
+  const previousScale = SettingsService.objectScale;
+  const previousCylinderScale = SettingsService.preservedCylinderScale;
+  SettingsService.preservedCylinderScale = 0;
+  SettingsService._objectScale.next(SOLVING_OBJECT_SCALE);
+  try {
+    return buildMechanismNow(fixture, sampling);
+  } finally {
+    SettingsService._objectScale.next(previousScale);
+    SettingsService.preservedCylinderScale = previousCylinderScale;
+  }
+}
+
+/**
+ * The drawing alone: every joint, link and force the fixture names, in the pose
+ * it is drawn in, without a `Mechanism` and so without running any solver.
+ *
+ * This is what the numerical oracle is exported from, because an export that
+ * solved first could carry the solver's own answer into the problem it is
+ * supposed to check (docs/numerical-oracle-plan.md, "Identical physical
+ * inputs"). The object scale is pinned exactly as for `buildMechanism`.
+ */
+export function buildDrawing(fixture: MechanismFixture): BuiltDrawing {
+  const previousScale = SettingsService.objectScale;
+  const previousCylinderScale = SettingsService.preservedCylinderScale;
+  SettingsService.preservedCylinderScale = 0;
+  SettingsService._objectScale.next(SOLVING_OBJECT_SCALE);
+  try {
+    return buildDrawingNow(fixture);
+  } finally {
+    SettingsService._objectScale.next(previousScale);
+    SettingsService.preservedCylinderScale = previousCylinderScale;
+  }
+}
+
+function buildMechanismNow(
+  fixture: MechanismFixture,
+  sampling: 'adaptive' | 'degree' = 'degree'
+): BuiltMechanism {
+  const { joints, links, forces } = buildDrawingNow(fixture);
+  const mechanism = new Mechanism(
+    joints,
+    links,
+    forces,
+    [],
+    fixture.gravity ?? false,
+    'm',
+    fixture.inputAngVel,
+    // The MATLAB tables are stated one row per degree of crank and compared
+    // one to one, so this harness defaults to the grid they are stated on;
+    // the specs that exercise adaptive sampling ask for it by name.
+    sampling
+  );
+  return { mechanism, joints, links, forces, fixture };
+}
+
+function buildDrawingNow(fixture: MechanismFixture): BuiltDrawing {
   // ColorService registers itself as a static singleton that RealLink depends
   // on; SettingsService.objectScale is used when forces render their SVG.
   if (!ColorService.instance) {
@@ -62,6 +260,8 @@ export function buildMechanism(fixture: MechanismFixture): BuiltMechanism {
   const jointById = new Map<string, RevJoint>();
   const joints: Joint[] = fixture.joints.map((spec) => {
     const joint = new RevJoint(spec.id, spec.x, spec.y, !!spec.input, !!spec.ground);
+    joint.showCurve = !!spec.trace;
+    joint.driveSpeed = spec.driveSpeed ?? 0;
     jointById.set(spec.id, joint);
     return joint;
   });
@@ -74,6 +274,18 @@ export function buildMechanism(fixture: MechanismFixture): BuiltMechanism {
     if (spec.com) {
       link.CoM = new Coord(spec.com[0], spec.com[1]);
     }
+    if (spec.circle) {
+      if (!link.canBeCircular()) {
+        throw new Error(
+          `Link ${link.id} cannot be drawn as a disc: a circular link needs exactly one ` +
+            'revolute ground pin to be centered on, and no subset.'
+        );
+      }
+      link.isCircle = true;
+      // The outline is the drawing, and nothing else here would rebuild it —
+      // the same call the Edit panel's Drawn as a Disc toggle makes.
+      link.reComputeDPath();
+    }
     spec.subset?.forEach((memberSpec, index) => {
       restoreFixtureLinkState(memberSpec, link.subset[index] as RealLink);
     });
@@ -81,16 +293,23 @@ export function buildMechanism(fixture: MechanismFixture): BuiltMechanism {
 
   const buildFixtureLink = (spec: FixtureLink): RealLink => {
     const linkJoints = [...spec.joints].map((id) => jointById.get(id)!);
-    const com = spec.com ? new Coord(spec.com[0], spec.com[1]) : undefined;
+    // Unstated, a fixture's center is the mean of its joints: what the link
+    // constructor used to default to, and so what every published URL and
+    // oracle problem was written with. Spelled out here because the
+    // constructor's seed is now the shape's centroid (#156), and fixture data
+    // must not move when the app's derivation does.
+    const com = spec.com
+      ? new Coord(spec.com[0], spec.com[1])
+      : new Coord(
+          linkJoints.reduce((sum, joint) => sum + joint.x, 0) / linkJoints.length,
+          linkJoints.reduce((sum, joint) => sum + joint.y, 0) / linkJoints.length
+        );
     const subset = spec.subset?.map(buildFixtureLink);
-    const link = new RealLink(
-      spec.joints,
-      linkJoints,
-      spec.mass ?? 1,
-      spec.moi ?? 1,
-      com,
-      subset
-    );
+    const link = new RealLink(spec.joints, linkJoints, spec.mass ?? 1, spec.moi ?? 1, com, subset);
+    // A fixture's numbers are chosen, MATLAB-parity data — never re-derived.
+    // Custom keeps the published URLs byte-identical too.
+    link.moiIsCustom = true;
+    link.comIsCustom = true;
     link.fill = spec.fill ?? ColorService.instance.getNextLinkColor();
     restoreFixtureLinkState(spec, link);
     return link;
@@ -110,45 +329,180 @@ export function buildMechanism(fixture: MechanismFixture): BuiltMechanism {
     return link;
   });
 
-  if (fixture.slider) {
-    const revJoint = jointById.get(fixture.slider.at)!;
-    const prisJoint = new PrisJoint(fixture.slider.prisId, revJoint.x, revJoint.y, false, true);
-    prisJoint.angle_rad = fixture.slider.angleRad ?? 0;
-    prisJoint.connectedJoints.push(revJoint);
-    revJoint.connectedJoints.push(prisJoint);
-    const piston = new Piston(
-      revJoint.id + prisJoint.id,
-      [revJoint, prisJoint],
-      fixture.slider.pistonMass
-    );
-    prisJoint.links.push(piston);
-    revJoint.links.push(piston);
-    joints.push(prisJoint);
-    links.push(piston);
-  }
+  const sliderSpecs = [...(fixture.slider ? [fixture.slider] : []), ...(fixture.sliders ?? [])];
+  sliderSpecs.forEach((spec) => {
+    // The joint that slides *becomes* the slider rather than gaining one beside
+    // it: same id, same place, same links. A slider was three objects until
+    // Stage 1 — this joint, a prismatic twin, and a zero-length block joining
+    // them — and the block was the only reason the two were ever separate.
+    const pin = jointById.get(spec.at)!;
+    // A floating slot is not grounded; that pair of states is exclusive (§2.4a).
+    const slider = new PrisJoint(pin.id, pin.x, pin.y, !!spec.input || pin.input, !spec.on);
+    slider.name = pin.name;
+    slider.showCurve = pin.showCurve;
+    slider.isSealed = spec.sealed ?? false;
+    slider.driveSpeed = spec.driveSpeed ?? pin.driveSpeed;
+    slider.mass = spec.pistonMass ?? 0;
+    // A welded fixture joint that slides is a Slide: its riders keep the slot's
+    // angle. The weld list used to be applied after this loop, when the flag on
+    // the pin was what recorded it; the joint itself records it now, so it has
+    // to be known here.
+    slider.rotates = !(fixture.welds ?? []).includes(spec.at);
+    if (spec.on) {
+      const carrier = links.find((link) => link.id === spec.on!.carrier)!;
+      slider.slideOn(carrier, jointById.get(spec.on.a)!, jointById.get(spec.on.b)!);
+    } else {
+      slider.angle_rad = spec.angleRad ?? 0;
+    }
+
+    // Everything that named the pin now names the slider: the links it rides,
+    // the joints that were connected to it, and the map the rest of this
+    // builder looks it up in.
+    slider.links = pin.links;
+    slider.connectedJoints = pin.connectedJoints;
+    pin.links.forEach((link) => {
+      const at = link.joints.indexOf(pin);
+      if (at >= 0) link.joints[at] = slider;
+    });
+    // `RealJoint`, not `RevJoint`: `PrisJoint` is its sibling, so a guard on
+    // `RevJoint` skipped every joint an earlier iteration had already turned
+    // into a slider. On a bar carrying two of them the first kept a reference
+    // to the second's discarded pin -- a joint in no array, never animated --
+    // and `LoopSolver.neighborsOf` handed that dead object out as a neighbor.
+    joints.forEach((joint) => {
+      if (!(joint instanceof RealJoint)) return;
+      const at = joint.connectedJoints.indexOf(pin);
+      if (at >= 0) joint.connectedJoints[at] = slider;
+    });
+    joints[joints.indexOf(pin)] = slider;
+    jointById.set(spec.at, slider as unknown as RevJoint);
+  });
+
+  // A slot names its two ends by reference, bound when its own slider was made
+  // -- so a slot whose end became a slider later in the list still named the
+  // discarded pin: a Scotch yoke whose yoke rides a rail, with the pin's slot
+  // cut from the rail's joint, was solved against a slot end that never moved.
+  // The app's reader binds every slot once all joints exist; so does this.
+  joints.forEach((joint) => {
+    if (!(joint instanceof PrisJoint) || !joint.isFloating) return;
+    const end = (one: Joint) => (jointById.get(one.id) as unknown as Joint | undefined) ?? one;
+    joint.slideOn(joint.carrier!, end(joint.slotJointA!), end(joint.slotJointB!));
+  });
+
+  // Every weld except the ones the sliders above already took: a Slide says so
+  // in `rotates`, and `isWelded` on a slider would mean nothing.
+  fixture.welds?.forEach((id) => {
+    const joint = jointById.get(id)!;
+    if (!(joint instanceof PrisJoint)) joint.isWelded = true;
+  });
+
+  fixture.detach?.forEach((id) => {
+    (jointById.get(id) as unknown as PrisJoint).detach();
+  });
+
+  fixture.locks?.joints?.forEach((id) => {
+    jointById.get(id)!.locked = true;
+  });
+  // A link entry is the shortcut it is everywhere: marks land on its joints.
+  // `RealJoint` for the reason above -- a link lists a slider directly now, and
+  // a `RevJoint` guard would leave exactly that joint unlocked.
+  fixture.locks?.links?.forEach((id) => {
+    links
+      .find((link) => link.id === id)!
+      .joints.forEach((joint) => {
+        if (joint instanceof RealJoint) joint.locked = true;
+      });
+  });
+
+  fixture.holds?.forEach(({ link: id, hold }) => {
+    const bar = links.find((link) => link.id === id);
+    if (bar instanceof RealLink) bar.hold = hold;
+  });
 
   const forces: Force[] = [];
-  if (fixture.load) {
-    const link = links.find((l) => l.id === fixture.load!.onLink) as RealLink;
-    const [fx, fy] = fixture.load.vector;
+  // The lone `load` first, so a fixture that has only ever had one still gets
+  // F1 and encodes byte for byte as before.
+  const loads = [...(fixture.load ? [fixture.load] : []), ...(fixture.loads ?? [])];
+  loads.forEach((load, index) => {
+    const link = links.find((l) => l.id === load.onLink) as RealLink;
+    const [fx, fy] = load.vector;
     const mag = Math.hypot(fx, fy);
-    const start = new Coord(fixture.load.at[0], fixture.load.at[1]);
+    const start = new Coord(load.at[0], load.at[1]);
     const end = new Coord(start.x + fx / mag, start.y + fy / mag);
-    // local=false keeps the direction fixed in the global frame while the
-    // application point rides along with the link, like the MATLAB LoadForce.
-    const force = new Force('F1', link, start, end, false, true, mag);
+    // The application point always rides the link. `local` decides the other
+    // half: false keeps the direction fixed in the global frame, like the
+    // MATLAB LoadForce and like weight; true turns it with the body.
+    const force = new Force('F' + (index + 1), link, start, end, !!load.local, true, mag);
     link.forces.push(force);
     forces.push(force);
-  }
+  });
 
-  const mechanism = new Mechanism(
-    joints,
-    links,
-    forces,
-    [],
-    fixture.gravity ?? false,
-    'm',
-    fixture.inputAngVel
-  );
-  return { mechanism, joints, links, forces, fixture };
+  return { joints, links, forces, fixture };
+}
+
+/**
+ * The same fixture with every coordinate in model units, the way the app
+ * holds a drawing: MODEL_SCALE of them to one of the fixture's own
+ * (render-scale.ts).
+ *
+ * Fixtures are written in the reader's units because the kinematics specs
+ * compare positions against MATLAB numbers directly, and a build at those raw
+ * coordinates moves exactly as the app's does. Forces are not so forgiving:
+ * the force solver reads lengths as model units, so a raw build is analyzed as
+ * a mechanism MODEL_SCALE times smaller than the one written. Statics hides
+ * that -- only the torque changes -- but every inertia term depends on it, so a
+ * spec that checks a torque or a dynamic reaction against real numbers builds
+ * from this.
+ *
+ * Only positions scale. A load's vector is a force, a slot's angle is an
+ * angle, and a slider's drive speed is already in the reader's units.
+ */
+export function inModelUnits(fixture: MechanismFixture): MechanismFixture {
+  const point = ([x, y]: [number, number]): [number, number] => [x * MODEL_SCALE, y * MODEL_SCALE];
+  const link = (spec: FixtureLink): FixtureLink => ({
+    ...spec,
+    com: spec.com && point(spec.com),
+    subset: spec.subset?.map(link),
+  });
+  const load = (spec: FixtureLoad): FixtureLoad => ({ ...spec, at: point(spec.at) });
+  return {
+    ...fixture,
+    joints: fixture.joints.map((joint) => ({
+      ...joint,
+      x: joint.x * MODEL_SCALE,
+      y: joint.y * MODEL_SCALE,
+    })),
+    links: fixture.links.map(link),
+    load: fixture.load && load(fixture.load),
+    loads: fixture.loads?.map(load),
+  };
+}
+
+/**
+ * Build a fixture at a given drawing scale, leaving the shared static as found.
+ *
+ * `SettingsService.objectScale` is process-wide, and a cylinder's stroke and a
+ * slot's ends are both measured against it — so a spec that needs a particular
+ * scale has to pin one. Pinning it and walking away is what made this suite
+ * order-dependent: Vitest runs files unisolated, so whichever spec set it last
+ * decided what every concurrent file saw, and the failures moved around the
+ * cylinder specs from run to run.
+ *
+ * Set, build, put back. The built mechanism has already captured what it needed
+ * from the scale by the time this returns.
+ */
+export function buildMechanismAtScale(
+  fixture: MechanismFixture,
+  objectScale: number
+): BuiltMechanism {
+  const previous = SettingsService.objectScale;
+  const previousCylinderScale = SettingsService.preservedCylinderScale;
+  SettingsService.preservedCylinderScale = 0;
+  SettingsService._objectScale.next(objectScale);
+  try {
+    return buildMechanismNow(fixture);
+  } finally {
+    SettingsService._objectScale.next(previous);
+    SettingsService.preservedCylinderScale = previousCylinderScale;
+  }
 }

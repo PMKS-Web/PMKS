@@ -9,7 +9,7 @@ import { registerKinematicsSuite } from '../../test-utils/verification/suites';
 // Crank-slider verified against the MATLAB solvers in
 // PMKS-Web/PMKS_Verification (TeachingLab_Slider_Crank, 15.1 RPM). The
 // MATLAB link BCE includes sensor point E mounted exactly at joint B, so E is
-// compared to B and BCE corresponds to PMKS+ link BC. The prismatic joint is D.
+// compared to B and BCE corresponds to PMKS link BC. The prismatic joint is D.
 describe('TeachingLab slider-crank @ 15.1 RPM vs MATLAB', () => {
   describe('kinematics', () => {
     registerKinematicsSuite(

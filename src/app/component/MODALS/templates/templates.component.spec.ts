@@ -1,0 +1,282 @@
+import { existsSync } from 'node:fs';
+import { isDevMode } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { provideAnimations } from '@angular/platform-browser/animations';
+import { DEV_TEMPLATES } from './dev-templates';
+import { DEV_TEMPLATE_CARDS, TEMPLATE_CARDS, TEMPLATE_CATEGORIES } from './template-catalog';
+import { TEMPLATE_IDS, TEMPLATE_LINKAGES } from './template-linkages';
+import { TemplatesComponent } from './templates.component';
+
+// The library is a table now (template-catalog.ts) rather than a wall of
+// hand-written cards, so the thing that can go wrong has changed: a template
+// with no row is invisible, and a row with no payload is a dead card. Both are
+// checked here, along with the filtering the table exists to make possible.
+
+describe('template catalog', () => {
+  it('gives every template exactly one card', () => {
+    // A drawing retired from the published library keeps its card under For
+    // Development, because specs and e2e suites still open its payload.
+    const carded = [...TEMPLATE_CARDS, ...DEV_TEMPLATE_CARDS]
+      .map((card) => card.id as string)
+      .filter((id) => !(id in DEV_TEMPLATES))
+      .sort();
+    const offered = [...TEMPLATE_IDS].map((id) => id as string).sort();
+
+    // Named both ways round: one list says which template has no card yet, the
+    // other which card names a template that has been removed.
+    expect(offered.filter((id) => !carded.includes(id))).toEqual([]);
+    expect(carded.filter((id) => !offered.includes(id))).toEqual([]);
+    expect(new Set(carded).size).toBe(carded.length);
+  });
+
+  it('reaches a payload from every card', () => {
+    for (const card of TEMPLATE_CARDS) {
+      expect(typeof TEMPLATE_LINKAGES[card.id as keyof typeof TEMPLATE_LINKAGES]).toBe('string');
+    }
+    for (const card of DEV_TEMPLATE_CARDS) {
+      const payload =
+        DEV_TEMPLATES[card.id as keyof typeof DEV_TEMPLATES] ??
+        TEMPLATE_LINKAGES[card.id as keyof typeof TEMPLATE_LINKAGES];
+      expect(typeof payload).toBe('string');
+    }
+  });
+
+  it('ships every backdrop a card names, in centimeters a reader could measure', () => {
+    // A row naming a picture that is not there costs the reader the tracing
+    // aid the card promised, and the service only says so on the console.
+    for (const card of TEMPLATE_CARDS) {
+      if (!card.backdrop) continue;
+      expect(card.backdrop.src.startsWith('assets/backdrops/')).toBe(true);
+      expect(existsSync(`src/${card.backdrop.src}`)).toBe(true);
+      expect(card.backdrop.width).toBeGreaterThan(0);
+      expect(card.backdrop.opacity ?? 0.5).toBeGreaterThan(0);
+    }
+    // The Real Machines section is the one built on pictures: every card in it has one.
+    const traced = TEMPLATE_CARDS.filter((card) => card.category === 'realworld');
+    expect(traced.length).toBeGreaterThanOrEqual(4);
+    expect(traced.every((card) => !!card.backdrop)).toBe(true);
+  });
+
+  it('files every card under a declared category, with an asset behind it', () => {
+    const categories = TEMPLATE_CATEGORIES.map((category) => category.id as string);
+
+    for (const card of [...TEMPLATE_CARDS, ...DEV_TEMPLATE_CARDS]) {
+      expect(categories).toContain(card.category);
+      expect(card.thumbnail.startsWith('assets/gifs/')).toBe(true);
+      expect(card.animation ?? 'assets/gifs/').toMatch(/^assets\/gifs\//);
+    }
+  });
+
+  it('describes every card in a line the caption can hold', () => {
+    for (const card of [...TEMPLATE_CARDS, ...DEV_TEMPLATE_CARDS]) {
+      expect(card.name.length).toBeGreaterThan(0);
+      // Three clamped lines is what the band over the thumbnail reserves room
+      // for; past this a description is silently cut off.
+      expect(card.description.length).toBeGreaterThan(20);
+      expect(card.description.length).toBeLessThanOrEqual(140);
+    }
+  });
+
+  it('says mechanism, never linkage', () => {
+    for (const card of [...TEMPLATE_CARDS, ...DEV_TEMPLATE_CARDS]) {
+      expect(`${card.name} ${card.description}`.toLowerCase()).not.toContain('linkage');
+    }
+  });
+});
+
+describe('library dialog', () => {
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [TemplatesComponent],
+      providers: [provideAnimations()],
+    }).compileComponents();
+  });
+
+  function open() {
+    const fixture = TestBed.createComponent(TemplatesComponent);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  function cards(fixture: { nativeElement: HTMLElement }): string[] {
+    return Array.from(fixture.nativeElement.querySelectorAll('.templateCard')).map(
+      (card) => card.getAttribute('data-template') ?? ''
+    );
+  }
+
+  function chip(fixture: { nativeElement: HTMLElement }, name: string): HTMLButtonElement {
+    const found = Array.from(
+      fixture.nativeElement.querySelectorAll<HTMLButtonElement>('.rail .category')
+    ).find((button) => (button.textContent ?? '').includes(name));
+    expect(found).toBeTruthy();
+    return found!;
+  }
+
+  function search(fixture: { nativeElement: HTMLElement }, text: string) {
+    const input = fixture.nativeElement.querySelector('.searchBox input') as HTMLInputElement;
+    input.value = text;
+    input.dispatchEvent(new Event('input'));
+  }
+
+  it('shows a card per template, with its description over the thumbnail', () => {
+    const fixture = open();
+    const shown = cards(fixture);
+
+    for (const card of TEMPLATE_CARDS) expect(shown).toContain(card.id);
+    expect(fixture.nativeElement.querySelectorAll('.caption .cardDescription').length).toBe(
+      shown.length
+    );
+    expect(fixture.nativeElement.textContent).toContain('Four-Bar');
+    expect(fixture.nativeElement.textContent).toContain('short crank rotates continuously');
+  });
+
+  it('heads each family it has cards for, and stays quiet about the ones it does not', () => {
+    const headings = Array.from(
+      (open().nativeElement as HTMLElement).querySelectorAll('.sectionHeading')
+    ).map((heading) => heading.textContent?.trim());
+
+    // Asked of the data rather than against a list of names, so adding a
+    // mechanism does not send anyone back here to update a snapshot. An empty
+    // category is not a category yet: declaring one before its first mechanism
+    // exists must not leave a bare heading behind.
+    const populated = new Set(TEMPLATE_CARDS.map((card) => card.category));
+    for (const category of TEMPLATE_CATEGORIES) {
+      if (category.id === 'dev') continue;
+      const expected = populated.has(category.id);
+      expect(headings.includes(category.name)).toBe(expected);
+    }
+    expect(headings.length).toBeGreaterThan(1);
+    if (!isDevMode()) expect(headings).not.toContain('For Development');
+  });
+
+  it('narrows to one family and back to all of them', () => {
+    const fixture = open();
+    const everything = cards(fixture).length;
+
+    chip(fixture, 'Drawing a Path').click();
+    fixture.detectChanges();
+    const paths = cards(fixture);
+    expect(paths).toContain('Jansen_Leg');
+    expect(paths).not.toContain('4-Bar');
+
+    chip(fixture, 'All').click();
+    fixture.detectChanges();
+    expect(cards(fixture).length).toBe(everything);
+  });
+
+  it('searches names and descriptions, and offers the way back when nothing matches', () => {
+    const fixture = open();
+
+    // Two cards name the leg now: the one that is a leg, and the pair of them
+    // walking. Both are the right answer to "jansen".
+    search(fixture, 'jansen');
+    fixture.detectChanges();
+    expect(cards(fixture).sort()).toEqual(['Jansen_Leg', 'Walking_Pair']);
+
+    // The words are in the description, not the name.
+    search(fixture, 'through its bearings');
+    fixture.detectChanges();
+    expect(cards(fixture)).toEqual(['Scotch_Yoke_Rod']);
+
+    search(fixture, 'gearbox');
+    fixture.detectChanges();
+    expect(cards(fixture).length).toBe(0);
+    expect(fixture.nativeElement.textContent).toContain('Nothing in the library matches');
+
+    (fixture.nativeElement.querySelector('.emptyState button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(cards(fixture).length).toBeGreaterThan(0);
+  });
+
+  it('offers the one that is missing after the last card', () => {
+    const fixture = open();
+    chip(fixture, 'Drawing a Path').click();
+    fixture.detectChanges();
+    const end = fixture.nativeElement.querySelector('.endLine') as HTMLElement;
+    expect(end.textContent?.trim()).toContain('Suggest one that belongs here');
+
+    (end.querySelector('button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const component = fixture.componentInstance;
+    expect(component.view).toBe('suggest');
+    // Filed where the reader was looking.
+    expect(component.draft.controls.section.value).toBe('paths');
+  });
+
+  it('carries a search that found nothing into the title of a suggestion', () => {
+    const fixture = open();
+    search(fixture, 'hoeken');
+    fixture.detectChanges();
+    const offer = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+        '.emptyState button'
+      )
+    ).find((button) => (button.textContent ?? '').includes('Suggest a Mechanism'));
+    offer!.click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.draft.controls.title.value).toBe('hoeken');
+  });
+
+  it('keeps the library as it was behind the form, and the draft across a trip back', () => {
+    const fixture = open();
+    const component = fixture.componentInstance;
+    chip(fixture, 'Swing, Lift, and Grip').click();
+    fixture.detectChanges();
+    component.suggest();
+    component.draft.controls.title.setValue('Half typed');
+    fixture.detectChanges();
+    expect((fixture.nativeElement.querySelector('.browseView') as HTMLElement).hidden).toBe(true);
+
+    component.backToLibrary();
+    fixture.detectChanges();
+    expect(component.category).toBe('swing');
+    expect(cards(fixture)).toContain('Scissor_Lift');
+    component.suggest();
+    expect(component.draft.controls.title.value).toBe('Half typed');
+  });
+
+  it('keeps a draft when the library closes, for the next time it opens', () => {
+    const first = open();
+    first.componentInstance.suggest();
+    first.componentInstance.draft.controls.title.setValue('Kept');
+    first.destroy();
+    const again = open();
+    again.componentInstance.suggest();
+    expect(again.componentInstance.draft.controls.title.value).toBe('Kept');
+  });
+
+  it('starts a new suggestion blank once one has gone', () => {
+    const fixture = open();
+    const component = fixture.componentInstance;
+    component.suggest();
+    component.draft.controls.title.setValue('Sent already');
+    component.onSent({
+      title: 'Sent already',
+      description: 'It went.',
+      credit: '',
+      email: '',
+      still: '',
+    });
+    expect(component.view).toBe('sent');
+    component.backToLibrary();
+    component.suggest();
+    expect(component.draft.controls.title.value).toBe('');
+  });
+
+  it('counts what each chip would show, including under a search', () => {
+    const fixture = open();
+    const countOn = (name: string) =>
+      Number(chip(fixture, name).querySelector('.chipCount')?.textContent?.trim());
+
+    // From the table, not a number typed in here: the count is a promise about
+    // what pressing the chip shows, and it is that promise being checked.
+    const startCards = TEMPLATE_CARDS.filter((card) => card.category === 'start').length;
+    expect(startCards).toBeGreaterThan(0);
+    expect(countOn('Start Here')).toBe(startCards);
+
+    search(fixture, 'jansen');
+    fixture.detectChanges();
+    expect(countOn('Start Here')).toBe(0);
+    expect(countOn('Drawing a Path')).toBeGreaterThan(0);
+  });
+});

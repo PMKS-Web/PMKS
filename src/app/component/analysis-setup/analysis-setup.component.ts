@@ -1,0 +1,527 @@
+import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
+import { PrisJoint } from '../../model/joint';
+import { Link, RealLink } from '../../model/link';
+import { MechanismService } from '../../services/mechanism.service';
+import { chipOf, MachineChip } from '../../services/mechanism-overview.service';
+import { mechanismLabel, mechanismName } from '../../model/mechanism/mechanism-name';
+import { ActiveObjService } from '../../services/active-obj.service';
+import { NumberUnitParserService } from '../../services/number-unit-parser.service';
+import { SettingsService } from '../../services/settings.service';
+import { SelectedTabService, TabID } from '../../selected-tab.service';
+import { EditPermissionService } from '../../services/edit-permission.service';
+import { MechanismReadiness } from '../../model/mechanism/readiness';
+import { SetupIssue } from '../../model/mechanism/setup-issue';
+import { IssueComponent } from '../BLOCKS/issue/issue.component';
+import { MatIcon } from '@angular/material/icon';
+import { ScrollShadowDirective } from '../../scroll-shadow.directive';
+import { NotificationService } from '../../services/notification.service';
+import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { InputComponent } from '../BLOCKS/input/input.component';
+import { ChipComponent } from '../BLOCKS/chip/chip.component';
+import { PartLinkComponent } from '../BLOCKS/part-link/part-link.component';
+import { MassPartLinksDirective } from './mass-part-links.directive';
+import { Subscription } from 'rxjs';
+import { NOT_A } from '../../ui-text';
+
+/** One editable row of the mass table: a body, and what to call it. */
+export interface MassRow {
+  /**
+   * What carries the mass: a link, or a sliding joint.
+   *
+   * A slider's mass was its block's -- a zero-length link nobody could select,
+   * which is why this table was the only door to it -- until Stage 1 of
+   * `docs/joint-type-and-cylinder-plan.md` moved it onto the joint itself.
+   */
+  body: Link | PrisJoint;
+  label: string;
+  /** A point mass: no inertia of its own, and no shape to derive one from. */
+  isBlock: boolean;
+}
+
+/** The mass table's rows for one machine, under its name when there are several. */
+export interface MassGroup {
+  /** The machine's name, or nothing when the drawing has only one. */
+  label?: string;
+  rows: MassRow[];
+}
+
+/** Why a slider's inertia cell is empty, said where the reader points at it. */
+export const POINT_MASS_NOTE =
+  'A slider is treated as a point mass, so it has no mass moment of inertia.';
+
+/**
+ * What stands between this drawing and its animation, mechanism by mechanism.
+ *
+ * The app used to answer "why is nothing happening?" with one sentence about
+ * the whole document, first blocker wins — which for a drawing holding several
+ * machines is a sentence about whichever of them the loop reached first. Each
+ * is now listed on its own, with its own issues, each saying what is wrong and,
+ * behind "Show fixes", the rule behind it and the edits to try
+ * (`docs/setup-issues-spec.md`).
+ *
+ * Anything that is fine says nothing at all. A list of green ticks reads as
+ * reassurance the first time and as noise every time after, and it buries the
+ * one line that matters. A section with nothing in the way is its name and a
+ * "Ready" chip.
+ */
+@Component({
+  selector: 'app-analysis-setup',
+  templateUrl: './analysis-setup.component.html',
+  styleUrls: ['./analysis-setup.component.scss'],
+  changeDetection: ChangeDetectionStrategy.Eager,
+  imports: [
+    MatIcon,
+    ScrollShadowDirective,
+    ReactiveFormsModule,
+    InputComponent,
+    ChipComponent,
+    IssueComponent,
+    PartLinkComponent,
+    MassPartLinksDirective,
+  ],
+})
+export class AnalysisSetupComponent {
+  mechanism = inject(MechanismService);
+  activeObj = inject(ActiveObjService);
+  private tabs = inject(SelectedTabService);
+  private permission = inject(EditPermissionService);
+  nup = inject(NumberUnitParserService);
+  settings = inject(SettingsService);
+  private notify = inject(NotificationService);
+
+  /**
+   * Which question this drawer is answering.
+   *
+   * The two are separate drawers because they have different fixes: a
+   * mechanism that will not run and a force analysis with nothing to react
+   * against are not the same problem, and a reader refused by one mode should
+   * not have to read past the other's list to find out why.
+   */
+  readonly mode = input<'kinematic' | 'force'>('kinematic');
+  unassignedOpen = false;
+  forceOpen = true;
+  massesOpen = true;
+  protected readonly pointMassNote = POINT_MASS_NOTE;
+
+  get readiness(): MechanismReadiness[] {
+    return this.mechanism.readinessOfEachMechanism();
+  }
+
+  get unassigned() {
+    return this.mechanism.unassignedReports();
+  }
+
+  /**
+   * What force analysis still wants: only what is outstanding, blockers first,
+   * because the thing that stops the analysis goes above the thing merely
+   * worth a look, whatever order the service found them in.
+   */
+  get forceIssues(): SetupIssue[] {
+    return this.mechanism
+      .forceSetupIssues()
+      .slice()
+      .sort((a, b) => (a.severity === 'blocker' ? 0 : 1) - (b.severity === 'blocker' ? 0 : 1));
+  }
+
+  get forceChip(): { text: string; kind: 'blocker' | 'warning' | 'ok' } {
+    return chipOf(this.forceIssues);
+  }
+
+  get title(): string {
+    return this.mode() === 'force' ? 'Force Analysis Setup' : 'Analysis Setup';
+  }
+
+  /**
+   * The one line a drawer with no section under it needs. Everything else is
+   * counted by the chips, and a sentence restating the count said it twice.
+   */
+  get emptyLine(): string | undefined {
+    if (this.mode() !== 'kinematic') return undefined;
+    return this.readiness.length === 0 && this.unassigned.length === 0
+      ? 'Draw a mechanism to analyze it.'
+      : undefined;
+  }
+
+  /** The mode this drawer is about — not the one the reader is standing in. */
+  private get modeTab(): TabID {
+    return this.mode() === 'force' ? TabID.FORCE : TabID.ANALYZE;
+  }
+
+  /**
+   * Whether to offer the way in.
+   *
+   * A setup with nothing left to fix used to end in a heading that opened onto
+   * an empty list, which reads as a panel that has lost its content. What the
+   * reader wants at that point is the mode itself.
+   *
+   * Asked of this drawer's mode rather than the current one, because the two
+   * readinesses are different questions: a drawing can run perfectly and still
+   * have nothing for the force solver to react against. Hidden while already
+   * in that mode — a button that goes where you are is a dead control.
+   */
+  canEnterMode(): boolean {
+    if (this.tabs.getCurrentTab() === this.modeTab) return false;
+    return this.mode() === 'force'
+      ? this.mechanism.forceAnalysisReady()
+      : this.mechanism.oneValidMechanismExists() && this.mechanism.blockerCount() === 0;
+  }
+
+  /** Title Case, because it is a control. */
+  get enterModeLabel(): string {
+    return this.mode() === 'force' ? 'Switch to Force Analysis' : 'Switch to Kinematic Analysis';
+  }
+
+  enterMode(): void {
+    if (!this.canEnterMode()) return;
+    this.tabs.setTab(this.modeTab);
+  }
+
+  /**
+   * Whether a machine's section is open.
+   *
+   * One selection drives the machine panel, the grid and this drawer: with a
+   * machine picked, its section is the one open and the others fold away, so
+   * the drawer beside its panel is about the same machine. With none picked,
+   * every section with something in it is open -- a drawing that is fine
+   * collapses to a list of names. Either way a section the reader folded or
+   * opened stays as they left it until the pick changes.
+   */
+  isOpen(readiness: MechanismReadiness, index: number): boolean {
+    if (readiness.checks.length === 0) return false;
+    this.forgetFoldsIfThePickChanged();
+    const chosen = this.folds.get(readiness.id);
+    if (chosen !== undefined) return chosen;
+    const picked = this.pickedIndex();
+    return picked === undefined || picked === index;
+  }
+
+  toggle(readiness: MechanismReadiness, index: number): void {
+    if (readiness.checks.length === 0) return;
+    this.folds.set(readiness.id, !this.isOpen(readiness, index));
+  }
+
+  /** The machine picked as a whole, if one is. */
+  pickedIndex(): number | undefined {
+    return this.activeObj.objType === 'Mechanism'
+      ? this.activeObj.selectedMechanismIndex
+      : undefined;
+  }
+
+  /** The reader's own folds, by machine, since the pick last changed. */
+  private folds = new Map<string, boolean>();
+  private foldsFor: number | undefined;
+
+  private forgetFoldsIfThePickChanged(): void {
+    const picked = this.pickedIndex();
+    if (picked === this.foldsFor) return;
+    this.foldsFor = picked;
+    this.folds.clear();
+  }
+
+  /**
+   * Red if anything stops it running, amber if it runs with something to check,
+   * green if nothing is in the way: the chip the machine panel shows too.
+   */
+  chipFor(readiness: MechanismReadiness): MachineChip {
+    return chipOf(readiness.checks);
+  }
+
+  /** "Mechanism 2", or the name its author gave it: as the machine panel says it. */
+  labelOf(readiness: MechanismReadiness, index: number): string {
+    return (
+      mechanismName(this.mechanism.partitions?.[index]) ??
+      `Mechanism ${readiness.id.replace(/^M/, '')}`
+    );
+  }
+
+  /**
+   * Pick the machine this section is about, in whichever mode the reader is
+   * in: its panel opens on the left, the others fade on the grid, and this
+   * drawer folds to its section.
+   */
+  select(index: number, event: Event): void {
+    event.stopPropagation();
+    this.mechanism.hoveredMechanismIndex = -1;
+    this.activeObj.selectMechanism(index);
+  }
+
+  /** Pointing at a machine's name lights it on the grid before it is picked. */
+  point(index: number): void {
+    this.mechanism.hoveredMechanismIndex = index;
+  }
+
+  /**
+   * The table's fields are the app's own input component, driven through this
+   * form — one control per cell, named by body — so focus, fill, underline
+   * and blur-commit are literally the same code path as every other field.
+   * Values refresh on mechanism updates, never per change-detection pass,
+   * so a half-typed entry is never stomped.
+   */
+  tableForm = new FormGroup({}, { updateOn: 'blur' });
+  private tableSubscriptions = new Map<string, Subscription>();
+  private tableRefresh?: Subscription;
+
+  ngOnInit(): void {
+    this.tableRefresh = this.mechanism.onMechUpdateState.subscribe(() => this.refreshTableValues());
+  }
+
+  ngOnDestroy(): void {
+    this.tableRefresh?.unsubscribe();
+    this.tableSubscriptions.forEach((subscription) => subscription.unsubscribe());
+  }
+
+  massControlName(row: MassRow): string {
+    return 'm_' + row.body.id;
+  }
+
+  moiControlName(row: MassRow): string {
+    return 'i_' + row.body.id;
+  }
+
+  private ensureRowControls(rows: MassRow[]): void {
+    const wanted = new Set<string>();
+    for (const row of rows) {
+      // A point mass has no inertia to type or show, so its cell holds no field.
+      const cells: [string, 'mass' | 'moi'][] = [[this.massControlName(row), 'mass']];
+      if (!row.isBlock) cells.push([this.moiControlName(row), 'moi']);
+      for (const [name, kind] of cells) {
+        wanted.add(name);
+        if (!this.tableForm.contains(name)) {
+          const control = new FormControl(kind === 'mass' ? this.massText(row) : this.moiText(row));
+          this.tableForm.addControl(name, control, { emitEvent: false });
+          this.tableSubscriptions.set(
+            name,
+            control.valueChanges.subscribe((raw) => this.commitCell(row.body.id, kind, raw ?? ''))
+          );
+        }
+        const control = this.tableForm.get(name)!;
+        const editable = this.massEditable() && (kind === 'mass' || this.moiEditable(row));
+        if (editable && control.disabled) control.enable({ emitEvent: false });
+        if (!editable && control.enabled) control.disable({ emitEvent: false });
+      }
+    }
+    for (const [name, subscription] of [...this.tableSubscriptions]) {
+      if (!wanted.has(name)) {
+        subscription.unsubscribe();
+        this.tableSubscriptions.delete(name);
+        this.tableForm.removeControl(name as never, { emitEvent: false });
+      }
+    }
+  }
+
+  private refreshTableValues(): void {
+    for (const row of this.currentRows()) {
+      this.tableForm
+        .get(this.massControlName(row))
+        ?.setValue(this.massText(row), { emitEvent: false });
+      this.tableForm
+        .get(this.moiControlName(row))
+        ?.setValue(this.moiText(row), { emitEvent: false });
+    }
+  }
+
+  private commitCell(bodyId: string, kind: 'mass' | 'moi', raw: string): void {
+    const row = this.currentRows().find((candidate) => candidate.body.id === bodyId);
+    if (!row) return;
+    if (kind === 'mass') this.applyMass(row, raw);
+    else this.applyInertia(row, raw);
+    this.refreshTableValues();
+  }
+
+  private currentRows(): MassRow[] {
+    return this.buildRows();
+  }
+
+  /**
+   * Every body force analysis will weigh, one editable row each.
+   *
+   * Setting up an analysis is mostly this: eight links, eight masses, and a
+   * panel that needs eight selections to reach them. The table is the same
+   * numbers in one place — and the place the massless warning points at.
+   * Cylinder parts appear under the part's own name, which is the first home
+   * their masses have had.
+   */
+  massRows(): MassRow[] {
+    const rows = this.buildRows();
+    this.ensureRowControls(rows);
+    return rows;
+  }
+
+  /**
+   * The rows by machine, when the drawing holds more than one: nine bodies
+   * from three machines in one list made the reader work out which was whose.
+   * Bodies that belong to no machine -- a bar pinned down at both ends, a chain
+   * that never reaches ground -- come last, under their own heading.
+   */
+  massGroups(): MassGroup[] {
+    const rows = this.massRows();
+    const partitions = this.mechanism.partitions;
+    if (partitions.length < 2) return [{ rows }];
+    const groups: MassGroup[] = partitions.map((partition, index) => ({
+      label: mechanismLabel(partition, index),
+      rows: [],
+    }));
+    const loose: MassRow[] = [];
+    for (const row of rows) {
+      const index = this.mechanism.indexOfMechanismContaining(row.body);
+      (index === -1 ? loose : groups[index].rows).push(row);
+    }
+    if (loose.length > 0) groups.push({ label: 'Not in a Mechanism', rows: loose });
+    return groups.filter((group) => group.rows.length > 0);
+  }
+
+  private buildRows(): MassRow[] {
+    // A body's label lives with the mechanism, shared with the massless warning
+    // — the table and the warning must call a body the same thing. A *slider's*
+    // does not, and `sliderLabel` below is local for that reason: the warning is
+    // deliberately about links only, so there is no second reader to agree with.
+    const bars: MassRow[] = this.mechanism.links
+      .filter((link) => link instanceof RealLink)
+      .map((body) => ({ body, label: this.mechanism.bodyLabel(body), isBlock: false }));
+    // And every sliding joint, which weighs. Its mass used to be a block's and
+    // arrived in the list above with the other links; the block is gone and the
+    // joint carries it, so it is fetched from the other array rather than
+    // dropped -- this table is the one place every mass in a drawing is listed.
+    const sliders: MassRow[] = this.mechanism.joints
+      .filter((joint): joint is PrisJoint => joint instanceof PrisJoint)
+      .map((body) => ({ body, label: this.sliderLabel(body), isBlock: true }));
+    return [...bars, ...sliders];
+  }
+
+  /** What the table calls a sliding joint: a ram's part, or the joint's letter. */
+  private sliderLabel(slider: PrisJoint): string {
+    const sealed = this.mechanism.cylindersAt(slider)[0];
+    if (!sealed) return `Slider ${slider.name || slider.id}`;
+    const name =
+      (sealed.mountA.name || sealed.mountA.id) + (sealed.mountB.name || sealed.mountB.id);
+    return `Sliding body ${name}`;
+  }
+
+  massText(row: MassRow): string {
+    // The unit is typed into the box, exactly as Basic Settings does it — and
+    // typing it back (or not) parses the same either way.
+    return this.nup.formatStoredMass(
+      row.body.mass,
+      this.settings.lengthUnit.value,
+      this.settings.massUnit.value
+    );
+  }
+
+  moiText(row: MassRow): string {
+    // A point mass has no inertia, and its cell says so by being empty rather
+    // than by a grayed zero that reads like a value someone forgot to set.
+    if (row.isBlock || !(row.body instanceof RealLink)) return '';
+    return this.nup.formatStoredInertia(
+      row.body.massMoI,
+      this.settings.lengthUnit.value,
+      this.settings.massUnit.value
+    );
+  }
+
+  moiIsAuto(row: MassRow): boolean {
+    return row.body instanceof RealLink && !row.body.moiIsCustom;
+  }
+
+  /**
+   * A mass is typed whenever the machine is standing still.
+   *
+   * Not the pose rule the Edit panel's numbers follow: a mass is not read off
+   * a pose and needs no transform back to the start, so a machine parked
+   * mid-cycle in any mode can have its masses changed and its force graphs
+   * re-solved under them. While it runs the table is read-only, like every
+   * other setting -- the numbers would be changing under a solve in flight.
+   */
+  massEditable(): boolean {
+    const mechanism = this.mechanism;
+    return (
+      !mechanism.isPlaying && !mechanism.mechanisms.some((_, i) => mechanism.isMechanismPlaying(i))
+    );
+  }
+
+  /**
+   * Whether this row's inertia can be typed at. A block is a point mass with
+   * no inertia of its own, and a sealed cylinder's parts always follow their
+   * own shapes — which is what lets the cylinder card promise exactly that.
+   */
+  moiEditable(row: MassRow): boolean {
+    if (row.isBlock || !(row.body instanceof RealLink)) return false;
+    if (!(row.body.mass > 0)) return false;
+    // A cylinder member's inertia follows its own shape (decision S14), which
+    // is the same answer its panel gives.
+    return !this.mechanism.memberInertiaIsDerived(row.body);
+  }
+
+  massUnitLabel(): string {
+    return this.nup.unitLabel(
+      this.nup.displayMassUnit(this.settings.lengthUnit.value, this.settings.massUnit.value)
+    );
+  }
+
+  inertiaUnitLabel(): string {
+    return this.nup.unitLabel(
+      this.nup.displayInertiaUnit(this.settings.lengthUnit.value, this.settings.massUnit.value)
+    );
+  }
+
+  anyInertiaIsCustom(): boolean {
+    return this.mechanism.links.some((link) => link instanceof RealLink && link.moiIsCustom);
+  }
+
+  /**
+   * Put every rotational inertia back to the one its shape implies.
+   *
+   * Inertia only. This is the button under a table of masses and inertias, and
+   * the legend beside it explains the mark on the inertia column, so that is
+   * the column it undoes. It used to clear the centers of mass as well --
+   * moving weight around the drawing from a control that says nothing about
+   * where any of it sits, and taking work with it that is placed a link at a
+   * time on the canvas. A center of mass is put back from the link's own panel,
+   * where it was moved.
+   */
+  resetAllInertia(): void {
+    if (!this.massEditable()) return;
+    for (const link of this.mechanism.links) {
+      if (link instanceof RealLink) {
+        link.moiIsCustom = false;
+      }
+    }
+    this.mechanism.updateMechanism(true);
+    this.mechanism.onMechUpdateState.next(2);
+  }
+
+  private applyMass(row: MassRow, raw: string): void {
+    if (!this.massEditable()) return;
+    const [success, value] = this.nup.parseStoredMass(
+      raw,
+      this.settings.lengthUnit.value,
+      this.settings.massUnit.value
+    );
+    if (!success || value < 0) {
+      this.notify.refusal('value.mass', success ? NOT_A.nonNegativeMass : NOT_A.mass);
+      return;
+    }
+    // A joint carries its own mass and belongs to no compound, so there is no
+    // aggregate for `assignBodyMass` to keep true.
+    if (row.body instanceof PrisJoint) row.body.mass = value;
+    else this.mechanism.assignBodyMass(row.body, value);
+    this.mechanism.updateMechanism(true);
+    this.mechanism.onMechUpdateState.next(2);
+  }
+
+  private applyInertia(row: MassRow, raw: string): void {
+    if (!this.massEditable() || !this.moiEditable(row) || !(row.body instanceof RealLink)) return;
+    const [success, value] = this.nup.parseStoredInertia(
+      raw,
+      this.settings.lengthUnit.value,
+      this.settings.massUnit.value
+    );
+    if (!success || value < 0) {
+      this.notify.refusal('value.inertia', NOT_A.momentOfInertia);
+      return;
+    }
+    row.body.massMoI = value;
+    row.body.moiIsCustom = true;
+    this.mechanism.updateMechanism(true);
+    this.mechanism.onMechUpdateState.next(2);
+  }
+}

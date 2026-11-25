@@ -1,0 +1,176 @@
+{
+ "schema": "pmks-oracle-problem/1",
+ "id": "gallery.slider-crank-inversions.m3",
+ "title": "Slider-crank inversions, M3",
+ "source": {
+  "kind": "published",
+  "case": "gallery.slider-crank-inversions",
+  "machine": "M3"
+ },
+ "gravity": 9.80665,
+ "bodies": [
+  {
+   "id": "IJ",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.005196152422706633,
+    0.002000000000000001
+   ]
+  },
+  {
+   "id": "KM",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.0009266376011236834,
+    0.028146696168266736
+   ]
+  },
+  {
+   "id": "JN",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0.0030564238365174377,
+    0.021588655334555035
+   ]
+  },
+  {
+   "id": "IK",
+   "mass": 0,
+   "inertia": 0,
+   "com": [
+    0,
+    0.018000000000000002
+   ]
+  }
+ ],
+ "joints": [
+  {
+   "id": "I",
+   "kind": "pin",
+   "at": [
+    0,
+    0.005
+   ],
+   "bodies": [
+    "IJ",
+    "IK"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "J",
+   "kind": "pin",
+   "at": [
+    0.010392304845413265,
+    -0.0009999999999999985
+   ],
+   "bodies": [
+    "IJ",
+    "JN"
+   ],
+   "grounded": false,
+   "welded": false
+  },
+  {
+   "id": "K",
+   "kind": "pin",
+   "at": [
+    0,
+    0.031000000000000003
+   ],
+   "bodies": [
+    "IK",
+    "KM"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "M",
+   "kind": "slider",
+   "at": [
+    0.0018532752022473668,
+    0.025293392336533466
+   ],
+   "guide": "JN",
+   "linePoint": [
+    0.010392304845413265,
+    -0.0009999999999999985
+   ],
+   "axis": [
+    -0.30887920037456124,
+    0.9511012772444224
+   ],
+   "riders": [
+    "KM"
+   ],
+   "rotates": false,
+   "blockMass": 0,
+   "limits": [
+    0.002845000000000002,
+    0.044655
+   ]
+  }
+ ],
+ "driver": {
+  "joint": "I",
+  "kind": "rotation",
+  "speed": 1.0471975511965976,
+  "bodies": [
+   "ground",
+   "IJ"
+  ]
+ },
+ "loads": [],
+ "points": [
+  {
+   "id": "I",
+   "body": "ground",
+   "at": [
+    0,
+    0.005
+   ]
+  },
+  {
+   "id": "J",
+   "body": "IJ",
+   "at": [
+    0.010392304845413265,
+    -0.0009999999999999985
+   ]
+  },
+  {
+   "id": "K",
+   "body": "ground",
+   "at": [
+    0,
+    0.031000000000000003
+   ]
+  },
+  {
+   "id": "M",
+   "body": "KM",
+   "at": [
+    0.0018532752022473668,
+    0.025293392336533466
+   ]
+  },
+  {
+   "id": "N",
+   "body": "JN",
+   "at": [
+    -0.004279457172378389,
+    0.04417731066911006
+   ]
+  }
+ ],
+ "sweep": {
+  "step": 0.017453292519943295,
+  "maxSamples": 2000
+ },
+ "unsupported": []
+}

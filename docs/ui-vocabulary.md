@@ -1,0 +1,399 @@
+# Words this app uses
+
+> **Status:** Reference — follow it when writing any label, message or tooltip. `e2e/ui-copy.mjs` enforces its spelling rule.
+
+A reference for anyone adding a label, a message or a tooltip. It exists
+because the words drifted further than the code did: four verbs for adding a
+thing, three names for playing the mechanism, and two ideas about what a message
+is for. See `docs/ui-copy-audit.md` for the survey this came out of.
+
+The rule underneath all of it: **one thing, one name — and say what happened,
+why, and what to do about it.**
+
+---
+
+## Voice
+
+**Controls are Title Case. Everything else is a sentence.**
+
+| | |
+| --- | --- |
+| Buttons, menu items, section headings, field labels | `Add Cylinder`, `Input Settings`, `Starts At` |
+| Messages, tooltips, refusals, warnings | `Switch to Edit mode to change the mechanism.` |
+
+One carve-out: the **action chips on a notification** stay sentence case, because they are
+written as the end of the sentence above them — `Keep it, insert a new one` is a phrase, not
+a control name, and Title Case makes it absurd.
+
+**Spell American and write plain US engineering English.** `analyze`, `analyzed`, `analyzing` — never `analyse`, `colour`, `centre`, `neighbour`, or `capitalised`. Avoid British idioms too: write `solving` (not `working out`), `rotates around` (not `turns about`), `continuously` / `partway through` (not `all the way round` / `partway round`), `excavator` (not `digger`), `check this box` (not `tick this`), and `decimal places` (not `after the point`). The noun is `Analysis`, which is spelled the same either way, and it is what named the modes.
+
+**Use the Oxford comma** in lists of three or more (`position, velocity, and acceleration`; `2 joints, 1 link, and 1 force`).
+
+**End every tooltip with a period.** Tooltips are complete sentences. Natural contractions (`can't`, `isn't`, `aren't`) are fine anywhere conversational prose or guidance appears.
+
+**Use platform-aware modifier keys.** Never hardcode macOS keys like `Option` in tooltips or banners — read `Option` vs `Alt` from `KeyboardShortcutsService`.
+
+**Write to the person, about their mechanism.** Not about the program.
+
+| Instead of | Write |
+| --- | --- |
+| `Check Force Angle` | `Enter a valid angle in degrees.` |
+| `Cannot edit while in Synthesis mode. Switch to Edit mode to edit` | `Switch to Edit mode to change the mechanism.` |
+| `This feature is not available yet` | `Coming soon` |
+| `Don't link a joint to itself` | `A link needs two different joints.` |
+
+**Say the way out.** A refusal that only names the wall makes the user guess. A
+refusal that names the door costs the same number of words.
+
+**Do not announce what the user just did.** Deleting something removes it from
+the screen; pressing Undo moves the mechanism. `Deleted Selected Object.` and
+`Redo Called!` both shipped, and both told the user something they had just
+done on purpose. The snackbar is the one channel for saying something they
+*could not* see, so spending it on confirmations is expensive.
+
+**Two sentences is a tooltip's ceiling.** It is read one-handed with the pointer
+held still. If a third sentence is needed, the control needs a better label or
+the canvas needs to show it.
+
+**A tooltip says the one or two things the reader cannot work out from what is
+already on screen.** Everything else is padding, and padding is what pushes the
+useful sentence out of the first line. In particular:
+
+| Do not spend a tooltip on | Because |
+| --- | --- |
+| the unit the field is in | it is printed in the field |
+| that the setting is kept in the URL | everything is; the URL *is* the document |
+| how the value is used internally | that is a comment, not a tooltip |
+| the mode the reader is already in | `Available in Edit mode`, read from Edit mode, is the one line that cannot help |
+| a name for a thing the app never draws | `swatch`, `reciprocating mass`, `Right hand rule` — jargon the reader has no way to attach to anything |
+
+`Joint Color` needs `The color of this joint.` and nothing else. A way out
+belongs in a tooltip **only while the control is actually grayed** — build it
+conditionally, the way `SettingsService`'s units note is, so the sentence
+appears for the reader it can help and for nobody else.
+
+---
+
+## Naming things
+
+### Verbs
+
+| Where | Verb | Examples |
+| --- | --- | --- |
+| On the bare grid — a new free-standing member | **Add** | `Add Link`, `Add Cylinder` |
+| On an existing object — a member joined to it | **Attach** | `Attach Link`, `Attach Cylinder`, `Attach Tracer Point`, `Attach Force` |
+| A property that is present or absent | **Add** / **Remove** | `Add Ground` / `Remove Ground`, `Add Input` / `Remove Input` |
+| Reversing an applied force at fixed endpoints | **Flip Force** | `Flip Force` (reverses the force while keeping its application point on the link) |
+| Transforming geometry | **Move**, **Rotate**, **Scale** | `move, rotate, or scale` (not `turn` or `resize`) |
+| Start-pose actions | **Return to Start** / **Set Start Pose Here** | `Return to Start` (button/menu), `Return to start` (notification chip), `Return to the start pose` (tooltips/prose), `Set Start Pose Here` |
+| Removing anything | **Delete** | `Delete Joint`, `Delete Link`, `Delete Cylinder` |
+
+`Make` is gone. It survived in one place — `Make Force Global` / `Make Force
+Local` — precisely because that pair was a switch between two states rather
+than the presence or absence of one. Force orientation is now **Reference Frame**
+with options **Link** and **Grid** (ring = Grid, keyway = Link), and the
+right-click menu writes the state as a checkbox: **`Grid Frame`**, ticked or not.
+Do not reach for `Make` anywhere.
+
+### Verbs, and the switches that are not verbs
+
+The rule above is for **controls that do something**. A control that *describes
+a state the object is already in* is named after the state and carries a tick,
+so no label rewrites itself as it is used:
+
+| A verb, because it acts | A state, because it describes |
+| --- | --- |
+| `Attach Link`, `Delete Joint`, `Flip Force`, `Reverse Direction` | `Grounded`, `Driven Input`, `Locked`, `Trace Path`, `Grid Frame`, `Drawn as a Disc` |
+
+The Edit panel spells the same states the same way — its toggles read
+`Grounded`, `Trace Path`, and `Draw as a Disc`, not `Ground`, `Show Joint Path`,
+or `Make Circular`.
+
+`Weld` / `Unweld` and `Add Slider` / `Remove Slider` are retired as standalone
+verbs because **Joint Type** replaced them.
+
+### A joint's type
+
+A joint is one of four things, and the reader picks which in one choice,
+**Joint Type**, in the Edit panel and at the top of a joint's right-click menu.
+It replaced two switches, `Slider` and `Welded`, which between them hid the
+four. The values are Title Case, because each one labels an option:
+
+| Value | What the joint is |
+| --- | --- |
+| **Revolute** | a pin: the bodies meeting here turn about it |
+| **Prismatic** | a block welded to what rides it: it slides along its slot and does not turn |
+| **Pin-in-slot** | a pin riding a slot: it slides along the slot and turns in it |
+| **Welded** | the bodies meeting here fused into one |
+
+**Welded** is the type's name as well as the state it describes, because it is
+the same fact. **Grounded** is not a type: it stays a switch beside the choice,
+and turning it on swaps the four glyphs for the set that stands on the frame.
+
+| Use | For |
+| --- | --- |
+| **Slider Angle** | the field that aims a grounded slot, on a row of its own under Grounded |
+| **Nowhere to slide.** | the bold lead of the one state the choice says in words: a block with no slot and no ground. `dangling` is the code's word for it, never the reader's |
+| **Joint is orphaned.** | the bold lead for a disconnected joint: `Joint is orphaned. Drag another joint to merge it or create a new link.` |
+| **Starts At** | where a cylinder's rod begins its cycle, as a share of the stroke |
+| **Barrel**, **Rod** | a cylinder's two members, once each has a panel of its own (Stage 2 of `joint-type-and-cylinder-plan.md`) |
+| **Split Joint** | action that replaces one shared point with one slightly separated Revolute pin per link; Title Case on controls |
+| **inside a cylinder** | the short refusal on either joint a cylinder places for itself — the square it slides on, and the barrel's buried end (Stage 2) |
+| **ground an end joint instead** | the refusal on Grounded at that square: a cylinder is bolted to the world at its ends, never in the middle |
+
+The Edit panel's toggles already worked this way; the right-click menu followed
+in the context-menu redesign, which is why `Add Ground` / `Remove Ground` no
+longer appear there. On a menu whose group heading already carries the verb —
+`ADD` on the bare grid, `ATTACH` on a part — the rows below it are bare nouns
+(`Link`, `Cylinder`, `Tracer Point`), because the heading has said the verb
+once and repeating it down five rows says nothing new.
+
+### Setup issues
+
+The setup drawers list what stands in the way of an analysis, one issue per problem
+([`setup-issues-spec.md`](setup-issues-spec.md) is the whole of it). Each part has one job, and the
+words are fixed where a control or a label repeats:
+
+| Part | Says | Example |
+| --- | --- | --- |
+| Title | what is wrong, from the student's side, in 3 to 7 words | `Slider D has no slot` |
+| Summary | the one fact that makes it a problem in this drawing | `With no slot and no ground, slider D has no direction to move in.` |
+| Explanation | the rule behind it, true of any drawing, naming no part | `A slider moves along a line, either a slot cut into a link or a fixed direction on the ground.` |
+| Fix | one edit, verb first, in the words of the control that makes it | `Ground slider D to fix its direction` |
+
+- **The toggle** reads `Show fixes` / `Hide fixes`, or `Show more` / `Show less` where there is
+  nothing to change.
+- **The label over the fixes** says whether they are needed and calls them suggestions:
+  `Needs a fix to run. For example:` / `Some options:`, `Optional, it runs as is.
+  Something to try:` / `Some things to try:`, `Optional, analysis skips it for now.` A blocker
+  with no fix known says `Needs a fix to run.` alone. A single fix is never "the way" or "one
+  way": other edits would fix it too, so it is an example.
+- **A fix says what to press, in the words the Edit panel and the right-click menu use**, so the
+  reader can find the control it names. A joint's type is a value of Joint Type: `Set joint C to
+  Revolute`, `Set joint C to Prismatic`, `Set joint C to Welded` -- never `Unweld`, which is no
+  longer something a reader can do. The Grounded switch is `Ground joint D` and `Turn off Grounded
+  for joint E` -- never `Unground`. The input is the panel's buttons: `Add Input to joint A`
+  (which moves it where the mechanism has one) and `Remove Input from joint D`. Building is the
+  menu's rows: `Attach Link`, `Attach Force`, `Delete link BC`. A number is its field: `Increase
+  the Length of barrel AC`, `Turn on Gravity in the Settings panel`.
+- **Never** `any one of these`, `instead`, or `would leave one degree of freedom` in a fix: the
+  label frames the list. No em dash, no semicolon, and no `or` on a line of its own.
+- **Contractions** (`can't`, `isn't`) are the voice of these messages, where they read as a
+  person talking a student through it rather than as a system notice.
+- **Counts are said as counts**: `2 degrees of freedom, needs 1`. An over-constrained drawing is
+  `Over-constrained, can't move` in its title, and the number goes in its summary.
+- **`Starts at a limit`** in a title; *dead position* and *dead-center* are fine in an explanation
+  or a summary.
+- **A part named in a summary or a fix is a part link**, `part-link` in the gallery: `joint C`,
+  `link DE`, `slider D`, `cylinder EF`, `barrel AC`. Lower case in a sentence, as the panel's
+  title is in Title Case (`Edit Joint C`), and always with its noun. A sentence that opens on a
+  part still opens with a capital (`Link AB is also grounded at joint B`); `prose-block` does it,
+  through `opening`, so the model writes every part the same way.
+
+### The Masses table
+
+The Force Analysis setup drawer lists every body that weighs: `Body`, `Mass`, `Mass moment of inertia`.
+
+- **A body's name is a part link**, and the row's only way out. Pointing at it lights the body on
+  the grid, and pressing it selects the body in Edit with a link's mass fields open.
+- **A slider's inertia cell is empty**, not a grayed `0.00`. Pointing at it says `A slider is
+  treated as a point mass, so it has no mass moment of inertia.`
+- **Several machines, one heading each**, by the machine's name (`Mechanism 2`, `Pump jack`).
+  Bodies no machine owns come last, under `Not in a mechanism`. One machine gets no heading.
+
+### A link's mass fields
+
+Under Mass, the Edit panel's Mass Settings reads `CoM Measured From`, then the choice, then X and Y.
+
+- **The label says "Measured From"**, because `Center of mass: Centroid` read as where the point
+  is rather than what X and Y count from. The choices name a point: `Shape's centroid`, `Joint A`
+  for each joint a reader can see, `Grid origin (0, 0)`.
+- **Its help mark sits right after "From"** and names both of the choice's jobs: what X and Y are
+  measured from, and what the center of mass keeps its place against while you edit.
+- **`Inertia`** in the panel, so the label fits on one line beside its field. The help mark and the
+  Masses table say `Mass Moment of Inertia` (or `mass moment of inertia` in prose), because `moment of inertia` alone is also a beam's
+  area moment. Every message says it in full.
+
+### The machines panel
+
+With nothing selected, the left panel is about the machines on the grid.
+
+| Part | Says |
+| --- | --- |
+| Several machines, none picked | `All Mechanisms`, `Select one to see its details.` in Edit, then one row each: its name, its chip, a chevron, and under the name how free it is in Edit (`1 degree of freedom`) or its family in an analysis mode (`Not running` where it cannot run) |
+| One picked, or the only one | its name as the title (`Edit Mechanism 2` in Edit), `All Mechanisms` with a back arrow above it when there are others; no chip. In Edit, a machine with something to fix gets `Can’t run yet. 2 things to fix before analysis. Open Setup` -- never with nothing to fix: a large drawing waiting for Play says `Motion is solved when you press Play.` in its Overview instead |
+| Sections | `Mechanism Overview`, a label-and-value list -- in Edit `Degrees of freedom`, `Links` (`4 (including ground)`: the ground is a link, as Gruebler counts it), `Joints`, `Input joint`, `Input speed`; in an analysis mode the same after the Family, then `Cycle time` (and `Motion` where no named family says it). `Input joint` is a part link to the driven joint, and `Input speed` is read-only: click to edit, so the speed and direction change in that joint's own panel. `Links` gives each link's name, its job (`Input crank`, `Coupler`, `Rocker`) and its length, or `3 joints` for a plate. Folded sections stay folded across modes for the session. Lengths are not repeated in a tooltip: tooltips say how to use a control |
+| The Family | a name PMKS matched (`Crank-rocker four-bar`); else `Six-bar linkage`, `Classified by its 6 bodies (including ground); does not match a named mechanism family.`; else `Not recognized` |
+| A shut mode tab | tooltip `Force Analysis opens once a mechanism runs.` |
+| The first Play in Edit | a card under the Kinematic Analysis tab: `Your mechanism runs`, `Kinematic Analysis graphs the position, velocity, and acceleration of any joint or link as it moves.`, `Not Now` / `Open Kinematic Analysis` |
+| Past the fourth | `Only 4 mechanisms run at once`; the list adds `Only the first 4 mechanisms are solved.` |
+
+- **The chip is the setup drawer's chip**, word for word (`Ready`, `1 fix`, `2 to check`), and
+  pressing it opens the drawer.
+- **A family keeps its name.** `Chebyshev straight-line linkage` and `Jansen linkage` are what those
+  mechanisms are called, so the Family row says so; the ban on *linkage* is on the word standing in
+  for *mechanism*. The row is left out where nothing in PMKS's catalog matched: a family is a
+  finding, and a guess is worse than nothing.
+
+### A machine's name
+
+A machine is `Mechanism 2` until its author names it in Edit's machine panel (Rename); then it is
+the name, `Pump jack`. The panels and the setup drawer never show the code. The transport shows the
+name too, cut with an ellipsis where it is long, and `M2` only for a machine with no name; its
+tooltip says `Pump jack (M2)`. Its rows say the direction (`Clockwise`, `Opening`) only while
+the input is going, and `42 deg from start` when paused away from the start. A
+name follows the rules every name does (letters, numbers, spaces, hyphens, underscores,
+apostrophes and parentheses), may not repeat another machine's, and an empty one takes it back to
+the code.
+
+### A part's name
+
+A joint, link or force is called by its id until someone names it with Rename: `C`, `AB`, `F1`.
+A link's id is its joints' letters, so a link nobody has named follows its joints. Add a tracer
+point to `AB` and it becomes `ABE`; split or merge a joint and the letters change with it. A name
+somebody typed stays put whatever happens to the joints, with one exception: typing the part's
+own id is the automatic name, not a fixed one, so `AB` typed on link `AB` still becomes `ABE` when a
+tracer point is added. Saving an empty name gives a part its automatic name back, the same way an
+empty name gives a machine back its code, unless another part already goes by that id. Where the
+part came from does not matter: a template, a shared link, a reload and an undo all keep this rule
+(#317).
+
+### Refusals wear their reason
+
+A control a reader could reasonably expect is **grayed with the reason beside
+it**, in three or four lower-case words — `needs 2 links`, `it is driven`,
+`unlock first` — with the model's own longer sentence on hover. A control that
+is *structurally* impossible for that kind of object is **absent**, because a
+row that can never be used on any joint of this kind is noise rather than
+information. Nothing is clickable and then refused by a snackbar.
+
+**Delete means the thing you named goes**, along with anything that cannot
+stand without it. `Delete Cylinder` on one of a cylinder's joints deletes the
+cylinder and leaves the joint if another link still holds it; `Delete` on that
+joint deletes the joint. If those two want different outcomes, they need different labels — which
+is why they have them. What goes with it is named **on a second line** — `Delete Joint` with `Also removes Link OA`,
+or `Delete Link` with `Also removes Joints C, D`. This keeps the menu compact and leaves its
+keyboard shortcut visible. A **Lock never grays a delete row, nor an attach row**: it says where a part is,
+not whether it may go or what may be built onto it.
+
+### The mechanism
+
+| Use | For | Not |
+| --- | --- | --- |
+| **mechanism** | one machine on the grid — a drawing may hold several, named M1, M2… | ~~linkage~~ (stops being true the moment it has a cylinder), ~~assembly~~ |
+| **project** | the saved document | — |
+| **project link** | the shareable URL encoding the project | ~~project web address~~ |
+| **image** | a background reference image on the grid | ~~picture~~ |
+| **solve** | computing kinematics or forces (`Solving motion…`, `Only the first 4 mechanisms are solved.`) | ~~work out~~, ~~simulate~~ |
+| **animation** | playing the mechanism | ~~simulation~~, ~~playback~~ (internal only) |
+| **input** | in controls and setup hints: the driven joint (`Ground a joint and set one joint as an input.`) | — |
+| **driven** | in prose about the mechanism | ~~actuator~~ (internal only) |
+| **Synthesis / Edit / Kinematic / Force** | the four modes, capitalized as the tabs spell them | ~~Analyze~~ (it split into Kinematic and Force), ~~analysis mode~~ |
+
+`Share Project` and `New Project` are about the document, and stay.
+
+### Parts
+
+| Use | For |
+| --- | --- |
+| **joint** | a pin, a slider, a tracer point — anything with an id letter |
+| **link** | a bar between joints |
+| **body** | a link carrying more than two joints — it is not a bar any more |
+| **compound** | several links welded into one rigid body |
+| **ground** | a joint fixed to the frame |
+| **slider** / **block** | a joint that slides, and the black block drawn on it |
+| **slot** | the channel a floating slider runs in |
+| **force** | an applied load |
+
+### Units and numbers
+
+Show the unit the mechanism is currently in — never a list of the alternatives.
+`in {{ forceUnitLabel }}`, not `in Newtons | lbf`. The parser accepts a bare
+number or a number with a unit, and messages should say so once:
+`Type a number, with or without a unit — 2, 2 cm, 0.75 in.`
+
+Spell it **center of mass** in prose and **CoM** in a label. Not `COM`, not
+`Center of Mass` mid-sentence, not both forms in one panel.
+
+---
+
+## The cylinder
+
+| Use | For | Not |
+| --- | --- | --- |
+| **cylinder** | the whole part | ~~ram~~ |
+| **barrel** | the fat outer body it slides in | ~~cylinder~~ (that is the whole part here) |
+| **rod** | the thin bar that slides out | — |
+| **joint** | either end, where it attaches — and the square between them | ~~mount~~, ~~seal~~ |
+| **stroke** / **travel** | how far the rod moves | — |
+| **change length on its own** | what a cylinder nothing drives can do, which is a degree of freedom | ~~telescope freely~~, ~~float~~ |
+| **closed** / **open** | the two ends of the travel | ~~retracted~~, ~~extended~~ |
+| **closing** / **opening** | which way it is moving right now | ~~retracting~~, ~~extending~~ |
+
+**Those two words are a cylinder's and nobody else's.** A bare block on a slot
+has nothing to be open or shut, so its two directions are **forward** and
+**backward** — along the slot, whichever way that happens to point. The
+maintainer said it plainly: *"for a driven slider, closing and opening doesn't
+seem right since there is no concept of open or close. Maybe backwards, and
+forwards?"* Where there is room to say what forward is measured along, say it:
+
+| Use | For | Not |
+| --- | --- | --- |
+| **Forward** / **Backward** | which way a driven **slider** is going | ~~opening~~, ~~closing~~, ~~clockwise~~ |
+| **Forward along slot** / **Backward along slot** | the same, on a control with room to name the slot | ~~forward~~ alone, where the slot is not stated nearby |
+
+One table decides all three pairs — `driveDirectionWord` in
+`model/drive-direction.ts` — because the transport, the Edit panel's direction
+button, the readiness fact and the field help each used to spell their own and
+two of the four disagreed. A drive is a **pin**, a **cylinder** or a **slider**,
+and nothing else picks the words.
+
+**The glyph beside the word comes from the same table** (`driveDirectionIcon`):
+a turn is drawn as a turn and a translation as a straight arrow. The transport
+drew `rotate_right` for every drive, so a cylinder read *Opening* beside an icon
+of something spinning — and on a phone, where the word is hidden, the icon was
+the only thing said. Both are read from one pair of facts, so neither can drift
+from the other again, and the button's label carries the word for a reader who
+cannot see either.
+
+The black block on the rod is **a joint, and is called one**. It is the sliding
+joint the rod hangs on: it wears a letter, it can be selected, dragged and given
+an input, and its panel is headed `Edit Joint C` like any other (Stage 2c,
+decision D9). What it must not be called is a piston, a head or a seal —
+describe what it does, "where the rod begins its cycle", if it needs describing
+at all.
+
+**`mount` is a code word, not a user word.** `barrelFar`, `rodFar`,
+`dragCylinderMount` keep it, because in code it usefully separates the two
+joints at the ends from the ones the part places for itself. A user never sees
+the barrel's buried inner end, and calls all three of the rest "joint", so
+"joint" is unambiguous from their side. Same treatment as `playback` and
+`actuator`.
+
+**The barrel's buried inner end is never named, anywhere a reader reads.** Not
+on the canvas, not in a panel, not in a menu, not in a notification, not in an
+`aria-label`, and **not in a file the app writes** — no CSV column, no JSON
+field, no DXF layer name, no report. A link's id is the sorted ids of its
+joints, so the name to avoid is not only `C1` but every id built on one: `CC1`
+for the barrel, `CC1F` for a bracket welded to its mount. `visibleBodyName` in
+`model/body-label.ts` is the one answer, reached through
+`MechanismService.visibleBodyName` / `bodyLabel` on screen and through
+`services/export/export-names.ts` in a file. The **one exception** is the
+developer drawer (right-panel tab 4), which production never reaches and which
+exists to show the model as the model is. `e2e/hidden-joint-audit.mjs` is what
+keeps the rest honest. This used to say the ids were fine in an export because
+the export was keyed on them; the maintainer overruled it on September 21,
+2026 — "a user should not see it under any circumstance" — and a key that has
+to stay unique now says what kind of body it is (`AD welded`) rather than
+falling back to the id.
+
+**Barrel and Rod are the names in every mode, not just Edit.** The two members
+are selected apart and hold different numbers, so `Kinematics for Barrel AC` and
+`Forces for Rod CB` read exactly as `Edit Barrel AC` and `Edit Rod CB` do, and
+the cylinder's own name — `Cylinder AD`, by its two end joints — is for the
+whole part: the export catalog's row for it, and a sentence about the part.
+
+**`ram` survives in code comments** — 113 of them — and was left there
+deliberately. This guide governs what the app *says*; rewriting a hundred
+explanations to change a synonym would churn a lot of carefully-worded prose for
+no reader's benefit. Do not use it in new comments, and never in the UI.

@@ -1,0 +1,339 @@
+import { buildMechanism } from '../../../test-utils/verification/fixture';
+import {
+  teachingLabFourBarFixture,
+  wideSwingRockerFixture,
+} from '../../../test-utils/verification/fixtures';
+import { cylinderBoomFixture } from '../../../test-utils/verification/slot-fixtures';
+import { PrisJoint, RealJoint, RevJoint } from '../joint';
+import { RealLink } from '../link';
+import {
+  anchorFrom,
+  anchorStillNames,
+  coordinateIn,
+  coordinateRuleFor,
+  coordinatesAcross,
+  reachAnchor,
+  slotCoordinateRuleFor,
+  topologyOf,
+} from './anchor';
+
+/** The four-bar's own solved cycle, with its driven joint's rule beside it. */
+function crank() {
+  const built = buildMechanism(teachingLabFourBarFixture());
+  const driven = built.joints.find((joint) => (joint as RealJoint).input) as RealJoint;
+  const rule = coordinateRuleFor(driven)!;
+  const frames = built.mechanism.joints;
+  return { built, driven, rule, frames, coordinates: coordinatesAcross(rule, frames) };
+}
+
+/** A seed taken from one sample, which is what an anchor stores. */
+function seedAt(frames: ReturnType<typeof crank>['frames'], index: number) {
+  return new Map(frames[index].map((joint) => [joint.id, { x: joint.x, y: joint.y }]));
+}
+
+describe('the start-pose anchor', () => {
+  it('measures a crank absolutely, so an edit elsewhere cannot move it', () => {
+    const { rule, frames, coordinates } = crank();
+    expect(rule.kind).toBe('angle');
+    expect(rule.referenceId).toBeDefined();
+
+    // The coordinate is a world bearing, not a distance along this cycle's
+    // track: the same crank angle reads the same whatever else was edited.
+    const first = new Map(frames[0].map((joint) => [joint.id, joint]));
+    const straight = coordinateIn(rule, (id) => first.get(id));
+    expect(straight).toBeCloseTo(coordinates[0]!, 9);
+
+    // And a full turn is a full turn: unwrapped, so going round reads as
+    // going round rather than as arriving back where it started.
+    const total = coordinates[coordinates.length - 1]! - coordinates[0]!;
+    expect(Math.abs(total)).toBeGreaterThan(Math.PI * 1.9);
+  });
+
+  it('finds a stored coordinate back in its own cycle, to the sample', () => {
+    const { frames, coordinates } = crank();
+    const target = 90;
+    const anchor = {
+      coordinate: coordinates[target]!,
+      heading: (coordinates[target]! > coordinates[target - 1]! ? 1 : -1) as 1 | -1,
+      kind: 'angle' as const,
+      seed: seedAt(frames, target),
+    };
+    const reach = reachAnchor(coordinates, anchor, frames);
+    expect(reach).not.toBeNull();
+    // Landing on the sample itself, or a hair before it with the blend making
+    // up the difference -- which is the whole reason the reach carries one.
+    expect(reach!.index + reach!.blend).toBeCloseTo(target, 3);
+  });
+
+  it('reads the same crank position a whole turn away', () => {
+    // A crank angle repeats every revolution. An anchor stored as 4.9 radians
+    // against a cycle running -1.4 to -7.7 is the same position, and refusing
+    // it would move the start of every machine whose cycle happens to be
+    // written on the other side of a seam.
+    const { frames, coordinates } = crank();
+    const anchor = {
+      coordinate: coordinates[40]! + Math.PI * 2,
+      heading: 1 as const,
+      kind: 'angle' as const,
+      seed: seedAt(frames, 40),
+    };
+    expect(reachAnchor(coordinates, anchor, frames)).not.toBeNull();
+  });
+
+  it('says no when the coordinate is nowhere in the cycle', () => {
+    // A length has no turns to try, so a value outside the travel is simply
+    // out of reach -- the crank-becomes-a-rocker case, in its simplest form.
+    const { frames } = crank();
+    const outside = {
+      coordinate: 10_000,
+      heading: 1 as const,
+      kind: 'length' as const,
+      seed: seedAt(frames, 0),
+    };
+    expect(reachAnchor([0, 1, 2, 1, 0], outside, frames)).toBeNull();
+  });
+
+  it('finds a coordinate that sits a rounding hair outside the first sample', () => {
+    // The coordinate was read off one cycle's sample 0 and is looked for in
+    // the next cycle's, whose sample 0 differs in the last decimals. Exactly
+    // on the sample and a hair past it, the direct search found nothing and
+    // the whole-turn fallback saw a value already in range and gave up -- so
+    // a crank, every angle of which is reachable, was told its start was not,
+    // and the ghost drew the last pose it could reach instead.
+    const { frames, coordinates } = crank();
+    const heading = (coordinates[1]! > coordinates[0]! ? 1 : -1) as 1 | -1;
+    for (const hair of [1e-9, -1e-9]) {
+      const anchor = {
+        coordinate: coordinates[0]! + hair,
+        heading,
+        kind: 'angle' as const,
+        seed: seedAt(frames, 0),
+      };
+      const reach = reachAnchor(coordinates, anchor, frames);
+      expect(reach, `a hair of ${hair}`).not.toBeNull();
+      // On the start itself, or on the sample a full turn later, which is the
+      // same pose.
+      const at = reach!.index + reach!.blend;
+      expect(Math.min(at, Math.abs(at - (frames.length - 1)))).toBeLessThan(1e-3);
+    }
+  });
+
+  /** The wide-swing rocker, whose crank reaches the same angle on two branches. */
+  function wideSwing() {
+    const built = buildMechanism(wideSwingRockerFixture());
+    const driven = built.joints.find((joint) => (joint as RealJoint).input) as RealJoint;
+    const rule = coordinateRuleFor(driven)!;
+    const frames = built.mechanism.joints;
+    return { rule, frames, coordinates: coordinatesAcross(rule, frames) };
+  }
+
+  it('finds the start a whole turn along the coordinates, not the branch sharing its turn', () => {
+    // A rocker whose swing is wider than a turn reaches the same crank angle
+    // twice, on two assembly branches. A cycle solved from a pose past the
+    // first turn unwraps its coordinates from there, so the stored start angle
+    // coincides first with the crossing on the *other* branch; the start
+    // itself is a whole turn further along. Searching for the stored value
+    // alone drew the other branch under the ghost after a drag of a few
+    // pixels.
+    const { rule, frames, coordinates } = wideSwing();
+    const anchor = {
+      coordinate: coordinates[0]!,
+      heading: (coordinates[1]! > coordinates[0]! ? 1 : -1) as 1 | -1,
+      kind: 'angle' as const,
+      seed: seedAt(frames, 0),
+    };
+    // The same cycle, written from a pose 380 degrees into the swing -- past
+    // the first full turn, where the linkage is on its other branch.
+    const shift = 380;
+    const rotated = [...frames.slice(shift), ...frames.slice(1, shift + 1)];
+    const reach = reachAnchor(coordinatesAcross(rule, rotated), anchor, rotated);
+    expect(reach).not.toBeNull();
+    const from = rotated[reach!.index];
+    const to = rotated[Math.min(reach!.index + 1, rotated.length - 1)];
+    const off = Math.max(
+      ...frames[0].map((joint, k) => {
+        const x = from[k].x + (to[k].x - from[k].x) * reach!.blend;
+        const y = from[k].y + (to[k].y - from[k].y) * reach!.blend;
+        return Math.hypot(x - joint.x, y - joint.y);
+      })
+    );
+    expect(off).toBeLessThan(1e-2);
+  });
+
+  it('says no rather than drawing the other branch when only that branch has the angle', () => {
+    const { frames, coordinates } = wideSwing();
+    // A seed taken from the far branch, most of a link away from every pose
+    // that holds the start angle on the near one -- what a start that has
+    // been dragged onto the other branch looks like to the lookup.
+    const anchor = {
+      coordinate: coordinates[0]!,
+      heading: (coordinates[1]! > coordinates[0]! ? 1 : -1) as 1 | -1,
+      kind: 'angle' as const,
+      seed: seedAt(frames, 200),
+    };
+    expect(reachAnchor(coordinates, anchor, frames)).toBeNull();
+  });
+
+  it('uses the seed to tell two legs of a cycle apart', () => {
+    // A coordinate a reversing input passes twice: the same value going out and
+    // coming back. Heading separates them here; where it cannot, the seed does.
+    const there = [0, 1, 2, 1, 0];
+    const frames = crank().frames.slice(0, 5);
+    const outward = reachAnchor(
+      there,
+      { coordinate: 1, heading: 1, kind: 'length', seed: seedAt(frames, 0) },
+      frames
+    );
+    const back = reachAnchor(
+      there,
+      { coordinate: 1, heading: -1, kind: 'length', seed: seedAt(frames, 0) },
+      frames
+    );
+    expect(outward!.index).toBe(0);
+    expect(back!.index).toBe(2);
+  });
+
+  it('gives up rather than looping when no whole turn brings it into range', () => {
+    // The retry that reads a crank angle a revolution away has to be spent
+    // once. A drag that broke the linkage outright produced a cycle this could
+    // not place the anchor in, `wrapNear` handed back the same number it was
+    // given, and the recursion ran until the stack did -- which surfaced as a
+    // solver crash rather than as "the start is out of reach".
+    const { frames } = crank();
+    const nowhere = {
+      coordinate: 5,
+      heading: 1 as const,
+      kind: 'angle' as const,
+      seed: seedAt(frames, 0),
+    };
+    expect(reachAnchor([undefined, undefined], nowhere, frames)).toBeNull();
+    expect(reachAnchor([], nowhere, frames)).toBeNull();
+  });
+
+  it('measures a moving slot in its carrier, not in the world', () => {
+    // A grounded crank's angle can be read straight off the world, and every
+    // actuator was read that way at first. A cylinder's cannot: its slot is cut
+    // into a body that moves, so the world projection of the block's position
+    // is a number the drive does not control -- it changes when the boom swings
+    // even though the ram has not moved -- and an anchor stored in it names the
+    // wrong quantity the moment anything else in the drawing does.
+    const built = buildMechanism(cylinderBoomFixture());
+    const driven = built.joints.find((joint) => (joint as RealJoint).input) as RealJoint;
+    const rule = coordinateRuleFor(driven)!;
+    expect(rule.kind).toBe('length');
+    expect(rule.carrierIds).toBeDefined();
+
+    // Turn the whole assembly about the origin without sliding the ram, and the
+    // coordinate must not move. Read against the world it moves by hundreds of
+    // model units, which is the entire defect.
+    const at = new Map(built.joints.map((joint) => [joint.id, { x: joint.x, y: joint.y }]));
+    const before = coordinateIn(rule, (id) => at.get(id))!;
+    const turn = 0.7;
+    const spun = new Map(
+      [...at].map(([id, point]) => [
+        id,
+        {
+          x: point.x * Math.cos(turn) - point.y * Math.sin(turn),
+          y: point.x * Math.sin(turn) + point.y * Math.cos(turn),
+        },
+      ])
+    );
+    expect(coordinateIn(rule, (id) => spun.get(id))!).toBeCloseTo(before, 6);
+  });
+
+  it('reads itself off sample 0, which is the pose the drawing starts in', () => {
+    const { rule, frames, coordinates } = crank();
+    const anchor = anchorFrom(rule, 'A,B,C,D', frames)!;
+    expect(anchor.coordinate).toBe(coordinates[0]);
+    expect(anchor.jointId).toBe(rule.jointId);
+    expect(anchor.topology).toBe('A,B,C,D');
+    // The seed is that same sample, joint for joint.
+    frames[0].forEach((joint) => {
+      expect(anchor.seed.get(joint.id)).toEqual({ x: joint.x, y: joint.y });
+    });
+  });
+
+  it('knows when the start has moved out from under it', () => {
+    // The question `refreshAnchors` asks of every machine no gesture has
+    // staged. Sample 0 is that machine's start by construction, so an anchor
+    // whose seed is not that pose is an anchor naming a start the design has
+    // left behind -- which is what an edit made *at* the start pose does, and
+    // what kept the ghost pointing a third of a turn from where stop-to-start
+    // actually lands.
+    const { frames } = crank();
+    const anchor = { seed: seedAt(frames, 0) };
+    expect(anchorStillNames(anchor, frames[0])).toBe(true);
+
+    // A joint moved by more than arithmetic noise is an edit.
+    const nudged = frames[0].map((joint, index) =>
+      index === 1 ? { ...joint, id: joint.id, x: joint.x + 0.01, y: joint.y } : joint
+    ) as (typeof frames)[0];
+    expect(anchorStillNames(anchor, nudged)).toBe(false);
+
+    // And a joint the seed has never heard of is one the edit drew.
+    expect(anchorStillNames({ seed: seedAt(frames, 0) }, frames[40])).toBe(false);
+    expect(anchorStillNames({ seed: new Map() }, frames[0])).toBe(false);
+  });
+
+  it('names a machine by everything it owns, not by one joint', () => {
+    // `partitionKey` is the lowest owned joint id, which survives a rename or a
+    // deletion and says nothing about lineage: fuse two machines and the union
+    // usually inherits one parent's key. An anchor carried across a fusion is a
+    // corrupted design, so it is keyed on the whole set.
+    const { built } = crank();
+    const all = topologyOf(built.joints);
+    const fewer = topologyOf(built.joints.slice(0, -1));
+    expect(all).not.toBe(fewer);
+    expect(all.split(',')).toEqual([...all.split(',')].sort());
+  });
+});
+
+describe('a slot cut along a plate', () => {
+  it('measures along the slot, not along the first two joints of the plate', () => {
+    // Plate CDE, the slot along its edge DE; C to D runs across it (#339).
+    const c = new RevJoint('C', 0, 0);
+    const d = new RevJoint('D', 0, 4);
+    const e = new RevJoint('E', 4, 4);
+    const slider = new PrisJoint('S', 2, 4);
+    const plate = new RealLink('CDE', [c, d, e]);
+    slider.slideOn(plate, d, e);
+    expect(slotCoordinateRuleFor(slider)).toEqual({
+      jointId: 'S',
+      kind: 'length',
+      carrierIds: ['D', 'E'],
+    });
+  });
+
+  it('measures from the slot’s first end, whatever order the carrier lists them in', () => {
+    // A welded carrier can list them backwards, and the transport then said
+    // Backward of a block driven forward.
+    const c = new RevJoint('C', 0, 0);
+    const d = new RevJoint('D', 4, 0);
+    const slider = new PrisJoint('S', 2, 0);
+    slider.slideOn(new RealLink('DC', [d, c]), c, d);
+    expect(slotCoordinateRuleFor(slider)?.carrierIds).toEqual(['C', 'D']);
+  });
+});
+
+describe('a relative angle across the seam', () => {
+  it('unwraps a step of nearly two turns, when both bearings cross it', () => {
+    // Both bearings point left of the joint and turn half a degree each, the
+    // one degree a sample the drive commands, so the raw difference goes from
+    // +359.5 to -359.5 degrees: a step of +1 (#338).
+    const deg = Math.PI / 180;
+    const at = (id: string, angle: number) =>
+      new RevJoint(id, Math.cos(angle * deg), Math.sin(angle * deg));
+    const frame = (driven: number, against: number) => [
+      new RevJoint('J', 0, 0),
+      at('R', driven),
+      at('Q', against),
+    ];
+    const rule = { jointId: 'J', kind: 'angle' as const, referenceId: 'R', againstId: 'Q' };
+    const [first, second] = coordinatesAcross(rule, [
+      frame(179.75, -179.75),
+      frame(-179.75, 179.75),
+    ]).map((value) => value! / deg);
+    expect(first).toBeCloseTo(359.5);
+    expect(second).toBeCloseTo(360.5);
+  });
+});

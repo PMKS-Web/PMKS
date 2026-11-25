@@ -32,11 +32,23 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Lint stylesheets
+        run: npm run lint:styles
+
+      - name: Check formatting
+        run: npm run lint:format
+
       - name: Run unit and verification tests
         run: npm test -- --watch=false
 
       - name: Build production bundle
         run: npm run build
+
+      - name: Build the component gallery
+        run: npm run build-storybook
 
       - name: Check patch whitespace
         run: git diff --check

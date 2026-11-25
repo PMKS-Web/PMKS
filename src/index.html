@@ -11,23 +11,239 @@
 <!--  <app-root></app-root>-->
 <!--</body>-->
 <!--</html>-->
-<!DOCTYPE html>
-<html lang='en'>
-<head>
-  <meta charset='utf-8' />
-  <title>PMKS+ Web</title>
-  <base href='/' />
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>PMKS Web</title>
+    <base href="/" />
 
-  <!--    <meta name='viewport' content='width=device-width, initial-scale=1' />-->
-  <!--    <link rel='icon' type='image/x-icon' href='favicon.ico' />-->
-  <link rel='preconnect' href='https://fonts.gstatic.com' />
-  <link href='https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap' rel='stylesheet' />
-  <link href='https://fonts.googleapis.com/icon?family=Material+Icons' rel='stylesheet' />
-  <link href='https://unpkg.com/intro.js/introjs.css' rel='stylesheet' />
-</head>
-<body oncontextmenu='return false;' class='mat-typography'
-      style='width: 100vw; height: 100vh; overflow: hidden !important;'>
-<app-root>
-</app-root>
-</body>
+    <!--
+      Keep the app out of search results, and let the landing page have them.
+
+      pmksplus.com is the page written to be found -- it explains what PMKS is
+      to somebody who has not heard of it. This is the app itself, and the two
+      were competing for the same searches while only one of them is an answer
+      to them.
+
+      `follow` rather than `noindex, nofollow`: the links out of here still
+      count, so whatever this page points at keeps whatever it is owed. And it
+      applies to every address the app serves, which is the other half of the
+      point -- a shared mechanism is somebody's drawing at a URL a thousand
+      characters long, and a branch preview is a build nobody meant to publish.
+      Neither belongs in an index.
+    -->
+    <meta name="robots" content="noindex, follow" />
+
+    <!--
+      Without this a phone lays the page out at 980px and scales the result down
+      to fit, which is why PMKS has always arrived on a phone as a legible
+      screenshot of itself rather than an app: every control was drawn at about
+      two fifths of its size, putting the mode tabs at roughly 18pt against a
+      44pt minimum.
+
+      `viewport-fit=cover`, so the drawing runs edge to edge and under the system
+      UI rather than inside a letterbox the browser draws for it. Without it the
+      page is held below the status bar and above the home indicator, and every
+      `env(safe-area-inset-*)` reads zero -- which on real hardware showed as a
+      dead white band above the top strip and the grid stopping short of the
+      bottom of the screen.
+
+      This was deliberately left off until there was hardware to check it on,
+      because it costs a safe-area inset on every card that measures itself from
+      a window edge. Those are: the top strip, which stands off the top inset so
+      its tabs clear the clock; and the transport, which keeps the bottom inset
+      off the home indicator.
+
+      Measured on the hardware afterwards, all four insets read zero in Safari
+      with its bars showing -- the page is already laid out inside the safe area
+      there, so `viewport-fit` has nothing to cover. It is what a Home Screen
+      web app needs, and the four `env()` readers above are what make that one
+      work; in a tab they are all reading zero and costing nothing. The canvas
+      is a separate matter and takes the large viewport explicitly -- see
+      `#canvas` -- because what Safari leaves the page is a hundred points short
+      of the screen and the drawing is meant to be the ground, not a panel.
+
+      Zoom is deliberately left enabled. A canvas app is tempting to pin at
+      scale 1 because the browser's pinch fights the drawing's own, but taking
+      zoom away from a reader who needs it fails WCAG 1.4.4 for everyone in
+      order to tidy a gesture. The canvas claims its own gestures with
+      `touch-action` instead, which is the narrower fix.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+
+    <!--
+      What makes the drawing reach the edges of an actual phone.
+
+      In a browser tab it cannot, and it is worth writing down why rather than
+      trying again: Safari hands the page a viewport of 654pt out of an 852pt
+      screen and paints no page content outside it. Measured on the hardware --
+      a canvas laid out 100pt taller than the viewport draws nothing in the
+      strip past it, and neither does a background image on the root element.
+      The one thing that does reach is the root element's background *color*,
+      which the browser propagates over the whole screen. So a tab's grid stops
+      where the page stops, with matching white either side of it, and no
+      arrangement of `env()` or viewport units changes that -- all four insets
+      read zero there, because the page is already inside the safe area.
+
+      Installed to the Home Screen it is a different story: the page is the
+      screen, the insets become real numbers, and the four `env(safe-area-*)`
+      readers in the chrome finally have something to read. `black-translucent`
+      is the part that earns it at the top -- it puts the status bar *over* the
+      web view instead of above it, which is what lets the grid run under the
+      clock. The strips are already built for it: the top strip stands off the
+      top inset, the transport keeps the bottom inset off the
+      home indicator, and the canvas is the size of the screen either way.
+
+      `start_url` is deliberately absent from the manifest, so it defaults to
+      whatever page was open when the icon was made. A mechanism in this app is
+      a URL, so pinning one has to pin *that* drawing; a manifest naming "/"
+      would quietly turn every saved linkage into a blank grid.
+    -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="PMKS" />
+    <meta name="theme-color" content="#ffffff" />
+    <link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png" />
+
+    <!--
+      The tab icon. The SVG is the one every current browser takes, and the only
+      kind that can follow a dark browser theme, which it does by itself. The .ico
+      is for the rest; `sizes` on it is what stops Chrome choosing it over the SVG.
+      It is also served at /favicon.ico, the address a browser or crawler asks for
+      when a page names no icon at all.
+
+      Drawn by `npm run brand`, like every file in assets/brand, and the landing
+      page links to these same files rather than keeping copies. docs/brand.md.
+    -->
+    <link rel="icon" href="favicon.ico" sizes="32x32" />
+    <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml" />
+
+    <!--
+      What a link to the app unfurls into when it is pasted into a chat, a forum
+      or a course page -- which is how most of its links travel, a mechanism being
+      an address. `noindex` above keeps the app out of search results; it does not
+      stop a preview, which is a different reader.
+
+      Every link gets the same card. The mechanism is in the address, and the
+      crawler that fetches a preview does not run the app to draw it. The image is
+      an absolute address because those crawlers do not resolve a relative one.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="PMKS" />
+    <meta property="og:title" content="PMKS — Linkage Simulator" />
+    <meta
+      property="og:description"
+      content="Draw, simulate and analyze planar linkages. Free, in your browser."
+    />
+    <meta property="og:image" content="https://app.pmksplus.com/assets/brand/social-card.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="PMKS: serious linkage analysis, zero setup" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+
+    <!--
+      The screen the app shows before it is an app.
+
+      Bootstrapping and then decoding the address takes a few seconds on a
+      mechanism of any size, all of it synchronous, and none of it can put
+      anything on screen: the thread that would paint is the thread doing the
+      solving. So this is painted by the browser out of the HTML, before a line
+      of the bundle has run, and taken down by `AppComponent` once the app has
+      drawn. In between, the window is frozen -- and the frozen thing says
+      PMKS rather than being blank white.
+
+      Inline for the same reason. A stylesheet is a request, and the point of
+      this is to be up before anything has been asked for. The logo is the one
+      request it does make: 7 KB, asked for alongside the bundle and back long
+      before the bundle is, and its `width` and `height` hold its room so the
+      bar under it does not jump when it lands.
+    -->
+    <style>
+      #bootSplash {
+        position: fixed;
+        inset: 0;
+        /* Over the loading scrim, --layer-loading in src/styles/_tokens.scss.
+           A literal, because this paints before that file has loaded. */
+        z-index: 4000;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        background: #fff;
+        font-family: Roboto, 'Helvetica Neue', Arial, sans-serif;
+      }
+      #bootSplash .bootMark {
+        display: block;
+        height: 44px;
+        width: auto;
+      }
+      #bootSplash .bootBar {
+        width: 168px;
+        height: 3px;
+        border-radius: 2px;
+        background: rgba(63, 81, 181, 0.18);
+        overflow: hidden;
+      }
+      #bootSplash .bootBar::after {
+        content: '';
+        display: block;
+        width: 40%;
+        height: 100%;
+        border-radius: 2px;
+        background: #3f51b5;
+        animation: bootSlide 1.1s ease-in-out infinite;
+      }
+      #bootSplash .bootWord {
+        font-size: 13px;
+        color: rgba(0, 0, 0, 0.55);
+      }
+      @keyframes bootSlide {
+        from {
+          transform: translateX(-100%);
+        }
+        to {
+          transform: translateX(250%);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #bootSplash .bootBar::after {
+          animation: none;
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <!--
+    `dvh` rather than `vh`: on a phone `100vh` is the viewport with the address
+    bar *hidden*, so the bottom strip and the playback card sat behind the bar
+    until the reader scrolled something -- and nothing here scrolls.
+  -->
+  <body
+    oncontextmenu="return false;"
+    class="mat-typography"
+    style="width: 100vw; height: 100dvh; overflow: hidden !important"
+  >
+    <app-root> </app-root>
+    <!--
+      A sibling of `app-root`, not a child of it. Angular empties its host
+      element as soon as the root component renders, which happens *before* the
+      canvas is built and the address decoded -- so a splash living inside it
+      would come down at exactly the moment the freeze begins.
+    -->
+    <div id="bootSplash">
+      <img class="bootMark" src="assets/brand/pmks-logo.svg" alt="PMKS" width="115" height="44" />
+      <div class="bootBar"></div>
+      <div class="bootWord">Starting up</div>
+    </div>
+  </body>
 </html>
