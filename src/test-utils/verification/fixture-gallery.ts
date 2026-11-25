@@ -119,6 +119,7 @@ export {
 } from './fixture-payload';
 import { DEFAULT_OBJECT_SCALE, fixturePayload, type PublishedSpeed } from './fixture-payload';
 import { SPLIT_JOINT_GALLERY } from './split-joint-gallery';
+import { JOINT_TYPE_GALLERY } from './joint-type-gallery';
 import { PART2_LIBRARY_GALLERY } from './part2-library-gallery';
 import { LIBRARY_CARD_GALLERY } from './library-card-gallery';
 
@@ -831,6 +832,7 @@ export const FIXTURE_GALLERY: GalleryEntry[] = [
     fixture: cylinderOnASlotFixture(),
   },
   ...SPLIT_JOINT_GALLERY,
+  ...JOINT_TYPE_GALLERY,
   // Drawings that do not run on purpose, kept beside their fixtures.
   ...MOBILITY_GALLERY,
   ...STUDENT_MISTAKE_GALLERY,

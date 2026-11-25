@@ -3,6 +3,7 @@ import { Link, RealLink } from './link';
 import { cylindersIn } from './cylinder';
 import {
   JointOperationContext,
+  memberBarsTouching,
   refuseGround,
   refuseAttach,
   refuseJointOperation,
@@ -183,10 +184,10 @@ describe('whether a block may be added or removed at a joint', () => {
     expect(refuseJointOperation(elbow, 'add-slider', context)).toBeUndefined();
   });
 
-  it('refuses a driven joint, which would then hold three bodies', () => {
+  it('allows a driven joint, as taking the slot back off one always was (#384)', () => {
     const { elbow, context } = drawing();
     elbow.input = true;
-    expect(refuseJointOperation(elbow, 'add-slider', context)?.short).toBe('it is an input');
+    expect(refuseJointOperation(elbow, 'add-slider', context)).toBeUndefined();
   });
 
   it('refuses a block inside the ram, and allows one at a mount', () => {
@@ -284,5 +285,29 @@ describe('whether a joint may have something attached to it', () => {
     // Not driven, the same pivot takes as many links as it is given.
     pivot.input = false;
     expect(refuseAttach(pivot, context)).toBeUndefined();
+  });
+});
+
+describe('memberBarsTouching', () => {
+  it('counts leaf bars reaching a joint through nested compounds and returns 0 when unattached', () => {
+    const a = new RevJoint('A', 0, 0);
+    const b = new RevJoint('B', 2, 0);
+    const c = new RevJoint('C', 4, 0);
+    const d = new RevJoint('D', 2, 2);
+    const stray = new RevJoint('Z', 10, 10);
+
+    const ab = new RealLink('AB', [a, b]);
+    const bc = new RealLink('BC', [b, c]);
+    const bd = new RealLink('BD', [b, d]);
+    const inner = new RealLink('ABC', [a, b, c]);
+    inner.subset = [ab, bc];
+    const outer = new RealLink('ABCD', [a, b, c, d]);
+    outer.subset = [inner, bd];
+
+    expect(memberBarsTouching(ab, a)).toBe(1);
+    expect(memberBarsTouching(ab, stray)).toBe(0);
+    expect(memberBarsTouching(outer, a)).toBe(1);
+    expect(memberBarsTouching(outer, b)).toBe(3);
+    expect(memberBarsTouching(outer, stray)).toBe(0);
   });
 });

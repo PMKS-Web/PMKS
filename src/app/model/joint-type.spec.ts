@@ -112,6 +112,28 @@ describe('joint type', () => {
     compound.subset = [new RealLink('BC', [slideOnTwo, c]), new RealLink('BD', [slideOnTwo, d])];
     slideOnTwo.links.unshift(compound);
     expect(refuseJointType(slideOnTwo, 'welded', context)).toBeUndefined();
+    // But a compound welded at *another* joint (here C, joining BC and CD) has
+    // only one leaf touching B: removing B's slot leaves nothing welded at B,
+    // so Prismatic to Welded must refuse just as Pin-in-slot to Welded does.
+    const slideOnRemoteCompound = pinOn(0, { block: true, welded: true });
+    const remoteElbow = new RevJoint('C', 1, 1);
+    const remoteTip = new RevJoint('D', 2, 1);
+    const remoteCompound = new RealLink('BCD', [slideOnRemoteCompound, remoteElbow, remoteTip]);
+    remoteCompound.subset = [
+      new RealLink('BC', [slideOnRemoteCompound, remoteElbow]),
+      new RealLink('CD', [remoteElbow, remoteTip]),
+    ];
+    slideOnRemoteCompound.links.unshift(remoteCompound);
+    expect(refuseJointType(slideOnRemoteCompound, 'welded', context)?.code).toBe(
+      'weld.needs-two-links'
+    );
+    expect(refuseJointType(slideOnRemoteCompound, 'welded', context)?.long).toContain(
+      'without its slot'
+    );
+    // And a bare Prismatic joint with no links at all says it isn't connected.
+    expect(
+      refuseJointType(pinOn(0, { block: true, welded: true }), 'welded', context)?.long
+    ).toContain('isn’t connected to any links');
   });
 
   it('leaves a cylinder’s seal Prismatic, and refuses the other three', () => {
@@ -142,12 +164,54 @@ describe('joint type', () => {
     }
   });
 
-  it('refuses a block and a weld on a driven pin, each in its own words', () => {
+  it('gives a driven pin its slot, and refuses only a floating weld', () => {
     const driven = pinOn(2, { driven: true });
-    expect(refuseJointType(driven, 'pin-in-slot', context)?.code).toBe('slider.is-driven');
-    expect(refuseJointType(driven, 'prismatic', context)?.code).toBe('slider.is-driven');
+    expect(refuseJointType(driven, 'pin-in-slot', context)).toBeUndefined();
+    expect(refuseJointType(driven, 'prismatic', context)).toBeUndefined();
     expect(refuseJointType(driven, 'welded', context)?.code).toBe('weld.is-driven');
     expect(refuseJointType(driven, 'revolute', context)).toBeUndefined();
+  });
+
+  it('opens every change between two types in both directions, driven or not (#384)', () => {
+    // Whether a change is allowed depends on where it lands, never on which
+    // way it goes: a driven joint that can reach a type can come back from it.
+    const make = (type: JointType, ground: boolean) => {
+      const bits = bitsOf(type);
+      const joint = pinOn(2, { block: bits.slider, welded: bits.welded, driven: true });
+      joint.ground = ground;
+      return joint;
+    };
+    // One state is forbidden outright, and so has no way back to test: a driven
+    // weld on a floating pin. It must be unreachable instead.
+    const forbidden = (type: JointType, ground: boolean) => type === 'welded' && !ground;
+    for (const ground of [false, true]) {
+      for (const from of JOINT_TYPES) {
+        for (const to of JOINT_TYPES) {
+          if (from === to || forbidden(from, ground)) continue;
+          if (forbidden(to, ground)) {
+            expect(
+              refuseJointType(make(from, ground), to, context),
+              `${from} -> ${to}`
+            ).toBeDefined();
+            continue;
+          }
+          const there = refuseJointType(make(from, ground), to, context) === undefined;
+          const back = refuseJointType(make(to, ground), from, context) === undefined;
+          expect(there, `${from} -> ${to}, grounded ${ground}`).toBe(back);
+        }
+      }
+    }
+  });
+
+  it('lets a driven Pin-in-slot become Prismatic, keeping its linear input (#384)', () => {
+    // The Slide's weld stops the riders turning against the slot; the input
+    // drives travel along it, which the weld leaves alone.
+    const driven = pinOn(1, { block: true, driven: true });
+    expect(jointTypeAt(driven, context)).toBe('pin-in-slot');
+    expect(refuseJointType(driven, 'prismatic', context)).toBeUndefined();
+    expect(refuseJointType(pinOn(2, { block: true, driven: true }), 'prismatic', context)).toBe(
+      undefined
+    );
   });
 
   it('draws the grounded set on every option of a grounded joint', () => {

@@ -101,6 +101,10 @@ const state = (id) =>
       index: grid.saveHistoryService.index,
       staged: grid.mechanismSrv.seedFromDisplay ?? null,
       atStart: mech.isAtStartPose(),
+      input: joint.input === true,
+      // Whether the machine this joint is in is solved: a drive written back
+      // after the rebuild is on the joint and in the URL but not in this.
+      runs: mech.mechanisms.some((one) => one.isMechanismValid()),
     };
   }, id);
 
@@ -230,34 +234,68 @@ console.log('\nwhat a joint cannot be, and why');
 await select('A');
 const driven = await choice();
 const refusedOn = (label) => driven.options.find((one) => one.label === label);
-// A slide needs a linear input, so the input is what refuses the two sliding
-// types. Welded is refused too, but not by the input: a grounded input may be
-// welded (the weld fuses the bars to each other, not to the frame), and A has
-// only one link to fuse, so the weld's own reason is the true one.
+// A driven pin takes a slot, as a driven slider could always lose one (#384):
+// a change of type is open exactly when the change back is. Welded is refused,
+// and not by the input: a grounded input may be welded (the weld fuses the
+// bars to each other, not to the frame), and A has only one link to fuse, so
+// the weld's own reason is the true one.
 record(
-  'a driven pin can be nothing else, and every grayed type carries the model’s reason',
-  ['Prismatic', 'Pin-in-slot'].every(
-    (label) =>
-      refusedOn(label)?.off === true &&
-      /Remove the input before changing its type/.test(refusedOn(label).reason ?? '')
-  ) &&
+  'a driven pin may take either slot, and Welded carries the weld’s own reason',
+  ['Prismatic', 'Pin-in-slot'].every((label) => refusedOn(label)?.off === false) &&
     refusedOn('Welded')?.off === true &&
     /A weld fuses the links that meet at a joint, and only one meets here/.test(
       refusedOn('Welded').reason ?? ''
     ) &&
-    refusedOn('Revolute')?.off === false,
+    refusedOn('Revolute')?.chosen === true,
   driven.options
 );
 
-await page.hover('app-edit-panel segmented-block .cell:has-text("Prismatic")');
+await page.hover('app-edit-panel segmented-block .cell:has-text("Welded")');
 await page.waitForTimeout(900);
 const tip = await page.locator('.mat-mdc-tooltip').first().textContent();
 record(
-  'and pointing at one says the same thing',
-  /Remove the input before changing its type/.test(tip ?? ''),
+  'and pointing at it says the same thing',
+  /A weld fuses the links that meet at a joint, and only one meets here/.test(tip ?? ''),
   tip
 );
 await page.screenshot({ path: `${OUT}/3-refused.png` });
+
+// And the round trip, on the crank that drives the four-bar: there and back,
+// the joint is still the drive and the machine still runs. Taking the slot
+// off ends with the ground put back, which went through a toggle that clears
+// the drive and rebuilds; the drive was written back after the rebuild, so
+// the joint and the URL said driven while the solved machine said otherwise.
+await openFourBar();
+await select('A');
+const beforeTrip = await state('A');
+await pick('Prismatic');
+const asSlide = await state('A');
+// A slide's cycle starts at one end of its stroke and the drawing sits mid-way
+// along it, so the drawing reads as parked after the change -- as it does by
+// the long way round, Remove Input, Prismatic, Add Input. Back to the start,
+// where a change of type is allowed, before the way back.
+await page.locator('button[aria-label="Return to start pose"]').first().click();
+await page.waitForTimeout(700);
+await select('A');
+const startOfStroke = await state('A');
+await pick('Revolute');
+const backAgain = await state('A');
+record(
+  'a driven crank goes to Prismatic and back, driven and running throughout, one entry each',
+  asSlide.slider &&
+    asSlide.welded &&
+    asSlide.input &&
+    asSlide.ground &&
+    !backAgain.slider &&
+    !backAgain.welded &&
+    backAgain.input &&
+    backAgain.ground &&
+    beforeTrip.runs &&
+    backAgain.runs &&
+    asSlide.entries - beforeTrip.entries === 1 &&
+    backAgain.entries - startOfStroke.entries === 1,
+  { beforeTrip, asSlide, startOfStroke, backAgain }
+);
 
 // ------------------------------------- 3b. where that reason opens, and what
 //                                            it lets through
@@ -362,6 +400,29 @@ const pressFrom = async (grid, from, to) => {
   return page.evaluate(() => window.__landedOn);
 };
 
+// A grounded pin with one link: a weld would have nothing to fuse to, so
+// Welded -- bottom row -- is the one grayed option. This is the reported case.
+// D on the four-bar is that pin; asked at the start, where nothing else is
+// refused.
+await openFourBar();
+await select('D');
+const beforeDiagonal = await state('D');
+const landedTop = await pressFrom(PANEL_CHOICE, 3, 1);
+const afterDiagonal = await state('D');
+record(
+  'with the bottom row’s reason open, a press on the top row lands and the type changes',
+  landedTop === 1 && afterDiagonal.slider === true && afterDiagonal.welded === true,
+  { landedTop, beforeDiagonal, afterDiagonal }
+);
+await page.screenshot({ path: `${TIPS}/3-diagonal-press-landed.png` });
+
+// Parked mid-cycle, every type but the one a joint has is refused, which puts
+// a reason on both rows at once. A driven pin used to be the joint that did,
+// and no longer is (#384).
+await openFourBar();
+await page.evaluate(() => ng.getComponent(document.querySelector('app-playback-bar')).stepBy(40));
+await page.waitForTimeout(700);
+await select('B');
 const PANEL_SIDES = ['above', 'above', 'below', 'below'];
 for (const index of [1, 2, 3]) {
   await point(PANEL_CHOICE, index);
@@ -378,24 +439,11 @@ for (const index of [1, 2, 3]) {
   if (index === 3) await page.screenshot({ path: `${TIPS}/2-bottom-row-opens-below.png` });
 }
 
-// A grounded pin with one link: a weld would have nothing to fuse to, so
-// Welded -- bottom row -- is the one grayed option. This is the reported case.
-await select('D');
-const beforeDiagonal = await state('D');
-const landedTop = await pressFrom(PANEL_CHOICE, 3, 1);
-const afterDiagonal = await state('D');
-record(
-  'with the bottom row’s reason open, a press on the top row lands and the type changes',
-  landedTop === 1 && afterDiagonal.slider === true && afterDiagonal.welded === true,
-  { landedTop, beforeDiagonal, afterDiagonal }
-);
-await page.screenshot({ path: `${TIPS}/3-diagonal-press-landed.png` });
-
-// And the other way: on the driven pin the top row's Prismatic is grayed, and
-// a press on the row below it reaches the option rather than the sentence.
-// Nothing changes there -- every other type on a driven pin is refused -- so
-// where the press arrived is what is asked.
-await select('A');
+// And the other way: parked, the top row's Prismatic is grayed, and a press
+// on the row below it reaches the option rather than the sentence. Nothing
+// changes there -- every other type is refused while parked -- so where the
+// press arrived is what is asked.
+await select('B');
 const landedBottom = await pressFrom(PANEL_CHOICE, 1, 2);
 record(
   'and with the top row’s reason open, a press on the bottom row reaches the option',
@@ -407,8 +455,7 @@ record(
 // in a card of its own, so a reason opens outward, on the side its column is
 // on. Opening them all to the right put the left column's reason over the
 // right column, and a press meant for a value there landed on the sentence.
-await openFourBar();
-const cardAt = await page.locator('#joint_A').boundingBox();
+const cardAt = await page.locator('#joint_B').boundingBox();
 await page.mouse.click(cardAt.x + cardAt.width / 2, cardAt.y + cardAt.height / 2, {
   button: 'right',
 });

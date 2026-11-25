@@ -142,7 +142,11 @@ import {
 } from '../model/drop-target';
 import { forceOffRefusedJoint, refuseForceOnJoint } from '../model/force-on-joint';
 import { constrainForceAnchor } from '../model/force-anchor';
-import { OperationRefusal, refuseAttach } from '../model/joint-operation-permission';
+import {
+  OperationRefusal,
+  memberBarsTouching,
+  refuseAttach,
+} from '../model/joint-operation-permission';
 import { redundantlyHeldJointSets } from '../model/rigid-bodies';
 import { reseatEndJoint } from '../model/slot-reseat';
 import { MODEL_SCALE } from '../model/render-scale';
@@ -3045,13 +3049,12 @@ export class MechanismService {
       // what meets at this slot says anything about this slot. Not a topology
       // change, so it does not ask for another pass.
       if (joint instanceof PrisJoint && !joint.rotates && !joint.isWelded) {
-        const fused = this.compoundAt(joint)?.subset.filter((member) =>
-          member.joints.includes(joint)
-        );
-        if ((fused?.length ?? 0) > 1) joint.isWelded = true;
+        const compound = this.compoundAt(joint);
+        if (compound && memberBarsTouching(compound, joint) >= 2) joint.isWelded = true;
       }
       if (!joint.isWelded) return;
-      if (!this.compoundAt(joint)) {
+      const compound = this.compoundAt(joint);
+      if (!compound) {
         joint.isWelded = false;
         return;
       }
@@ -3080,9 +3083,23 @@ export class MechanismService {
         if (this.weldJointTopology(joint)) {
           this.rebuildJointGraph();
           changed = true;
-        } else {
+        } else if (
+          bodiesAtJoint.some(
+            (body) => body.subset.length > 0 && memberBarsTouching(body, joint) >= 2
+          )
+        ) {
           joint.isWelded = true;
         }
+        return;
+      }
+
+      // Only one body meets here, and it is a compound — so this flag only
+      // describes a real weld if at least two of the compound's leaves meet at
+      // this joint. At the loose end of a body welded somewhere else (such as a
+      // Prismatic joint whose slot was just taken off), only one leaf reaches
+      // here, so the flag describes nothing and has to come off.
+      if (memberBarsTouching(compound, joint) < 2) {
+        joint.isWelded = false;
       }
     });
     return changed;

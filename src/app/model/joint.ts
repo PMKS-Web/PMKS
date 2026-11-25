@@ -268,6 +268,18 @@ export class PrisJoint extends RealJoint {
     super(id, x, y, input, ground, links, connectedJoints);
   }
 
+  /**
+   * A slider's drive is linear: it travels the slot, and fusing the riders
+   * stops none of that -- the Slide holds them rigid with each other and with
+   * the block, and the block still slides. So the "not while driven" rule a pin
+   * follows (where the drive *is* the relative turn a weld forbids) does not
+   * apply here, and a driven Pin-in-slot with two riders fuses them like an
+   * undriven one (#384).
+   */
+  override canBeWelded(): boolean {
+    return !this.isWelded && this.links.length >= 2;
+  }
+
   get angle_rad(): number {
     return this._angle_rad;
   }

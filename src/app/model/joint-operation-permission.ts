@@ -172,6 +172,13 @@ export function refuseGround(
   };
 }
 
+/** A weld and a drive on the same joint, said once for both places that refuse it. */
+export const WELD_IS_DRIVEN: OperationRefusal = {
+  code: 'weld.is-driven',
+  short: 'it is an input',
+  long: 'A weld says these bodies do not move relative to each other, and an input says they do. Remove the input first.',
+};
+
 function refuseWeld(
   joint: RealJoint,
   context: JointOperationContext,
@@ -200,15 +207,37 @@ function refuseWeld(
   // A weld is the statement that the bodies at this joint do not move relative
   // to each other, and an input is the statement that they do. Both at once is
   // not a state the model can honor.
-  if (joint.input && (!joint.ground || joint instanceof PrisJoint)) {
-    return {
-      code: 'weld.is-driven',
-      short: 'it is an input',
-      long: 'A weld says these bodies do not move relative to each other, and an input says they do. Remove the input first.',
-    };
-  }
+  //
+  // Except on a slider, where the weld is the Slide: it stops the riders
+  // turning against the slot and leaves them free to travel along it, which is
+  // the one motion a slider's (linear) input drives. A driven Pin-in-slot
+  // therefore becomes a driven Prismatic joint without losing its input (#384).
+  // Only while the slot stays. A change of type to Welded takes the slot off
+  // first and welds the pin left behind, so it is judged as that pin: allowed
+  // on the frame, where the fused bars turn together against ground, and
+  // refused floating. That is the same test the change back from Welded has to
+  // pass, so neither direction is open without the other.
+  const keepsItsSlot =
+    after === 'add-slider' || (joint instanceof PrisJoint && after !== 'remove-slider');
+  if (joint.input && !joint.ground && !keepsItsSlot) return WELD_IS_DRIVEN;
 
   return weldNeedsLinks(joint, after);
+}
+
+/**
+ * How many leaf bars of `link` actually meet at `joint`.
+ *
+ * A compound link sits as one entry in `joint.links` whether its weld is *at*
+ * `joint` (two or more leaves touching `joint`) or at some other joint (only
+ * one leaf reaching `joint`). Counting the leaves that carry `joint` tells
+ * those two apart.
+ */
+export function memberBarsTouching(link: RealLink, joint: RealJoint): number {
+  if (link.subset.length === 0) return link.joints.includes(joint) ? 1 : 0;
+  return link.subset.reduce(
+    (count, child) => count + (child instanceof RealLink ? memberBarsTouching(child, joint) : 0),
+    0
+  );
 }
 
 /**
@@ -222,17 +251,25 @@ function refuseWeld(
  * for it to be rigid about and takes it away: the reader who chose Welded would
  * be handed a Revolute without a word.
  *
- * Asked the way that reconciler looks — a compound already standing at the
- * joint, or two bars it can still fuse into one. A compound counts as one link,
- * which is why counting `links` is not enough.
+ * Asked by leaf bars touching the joint rather than by `links.length` or
+ * `subset.length > 0`: a compound fused *at* this joint counts once per leaf
+ * meeting here (two or more, so the weld survives), while a compound welded at
+ * some other joint has only one leaf reaching here and is refused just like a
+ * plain bar — matching Pin-in-slot to Welded. (A closed loop already welded at
+ * its other corners also has two leaves meeting here, which is harmless since
+ * the loop is already rigid.)
  */
 export function weldOutlivesTheSlot(joint: RealJoint): OperationRefusal | undefined {
   const bars = joint.links.filter((link): link is RealLink => link instanceof RealLink);
-  if (bars.length >= 2 || bars.some((bar) => bar.subset.length > 0)) return undefined;
+  const meeting = bars.reduce((sum, bar) => sum + memberBarsTouching(bar, joint), 0);
+  if (meeting >= 2) return undefined;
   return {
     code: 'weld.needs-two-links',
     short: 'needs 2 links',
-    long: 'A weld fuses the links that meet at a joint, and without its slot only one meets here.',
+    long:
+      meeting <= 0
+        ? 'A weld fuses links that meet at a joint, and this joint isn’t connected to any links.'
+        : 'A weld fuses the links that meet at a joint, and without its slot only one meets here.',
   };
 }
 
@@ -325,17 +362,12 @@ function refuseAddSlider(
     };
   }
 
-  // A drive on a pin turns; a drive on a slot travels. They are measured in
-  // different units and prescribe different freedoms, so a joint cannot change
-  // from one to the other while it is the drive. Taking a slot away is always
-  // allowed.
-  if (context.isDriven(joint)) {
-    return {
-      code: 'slider.is-driven',
-      short: 'it is an input',
-      long: 'This joint is a rotational input, while a slider takes a linear input. Remove the input before changing its type.',
-    };
-  }
+  // A drive used to block this, on the grounds that a pin's drive turns and a
+  // slot's travels. But taking a slot away from a driven joint was always
+  // allowed and kept the drive, so the change went one way only: a driven pin
+  // could not get back the slot it had just lost. The drive carries across in
+  // both directions now, at the same signed number, so a round trip lands
+  // exactly where it began (#384).
   return undefined;
 }
 
