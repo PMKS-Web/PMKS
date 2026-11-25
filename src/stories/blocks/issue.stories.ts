@@ -56,10 +56,10 @@ const issues: Record<string, SetupIssue> = {
   },
   noteOnly: {
     severity: 'warning',
-    title: 'Passes through a toggle',
-    summary: prose`Near dead-center, a small input move gives a large output move.`,
+    title: 'Rapid motion in cycle',
+    summary: prose`At some positions, a small input move causes a large output move.`,
     explain:
-      'At a toggle, two links line up and the input has almost no leverage over the output. Clamps use this on purpose.',
+      'Near a poor transmission angle or singularity, output velocity spikes and the input has little leverage over the output. PMKS adds finer steps there to keep the motion smooth.',
     fixes: [],
     note: 'Nothing to change. Expect sharp peaks in the velocity and acceleration graphs.',
   },

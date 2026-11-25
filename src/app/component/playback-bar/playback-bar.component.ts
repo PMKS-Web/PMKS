@@ -45,6 +45,9 @@ import { PrisJoint, RealJoint } from '../../model/joint';
 import { inputSetFor, NO_INPUT_SET } from '../../model/mechanism/readiness';
 import { StartMoveRefusal } from '../../model/start-move-refusal';
 import { snapsToStart } from '../../model/scrub-snap';
+import { Mechanism } from '../../model/mechanism/mechanism';
+import { PlaybackPoint, playbackPointsOf } from '../../model/playback-points';
+import { PlaybackRailMarker, projectPlaybackMarkers } from './playback-markers';
 import { CdkConnectedOverlay, CdkOverlayOrigin, ConnectedPosition } from '@angular/cdk/overlay';
 
 /** What the stylesheet is asked for, and what to assume if it has not loaded. */
@@ -116,14 +119,6 @@ export interface PlaybackRow {
    */
   anchorAt?: number;
   /**
-   * Whether this machine passes through a toggle.
-   *
-   * True exactly when the walk had to cut its step finer somewhere, which is
-   * the same question: it does that where a sample moved further than a linkage
-   * should move in one frame.
-   */
-  togglePoint: boolean;
-  /**
    * Which way the input is going, while it is going: "Clockwise", "Closing".
    * Paused, the row says how far it is from its start instead (`displaced`),
    * and whether the cycle loops or turns back is the machine panel's.
@@ -175,6 +170,8 @@ export interface PlaybackRow {
    * meant "where this starts".
    */
   startMoved: boolean;
+  /** Notable kinematic poses (toggle, limit, and branch positions) along this row's rail. */
+  points: PlaybackPoint[];
 }
 
 /** A row that cannot be played, in the three pieces the reading line draws. */
@@ -477,6 +474,42 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
   }
 
   /**
+   * Cached points of interest per solved `Mechanism` instance.
+   *
+   * `Mechanism` is immutable once solved, so keying by mechanism keeps `rows`
+   * free during 60fps playback while automatically refreshing after any edit.
+   */
+  private readonly pointCache = new WeakMap<Mechanism, PlaybackPoint[]>();
+
+  private pointsFor(index: number): PlaybackPoint[] {
+    const mechanism = this.mechanism.mechanisms[index];
+    if (!mechanism?.isMechanismValid()) return [];
+    let cached = this.pointCache.get(mechanism);
+    if (!cached) {
+      cached = playbackPointsOf(mechanism, this.mechanism.driveProfileOf(index));
+      this.pointCache.set(mechanism, cached);
+    }
+    return cached;
+  }
+
+  /** Project a row's points of interest into positioned, tooltip-ready rail markers. */
+  markersFor(row: PlaybackRow): PlaybackRailMarker[] {
+    return projectPlaybackMarkers(row.points, row.scrub, this.nup);
+  }
+
+  /** Jump straight to a point of interest on this machine's rail and pause there. */
+  jumpToPoint(row: PlaybackRow, point: PlaybackPoint): void {
+    if (row.index < 0) return;
+    this.startMenuFor = null;
+    this.mechanism.clearStartMoved();
+    if (this.mechanism.isMechanismPlaying(row.index)) {
+      this.mechanism.toggleMechanismPlaying(row.index);
+    }
+    this.mechanism.seekMechanism(row.index, point.timeSeconds);
+    this.publishMotion();
+  }
+
+  /**
    * Take back the edit that moved the start, and the old start with it.
    *
    * The same Undo the message carried: one thing happened, so one thing takes
@@ -642,7 +675,6 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
       // changed on a machine whose input reverses on its own: turning one of
       // those round writes `playbackDirection` and leaves the drive as it was.
       directionIcon: combined ? '' : this.iconFor(index),
-      togglePoint: mechanism?.hasAddedSamples ?? false,
       note: combined || !this.mechanism.isMechanismPlaying(index) ? '' : this.noteFor(index),
       heading: combined ? '' : this.noteFor(index),
       playing: this.mechanism.isMechanismPlaying(index),
@@ -655,6 +687,7 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
       // on a machine's own row: the combined row stands for several cycles, and
       // "142 degrees from start" is a fact about one input.
       displaced: combined ? undefined : this.displacementOf(index),
+      points: combined || this.mechanism.solvingIsDeferred ? [] : this.pointsFor(index),
     };
   }
 
@@ -814,7 +847,6 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
           driveKindOf(driven instanceof PrisJoint, !!this.mechanism.cylinderAt(driven)),
           turnsClockwise(this.mechanism.driveSpeedOf(driven))
         ),
-        togglePoint: false,
         note: '',
         heading: '',
         playing: false,
@@ -823,6 +855,7 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
         inert: false,
         deferred: true,
         startMoved: false,
+        points: [],
       };
     });
   }
@@ -843,7 +876,6 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
       // direction button.
       directionIcon: '',
       anchorAt: undefined,
-      togglePoint: false,
       note: '',
       heading: '',
       playing: false,
@@ -853,6 +885,7 @@ export class PlaybackBarComponent implements OnInit, AfterViewInit, AfterViewChe
       inert: true,
       deferred: false,
       startMoved: false,
+      points: [],
     };
   }
 

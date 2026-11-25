@@ -10,17 +10,21 @@ import { MechanismService } from '../../services/mechanism.service';
 import { SettingsService } from '../../services/settings.service';
 import { PlaybackBarComponent, PlaybackRow } from './playback-bar.component';
 
-/** The transport over a template, in Edit, with the real mechanism behind it. */
-async function createBar(template: TemplateID, synced = true) {
+/** The transport over a template, with the real mechanism behind it. */
+async function createBar(template: TemplateID, synced = true, initialTab: TabID = TabID.EDIT) {
   const harness = createMechanismHarness();
   const decoder = new StringTranscoder();
   decoder.decodeURL(TEMPLATE_LINKAGES[template]);
   new MechanismBuilder(harness.service, decoder, harness.settings, harness.active).build(true);
   harness.service.syncMechanisms = synced;
   harness.service.updateMechanism();
+  let currentTab = initialTab;
   const tabs = {
-    getCurrentTab: () => TabID.EDIT,
-    isAnalysisMode: () => false,
+    getCurrentTab: () => currentTab,
+    isAnalysisMode: () => currentTab === TabID.ANALYZE || currentTab === TabID.FORCE,
+    setTab: (next: TabID) => {
+      currentTab = next;
+    },
   } as unknown as SelectedTabService;
   await TestBed.configureTestingModule({
     imports: [NoopAnimationsModule, PlaybackBarComponent],
@@ -34,7 +38,16 @@ async function createBar(template: TemplateID, synced = true) {
   const fixture: ComponentFixture<PlaybackBarComponent> =
     TestBed.createComponent(PlaybackBarComponent);
   fixture.detectChanges();
-  return { fixture, bar: fixture.componentInstance, service: harness.service };
+  return {
+    fixture,
+    bar: fixture.componentInstance,
+    service: harness.service,
+    settings: harness.settings,
+    setTab: (next: TabID) => {
+      currentTab = next;
+      fixture.detectChanges();
+    },
+  };
 }
 
 /** A row's own handle, as rendered. */
@@ -175,5 +188,78 @@ describe('PlaybackBarComponent scrubbing back to the start', () => {
     handleOf(fixture, row).dispatchEvent(new Event('pointerdown'));
     stepTo(fixture, row, seat + 1);
     expect(service.isAtStartPose()).toBe(false);
+  });
+});
+
+describe('PlaybackBarComponent points of interest', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('shows toggle markers across Edit, Kinematic Analysis, and Force Analysis with no max-effort markers', async () => {
+    const { fixture, bar, setTab } = await createBar('Punch_Press', true, TabID.EDIT);
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(el.querySelectorAll('.poiMarker[data-poi-kind="toggle"]').length).toBe(2);
+    expect(el.querySelectorAll('.poiMarker').length).toBe(2);
+
+    setTab(TabID.ANALYZE);
+    expect(el.querySelectorAll('.poiMarker[data-poi-kind="toggle"]').length).toBe(2);
+    expect(el.querySelectorAll('.poiMarker').length).toBe(2);
+
+    setTab(TabID.FORCE);
+    expect(el.querySelectorAll('.poiMarker[data-poi-kind="toggle"]').length).toBe(2);
+    expect(el.querySelectorAll('.poiMarker').length).toBe(2);
+
+    // Every marker tooltip is a complete sentence ending with a period.
+    const row = bar.rows[0];
+    for (const marker of bar.markersFor(row)) {
+      expect(marker.tooltip.endsWith('.')).toBe(true);
+      expect(marker.ariaLabel.startsWith('Jump to ')).toBe(true);
+    }
+  });
+
+  it('labels slot-driven reversals as limit positions rather than toggles', async () => {
+    const { bar } = await createBar('Scotch_Yoke', true, TabID.EDIT);
+    const markers = bar.markersFor(bar.rows[0]);
+    const limits = markers.filter((m) => m.point.kind === 'limit');
+    expect(limits).toHaveLength(2);
+    expect(markers.filter((m) => m.point.kind === 'toggle')).toHaveLength(0);
+    expect(limits[0].tooltip).toMatch(
+      /^Limit position at .+, where output motion stops and reverses\. Click to jump here\.$/
+    );
+  });
+
+  it('omits markers on the combined All row when synced and shows them per row when unsynced', async () => {
+    const { fixture, service } = await createBar('Four_Bar_Inversions', true, TabID.EDIT);
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(el.querySelectorAll('.mechRow').length).toBe(1);
+    expect(el.querySelectorAll('.poiMarker').length).toBe(0);
+
+    service.setSyncMechanisms(false);
+    fixture.detectChanges();
+    expect(el.querySelectorAll('.mechRow').length).toBe(4);
+    expect(el.querySelectorAll('.poiMarker[data-poi-kind="toggle"]').length).toBeGreaterThanOrEqual(
+      4
+    );
+  });
+
+  it('jumps directly to a clicked marker pose and pauses playback', async () => {
+    const { fixture, bar, service } = await createBar('Punch_Press', true, TabID.EDIT);
+    const row = bar.rows[0];
+    const target = bar.markersFor(row).find((m) => m.point.kind === 'toggle')!;
+    expect(target).toBeDefined();
+
+    service.setAllPlaying(true);
+    fixture.detectChanges();
+    expect(service.isMechanismPlaying(row.index)).toBe(true);
+
+    const button = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      '.poiMarker[data-poi-kind="toggle"]'
+    )!;
+    button.click();
+    fixture.detectChanges();
+
+    expect(service.isMechanismPlaying(row.index)).toBe(false);
+    expect(service.secondsOf(row.index)).toBeCloseTo(target.point.timeSeconds, 3);
   });
 });

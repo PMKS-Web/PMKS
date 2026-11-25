@@ -446,6 +446,10 @@ Not suites — import them from one.
 - `playback-loop-indicator.mjs` — the transport row's two lines, the end-of-cycle reading, the
   full-width handle, and the row's selection surface, compared across engines. Needs Firefox and
   WebKit installed.
+- `playback-points.mjs` — kinematic points of interest on the scrub rail (#386): toggle, limit, and
+  branch markers across Edit, Kinematic Analysis, and Force Analysis, hover tooltips, click/Enter
+  jumps that pause playback, synced vs. unsynced multi-mechanism rows, and phone layout. Writes
+  screenshots and a jump filmstrip to `artifacts/playback-poi/`.
 - `playback-stepping.mjs` — the arrow keys step by time and wrap round the cycle, in both
   directions, on every template.
 - `playback-timing.mjs` — a revolution takes 60/RPM seconds, doubling speed halves it, and the time
