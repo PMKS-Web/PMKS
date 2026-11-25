@@ -174,6 +174,12 @@ export class JointTypeService {
     if (driven) {
       now.input = true;
       now.driveSpeed = speed;
+      // The toggle rebuilt the machine while the drive was off, so the joint
+      // and the URL said driven while the solved machine was undriven: no
+      // playback, no traces, and Setup asking for an input. Rebuilt again with
+      // the drive in place; the batch around the change still writes the one
+      // history entry.
+      this.mechanism.finishStructuralEdit(true);
     }
   }
 

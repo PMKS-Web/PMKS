@@ -8,6 +8,7 @@ import { JointType } from '../model/joint-type';
 import { createMechanismHarness, wireGraph } from '../../test-utils/mechanism-harness';
 import { buildMechanism, inModelUnits } from '../../test-utils/verification/fixture';
 import { drivenTwoRiderSlotFixture } from '../../test-utils/verification/joint-type-fixtures';
+import { fourBarDrivenAtFixture } from '../../test-utils/verification/fixtures';
 import { JointTypeService } from './joint-type.service';
 
 /**
@@ -326,6 +327,34 @@ describe('JointTypeService', () => {
       expect(types.typeOf(live('B')), `from ${from}`).toBe(from);
       expect(live('B').input, `from ${from}`).toBe(true);
       expect(harness.saveCount(), `from ${from}`).toBe(before);
+    }
+  });
+
+  it('leaves a running machine running when its grounded crank goes to a slot and back', () => {
+    // Taking the slot off ends with the ground put back through a toggle that
+    // clears the drive and rebuilds. The drive was written back after that
+    // rebuild, so the joint and the URL said driven while the solved machine
+    // was undriven: no playback, and Setup asking for an input.
+    const harness = createMechanismHarness();
+    const built = buildMechanism(inModelUnits(fourBarDrivenAtFixture('A')));
+    harness.service.joints = built.joints;
+    harness.service.links = built.links;
+    harness.service.finishStructuralEdit(false);
+    const types = Injector.create({
+      providers: [{ provide: JointTypeService, deps: [] }],
+      parent: harness.injector,
+    }).get(JointTypeService);
+    const live = (id: string): RealJoint =>
+      harness.service.joints.find((joint) => joint.id === id) as RealJoint;
+    const runs = () => harness.service.mechanisms.some((one) => one.isMechanismValid());
+    expect(runs(), 'the four-bar runs to begin with').toBe(true);
+
+    for (const there of ['pin-in-slot', 'prismatic'] as const) {
+      expect(types.set(live('O'), there), `to ${there}`).toBe(true);
+      expect(types.set(live('O'), 'revolute'), `back from ${there}`).toBe(true);
+      expect(live('O').input, `driven after ${there}`).toBe(true);
+      expect(live('O').ground, `grounded after ${there}`).toBe(true);
+      expect(runs(), `runs after ${there} and back`).toBe(true);
     }
   });
 });
