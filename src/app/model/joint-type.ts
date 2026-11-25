@@ -26,6 +26,7 @@ import {
   JointOperationContext,
   OperationRefusal,
   refuseJointOperation,
+  WELD_IS_DRIVEN,
   weldOutlivesTheSlot,
 } from './joint-operation-permission';
 
@@ -148,7 +149,13 @@ export function refuseJointType(
   // Prismatic to Welded runs no weld step -- both are welded, so the change is
   // only the slot coming off -- which leaves the one case no step can speak
   // for: a weld the change keeps, losing the body it was fusing to.
+  //
+  // The weld is kept rather than made, so `refuseWeld` never sees it, and it
+  // has a second thing to answer for: a drive. With the slot gone it is on a
+  // welded pin, which can carry one only on the frame. The same test
+  // `refuseWeld` puts to the same change made from Pin-in-slot (#384).
   if (bitsOf(from).welded && bitsOf(to).welded && before === 'remove-slider') {
+    if (joint.input && !joint.ground) return WELD_IS_DRIVEN;
     return weldOutlivesTheSlot(joint);
   }
   return undefined;

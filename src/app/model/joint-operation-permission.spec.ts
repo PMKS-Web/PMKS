@@ -183,10 +183,10 @@ describe('whether a block may be added or removed at a joint', () => {
     expect(refuseJointOperation(elbow, 'add-slider', context)).toBeUndefined();
   });
 
-  it('refuses a driven joint, which would then hold three bodies', () => {
+  it('allows a driven joint, as taking the slot back off one always was (#384)', () => {
     const { elbow, context } = drawing();
     elbow.input = true;
-    expect(refuseJointOperation(elbow, 'add-slider', context)?.short).toBe('it is an input');
+    expect(refuseJointOperation(elbow, 'add-slider', context)).toBeUndefined();
   });
 
   it('refuses a block inside the ram, and allows one at a mount', () => {

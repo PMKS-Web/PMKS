@@ -142,12 +142,43 @@ describe('joint type', () => {
     }
   });
 
-  it('refuses a block and a weld on a driven pin, each in its own words', () => {
+  it('gives a driven pin its slot, and refuses only a floating weld', () => {
     const driven = pinOn(2, { driven: true });
-    expect(refuseJointType(driven, 'pin-in-slot', context)?.code).toBe('slider.is-driven');
-    expect(refuseJointType(driven, 'prismatic', context)?.code).toBe('slider.is-driven');
+    expect(refuseJointType(driven, 'pin-in-slot', context)).toBeUndefined();
+    expect(refuseJointType(driven, 'prismatic', context)).toBeUndefined();
     expect(refuseJointType(driven, 'welded', context)?.code).toBe('weld.is-driven');
     expect(refuseJointType(driven, 'revolute', context)).toBeUndefined();
+  });
+
+  it('opens every change between two types in both directions, driven or not (#384)', () => {
+    // Whether a change is allowed depends on where it lands, never on which
+    // way it goes: a driven joint that can reach a type can come back from it.
+    const make = (type: JointType, ground: boolean) => {
+      const bits = bitsOf(type);
+      const joint = pinOn(2, { block: bits.slider, welded: bits.welded, driven: true });
+      joint.ground = ground;
+      return joint;
+    };
+    // One state is forbidden outright, and so has no way back to test: a driven
+    // weld on a floating pin. It must be unreachable instead.
+    const forbidden = (type: JointType, ground: boolean) => type === 'welded' && !ground;
+    for (const ground of [false, true]) {
+      for (const from of JOINT_TYPES) {
+        for (const to of JOINT_TYPES) {
+          if (from === to || forbidden(from, ground)) continue;
+          if (forbidden(to, ground)) {
+            expect(
+              refuseJointType(make(from, ground), to, context),
+              `${from} -> ${to}`
+            ).toBeDefined();
+            continue;
+          }
+          const there = refuseJointType(make(from, ground), to, context) === undefined;
+          const back = refuseJointType(make(to, ground), from, context) === undefined;
+          expect(there, `${from} -> ${to}, grounded ${ground}`).toBe(back);
+        }
+      }
+    }
   });
 
   it('lets a driven Pin-in-slot become Prismatic, keeping its linear input (#384)', () => {

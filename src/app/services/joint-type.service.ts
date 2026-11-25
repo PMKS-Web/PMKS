@@ -113,41 +113,9 @@ export class JointTypeService {
     try {
       this.mechanism.capturingPose(joint, () =>
         this.mechanism.batched(() => {
-          for (const step of stepsBetween(from, type)) this.run(id, step);
-          // Grounded is its own switch beside the choice, and while it is on
-          // the choice draws every type standing on the frame (D2) -- so a
-          // change of type keeps it. Taking the slot away takes the ground it
-          // carried with it, and that is given back here.
-          //
-          // Except to a slot that came back riding a carrier: `toggleGround`
-          // goes through `groundAt`, which clears `_carrier` and both slot
-          // joints, so a pin that once carried a slider on a link, was
-          // grounded, and is now made Pin-in-slot again would have the carrier
-          // `sliderTopology` just restored from the stash taken off it without
-          // a word. A floating slot is already fixed in direction by its
-          // carrier, which is what the ground was standing in for.
-          const now = this.live(id);
-          if (
-            now &&
-            grounded &&
-            !this.isGrounded(now) &&
-            !this.mechanism.sliderFor(now)?.isFloating
-          ) {
-            this.active.selectedJoint = now;
-            // `toggleGround`'s plain-joint branch ends `input = false`, which is
-            // its own rule about un-grounding and has nothing to say about
-            // putting a ground back. A grounded pin is the standard crank, and
-            // the exchange carries the drive across, so taking a grounded,
-            // driven slider to Revolute came back grounded and un-driven with
-            // nothing said. Carried around the call rather than written past
-            // it, so the toggle keeps its rule for its own callers.
-            const driven = now.input;
-            const speed = now.driveSpeed;
-            this.mechanism.toggleGround();
-            if (driven) {
-              now.input = true;
-              now.driveSpeed = speed;
-            }
+          for (const step of stepsBetween(from, type)) {
+            this.run(id, step);
+            this.keepGround(id, grounded);
           }
         })
       );
@@ -167,6 +135,46 @@ export class JointTypeService {
     }
     const after = this.live(id);
     return after !== undefined && this.typeOf(after) === type;
+  }
+
+  /**
+   * Grounded is its own switch beside the choice, and while it is on
+   * the choice draws every type standing on the frame (D2) -- so a
+   * change of type keeps it. Taking the slot away takes the ground it
+   * carried with it, and that is given back here -- after each step rather
+   * than once at the end, because the next step may need it: a weld on a
+   * driven pin is allowed only on the frame, so taking a grounded drive from
+   * Pin-in-slot to Welded welded a pin that was briefly floating, and the weld
+   * was refused (#384).
+   *
+   * Except to a slot that came back riding a carrier: `toggleGround`
+   * goes through `groundAt`, which clears `_carrier` and both slot
+   * joints, so a pin that once carried a slider on a link, was
+   * grounded, and is now made Pin-in-slot again would have the carrier
+   * `sliderTopology` just restored from the stash taken off it without
+   * a word. A floating slot is already fixed in direction by its
+   * carrier, which is what the ground was standing in for.
+   */
+  private keepGround(id: string, grounded: boolean): void {
+    const now = this.live(id);
+    if (!now || !grounded || this.isGrounded(now) || this.mechanism.sliderFor(now)?.isFloating) {
+      return;
+    }
+    this.active.selectedJoint = now;
+    // `toggleGround`'s plain-joint branch ends `input = false`, which is
+    // its own rule about un-grounding and has nothing to say about
+    // putting a ground back. A grounded pin is the standard crank, and
+    // the exchange carries the drive across, so taking a grounded,
+    // driven slider to Revolute came back grounded and un-driven with
+    // nothing said. Carried around the call rather than written past
+    // it, so the toggle keeps its rule for its own callers.
+    const driven = now.input;
+    const speed = now.driveSpeed;
+    this.mechanism.toggleGround();
+    if (driven) {
+      now.input = true;
+      now.driveSpeed = speed;
+    }
   }
 
   /** The joint with this letter as the drawing holds it now. */

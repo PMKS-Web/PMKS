@@ -6,6 +6,8 @@ import { PrisJoint, RealJoint, RevJoint } from '../model/joint';
 import { RealLink } from '../model/link';
 import { JointType } from '../model/joint-type';
 import { createMechanismHarness, wireGraph } from '../../test-utils/mechanism-harness';
+import { buildMechanism, inModelUnits } from '../../test-utils/verification/fixture';
+import { drivenTwoRiderSlotFixture } from '../../test-utils/verification/joint-type-fixtures';
 import { JointTypeService } from './joint-type.service';
 
 /**
@@ -38,6 +40,22 @@ function bentBar() {
   const live = (id: string): RealJoint =>
     harness.service.joints.find((joint) => joint.id === id) as RealJoint;
   return { harness, types, live, a, b, c };
+}
+
+/** The gallery's driven two-rider slot (`drivenTwoRiderSlotFixture`), loaded into the service. */
+function drivenSlot() {
+  const harness = createMechanismHarness();
+  const built = buildMechanism(inModelUnits(drivenTwoRiderSlotFixture()));
+  harness.service.joints = built.joints;
+  harness.service.links = built.links;
+  harness.service.finishStructuralEdit(false);
+  const types = Injector.create({
+    providers: [{ provide: JointTypeService, deps: [] }],
+    parent: harness.injector,
+  }).get(JointTypeService);
+  const live = (id: string): RealJoint =>
+    harness.service.joints.find((joint) => joint.id === id) as RealJoint;
+  return { harness, types, live };
 }
 
 describe('JointTypeService', () => {
@@ -213,60 +231,101 @@ describe('JointTypeService', () => {
   });
 
   it('makes a driven floating Pin-in-slot Prismatic, fusing its riders and keeping the drive (#384)', () => {
-    // P rides the bar AB and carries two riders. A slider's drive travels the
+    // B rides the bar AC and carries two riders. A slider's drive travels the
     // slot, which the Slide's weld leaves free, so the change is allowed -- and
     // has to fuse the two riders into one body, or the drive still sees three
-    // bodies at P (the carrier and two riders) and setup refuses it.
-    const harness = createMechanismHarness();
-    const a = new RevJoint('A', 0, 0, false, true);
-    const b = new RevJoint('B', 4, 0);
-    const p = new PrisJoint('P', 2, 0);
-    const c = new RevJoint('C', 2, 2);
-    const d = new RevJoint('D', 3, 2);
-    harness.service.joints = [a, b, p, c, d];
-    harness.service.links = [
-      new RealLink('AB', [a, b]),
-      new RealLink('CP', [c, p]),
-      new RealLink('DP', [d, p]),
-    ];
-    p.slideOn(harness.service.links[0], a, b);
-    wireGraph(harness.service);
-    p.input = true;
-    p.driveSpeed = 3;
-    harness.service.updateMechanism(false);
-    const types = Injector.create({
-      providers: [{ provide: JointTypeService, deps: [] }],
-      parent: harness.injector,
-    }).get(JointTypeService);
-    const live = (id: string): RealJoint =>
-      harness.service.joints.find((joint) => joint.id === id) as RealJoint;
-    expect(types.typeOf(live('P'))).toBe('pin-in-slot');
-    expect(types.refusal(live('P'), 'prismatic')).toBeUndefined();
+    // bodies at B (the carrier and two riders) and setup refuses it.
+    const { harness, types, live } = drivenSlot();
+    expect(types.typeOf(live('B'))).toBe('pin-in-slot');
+    expect(live('B').input).toBe(true);
+    expect(types.refusal(live('B'), 'prismatic')).toBeUndefined();
     const before = harness.saveCount();
 
-    expect(types.set(live('P'), 'prismatic')).toBe(true);
+    expect(types.set(live('B'), 'prismatic')).toBe(true);
 
-    const slider = live('P') as PrisJoint;
+    const slider = live('B');
     expect(types.typeOf(slider)).toBe('prismatic');
     expect(slider.input, 'still the drive').toBe(true);
-    expect(slider.driveSpeed).toBe(3);
     const riders = harness.service.links.filter((link) => link.joints.includes(slider));
     expect(riders.length, 'one fused rider').toBe(1);
-    expect(riders[0].joints.map((joint) => joint.id).sort()).toEqual(['C', 'D', 'P']);
+    expect(riders[0].joints.map((joint) => joint.id).sort()).toEqual(['B', 'D', 'E']);
     expect(harness.saveCount() - before).toBe(1);
   });
 
-  it('still refuses Welded on a driven slot, which would take the slot off first', () => {
+  it('walks a grounded, driven pin through every type and back, keeping the drive (#384)', () => {
+    // A slot comes off a driven joint and goes back on it; a weld goes on a
+    // grounded drive and comes off it. Every change is one entry, and the drive
+    // and its speed come back exactly as they left.
+    //
+    // A and C are grounded too, so nothing here moves: the walk is about what
+    // the change of type keeps, and a drive along an open grounded slot never
+    // repeats, which had the solver run every step out to its sample cap.
     const { harness, types, live } = bentBar();
-    types.set(live('B'), 'pin-in-slot');
+    live('A').ground = true;
+    live('C').ground = true;
+    live('B').ground = true;
     live('B').input = true;
+    live('B').driveSpeed = -12;
     harness.service.updateMechanism(false);
-    const before = harness.saveCount();
+    const walk: JointType[] = [
+      'pin-in-slot',
+      'prismatic',
+      'welded',
+      'revolute',
+      'prismatic',
+      'pin-in-slot',
+      'welded',
+      'prismatic',
+      'revolute',
+    ];
+    for (const type of walk) {
+      const before = harness.saveCount();
+      expect(types.set(live('B'), type), `to ${type}`).toBe(true);
+      expect(types.typeOf(live('B')), `to ${type}`).toBe(type);
+      expect(live('B').ground, `grounded at ${type}`).toBe(true);
+      expect(live('B').input, `driven at ${type}`).toBe(true);
+      expect(live('B').driveSpeed, `speed at ${type}`).toBeCloseTo(-12, 9);
+      expect(harness.saveCount() - before, `to ${type}`).toBe(1);
+    }
+  });
 
-    expect(types.refusal(live('B'), 'welded')?.code).toBe('weld.is-driven');
-    expect(types.set(live('B'), 'welded')).toBe(false);
+  it('walks a floating, driven pin between Revolute and both slot types, keeping the drive', () => {
+    const { harness, types, live } = bentBar();
+    live('B').input = true;
+    live('B').driveSpeed = 4;
+    harness.service.updateMechanism(false);
+    const walk: JointType[] = [
+      'pin-in-slot',
+      'revolute',
+      'prismatic',
+      'pin-in-slot',
+      'prismatic',
+      'revolute',
+    ];
+    for (const type of walk) {
+      expect(types.set(live('B'), type), `to ${type}`).toBe(true);
+      expect(types.typeOf(live('B')), `to ${type}`).toBe(type);
+      expect(live('B').input, `driven at ${type}`).toBe(true);
+      expect(live('B').driveSpeed, `speed at ${type}`).toBe(4);
+    }
+  });
 
-    expect(types.typeOf(live('B'))).toBe('pin-in-slot');
-    expect(harness.saveCount()).toBe(before);
+  it('refuses Welded on a driven floating slot, from Pin-in-slot and from Prismatic alike', () => {
+    // Either way the slot comes off and leaves a driven pin welded with
+    // nothing grounding it. From Prismatic the change runs no weld step at all
+    // -- the weld is kept, not made -- so the refusal has to come from the
+    // change of type itself.
+    const { harness, types, live } = drivenSlot();
+    for (const from of ['pin-in-slot', 'prismatic'] as const) {
+      expect(types.set(live('B'), from), `to ${from}`).toBe(true);
+      const before = harness.saveCount();
+
+      expect(types.refusal(live('B'), 'welded')?.code, `from ${from}`).toBe('weld.is-driven');
+      expect(types.set(live('B'), 'welded'), `from ${from}`).toBe(false);
+
+      expect(types.typeOf(live('B')), `from ${from}`).toBe(from);
+      expect(live('B').input, `from ${from}`).toBe(true);
+      expect(harness.saveCount(), `from ${from}`).toBe(before);
+    }
   });
 });

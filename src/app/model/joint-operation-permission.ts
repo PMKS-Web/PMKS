@@ -172,6 +172,13 @@ export function refuseGround(
   };
 }
 
+/** A weld and a drive on the same joint, said once for both places that refuse it. */
+export const WELD_IS_DRIVEN: OperationRefusal = {
+  code: 'weld.is-driven',
+  short: 'it is an input',
+  long: 'A weld says these bodies do not move relative to each other, and an input says they do. Remove the input first.',
+};
+
 function refuseWeld(
   joint: RealJoint,
   context: JointOperationContext,
@@ -205,17 +212,14 @@ function refuseWeld(
   // turning against the slot and leaves them free to travel along it, which is
   // the one motion a slider's (linear) input drives. A driven Pin-in-slot
   // therefore becomes a driven Prismatic joint without losing its input (#384).
-  // Only while the slot stays: a change of type to Welded takes the slot off
-  // first, and a drive measured along a slot has nothing to drive on the pin
-  // left behind, so that change is refused as it always was.
-  const refused = joint instanceof PrisJoint ? after === 'remove-slider' : !joint.ground;
-  if (joint.input && refused) {
-    return {
-      code: 'weld.is-driven',
-      short: 'it is an input',
-      long: 'A weld says these bodies do not move relative to each other, and an input says they do. Remove the input first.',
-    };
-  }
+  // Only while the slot stays. A change of type to Welded takes the slot off
+  // first and welds the pin left behind, so it is judged as that pin: allowed
+  // on the frame, where the fused bars turn together against ground, and
+  // refused floating. That is the same test the change back from Welded has to
+  // pass, so neither direction is open without the other.
+  const keepsItsSlot =
+    after === 'add-slider' || (joint instanceof PrisJoint && after !== 'remove-slider');
+  if (joint.input && !joint.ground && !keepsItsSlot) return WELD_IS_DRIVEN;
 
   return weldNeedsLinks(joint, after);
 }
@@ -334,17 +338,12 @@ function refuseAddSlider(
     };
   }
 
-  // A drive on a pin turns; a drive on a slot travels. They are measured in
-  // different units and prescribe different freedoms, so a joint cannot change
-  // from one to the other while it is the drive. Taking a slot away is always
-  // allowed.
-  if (context.isDriven(joint)) {
-    return {
-      code: 'slider.is-driven',
-      short: 'it is an input',
-      long: 'This joint is a rotational input, while a slider takes a linear input. Remove the input before changing its type.',
-    };
-  }
+  // A drive used to block this, on the grounds that a pin's drive turns and a
+  // slot's travels. But taking a slot away from a driven joint was always
+  // allowed and kept the drive, so the change went one way only: a driven pin
+  // could not get back the slot it had just lost. The drive carries across in
+  // both directions now, at the same signed number, so a round trip lands
+  // exactly where it began (#384).
   return undefined;
 }
 

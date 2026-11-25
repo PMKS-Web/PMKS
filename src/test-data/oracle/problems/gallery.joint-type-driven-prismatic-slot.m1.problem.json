@@ -1,0 +1,135 @@
+{
+ "schema": "pmks-oracle-problem/1",
+ "id": "gallery.joint-type-driven-prismatic-slot.m1",
+ "title": "Joint Type: driven Prismatic slot, M1",
+ "source": {
+  "kind": "published",
+  "case": "gallery.joint-type-driven-prismatic-slot",
+  "machine": "M1"
+ },
+ "gravity": 9.80665,
+ "bodies": [
+  {
+   "id": "AC",
+   "mass": 0.001,
+   "inertia": 0.0001,
+   "com": [
+    0,
+    0
+   ]
+  },
+  {
+   "id": "BD",
+   "mass": 0.001,
+   "inertia": 0.0001,
+   "com": [
+    0.015,
+    0.015
+   ]
+  },
+  {
+   "id": "BE",
+   "mass": 0.001,
+   "inertia": 0.0001,
+   "com": [
+    -0.015,
+    0.015
+   ]
+  }
+ ],
+ "joints": [
+  {
+   "id": "A",
+   "kind": "pin",
+   "at": [
+    -0.04,
+    0
+   ],
+   "bodies": [
+    "AC"
+   ],
+   "grounded": true,
+   "welded": false
+  },
+  {
+   "id": "B",
+   "kind": "slider",
+   "at": [
+    0,
+    0
+   ],
+   "guide": "AC",
+   "linePoint": [
+    -0.04,
+    0
+   ],
+   "axis": [
+    1,
+    0
+   ],
+   "riders": [
+    "BD",
+    "BE"
+   ],
+   "rotates": false,
+   "blockMass": 0,
+   "limits": [
+    0.0027799999999999956,
+    0.07722000000000001
+   ]
+  }
+ ],
+ "driver": {
+  "joint": "B",
+  "kind": "translation",
+  "speed": -0.05
+ },
+ "loads": [],
+ "points": [
+  {
+   "id": "A",
+   "body": "ground",
+   "at": [
+    -0.04,
+    0
+   ]
+  },
+  {
+   "id": "C",
+   "body": "AC",
+   "at": [
+    0.04,
+    0
+   ]
+  },
+  {
+   "id": "B",
+   "body": "BD",
+   "at": [
+    0,
+    0
+   ]
+  },
+  {
+   "id": "D",
+   "body": "BD",
+   "at": [
+    0.03,
+    0.03
+   ]
+  },
+  {
+   "id": "E",
+   "body": "BE",
+   "at": [
+    -0.03,
+    0.03
+   ]
+  }
+ ],
+ "sweep": {
+  "step": 0.001,
+  "maxSamples": 2000
+ },
+ "unsupported": []
+}
