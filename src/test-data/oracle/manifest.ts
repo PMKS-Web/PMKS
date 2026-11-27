@@ -86,6 +86,46 @@ export const ORACLE_FRAME_EXCLUSIONS: FrameExclusion[] = [
 
 export const ORACLE_EXCLUSIONS: Exclusion[] = [
   {
+    problem: 'gallery.square-rod-slider-crank-driven-at-the-slider.m1',
+    kind: 'oracle-limitation',
+    what: 'runs',
+    reason:
+      'A slider input reversing at a dead center: PMKS carries the crank on through it, so the return leg passes through different poses at the same driver travel than the way out did. The oracle stops at the turning point and stores one state per k, so it cannot represent that return (docs/numerical-oracle-plan.md, Return sweeps).',
+    review: 'If the oracle learns to store a continuing branch as a second segment.',
+  },
+  {
+    problem: 'gallery.elliptical-trammel-driven.m1',
+    kind: 'oracle-limitation',
+    what: 'runs',
+    reason:
+      'A slider input reversing at a dead center: PMKS carries the bar on through it, so the return leg passes through different poses at the same driver travel than the way out did. The oracle stops at the turning point and stores one state per k, so it cannot represent that return (docs/numerical-oracle-plan.md, Return sweeps).',
+    review: 'If the oracle learns to store a continuing branch as a second segment.',
+  },
+  {
+    problem: 'template.elliptical-trammel.m1',
+    kind: 'oracle-limitation',
+    what: 'runs',
+    reason:
+      'A slider input reversing at a dead center: PMKS carries the bar on through it, so the return leg passes through different poses at the same driver travel than the way out did. The oracle stops at the turning point and stores one state per k, so it cannot represent that return (docs/numerical-oracle-plan.md, Return sweeps).',
+    review: 'If the oracle learns to store a continuing branch as a second segment. Delete this entry when the library trammel is the cranked one (PR #299).',
+  },
+  {
+    problem: 'gallery.screw-jack.m1',
+    kind: 'oracle-limitation',
+    what: 'runs',
+    reason:
+      'A slider input reversing at a dead center: PMKS carries the rocker on through it, so the return leg passes through different poses at the same driver travel than the way out did. The oracle stops at the turning point and stores one state per k, so it cannot represent that return (docs/numerical-oracle-plan.md, Return sweeps).',
+    review: 'If the oracle learns to store a continuing branch as a second segment.',
+  },
+  {
+    problem: 'gallery.gripper-with-the-redundancy-removed.m1',
+    kind: 'oracle-limitation',
+    what: 'runs',
+    reason:
+      'A slider input reversing at a dead center: PMKS carries the jaw arms on through it, so the return leg passes through different poses at the same driver travel than the way out did. The oracle stops at the turning point and stores one state per k, so it cannot represent that return (docs/numerical-oracle-plan.md, Return sweeps).',
+    review: 'If the oracle learns to store a continuing branch as a second segment.',
+  },
+  {
     problem: 'gallery.slider-crank-whose-rod-comes-square-to-the-guide.m1',
     kind: 'disagreement',
     what: 'runs',

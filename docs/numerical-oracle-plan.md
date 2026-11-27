@@ -455,12 +455,14 @@ open question.
 
 A rocking pin input reverses at its toggle and PMKS retraces, so one stored state per k serves
 both directions (see [The sweep](#the-sweep)), and every return frame is compared pose by pose.
-That holds for every published machine. A slider input that reverses at a crank's dead center can
-instead carry on: PMKS keeps its motion history across that reversal to choose the continuing
-branch (`mechanism.ts`; `piston-driven-wheels.spec.ts` is its guard). No published machine does
-so: the piston-driven wheels are a spec fixture, not a gallery entry. A machine that did would fail
-on its return poses rather than pass, because the oracle stops at the turning point. Storing the
-continuing branch as a second segment is not built, and is an open question.
+A slider input that reverses at a crank's dead center instead carries on: PMKS chooses the
+continuing branch there (`mechanism.ts`; `piston-carry-through.spec.ts` and
+`piston-driven-wheels.spec.ts` are its guards). Since that was made reliable, five published
+machines do so -- the square-rod slider-crank driven at its slider, the slide-driven elliptical
+trammel (gallery and, until the cranked one replaces it, the library's), the screw jack and the
+pivoting gripper -- and each would fail on its return poses rather than pass, because the oracle
+stops at the turning point. They are excluded as an oracle limitation. Storing the continuing
+branch as a second segment is not built, and is an open question.
 
 ### Disagreements and exclusions
 
